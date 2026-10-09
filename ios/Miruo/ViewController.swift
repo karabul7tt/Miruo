@@ -1120,10 +1120,22 @@ extension ViewController: ASAuthorizationControllerDelegate, ASAuthorizationCont
     func authorizationController(controller: ASAuthorizationController, didCompleteWithAuthorization authorization: ASAuthorization) {
         if let appleIDCredential = authorization.credential as? ASAuthorizationAppleIDCredential {
             let userIdentifier = appleIDCredential.user
-            let email = appleIDCredential.email ?? ""
-            let fullName = [appleIDCredential.fullName?.givenName, appleIDCredential.fullName?.familyName]
+            var email = appleIDCredential.email ?? ""
+            var fullName = [appleIDCredential.fullName?.givenName, appleIDCredential.fullName?.familyName]
                 .compactMap { $0 }
                 .joined(separator: " ")
+            
+            // Cache full name and email in UserDefaults because Apple only sends them on the first authorization
+            if !fullName.isEmpty {
+                UserDefaults.standard.set(fullName, forKey: "apple_user_fullname_\(userIdentifier)")
+            } else {
+                fullName = UserDefaults.standard.string(forKey: "apple_user_fullname_\(userIdentifier)") ?? ""
+            }
+            if !email.isEmpty {
+                UserDefaults.standard.set(email, forKey: "apple_user_email_\(userIdentifier)")
+            } else {
+                email = UserDefaults.standard.string(forKey: "apple_user_email_\(userIdentifier)") ?? ""
+            }
             
             var identityTokenString = ""
             if let identityTokenData = appleIDCredential.identityToken,
@@ -1157,9 +1169,12 @@ extension ViewController: ASAuthorizationControllerDelegate, ASAuthorizationCont
     }
     
     func authorizationController(controller: ASAuthorizationController, didCompleteWithError error: Error) {
+        let authError = error as? ASAuthorizationError
+        let isCanceled = (authError?.code == .canceled) || (error as NSError).code == 1001
         let payload: [String: Any] = [
             "success": false,
-            "error": error.localizedDescription
+            "canceled": isCanceled,
+            "error": isCanceled ? "canceled" : error.localizedDescription
         ]
         if let jsonData = try? JSONSerialization.data(withJSONObject: payload, options: []),
            let jsonString = String(data: jsonData, encoding: .utf8) {

@@ -3972,7 +3972,7 @@ function setAuthMode(signUp) {
     if (dom.authHeadingTitle) dom.authHeadingTitle.textContent = "Kayıt Ol";
     if (dom.authSubtitle) dom.authSubtitle.textContent = "İsim, e-posta ve şifrenizle hemen kaydolun.";
     if (dom.signUpNameField) dom.signUpNameField.classList.remove('hidden');
-    if (dom.signUpAvatarSection) dom.signUpAvatarSection.classList.remove('hidden');
+    if (dom.signUpAvatarSection) dom.signUpAvatarSection.classList.add('hidden');
     if (dom.signUpPasswordConfirmField) dom.signUpPasswordConfirmField.classList.remove('hidden');
     if (dom.authRememberRow) dom.authRememberRow.classList.add('hidden');
     if (dom.authContactLabel) dom.authContactLabel.textContent = "E-posta";
@@ -4086,7 +4086,7 @@ function loadUserSession() {
     if (dom.authModal) {
       if (!roomFromUrl && !urlParams.get('modal') && !urlParams.get('view') && !urlParams.get('room') && !urlParams.get('profile') && urlParams.get('auth') !== 'reset' && hash !== 'reset') {
         dom.authModal.classList.remove('hidden');
-        setAuthMode(true);
+        setAuthMode(false);
       } else {
         dom.authModal.classList.add('hidden');
       }
@@ -4269,9 +4269,42 @@ function updateUserUI(user) {
   if (dom.currentRoomDisplay) dom.currentRoomDisplay.textContent = state.roomId;
 }
 
-function logoutUser() {
+async function logoutUser() {
   localStorage.removeItem('miruo_user');
-  location.reload();
+  sessionStorage.clear();
+
+  if (supabaseClient && supabaseClient.auth) {
+    try {
+      await supabaseClient.auth.signOut();
+    } catch (e) {
+      console.warn('[Miruo] Supabase signOut info:', e);
+    }
+  }
+
+  state.userId = null;
+  state.username = null;
+  state.avatarUrl = '';
+  state.avatarBg = '';
+
+  // Close profile modal if open
+  if (dom.profileEditModal) {
+    dom.profileEditModal.classList.add('hidden');
+  }
+
+  // Clear inputs
+  if (dom.authNameInput) dom.authNameInput.value = '';
+  if (dom.authContactInput) dom.authContactInput.value = '';
+  if (dom.authPasswordInput) dom.authPasswordInput.value = '';
+  if (dom.authPasswordConfirmInput) dom.authPasswordConfirmInput.value = '';
+
+  // Directly show Giriş Yap (Login) screen
+  if (dom.authModal) {
+    dom.authModal.classList.remove('hidden');
+    setAuthMode(false);
+    setAuthMethod('email');
+  }
+
+  showToast('Oturum kapatıldı.');
 }
 
 function initEvents() {
@@ -4356,45 +4389,49 @@ function initEvents() {
 
   // Native Apple Sign In Callback from iOS Swift
   window.handleNativeAppleSignInResponse = async function(response) {
+    if (dom.appleLoginBtn) {
+      dom.appleLoginBtn.classList.remove('opacity-60', 'pointer-events-none');
+    }
+
     if (!response || !response.success) {
-      const err = response && response.error ? response.error : 'İptal edildi';
-      console.warn('[Miruo] Native Apple Sign In error/cancel:', err);
-      showAuthAlert(`⚠️ Apple Girişi: ${err}`, false);
+      // If user canceled the Apple sheet, do not show any error alert
+      if (response && (response.canceled || response.error === 'canceled' || (typeof response.error === 'string' && response.error.includes('1001')))) {
+        console.log('[Miruo] Apple Sign In dismissed by user');
+        hideAuthAlert();
+        return;
+      }
+      const err = response && response.error ? response.error : 'İşlem tamamlanamadı.';
+      console.warn('[Miruo] Native Apple Sign In error:', err);
+      showAuthAlert('Giriş işlemi tamamlanamadı. Lütfen tekrar deneyin.', false);
       return;
     }
 
-    showAuthAlert("🍎 Apple hesabın doğrulanıyor...", true);
+    hideAuthAlert();
     const { identityToken, email, fullName, userIdentifier } = response;
-    let supaUser = null;
 
-    if (supabaseClient && supabaseClient.auth && identityToken) {
-      try {
-        const { data, error } = await supabaseClient.auth.signInWithIdToken({
-          provider: 'apple',
-          token: identityToken
-        });
-        if (data && data.user) {
-          supaUser = data.user;
-          console.log('[Miruo] Supabase Apple signInWithIdToken success:', supaUser.id);
-        } else if (error) {
-          console.warn('[Miruo] Supabase signInWithIdToken note:', error.message);
-        }
-      } catch (err) {
-        console.warn('[Miruo] Supabase IdToken exception:', err);
-      }
+    // 1. Auto-fill form inputs if present
+    if (fullName) {
+      if (dom.authNameInput) dom.authNameInput.value = fullName;
+      if (dom.editProfileNameInput) dom.editProfileNameInput.value = fullName;
+    }
+    if (email) {
+      if (dom.authContactInput) dom.authContactInput.value = email;
     }
 
-    const displayName = fullName || (email ? email.split('@')[0] : 'Apple Kullanıcısı');
+    // 2. Prepare user profile
+    const displayName = fullName || (email ? email.split('@')[0] : 'Mehmet Karabulut');
     const safeUsername = (displayName.replace(/[^a-zA-Z0-9_]/g, '') || ('user_' + Math.random().toString(36).substring(2, 6))).toLowerCase();
+    const avatarChar = displayName.charAt(0).toUpperCase() || 'M';
 
     const verifiedUser = {
-      id: (supaUser && supaUser.id) ? supaUser.id : (userIdentifier || ('apple_' + Date.now())),
+      id: userIdentifier || ('apple_' + Date.now()),
       name: displayName,
       username: safeUsername,
-      email: email || (supaUser && supaUser.email) || '',
-      avatarChar: displayName.charAt(0).toUpperCase() || 'A',
-      avatarBg: '#000000',
-      isAppleUser: true
+      email: email || '',
+      avatarChar: avatarChar,
+      avatarBg: 'from-rose-500 to-indigo-600',
+      isApple: true,
+      provider: 'apple'
     };
 
     localStorage.setItem('miruo_user', JSON.stringify(verifiedUser));
@@ -4405,10 +4442,25 @@ function initEvents() {
     if (dom.authModal) {
       dom.authModal.classList.add('hidden');
     }
-    showAuthAlert("✅ Apple ile başarıyla giriş yapıldı!", true);
-    setTimeout(() => {
-      if (dom.authAlert) dom.authAlert.classList.add('hidden');
-    }, 1500);
+    showToast(`Hoş geldin, ${displayName} ✨`);
+
+    // 3. Supabase background sync (non-blocking)
+    if (supabaseClient && supabaseClient.auth) {
+      (async () => {
+        try {
+          if (identityToken) {
+            const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 3000));
+            await Promise.race([
+              supabaseClient.auth.signInWithIdToken({ provider: 'apple', token: identityToken }),
+              timeoutPromise
+            ]).catch(e => console.warn('[Miruo] Supabase Apple token info:', e.message));
+          }
+          syncUserProfileToSupabase(verifiedUser);
+        } catch (err) {
+          console.warn('[Miruo] Supabase background sync note:', err);
+        }
+      })();
+    }
   };
 
   // Social Auth Handlers (Google OAuth & Native Apple Sign In)
@@ -4417,11 +4469,17 @@ function initEvents() {
 
     // Native iOS Apple Sign In (Dythin method via AuthenticationServices)
     if (!isGoogle && window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.startAppleSignIn) {
-      showAuthAlert("🍎 Apple ile Giriş açılıyor...", true);
+      hideAuthAlert();
+      if (dom.appleLoginBtn) {
+        dom.appleLoginBtn.classList.add('opacity-60', 'pointer-events-none');
+      }
       try {
         window.webkit.messageHandlers.startAppleSignIn.postMessage({});
       } catch (e) {
         console.warn('[Miruo] startAppleSignIn failed, falling back:', e);
+        if (dom.appleLoginBtn) {
+          dom.appleLoginBtn.classList.remove('opacity-60', 'pointer-events-none');
+        }
       }
       return;
     }
