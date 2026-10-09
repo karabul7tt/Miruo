@@ -10,7 +10,9 @@
     { "source": "/basin", "destination": "/basin.html" },
     { "source": "/iletisim", "destination": "/iletisim.html" },
     { "source": "/gizlilik", "destination": "/gizlilik.html" },
-    { "source": "/sartlar", "destination": "/sartlar.html" }
+    { "source": "/sartlar", "destination": "/sartlar.html" },
+    { "source": "/app", "destination": "/app/index.html" },
+    { "source": "/app/(.*)", "destination": "/app/$1" }
   ],
   "redirects": [
     { "source": "/download/ios", "destination": "https://apps.apple.com/app/miruo/id6738928411", "permanent": false },

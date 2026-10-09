@@ -1283,6 +1283,10 @@ nav .wrap {
   z-index: 100;
 }
 
+.hidden {
+  display: none !important;
+}
+
 .lang-menu.hidden {
   display: none;
 }
@@ -2225,4 +2229,66 @@ nav .wrap {
   border-color: #FFFFFF;
   transform: translateY(-2px);
   box-shadow: 0 8px 24px rgba(255, 255, 255, 0.25);
+}
+
+/* ============================================================ */
+/* DEVICE PURE BLACK SCREEN & LIVING CENTERED OWL LOGO          */
+/* ============================================================ */
+
+.device-black-screen {
+  width: 100%;
+  height: 100%;
+  background: #000000 !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  position: relative !important;
+  overflow: hidden !important;
+}
+
+.macbook-screen,
+.pc-screen,
+.phone-mockup,
+.android-mockup,
+.phone-screen-content {
+  background: #000000 !important;
+}
+
+.device-owl-logo {
+  display: block;
+  filter: drop-shadow(0 0 14px rgba(194, 109, 151, 0.35));
+}
+
+@keyframes owlPupilsLookAround {
+  0%, 100% {
+    transform: translate(0, 0);
+  }
+  16% {
+    transform: translate(-3.2px, 0);
+  }
+  24% {
+    transform: translate(-2px, -2.5px);
+  }
+  42% {
+    transform: translate(2.5px, -2.5px);
+  }
+  58% {
+    transform: translate(3.2px, 0);
+  }
+  72% {
+    transform: translate(0, 2.2px);
+  }
+  88% {
+    transform: translate(0, 0);
+  }
+  92% {
+    transform: scaleY(0.12);
+  }
+  96% {
+    transform: scaleY(1);
+  }
+}
+
+.owl-pupil-animated {
+  animation: owlPupilsLookAround 4.8s ease-in-out infinite;
 }

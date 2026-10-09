@@ -42,7 +42,7 @@ import {
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const PUBLIC_DIR = path.join(__dirname, 'public');
+const PUBLIC_DIR = path.join(__dirname, 'app');
 const WEBSITE_DIR = path.join(__dirname, 'website');
 const USERS_FILE = path.join(__dirname, 'data', 'users.json');
 

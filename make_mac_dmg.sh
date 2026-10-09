@@ -47,7 +47,7 @@ LAUNCHER
 chmod +x "$MACOS_DIR/Miruo"
 
 # 3. Copy Logo Icon
-cp public/logo.png "$RESOURCES_DIR/icon.png"
+cp logo.png "$RESOURCES_DIR/icon.png"
 
 # 4. Applications symlink for drag and drop install
 ln -sf /Applications "$STAGING_DIR/Applications"
