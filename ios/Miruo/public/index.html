@@ -38,6 +38,23 @@
   <link rel="preconnect" href="https://fonts.gstatic.com">
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="style.css">
+  <script>
+    // Early language sync from localStorage
+    try {
+      var savedLang = localStorage.getItem('miruo_lang');
+      if (savedLang) document.documentElement.lang = savedLang;
+    } catch (e) {}
+
+    // OAuth redirect fallback: if Supabase redirects to http://localhost:3000, bounce to native miruo:// scheme
+    try {
+      if (window.location.hash.includes('access_token') || window.location.search.includes('code=')) {
+        if (window.location.protocol.startsWith('http') && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')) {
+          var nativeOAuthUrl = 'miruo://auth/callback' + window.location.search + window.location.hash;
+          window.location.href = nativeOAuthUrl;
+        }
+      }
+    } catch (e) {}
+  </script>
 </head>
 <body class="bg-black text-slate-100 font-['Plus_Jakarta_Sans'] overflow-x-hidden min-h-screen flex flex-col">
 
@@ -62,11 +79,18 @@
   <div id="touchLayer" class="fixed inset-0 pointer-events-none z-40 overflow-hidden"></div>
 
   <!-- Top Navigation Bar (Clean Minimal Brand Header - No duplicate buttons) -->
-  <header id="mainHeader" class="h-14 border-b border-white/10 bg-black/90 backdrop-blur-xl flex items-center justify-center px-4 sm:px-6 z-30 sticky top-0">
+  <header id="mainHeader" class="h-14 border-b border-white/10 bg-black/90 backdrop-blur-xl flex items-center justify-between px-4 sm:px-6 z-30 sticky top-0">
+    <div class="w-16 shrink-0"></div>
     <!-- Center: MIRUO logo wordmark with iconic emblem -->
     <div class="flex items-center gap-2.5 cursor-pointer" id="navLogoBtn">
       <img src="logo.svg" alt="Miruo" class="w-7 h-7 rounded-lg shadow-sm">
       <span class="text-2xl sm:text-3xl font-black tracking-tight text-white font-['Plus_Jakarta_Sans']">MIRUO</span>
+    </div>
+    <!-- Right: Clean Language Selector (No flags) -->
+    <div id="headerLangSelectorGroup" class="flex items-center gap-1 bg-white/5 p-1 rounded-xl border border-white/10 shrink-0">
+      <button type="button" class="header-lang-btn px-2 py-0.5 rounded-lg text-[10px] font-bold transition-all cursor-pointer" data-lang="tr">TR</button>
+      <button type="button" class="header-lang-btn px-2 py-0.5 rounded-lg text-[10px] font-medium text-gray-400 hover:text-white transition-all cursor-pointer" data-lang="en">EN</button>
+      <button type="button" class="header-lang-btn px-2 py-0.5 rounded-lg text-[10px] font-medium text-gray-400 hover:text-white transition-all cursor-pointer" data-lang="de">DE</button>
     </div>
   </header>
 
@@ -631,13 +655,13 @@
     <!-- 1. Odalar (Keşfet) -->
     <button id="mobileNavExploreBtn" type="button" class="flex flex-col items-center gap-1 text-white font-bold py-1 px-3 transition-all cursor-pointer" title="Canlı Odalar & Keşfet">
       <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76"/></svg>
-      <span class="text-[10px] font-medium">Odalar</span>
+      <span class="text-[10px] font-medium" data-i18n="nav_explore">Odalar</span>
     </button>
 
     <!-- 2. Arkadaşlar -->
     <button id="mobileNavFriendsBtn" type="button" class="flex flex-col items-center gap-1 text-gray-400 hover:text-white py-1 px-3 transition-all cursor-pointer" title="Arkadaşlarım">
       <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"/></svg>
-      <span class="text-[10px] font-medium">Arkadaşlar</span>
+      <span class="text-[10px] font-medium" data-i18n="nav_friends">Arkadaşlar</span>
     </button>
 
     <!-- 3. Prominent White Circular '+' Button (Rave Style, Centered, Elevated) -->
@@ -651,7 +675,7 @@
         <circle cx="12" cy="12" r="3"/>
         <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/>
       </svg>
-      <span class="text-[10px] font-medium">Ayarlar</span>
+      <span class="text-[10px] font-medium" data-i18n="nav_settings">Ayarlar</span>
     </button>
   </nav>
 
@@ -862,8 +886,15 @@
       <div class="absolute bottom-10 left-1/3 w-80 h-80 bg-[#6A1E55]/20 rounded-full blur-[100px]"></div>
     </div>
 
-    <!-- Top Action Bar: Close X for Guest Exploration -->
-    <div class="w-full flex items-center justify-end px-5 pt-safe-top pb-1 shrink-0" style="padding-top: max(16px, env(safe-area-inset-top));">
+    <!-- Top Action Bar: Language Switcher & Close X -->
+    <div class="w-full flex items-center justify-between px-5 pt-safe-top pb-1 shrink-0" style="padding-top: max(16px, env(safe-area-inset-top));">
+      <!-- Clean Language Switcher on Auth Modal (No flags) -->
+      <div id="authLangSelectorGroup" class="flex items-center gap-1.5 bg-white/5 p-1 rounded-xl border border-white/10">
+        <button type="button" class="auth-lang-btn px-2.5 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer" data-lang="tr">Türkçe</button>
+        <button type="button" class="auth-lang-btn px-2.5 py-1 rounded-lg text-xs font-medium text-gray-400 hover:text-white transition-all cursor-pointer" data-lang="en">English</button>
+        <button type="button" class="auth-lang-btn px-2.5 py-1 rounded-lg text-xs font-medium text-gray-400 hover:text-white transition-all cursor-pointer" data-lang="de">Deutsch</button>
+      </div>
+
       <button id="closeAuthModalBtn" type="button" class="close-modal-btn w-9 h-9 rounded-full bg-white/10 hover:bg-white/20 active:scale-95 text-gray-300 hover:text-white flex items-center justify-center text-sm font-bold transition-all cursor-pointer select-none" title="Misafir Olarak İncele">
         ✕
       </button>
@@ -902,20 +933,20 @@
       <!-- Segmented Pill Switcher (Sign In / Sign Up) -->
       <div class="bg-[#F0F2F5] p-1 rounded-2xl flex items-center">
         <button id="authTabSignIn" type="button" class="flex-1 py-2 rounded-xl text-xs font-bold bg-[#18181B] text-white shadow-sm transition-all text-center cursor-pointer">
-          Giriş Yap
+          <span data-i18n="login_tab">Giriş Yap</span>
         </button>
         <button id="authTabSignUp" type="button" class="flex-1 py-2 rounded-xl text-xs font-semibold text-gray-500 hover:text-gray-900 transition-all text-center cursor-pointer">
-          Kayıt Ol
+          <span data-i18n="register_tab">Kayıt Ol</span>
         </button>
       </div>
 
       <!-- Auth Method Switcher (E-posta vs Telefon) -->
       <div class="flex items-center justify-center gap-1 p-1 bg-gray-100 rounded-xl">
         <button id="authMethodEmailBtn" type="button" class="flex-1 py-1.5 rounded-lg text-xs font-bold bg-white text-gray-900 shadow-xs transition-all text-center cursor-pointer">
-          E-posta
+          <span data-i18n="email_btn">E-posta</span>
         </button>
         <button id="authMethodPhoneBtn" type="button" class="flex-1 py-1.5 rounded-lg text-xs font-semibold text-gray-500 hover:text-gray-900 transition-all text-center cursor-pointer">
-          Telefon
+          <span data-i18n="phone_btn">Telefon</span>
         </button>
       </div>
 
@@ -924,7 +955,7 @@
 
       <!-- Avatar & Photo Selection (Only visible on Sign Up) -->
       <div id="signUpAvatarSection" class="hidden flex flex-col items-center gap-2 pt-0.5 pb-1">
-        <span class="text-[11px] font-bold text-gray-500">Profil Fotoğrafı Seç</span>
+        <span class="text-[11px] font-bold text-gray-500" data-i18n="select_photo">Profil Fotoğrafı Seç</span>
         <div class="flex items-center gap-3">
           <label for="signUpAvatarFileInput" class="relative group cursor-pointer block" id="signUpAvatarClickArea" title="Fotoğraf Yükle">
             <div id="signUpAvatarPreview" class="w-16 h-16 rounded-full bg-gradient-to-tr from-rose-500 to-indigo-600 flex items-center justify-center text-xl font-bold text-white shadow-md overflow-hidden border-2 border-white ring-4 ring-rose-500/20">
@@ -937,7 +968,7 @@
           <input type="file" id="signUpAvatarFileInput" accept="image/*" class="absolute opacity-0 w-0 h-0 pointer-events-none">
           
           <div class="flex flex-col gap-1.5">
-            <label for="signUpAvatarFileInput" id="triggerSignUpAvatarFileBtn" class="px-3.5 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-800 text-[11px] font-bold rounded-xl border border-gray-200 transition-all cursor-pointer text-center">
+            <label for="signUpAvatarFileInput" id="triggerSignUpAvatarFileBtn" class="px-3.5 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-800 text-[11px] font-bold rounded-xl border border-gray-200 transition-all cursor-pointer text-center" data-i18n="upload_photo">
               Fotoğraf Yükle
             </label>
             <div class="flex items-center gap-1.5" id="signUpPresetAvatarsContainer">
@@ -956,15 +987,15 @@
         <div id="signUpNameField" class="hidden">
           <div class="grid grid-cols-2 gap-2">
             <div>
-              <label for="authFirstNameInput" class="block text-[11px] font-bold text-gray-600 mb-1">Ad</label>
+              <label for="authFirstNameInput" class="block text-[11px] font-bold text-gray-600 mb-1" data-i18n="first_name_label">Ad</label>
               <div class="auth-input-container relative flex items-center border border-gray-200 rounded-2xl px-3 py-2.5">
-                <input type="text" id="authFirstNameInput" name="firstName" autocomplete="given-name" placeholder="Adınız" class="w-full bg-transparent text-xs text-gray-900 placeholder-gray-400 focus:outline-none font-medium">
+                <input type="text" id="authFirstNameInput" name="firstName" autocomplete="given-name" placeholder="Adınız" data-i18n-placeholder="first_name_ph" class="w-full bg-transparent text-xs text-gray-900 placeholder-gray-400 focus:outline-none font-medium">
               </div>
             </div>
             <div>
-              <label for="authLastNameInput" class="block text-[11px] font-bold text-gray-600 mb-1">Soyad</label>
+              <label for="authLastNameInput" class="block text-[11px] font-bold text-gray-600 mb-1" data-i18n="last_name_label">Soyad</label>
               <div class="auth-input-container relative flex items-center border border-gray-200 rounded-2xl px-3 py-2.5">
-                <input type="text" id="authLastNameInput" name="lastName" autocomplete="family-name" placeholder="Soyadınız" class="w-full bg-transparent text-xs text-gray-900 placeholder-gray-400 focus:outline-none font-medium">
+                <input type="text" id="authLastNameInput" name="lastName" autocomplete="family-name" placeholder="Soyadınız" data-i18n-placeholder="last_name_ph" class="w-full bg-transparent text-xs text-gray-900 placeholder-gray-400 focus:outline-none font-medium">
               </div>
             </div>
           </div>
@@ -975,19 +1006,19 @@
         <div id="authEmailSection" class="space-y-3">
           <!-- Email Field -->
           <div>
-            <label id="authContactLabel" for="authContactInput" class="block text-[11px] font-bold text-gray-600 mb-1">E-posta</label>
+            <label id="authContactLabel" for="authContactInput" class="block text-[11px] font-bold text-gray-600 mb-1" data-i18n="email_label">E-posta</label>
             <div class="auth-input-container relative flex items-center border border-gray-200 rounded-2xl px-3.5 py-2.5">
               <svg class="w-4 h-4 text-gray-400 mr-2.5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/></svg>
-              <input type="email" id="authContactInput" name="email" autocomplete="email" autocorrect="off" autocapitalize="none" placeholder="ornek@gmail.com" class="w-full bg-transparent text-xs text-gray-900 placeholder-gray-400 focus:outline-none font-medium">
+              <input type="email" id="authContactInput" name="email" autocomplete="email" autocorrect="off" autocapitalize="none" placeholder="ornek@gmail.com" data-i18n-placeholder="email_ph" class="w-full bg-transparent text-xs text-gray-900 placeholder-gray-400 focus:outline-none font-medium">
             </div>
           </div>
 
           <!-- Password Field -->
           <div>
-            <label for="authPasswordInput" class="block text-[11px] font-bold text-gray-600 mb-1">Şifre</label>
+            <label for="authPasswordInput" class="block text-[11px] font-bold text-gray-600 mb-1" data-i18n="password_label">Şifre</label>
             <div class="auth-input-container relative flex items-center border border-gray-200 rounded-2xl px-3.5 py-2.5">
               <svg class="w-4 h-4 text-gray-400 mr-2.5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
-              <input type="password" id="authPasswordInput" name="password" autocomplete="current-password" autocorrect="off" autocapitalize="none" placeholder="En az 6 karakter" class="w-full bg-transparent text-xs text-gray-900 placeholder-gray-400 focus:outline-none font-medium">
+              <input type="password" id="authPasswordInput" name="password" autocomplete="current-password" autocorrect="off" autocapitalize="none" placeholder="En az 6 karakter" data-i18n-placeholder="password_ph" class="w-full bg-transparent text-xs text-gray-900 placeholder-gray-400 focus:outline-none font-medium">
               <button type="button" id="togglePasswordVisibility" class="p-1 text-gray-400 hover:text-gray-700 transition-colors cursor-pointer">
                 <svg id="eyeIcon" class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
               </button>
@@ -996,10 +1027,10 @@
 
           <!-- Password Confirm Field (Şifre Tekrar - Sign Up only) -->
           <div id="signUpPasswordConfirmField" class="hidden">
-            <label for="authPasswordConfirmInput" class="block text-[11px] font-bold text-gray-600 mb-1">Şifre Tekrar</label>
+            <label for="authPasswordConfirmInput" class="block text-[11px] font-bold text-gray-600 mb-1" data-i18n="password_confirm_label">Şifre Tekrar</label>
             <div class="auth-input-container relative flex items-center border border-gray-200 rounded-2xl px-3.5 py-2.5">
               <svg class="w-4 h-4 text-gray-400 mr-2.5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
-              <input type="password" id="authPasswordConfirmInput" name="passwordConfirm" autocomplete="new-password" autocorrect="off" autocapitalize="none" placeholder="Şifrenizi tekrar girin" class="w-full bg-transparent text-xs text-gray-900 placeholder-gray-400 focus:outline-none font-medium">
+              <input type="password" id="authPasswordConfirmInput" name="passwordConfirm" autocomplete="new-password" autocorrect="off" autocapitalize="none" placeholder="Şifrenizi tekrar girin" data-i18n-placeholder="password_confirm_ph" class="w-full bg-transparent text-xs text-gray-900 placeholder-gray-400 focus:outline-none font-medium">
             </div>
           </div>
 
@@ -1007,27 +1038,27 @@
           <div id="authRememberRow" class="flex items-center justify-between text-xs pt-0.5">
             <label class="flex items-center gap-2 cursor-pointer select-none text-gray-600 font-medium">
               <input type="checkbox" id="rememberMeCheck" checked class="w-4 h-4 rounded text-[#A64D79] focus:ring-[#A64D79] border-gray-300 accent-[#A64D79]">
-              <span>Oturumu açık tut</span>
+              <span data-i18n="remember_me">Oturumu açık tut</span>
             </label>
-            <button type="button" id="forgotPasswordBtn" class="text-[#A64D79] hover:text-[#6A1E55] font-bold cursor-pointer">Şifremi Unuttum?</button>
+            <button type="button" id="forgotPasswordBtn" class="text-[#A64D79] hover:text-[#6A1E55] font-bold cursor-pointer" data-i18n="forgot_password">Şifremi Unuttum?</button>
           </div>
         </div>
 
         <!-- PHONE SECTION (Active when Phone method selected) -->
         <div id="authPhoneSection" class="hidden space-y-3">
           <div>
-            <label for="authPhoneInput" class="block text-[11px] font-bold text-gray-600 mb-1">Telefon Numarası</label>
+            <label for="authPhoneInput" class="block text-[11px] font-bold text-gray-600 mb-1" data-i18n="phone_label">Telefon Numarası</label>
             <div class="auth-input-container relative flex items-center border border-gray-200 rounded-2xl px-3.5 py-2.5">
               <span class="text-xs font-bold text-gray-700 mr-2 shrink-0">+90</span>
               <input type="tel" id="authPhoneInput" name="phone" autocomplete="tel" placeholder="5XX XXX XX XX" class="w-full bg-transparent text-xs text-gray-900 placeholder-gray-400 focus:outline-none font-medium">
             </div>
-            <p class="text-[10px] text-gray-500 mt-1">Giriş yapmak için telefonunuza 6 haneli SMS onay kodu gönderilecektir.</p>
+            <p class="text-[10px] text-gray-500 mt-1" data-i18n="phone_sub_info">Giriş yapmak için telefonunuza 6 haneli SMS onay kodu gönderilecektir.</p>
           </div>
 
           <!-- Phone OTP Verification Sub-block (shown after SMS sent) -->
           <div id="authPhoneOtpField" class="hidden space-y-2 p-3 bg-gray-50 rounded-2xl border border-gray-200">
             <div class="flex items-center justify-between text-[11px] text-gray-600 font-medium">
-              <span>SMS Onay Kodu (6 Hane):</span>
+              <span data-i18n="sms_code_label">SMS Onay Kodu (6 Hane):</span>
               <span id="phoneOtpTimerSpan" class="text-rose-600 font-bold"></span>
             </div>
             <div class="flex justify-between gap-1.5" id="phoneOtpDigitsGroup">
@@ -1039,14 +1070,14 @@
               <input type="text" maxlength="1" inputmode="numeric" class="phone-digit-box w-10 h-11 text-center text-base font-bold bg-white border border-gray-300 rounded-xl focus:border-rose-500 focus:outline-none">
             </div>
             <div class="flex justify-between items-center text-xs pt-1">
-              <button type="button" id="phoneOtpBackBtn" class="text-gray-500 hover:text-gray-800 text-[11px] font-semibold cursor-pointer">← Geri</button>
-              <button type="button" id="phoneOtpResendBtn" class="text-[#A64D79] hover:underline text-[11px] font-bold cursor-pointer">Tekrar Kod Gönder</button>
+              <button type="button" id="phoneOtpBackBtn" class="text-gray-500 hover:text-gray-800 text-[11px] font-semibold cursor-pointer" data-i18n="back_btn">← Geri</button>
+              <button type="button" id="phoneOtpResendBtn" class="text-[#A64D79] hover:underline text-[11px] font-bold cursor-pointer" data-i18n="resend_code_btn">Tekrar Kod Gönder</button>
             </div>
           </div>
         </div>
 
         <!-- Primary Action Button (Miruo Wine & Rose Gradient) -->
-        <button id="authSubmitBtn" type="submit" class="w-full py-3.5 bg-gradient-to-r from-[#A64D79] to-[#6A1E55] hover:opacity-95 active:scale-[0.98] text-white font-bold text-sm rounded-2xl shadow-lg shadow-pink-900/20 transition-all cursor-pointer">
+        <button id="authSubmitBtn" type="submit" class="w-full py-3.5 bg-gradient-to-r from-[#A64D79] to-[#6A1E55] hover:opacity-95 active:scale-[0.98] text-white font-bold text-sm rounded-2xl shadow-lg shadow-pink-900/20 transition-all cursor-pointer" data-i18n="login_btn">
           Giriş Yap
         </button>
       </form>
@@ -1054,25 +1085,25 @@
       <!-- Divider: VEYA ŞUNUNLA DEVAM ET -->
       <div class="relative flex items-center justify-center my-2">
         <div class="border-t border-gray-200 w-full"></div>
-        <span class="bg-white px-3 text-[10px] uppercase font-bold tracking-wider text-gray-400 absolute">VEYA ŞUNUNLA DEVAM ET</span>
+        <span class="bg-white px-3 text-[10px] uppercase font-bold tracking-wider text-gray-400 absolute" data-i18n="or_divider">VEYA ŞUNUNLA DEVAM ET</span>
       </div>
 
       <!-- Social Buttons (Google & Apple - Image 3 Layout) -->
       <div class="grid grid-cols-2 gap-3">
         <button id="googleLoginBtn" type="button" class="flex items-center justify-center gap-2 py-2.5 px-3 rounded-2xl border border-gray-200 bg-white hover:bg-gray-50 active:scale-95 transition-all text-xs font-bold text-gray-800 cursor-pointer shadow-xs">
           <svg class="w-4 h-4" viewBox="0 0 24 24"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"/></svg>
-          <span>Google</span>
+          <span data-i18n="google_login">Google</span>
         </button>
         <button id="appleLoginBtn" type="button" class="flex items-center justify-center gap-2 py-2.5 px-3 rounded-2xl border border-gray-200 bg-white hover:bg-gray-50 active:scale-95 transition-all text-xs font-bold text-gray-800 cursor-pointer shadow-xs">
           <svg class="w-4 h-4 fill-current text-black" viewBox="0 0 24 24"><path d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.81-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83M15.97 6.84c.66-.82 1.11-1.96.99-3.1-.96.04-2.12.64-2.8 1.44-.6.69-1.12 1.83-.98 2.94 1.07.08 2.15-.56 2.79-1.28z"/></svg>
-          <span>Apple</span>
+          <span data-i18n="apple_login">Apple</span>
         </button>
       </div>
 
       <!-- Footer Switcher Link -->
       <p class="text-center text-xs text-gray-500 pt-1">
-        <span id="authFooterText">Miruo'da yeni misin?</span>
-        <button id="authFooterAction" type="button" class="text-[#A64D79] font-bold hover:underline ml-1 cursor-pointer">Hesap Oluştur</button>
+        <span id="authFooterText" data-i18n="auth_footer_login">Miruo'da yeni misin?</span>
+        <button id="authFooterAction" type="button" class="text-[#A64D79] font-bold hover:underline ml-1 cursor-pointer" data-i18n="auth_footer_action_login">Hesap Oluştur</button>
       </p>
 
     </div>
@@ -1461,8 +1492,8 @@
             </svg>
           </div>
           <div>
-            <h3 class="font-bold text-base text-white">Ayarlar</h3>
-            <span class="text-[11px] text-gray-400">Profil, Güvenlik & Tercihler</span>
+            <h3 class="font-bold text-base text-white" data-i18n="settings_title">Ayarlar</h3>
+            <span class="text-[11px] text-gray-400" data-i18n="settings_subtitle">Profil, Güvenlik & Tercihler</span>
           </div>
         </div>
         <button id="closeProfileEditBtn" type="button" class="close-modal-btn w-9 h-9 rounded-full bg-white/10 hover:bg-white/20 active:scale-95 text-gray-200 hover:text-white flex items-center justify-center text-sm font-bold transition-all cursor-pointer select-none">✕</button>
@@ -1485,7 +1516,7 @@
         
         <!-- 1. PROFİL KARTI -->
         <div class="bg-white/5 rounded-2xl border border-white/10 p-4 space-y-4">
-          <span class="text-[10px] font-bold uppercase tracking-wider text-rose-300 block">Profil Bilgileri</span>
+          <span class="text-[10px] font-bold uppercase tracking-wider text-rose-300 block" data-i18n="profile_info_section">Profil Bilgileri</span>
 
           <!-- Avatar Preview & Actions -->
           <div class="flex flex-col items-center gap-3">
@@ -1523,60 +1554,35 @@
             </div>
           </div>
 
-          <!-- Display Name Input & Save -->
-          <div class="space-y-2 pt-2 border-t border-white/5">
-            <label class="block text-xs font-semibold text-gray-300" data-i18n="display_name">Görünen İsim</label>
-            <div class="flex gap-2">
-              <input type="text" id="editProfileNameInput" placeholder="Örn: mehmet" class="flex-1 bg-black/40 border border-white/10 rounded-xl px-3.5 py-2.5 text-xs text-white focus:outline-none focus:border-[#A64D79] font-medium">
-              <button id="saveProfileBtn" type="button" class="px-4 py-2.5 bg-gradient-to-r from-[#A64D79] to-[#6A1E55] hover:opacity-95 text-white rounded-xl text-xs font-bold transition-all shadow-md cursor-pointer shrink-0" data-i18n="save_changes">
-                Kaydet
-              </button>
+          <!-- Ad Soyad & Kullanıcı Adı (İkisi Ayrı Alanlar) -->
+          <div class="space-y-3 pt-3 border-t border-white/5">
+            <!-- Düz İsim (Ad Soyad) -->
+            <div class="space-y-1">
+              <label class="block text-xs font-semibold text-gray-300" data-i18n="full_name">Ad Soyad</label>
+              <input type="text" id="editProfileFullNameInput" placeholder="Örn: Mehmet Karabulut" data-i18n-placeholder="full_name_ph" class="w-full bg-black/40 border border-white/10 rounded-xl px-3.5 py-2.5 text-xs text-white placeholder-gray-500 focus:outline-none focus:border-[#A64D79] font-medium">
             </div>
-          </div>
-        </div>
 
-        <!-- 2. KİŞİSEL PUBLIC ODA (KEŞFET & CANLI) -->
-        <div class="bg-gradient-to-br from-[#A64D79]/15 via-white/5 to-[#6A1E55]/20 rounded-2xl border border-[#A64D79]/30 p-4 space-y-3">
-          <div class="flex items-center justify-between">
-            <div class="flex items-center gap-2">
-              <div class="w-7 h-7 rounded-lg bg-[#A64D79]/25 border border-[#A64D79]/40 flex items-center justify-center text-pink-300">
-                <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76"/></svg>
+            <!-- Kullanıcı Adı (@username) -->
+            <div class="space-y-1">
+              <label class="block text-xs font-semibold text-gray-300" data-i18n="username">Kullanıcı Adı</label>
+              <div class="flex items-center bg-black/40 border border-white/10 rounded-xl px-3 py-2.5">
+                <span class="text-rose-400 font-bold text-xs mr-1 select-none">@</span>
+                <input type="text" id="editProfileUsernameInput" placeholder="kullaniciadi" data-i18n-placeholder="username_ph" class="flex-1 bg-transparent text-xs text-white placeholder-gray-500 focus:outline-none font-medium">
               </div>
-              <div>
-                <span class="text-xs font-bold text-white block">Kişisel Public Odam</span>
-                <span class="text-[10px] text-pink-200/80">Canlı Odalar & Keşfet Vitrini</span>
-              </div>
+              <input type="hidden" id="editProfileNameInput">
             </div>
-            <span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-[#A64D79]/20 text-pink-300 border border-[#A64D79]/30">
-              Canlı Yayın
-            </span>
+
+            <!-- Kaydet Butonu -->
+            <button id="saveProfileBtn" type="button" class="w-full py-2.5 bg-gradient-to-r from-[#A64D79] to-[#6A1E55] hover:opacity-95 text-white rounded-xl text-xs font-bold transition-all shadow-md cursor-pointer flex items-center justify-center gap-1.5" data-i18n="save_changes">
+              <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+              <span data-i18n="save_changes">Kaydet</span>
+            </button>
           </div>
-
-          <p class="text-[11px] text-gray-300 leading-relaxed">
-            Sana özel kalıcı oda. Keşfet'e açtığında diğer kullanıcılar odanı canlı odalar listesinde görebilir ve katılabilir.
-          </p>
-
-          <!-- Toggle: Public in Explore -->
-          <div class="flex items-center justify-between py-2 border-t border-white/5">
-            <div>
-              <span class="text-xs font-medium text-gray-200 block">Keşfet'te Herkese Açık Listele</span>
-              <span class="text-[10px] text-gray-400">Canlı odalar vitrininde görünür</span>
-            </div>
-            <label class="relative inline-flex items-center cursor-pointer">
-              <input type="checkbox" id="personalRoomPublicToggle" checked class="sr-only peer">
-              <div class="w-11 h-6 bg-white/15 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[#A64D79]"></div>
-            </label>
-          </div>
-
-          <button id="joinPersonalRoomBtn" type="button" class="w-full py-2.5 bg-gradient-to-r from-[#A64D79] to-[#6A1E55] hover:opacity-95 text-white rounded-xl text-xs font-bold transition-all shadow-md cursor-pointer flex items-center justify-center gap-2">
-            <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg>
-            <span>Kişisel Odaya Git / Başlat 🚀</span>
-          </button>
         </div>
 
         <!-- 3. HESAP & GÜVENLİK (ACCORDIONS) -->
         <div id="settingsSectionSecurity" class="space-y-2.5">
-          <span class="text-[10px] font-bold uppercase tracking-wider text-gray-400 px-1 block">Hesap & Güvenlik</span>
+          <span class="text-[10px] font-bold uppercase tracking-wider text-gray-400 px-1 block" data-i18n="account_security_section">Hesap & Güvenlik</span>
 
           <!-- Giriş Yöntemi & Rozet -->
           <div class="p-3.5 rounded-2xl bg-white/5 border border-white/10 flex items-center justify-between">
@@ -1589,7 +1595,7 @@
                 <span id="profileEmailDisplay" class="text-[11px] text-gray-300 font-medium block">user@miruo.app</span>
               </div>
             </div>
-            <span id="profileAuthBadge" class="px-2.5 py-1 rounded-full text-[10px] font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
+            <span id="profileAuthBadge" class="px-2.5 py-1 rounded-full text-[10px] font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30" data-i18n="active_session">
               ✓ Aktif Oturum
             </span>
           </div>
@@ -1602,17 +1608,17 @@
                   <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
                 </div>
                 <div>
-                  <span class="text-xs font-semibold text-white block">E-posta Adresini Değiştir</span>
-                  <span class="text-[10px] text-gray-400">Yeni e-posta adresi bağlayın</span>
+                  <span class="text-xs font-semibold text-white block" data-i18n="change_email_title">E-posta Adresini Değiştir</span>
+                  <span class="text-[10px] text-gray-400" data-i18n="change_email_sub">Yeni e-posta adresi bağlayın</span>
                 </div>
               </div>
               <svg id="changeEmailChevron" class="w-4 h-4 text-gray-400 transform transition-transform duration-200" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
             </button>
             <div id="changeEmailCollapseArea" class="hidden p-3.5 pt-0 space-y-2 border-t border-white/5 mt-1">
-              <p class="text-[10px] text-gray-400 mt-2">Yeni e-posta adresine 6 haneli doğrulama bağlantısı iletilecektir.</p>
+              <p class="text-[10px] text-gray-400 mt-2" data-i18n="change_email_info">Yeni e-posta adresine 6 haneli doğrulama bağlantısı iletilecektir.</p>
               <div class="flex gap-2">
-                <input type="email" id="changeEmailNewInput" placeholder="Yeni e-posta adresi girin" class="flex-1 bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-xs text-white placeholder-gray-500 focus:outline-none focus:border-[#A64D79]">
-                <button type="button" id="changeEmailSubmitBtn" class="px-3.5 py-2 bg-gradient-to-r from-[#A64D79] to-[#6A1E55] hover:opacity-95 text-white rounded-xl text-xs font-bold transition-all cursor-pointer shrink-0">
+                <input type="email" id="changeEmailNewInput" placeholder="Yeni e-posta adresi girin" data-i18n-placeholder="change_email_ph" class="flex-1 bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-xs text-white placeholder-gray-500 focus:outline-none focus:border-[#A64D79]">
+                <button type="button" id="changeEmailSubmitBtn" class="px-3.5 py-2 bg-gradient-to-r from-[#A64D79] to-[#6A1E55] hover:opacity-95 text-white rounded-xl text-xs font-bold transition-all cursor-pointer shrink-0" data-i18n="update_btn">
                   Güncelle
                 </button>
               </div>
@@ -1628,23 +1634,23 @@
                   <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
                 </div>
                 <div>
-                  <span class="text-xs font-semibold text-white block">Şifre Değiştir</span>
-                  <span class="text-[10px] text-gray-400">Giriş şifrenizi yenileyin</span>
+                  <span class="text-xs font-semibold text-white block" data-i18n="change_password_title">Şifre Değiştir</span>
+                  <span class="text-[10px] text-gray-400" data-i18n="change_password_sub">Giriş şifrenizi yenileyin</span>
                 </div>
               </div>
               <svg id="changePassChevron" class="w-4 h-4 text-gray-400 transform transition-transform duration-200" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
             </button>
             <div id="changePasswordCollapseArea" class="hidden p-3.5 pt-0 space-y-2.5 border-t border-white/5 mt-1">
               <div class="flex items-center justify-between mt-2">
-                <span class="text-[11px] font-semibold text-gray-300">Şifre Güncelleme</span>
-                <button type="button" id="settingsForgotPasswordLink" class="text-[11px] text-[#E882B2] hover:underline font-bold cursor-pointer">
+                <span class="text-[11px] font-semibold text-gray-300" data-i18n="change_password_header">Şifre Güncelleme</span>
+                <button type="button" id="settingsForgotPasswordLink" class="text-[11px] text-[#E882B2] hover:underline font-bold cursor-pointer" data-i18n="forgot_password">
                   Şifremi Unuttum?
                 </button>
               </div>
-              <input type="password" id="changePassCurrentInput" placeholder="Mevcut Şifre" class="w-full bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-xs text-white placeholder-gray-500 focus:outline-none focus:border-[#A64D79]">
-              <input type="password" id="changePassNewInput" placeholder="Yeni Şifre (En az 6 karakter)" class="w-full bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-xs text-white placeholder-gray-500 focus:outline-none focus:border-[#A64D79]">
-              <input type="password" id="changePassConfirmInput" placeholder="Yeni Şifre Tekrar" class="w-full bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-xs text-white placeholder-gray-500 focus:outline-none focus:border-[#A64D79]">
-              <button type="button" id="changePasswordSubmitBtn" class="w-full py-2.5 bg-gradient-to-r from-[#A64D79] to-[#6A1E55] hover:opacity-95 text-white rounded-xl text-xs font-bold transition-all shadow-md cursor-pointer">
+              <input type="password" id="changePassCurrentInput" placeholder="Mevcut Şifre" data-i18n-placeholder="current_pass_ph" class="w-full bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-xs text-white placeholder-gray-500 focus:outline-none focus:border-[#A64D79]">
+              <input type="password" id="changePassNewInput" placeholder="Yeni Şifre (En az 6 karakter)" data-i18n-placeholder="new_pass_ph" class="w-full bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-xs text-white placeholder-gray-500 focus:outline-none focus:border-[#A64D79]">
+              <input type="password" id="changePassConfirmInput" placeholder="Yeni Şifre Tekrar" data-i18n-placeholder="confirm_pass_ph" class="w-full bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-xs text-white placeholder-gray-500 focus:outline-none focus:border-[#A64D79]">
+              <button type="button" id="changePasswordSubmitBtn" class="w-full py-2.5 bg-gradient-to-r from-[#A64D79] to-[#6A1E55] hover:opacity-95 text-white rounded-xl text-xs font-bold transition-all shadow-md cursor-pointer" data-i18n="update_password_btn">
                 Şifreyi Güncelle
               </button>
               <div id="changePassAlert" class="hidden text-[11px] p-2.5 rounded-xl font-medium"></div>
@@ -1659,16 +1665,16 @@
               <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
             </div>
             <div>
-              <span class="text-xs font-bold text-white block">Bildirimler</span>
-              <span class="text-[10px] text-gray-400">Anlık iletiler ve davet ayarları</span>
+              <span class="text-xs font-bold text-white block" data-i18n="notifications_title">Bildirimler</span>
+              <span class="text-[10px] text-gray-400" data-i18n="notifications_sub">Anlık iletiler ve davet ayarları</span>
             </div>
           </div>
 
           <!-- Push Notifications Toggle -->
           <div class="flex items-center justify-between py-2 border-b border-white/5">
             <div>
-              <span class="text-xs font-medium text-gray-200 block">Anlık Bildirimler (Push)</span>
-              <span class="text-[10px] text-gray-400">Önemli etkinlikler ve arkadaş bildirimleri</span>
+              <span class="text-xs font-medium text-gray-200 block" data-i18n="notif_push">Anlık Bildirimler (Push)</span>
+              <span class="text-[10px] text-gray-400" data-i18n="notif_push_sub">Önemli etkinlikler ve arkadaş bildirimleri</span>
             </div>
             <label class="relative inline-flex items-center cursor-pointer">
               <input type="checkbox" id="notifPushToggle" checked class="sr-only peer">
@@ -1679,8 +1685,8 @@
           <!-- Room Invites Toggle -->
           <div class="flex items-center justify-between py-2 border-b border-white/5">
             <div>
-              <span class="text-xs font-medium text-gray-200 block">Oda & Davet Bildirimleri</span>
-              <span class="text-[10px] text-gray-400">Arkadaşların odaya çağırdığında bildirim al</span>
+              <span class="text-xs font-medium text-gray-200 block" data-i18n="notif_invites">Oda & Davet Bildirimleri</span>
+              <span class="text-[10px] text-gray-400" data-i18n="notif_invites_sub">Arkadaşların odaya çağırdığında bildirim al</span>
             </div>
             <label class="relative inline-flex items-center cursor-pointer">
               <input type="checkbox" id="notifInvitesToggle" checked class="sr-only peer">
@@ -1691,8 +1697,8 @@
           <!-- Sound & Vibration Toggle -->
           <div class="flex items-center justify-between py-2">
             <div>
-              <span class="text-xs font-medium text-gray-200 block">Ses ve Titreşim</span>
-              <span class="text-[10px] text-gray-400">Mesaj ve bildirim ses efektleri</span>
+              <span class="text-xs font-medium text-gray-200 block" data-i18n="notif_sound">Ses ve Titreşim</span>
+              <span class="text-[10px] text-gray-400" data-i18n="notif_sound_sub">Mesaj ve bildirim ses efektleri</span>
             </div>
             <label class="relative inline-flex items-center cursor-pointer">
               <input type="checkbox" id="notifSoundToggle" checked class="sr-only peer">
@@ -1708,8 +1714,8 @@
               <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
             </div>
             <div>
-              <span class="text-xs font-bold text-white block">Ses & Video Ayarları</span>
-              <span class="text-[10px] text-gray-400">Ducking, mikrofon ve kamera tercihleri</span>
+              <span class="text-xs font-bold text-white block" data-i18n="audio_video_title">Ses & Video Ayarları</span>
+              <span class="text-[10px] text-gray-400" data-i18n="audio_video_sub">Ducking, mikrofon ve kamera tercihleri</span>
             </div>
           </div>
 
@@ -1789,8 +1795,8 @@
               <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="2" width="20" height="20" rx="2.18" ry="2.18"/><line x1="7" y1="2" x2="7" y2="22"/><line x1="17" y1="2" x2="17" y2="22"/><line x1="2" y1="12" x2="22" y2="12"/><line x1="2" y1="7" x2="7" y2="7"/><line x1="2" y1="17" x2="7" y2="17"/><line x1="17" y1="17" x2="22" y2="17"/><line x1="17" y1="7" x2="22" y2="7"/></svg>
             </div>
             <div>
-              <span class="text-xs font-bold text-white block">Bağlı Platformlar</span>
-              <span class="text-[10px] text-gray-400">Dahili tarayıcıda kalıcı oturum</span>
+              <span class="text-xs font-bold text-white block" data-i18n="connected_platforms_title">Bağlı Platformlar</span>
+              <span class="text-[10px] text-gray-400" data-i18n="connected_platforms_sub">Dahili tarayıcıda kalıcı oturum</span>
             </div>
           </div>
 
@@ -1803,10 +1809,10 @@
                 </div>
                 <div>
                   <span class="text-xs font-bold text-white block">YouTube / Google</span>
-                  <span class="text-[10px] text-gray-400">Oynatma listeleri ve video izleme</span>
+                  <span class="text-[10px] text-gray-400" data-i18n="yt_card_sub">Oynatma listeleri ve video izleme</span>
                 </div>
               </div>
-              <button id="toggleYtAccountBtn" type="button" class="px-3 py-1.5 rounded-lg bg-[#A64D79]/20 hover:bg-[#A64D79]/30 border border-[#A64D79]/30 text-xs font-semibold text-rose-200 transition-all cursor-pointer">
+              <button id="toggleYtAccountBtn" type="button" class="px-3 py-1.5 rounded-lg bg-[#A64D79]/20 hover:bg-[#A64D79]/30 border border-[#A64D79]/30 text-xs font-semibold text-rose-200 transition-all cursor-pointer" data-i18n="open_in_browser_btn">
                 Aç ↗
               </button>
             </div>
@@ -1819,10 +1825,10 @@
                 </div>
                 <div>
                   <span class="text-xs font-bold text-white block">Netflix</span>
-                  <span class="text-[10px] text-gray-400">Dizi & Film İzleme</span>
+                  <span class="text-[10px] text-gray-400" data-i18n="netflix_card_sub">Dizi & Film İzleme</span>
                 </div>
               </div>
-              <button id="toggleNetflixAccountBtn" type="button" class="px-3 py-1.5 rounded-lg bg-[#A64D79]/20 hover:bg-[#A64D79]/30 border border-[#A64D79]/30 text-xs font-semibold text-rose-200 transition-all cursor-pointer">
+              <button id="toggleNetflixAccountBtn" type="button" class="px-3 py-1.5 rounded-lg bg-[#A64D79]/20 hover:bg-[#A64D79]/30 border border-[#A64D79]/30 text-xs font-semibold text-rose-200 transition-all cursor-pointer" data-i18n="open_in_browser_btn">
                 Aç ↗
               </button>
             </div>
@@ -1835,10 +1841,10 @@
                 </div>
                 <div>
                   <span class="text-xs font-bold text-white block">Prime Video</span>
-                  <span class="text-[10px] text-gray-400">Amazon Prime Yayını</span>
+                  <span class="text-[10px] text-gray-400" data-i18n="prime_card_sub">Amazon Prime Yayını</span>
                 </div>
               </div>
-              <button id="togglePrimeAccountBtn" type="button" class="px-3 py-1.5 rounded-lg bg-[#A64D79]/20 hover:bg-[#A64D79]/30 border border-[#A64D79]/30 text-xs font-semibold text-rose-200 transition-all cursor-pointer">
+              <button id="togglePrimeAccountBtn" type="button" class="px-3 py-1.5 rounded-lg bg-[#A64D79]/20 hover:bg-[#A64D79]/30 border border-[#A64D79]/30 text-xs font-semibold text-rose-200 transition-all cursor-pointer" data-i18n="open_in_browser_btn">
                 Aç ↗
               </button>
             </div>
@@ -1851,10 +1857,10 @@
                 </div>
                 <div>
                   <span class="text-xs font-bold text-white block">Disney+</span>
-                  <span class="text-[10px] text-gray-400">Disney, Marvel & Star Wars</span>
+                  <span class="text-[10px] text-gray-400" data-i18n="disney_card_sub">Disney, Marvel & Star Wars</span>
                 </div>
               </div>
-              <button id="toggleDisneyAccountBtn" type="button" class="px-3 py-1.5 rounded-lg bg-[#A64D79]/20 hover:bg-[#A64D79]/30 border border-[#A64D79]/30 text-xs font-semibold text-rose-200 transition-all cursor-pointer">
+              <button id="toggleDisneyAccountBtn" type="button" class="px-3 py-1.5 rounded-lg bg-[#A64D79]/20 hover:bg-[#A64D79]/30 border border-[#A64D79]/30 text-xs font-semibold text-rose-200 transition-all cursor-pointer" data-i18n="open_in_browser_btn">
                 Aç ↗
               </button>
             </div>
@@ -1863,13 +1869,13 @@
 
         <!-- 8. HUKUKİ & BİLGİ -->
         <div id="settingsSectionLegal" class="p-3.5 rounded-2xl bg-white/5 border border-white/10 space-y-1">
-          <span class="text-[10px] font-bold uppercase tracking-wider text-gray-400 px-1 block mb-1">Hukuki & Bilgi</span>
+          <span class="text-[10px] font-bold uppercase tracking-wider text-gray-400 px-1 block mb-1" data-i18n="legal_section">Hukuki & Bilgi</span>
           
           <!-- Gizlilik Politikası -->
           <button type="button" id="openPrivacyPolicyBtn" class="w-full py-2.5 px-3 rounded-xl hover:bg-white/5 flex items-center justify-between text-left text-xs font-medium text-gray-200 hover:text-white transition-all cursor-pointer">
             <div class="flex items-center gap-2.5">
               <svg class="w-4 h-4 text-rose-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
-              <span>Gizlilik Politikası</span>
+              <span data-i18n="privacy_policy_title">Gizlilik Politikası</span>
             </div>
             <svg class="w-4 h-4 text-gray-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>
           </button>
@@ -1878,7 +1884,7 @@
           <button type="button" id="openTermsBtn" class="w-full py-2.5 px-3 rounded-xl hover:bg-white/5 flex items-center justify-between text-left text-xs font-medium text-gray-200 hover:text-white transition-all cursor-pointer">
             <div class="flex items-center gap-2.5">
               <svg class="w-4 h-4 text-rose-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
-              <span>Kullanım Koşulları</span>
+              <span data-i18n="terms_of_service_title">Kullanım Koşulları</span>
             </div>
             <svg class="w-4 h-4 text-gray-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>
           </button>
@@ -1896,7 +1902,7 @@
           <div class="flex items-center justify-center pt-2">
             <button id="openDeleteAccountModalBtn" type="button" class="text-xs font-medium text-gray-500 hover:text-rose-400 transition-all cursor-pointer flex items-center gap-1.5 py-1">
               <svg class="w-3.5 h-3.5 text-gray-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
-              <span>Hesabımı Sil</span>
+              <span data-i18n="delete_account_btn">Hesabımı Sil</span>
             </button>
           </div>
         </div>
@@ -1911,31 +1917,31 @@
       <div class="max-w-lg mx-auto px-4 sm:px-6 py-3.5 flex items-center justify-between">
         <div class="flex items-center gap-2.5">
           <button id="closePrivacyPolicyBtn" type="button" class="w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 active:scale-95 text-white flex items-center justify-center font-bold text-sm cursor-pointer">‹</button>
-          <h3 class="font-bold text-base text-white">Gizlilik Politikası</h3>
+          <h3 class="font-bold text-base text-white" data-i18n="privacy_policy_title">Gizlilik Politikası</h3>
         </div>
-        <span class="text-[10px] text-rose-300 font-bold px-2 py-0.5 rounded-full bg-rose-500/15 border border-rose-500/30">Miruo Güvencesi</span>
+        <span class="text-[10px] text-rose-300 font-bold px-2 py-0.5 rounded-full bg-rose-500/15 border border-rose-500/30" data-i18n="miruo_guarantee">Miruo Güvencesi</span>
       </div>
     </header>
     <main class="flex-1 w-full overflow-y-auto no-scrollbar" style="-webkit-overflow-scrolling: touch; padding-bottom: max(32px, env(safe-area-inset-bottom));">
       <div class="max-w-lg mx-auto px-4 sm:px-6 py-4 space-y-4 text-xs text-gray-300 leading-relaxed">
         <div class="p-3.5 rounded-2xl bg-rose-500/10 border border-rose-500/20 text-rose-200">
-          <strong>Özet Taahhüt:</strong> Miruo, kullanıcıların kişisel gizliliğine tam saygı duyar. İzleme geçmişiniz, özel sohbetleriniz ve izleme tercihleriniz asla üçüncü taraflara satılmaz veya reklam amaçlı kullanılmaz.
+          <strong data-i18n="privacy_summary_title">Özet Taahhüt:</strong> <span data-i18n="privacy_summary_desc">Miruo, kullanıcıların kişisel gizliliğine tam saygı duyar. İzleme geçmişiniz, özel sohbetleriniz ve izleme tercihleriniz asla üçüncü taraflara satılmaz veya reklam amaçlı kullanılmaz.</span>
         </div>
         <div class="space-y-1.5">
-          <h4 class="font-bold text-white text-sm">1. Toplanan Bilgiler</h4>
-          <p class="text-gray-400">Yalnızca hesabınızı oluşturmak ve arkadaşlarınızla oda deneyimi yaşamanız için gereken temel bilgiler (kullanıcı adı, e-posta veya telefon) saklanır.</p>
+          <h4 class="font-bold text-white text-sm" data-i18n="privacy_sec1_title">1. Toplanan Bilgiler</h4>
+          <p class="text-gray-400" data-i18n="privacy_sec1_desc">Yalnızca hesabınızı oluşturmak ve arkadaşlarınızla oda deneyimi yaşamanız için gereken temel bilgiler (kullanıcı adı, e-posta veya telefon) saklanır.</p>
         </div>
         <div class="space-y-1.5">
-          <h4 class="font-bold text-white text-sm">2. Çerezler ve Platform Girişleri</h4>
-          <p class="text-gray-400">YouTube, Netflix ve diğer platform oturumlarınız yalnızca kendi cihazınızdaki güvenli yerel tarayıcı hafızasında saklanır. Şifreleriniz sunucularımıza iletilmez.</p>
+          <h4 class="font-bold text-white text-sm" data-i18n="privacy_sec2_title">2. Çerezler ve Platform Girişleri</h4>
+          <p class="text-gray-400" data-i18n="privacy_sec2_desc">YouTube, Netflix ve diğer platform oturumlarınız yalnızca kendi cihazınızdaki güvenli yerel tarayıcı hafızasında saklanır. Şifreleriniz sunucularımıza iletilmez.</p>
         </div>
         <div class="space-y-1.5">
-          <h4 class="font-bold text-white text-sm">3. Kamera ve Ses Verileri</h4>
-          <p class="text-gray-400">Canlı odalarda mikrofon ve kamera yayınları WebRTC ile doğrudan eşler arasında (P2P) aktarılır. Ses veya video kayıtları tutulmaz.</p>
+          <h4 class="font-bold text-white text-sm" data-i18n="privacy_sec3_title">3. Kamera ve Ses Verileri</h4>
+          <p class="text-gray-400" data-i18n="privacy_sec3_desc">Canlı odalarda mikrofon ve kamera yayınları WebRTC ile doğrudan eşler arasında (P2P) aktarılır. Ses veya video kayıtları tutulmaz.</p>
         </div>
         <div class="space-y-1.5">
-          <h4 class="font-bold text-white text-sm">4. Veri Güvenliği ve Silme</h4>
-          <p class="text-gray-400">Hesabınızı Ayarlar menüsünden dilediğiniz an silebilirsiniz. Silinen hesapların tüm verileri anında ve kalıcı olarak kaldırılır.</p>
+          <h4 class="font-bold text-white text-sm" data-i18n="privacy_sec4_title">4. Veri Güvenliği ve Silme</h4>
+          <p class="text-gray-400" data-i18n="privacy_sec4_desc">Hesabınızı Ayarlar menüsünden dilediğiniz an silebilirsiniz. Silinen hesapların tüm verileri anında ve kalıcı olarak kaldırılır.</p>
         </div>
       </div>
     </main>
@@ -1947,31 +1953,31 @@
       <div class="max-w-lg mx-auto px-4 sm:px-6 py-3.5 flex items-center justify-between">
         <div class="flex items-center gap-2.5">
           <button id="closeTermsBtn" type="button" class="w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 active:scale-95 text-white flex items-center justify-center font-bold text-sm cursor-pointer">‹</button>
-          <h3 class="font-bold text-base text-white">Kullanım Koşulları</h3>
+          <h3 class="font-bold text-base text-white" data-i18n="terms_of_service_title">Kullanım Koşulları</h3>
         </div>
-        <span class="text-[10px] text-rose-300 font-bold px-2 py-0.5 rounded-full bg-rose-500/15 border border-rose-500/30">Miruo Hizmet Şartları</span>
+        <span class="text-[10px] text-rose-300 font-bold px-2 py-0.5 rounded-full bg-rose-500/15 border border-rose-500/30" data-i18n="miruo_terms_badge">Miruo Hizmet Şartları</span>
       </div>
     </header>
     <main class="flex-1 w-full overflow-y-auto no-scrollbar" style="-webkit-overflow-scrolling: touch; padding-bottom: max(32px, env(safe-area-inset-bottom));">
       <div class="max-w-lg mx-auto px-4 sm:px-6 py-4 space-y-4 text-xs text-gray-300 leading-relaxed">
-        <div class="p-3.5 rounded-2xl bg-white/5 border border-white/10 text-gray-300">
+        <div class="p-3.5 rounded-2xl bg-white/5 border border-white/10 text-gray-300" data-i18n="terms_intro">
           Miruo platformunu kullanarak aşağıdaki kullanım şartlarını ve topluluk kurallarını kabul etmiş sayılırsınız.
         </div>
         <div class="space-y-1.5">
-          <h4 class="font-bold text-white text-sm">1. Hizmetin Amacı</h4>
-          <p class="text-gray-400">Miruo, arkadaş gruplarının ve toplulukların yasal video platformlarını eşzamanlı olarak birlikte izlemesini ve sesli/görüntülü sohbet etmesini sağlayan bir ortak izleme servisidir.</p>
+          <h4 class="font-bold text-white text-sm" data-i18n="terms_sec1_title">1. Hizmetin Amacı</h4>
+          <p class="text-gray-400" data-i18n="terms_sec1_desc">Miruo, arkadaş gruplarının ve toplulukların yasal video platformlarını eşzamanlı olarak birlikte izlemesini ve sesli/görüntülü sohbet etmesini sağlayan bir ortak izleme servisidir.</p>
         </div>
         <div class="space-y-1.5">
-          <h4 class="font-bold text-white text-sm">2. Topluluk Kuralları</h4>
-          <p class="text-gray-400">Odalarda nefret söylemi, taciz, yasa dışı içerik paylaşımı veya diğer kullanıcıları rahatsız edici davranışlar yasaktır. İhlal durumunda hesap kalıcı olarak askıya alınabilir.</p>
+          <h4 class="font-bold text-white text-sm" data-i18n="terms_sec2_title">2. Topluluk Kuralları</h4>
+          <p class="text-gray-400" data-i18n="terms_sec2_desc">Odalarda nefret söylemi, taciz, yasa dışı içerik paylaşımı veya diğer kullanıcıları rahatsız edici davranışlar yasaktır. İhlal durumunda hesap kalıcı olarak askıya alınabilir.</p>
         </div>
         <div class="space-y-1.5">
-          <h4 class="font-bold text-white text-sm">3. Üçüncü Taraf İçerikleri</h4>
-          <p class="text-gray-400">İzlenen videolar ilgili platformların (YouTube, Netflix vb.) kullanım şartlarına tabidir. Miruo hiçbir video içeriğinin telif hakkı sahibi değildir.</p>
+          <h4 class="font-bold text-white text-sm" data-i18n="terms_sec3_title">3. Üçüncü Taraf İçerikleri</h4>
+          <p class="text-gray-400" data-i18n="terms_sec3_desc">İzlenen videolar ilgili platformların (YouTube, Netflix vb.) kullanım şartlarına tabidir. Miruo hiçbir video içeriğinin telif hakkı sahibi değildir.</p>
         </div>
         <div class="space-y-1.5">
-          <h4 class="font-bold text-white text-sm">4. Hizmet Değişiklikleri</h4>
-          <p class="text-gray-400">Miruo, özelliklerde güncelleme yapma veya hizmet şartlarını revize etme hakkını saklı tutar.</p>
+          <h4 class="font-bold text-white text-sm" data-i18n="terms_sec4_title">4. Hizmet Değişiklikleri</h4>
+          <p class="text-gray-400" data-i18n="terms_sec4_desc">Miruo, özelliklerde güncelleme yapma veya hizmet şartlarını revize etme hakkını saklı tutar.</p>
         </div>
       </div>
     </main>
@@ -1991,24 +1997,24 @@
           <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
         </div>
         <div>
-          <h3 class="text-sm font-bold text-white">Hesabımı Sil</h3>
-          <span class="text-[11px] text-gray-400">Bu işlem geri alınamaz.</span>
+          <h3 class="text-sm font-bold text-white" data-i18n="delete_account_modal_title">Hesabımı Sil</h3>
+          <span class="text-[11px] text-gray-400" data-i18n="delete_account_modal_sub">Bu işlem geri alınamaz.</span>
         </div>
       </div>
-      <p class="text-xs text-gray-400 leading-relaxed">
+      <p class="text-xs text-gray-400 leading-relaxed" data-i18n="delete_account_modal_desc">
         Hesabınızı sildiğinizde profil verileriniz ve kayıtlarınız kalıcı olarak kaldırılır.
       </p>
       <div class="space-y-1.5" id="deleteAccountPasswordWrapper">
-        <label class="block text-[11px] font-medium text-gray-300">Güvenlik için mevcut şifrenizi girin:</label>
-        <input type="password" id="deleteAccountPasswordInput" placeholder="Mevcut şifreniz" class="w-full bg-black/60 border border-white/15 rounded-xl px-3 py-2 text-xs text-white placeholder-gray-500 focus:outline-none focus:border-[#A64D79]">
+        <label class="block text-[11px] font-medium text-gray-300" data-i18n="delete_account_pass_label">Güvenlik için mevcut şifrenizi girin:</label>
+        <input type="password" id="deleteAccountPasswordInput" placeholder="Mevcut şifreniz" data-i18n-placeholder="current_pass_ph" class="w-full bg-black/60 border border-white/15 rounded-xl px-3 py-2 text-xs text-white placeholder-gray-500 focus:outline-none focus:border-[#A64D79]">
       </div>
       <div id="deleteAccountErrorAlert" class="hidden text-[11px] p-2 rounded-xl bg-red-500/20 text-red-300 border border-red-500/30 font-medium"></div>
       <div class="grid grid-cols-2 gap-2 pt-2">
-        <button type="button" id="cancelDeleteAccountBtn" class="py-2.5 rounded-xl bg-white/10 hover:bg-white/15 text-xs font-semibold text-gray-300 transition-all cursor-pointer">
+        <button type="button" id="cancelDeleteAccountBtn" class="py-2.5 rounded-xl bg-white/10 hover:bg-white/15 text-xs font-semibold text-gray-300 transition-all cursor-pointer" data-i18n="cancel_btn">
           Vazgeç
         </button>
         <button type="button" id="confirmDeleteAccountBtn" class="py-2.5 rounded-xl bg-gradient-to-r from-red-600 to-rose-700 hover:opacity-90 text-xs font-bold text-white shadow-lg transition-all cursor-pointer flex items-center justify-center gap-1.5">
-          <span>Hesabımı Sil</span>
+          <span data-i18n="confirm_delete_btn">Hesabımı Sil</span>
         </button>
       </div>
     </div>

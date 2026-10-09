@@ -285,7 +285,7 @@ const I18N = {
     nav_settings: 'Ayarlar',
     nav_friends: 'Arkadaşlar',
     nav_profile: 'Profil',
-    nav_explore: 'Keşfet',
+    nav_explore: 'Odalar',
     hero_title: 'Birlikte İzle. Birlikte Gül. Senkronize.',
     hero_subtitle: 'YouTube, Netflix, Prime ve daha fazlasını arkadaşlarınla sıfır gecikmeyle, sesli ve görüntülü sohbet eşliğinde aynı anda izle.',
     create_room: 'Oda Kur',
@@ -298,20 +298,35 @@ const I18N = {
     tab_profile: 'Profil & PP',
     tab_settings: 'Ayarlar',
     tab_accounts: 'Hesaplar',
-    display_name: 'Görünen İsim (Kullanıcı Adı)',
+    display_name: 'Görünen İsim',
+    full_name: 'Ad Soyad',
+    full_name_ph: 'Örn: Mehmet Karabulut',
+    username: 'Kullanıcı Adı',
+    username_ph: 'kullaniciadi',
     default_room_code: 'Varsayılan / Ortak Oda Kodu',
     registered_email: 'Kayıtlı E-posta',
-    active_session: 'Aktif Oturum',
-    save_changes: 'Değişiklikleri Kaydet',
+    active_session: '✓ Aktif Oturum',
+    provider_apple: 'Apple ID ile Giriş Yapıldı',
+    provider_apple_badge: '✓ Apple ile Doğrulandı',
+    provider_google: 'Google ile Giriş Yapıldı',
+    provider_google_badge: '✓ Google ile Doğrulandı',
+    provider_phone: 'Telefon Numarası ile Giriş',
+    provider_phone_badge: '✓ SMS ile Doğrulandı',
+    provider_email: 'E-posta ile Kayıt Olundu',
+    provider_email_badge: '✓ Aktif Oturum',
+    save_changes: 'Kaydet',
     logout: 'Oturumu Kapat',
     select_photo: 'Fotoğraf Seç',
     upload_photo: 'Fotoğraf Yükle',
     remove_photo: 'Kaldır',
-    preset_avatars: 'veya hazır renkli avatar seçin:',
+    preset_avatars: 'veya renkli avatar seç:',
     language_title: 'Uygulama Dili',
     ducking_title: 'Konuşma Sırasında Video Sesi',
     ducking_desc: 'Biri konuştuğunda video sesini otomatik kısar.',
     mic_sens_title: 'Mikrofon Hassasiyeti',
+    sens_high: 'Yüksek',
+    sens_med: 'Orta',
+    sens_low: 'Düşük',
     pip_corner_title: 'Kamera Konumu',
     pip_corner_desc: 'Tam ekranda kameranın duracağı köşe:',
     pip_show_camera: 'Tam ekranda kamerayı göster',
@@ -321,10 +336,13 @@ const I18N = {
     corner_tl: 'Sol Üst',
     accounts_info: 'Platform hesaplarınıza (YouTube, Netflix, Prime vb.) dahili tarayıcı üzerinden doğrudan giriş yapabilirsiniz. Oturumlarınız cihazınızda güvenle saklanır.',
     open_in_browser: 'Giriş Yap / Aç ↗',
+    open_in_browser_btn: 'Aç ↗',
     yt_card_sub: 'Oynatma listeleri ve video izleme',
     netflix_card_sub: 'Dizi & Film İzleme',
     prime_card_sub: 'Amazon Prime Yayını',
     disney_card_sub: 'Disney, Marvel & Star Wars',
+    connected_platforms_title: 'Bağlı Platformlar',
+    connected_platforms_sub: 'Dahili tarayıcıda kalıcı oturum',
     create_room_title: 'Yeni İzleme Odası',
     room_name_label: 'Oda Adı',
     platform_label: 'İçerik Platformu',
@@ -332,18 +350,101 @@ const I18N = {
     private_room: 'Özel / Kilitli (Sadece kodla)',
     create_and_start: 'Oluştur & Başlat',
     cancel: 'Vazgeç',
+    cancel_btn: 'Vazgeç',
     join_modal_title: 'Odaya Katıl',
     join_code_ph: 'ODA KODU VEYA LİNK GİR...',
     join_btn: 'Katıl',
     auth_title: 'Miruo\'ya Giriş Yap',
     login_tab: 'Giriş Yap',
     register_tab: 'Kayıt Ol',
-    email_label: 'E-posta Adresi',
+    auth_heading_login: 'Giriş Yap',
+    auth_subtitle_login: 'E-posta ve şifrenizle giriş yapın.',
+    auth_heading_register: 'Kayıt Ol',
+    auth_subtitle_register: 'İsim, e-posta ve şifrenizle hemen kaydolun.',
+    email_btn: 'E-posta',
+    phone_btn: 'Telefon',
+    first_name_label: 'Ad',
+    first_name_ph: 'Adınız',
+    last_name_label: 'Soyad',
+    last_name_ph: 'Soyadınız',
+    email_label: 'E-posta',
+    email_ph: 'ornek@gmail.com',
     password_label: 'Şifre',
-    remember_me: 'Beni Hatırla',
+    password_ph: 'En az 6 karakter',
+    password_confirm_label: 'Şifre Tekrar',
+    password_confirm_ph: 'Şifrenizi tekrar girin',
+    remember_me: 'Oturumu açık tut',
     forgot_password: 'Şifremi Unuttum?',
+    phone_label: 'Telefon Numarası',
+    phone_sub_info: 'Giriş yapmak için telefonunuza 6 haneli SMS onay kodu gönderilecektir.',
+    sms_code_label: 'SMS Onay Kodu (6 Hane):',
+    back_btn: '← Geri',
+    resend_code_btn: 'Tekrar Kod Gönder',
     login_btn: 'Giriş Yap',
-    register_btn: 'Hesap Oluştur',
+    register_btn: 'Kayıt Ol',
+    or_divider: 'VEYA ŞUNUNLA DEVAM ET',
+    google_login: 'Google',
+    apple_login: 'Apple',
+    auth_footer_login: 'Miruo\'da yeni misin?',
+    auth_footer_action_login: 'Hesap Oluştur',
+    auth_footer_register: 'Zaten bir hesabın var mı?',
+    auth_footer_action_register: 'Giriş Yap',
+    settings_title: 'Ayarlar',
+    settings_subtitle: 'Profil, Güvenlik & Tercihler',
+    profile_info_section: 'Profil Bilgileri',
+    account_security_section: 'Hesap & Güvenlik',
+    change_email_title: 'E-posta Adresini Değiştir',
+    change_email_sub: 'Yeni e-posta adresi bağlayın',
+    change_email_info: 'Yeni e-posta adresine 6 haneli doğrulama bağlantısı iletilecektir.',
+    change_email_ph: 'Yeni e-posta adresi girin',
+    update_btn: 'Güncelle',
+    change_password_title: 'Şifre Değiştir',
+    change_password_sub: 'Giriş şifrenizi yenileyin',
+    change_password_header: 'Şifre Güncelleme',
+    current_pass_ph: 'Mevcut Şifre',
+    new_pass_ph: 'Yeni Şifre (En az 6 karakter)',
+    confirm_pass_ph: 'Yeni Şifre Tekrar',
+    update_password_btn: 'Şifreyi Güncelle',
+    notifications_title: 'Bildirimler',
+    notifications_sub: 'Anlık iletiler ve davet ayarları',
+    notif_push: 'Anlık Bildirimler (Push)',
+    notif_push_sub: 'Önemli etkinlikler ve arkadaş bildirimleri',
+    notif_invites: 'Oda & Davet Bildirimleri',
+    notif_invites_sub: 'Arkadaşların odaya çağırdığında bildirim al',
+    notif_sound: 'Ses ve Titreşim',
+    notif_sound_sub: 'Mesaj ve bildirim ses efektleri',
+    audio_video_title: 'Ses & Video Ayarları',
+    audio_video_sub: 'Ducking, mikrofon ve kamera tercihleri',
+    legal_section: 'Hukuki & Bilgi',
+    privacy_policy_title: 'Gizlilik Politikası',
+    terms_of_service_title: 'Kullanım Koşulları',
+    delete_account_btn: 'Hesabımı Sil',
+    delete_account_modal_title: 'Hesabımı Sil',
+    delete_account_modal_sub: 'Bu işlem geri alınamaz.',
+    delete_account_modal_desc: 'Hesabınızı sildiğinizde profil verileriniz ve kayıtlarınız kalıcı olarak kaldırılır.',
+    delete_account_pass_label: 'Güvenlik için mevcut şifrenizi girin:',
+    confirm_delete_btn: 'Hesabımı Sil',
+    miruo_guarantee: 'Miruo Güvencesi',
+    privacy_summary_title: 'Özet Taahhüt:',
+    privacy_summary_desc: 'Miruo, kullanıcıların kişisel gizliliğine tam saygı duyar. İzleme geçmişiniz, özel sohbetleriniz ve izleme tercihleriniz asla üçüncü taraflara satılmaz veya reklam amaçlı kullanılmaz.',
+    privacy_sec1_title: '1. Toplanan Bilgiler',
+    privacy_sec1_desc: 'Yalnızca hesabınızı oluşturmak ve arkadaşlarınızla oda deneyimi yaşamanız için gereken temel bilgiler (kullanıcı adı, e-posta veya telefon) saklanır.',
+    privacy_sec2_title: '2. Çerezler ve Platform Girişleri',
+    privacy_sec2_desc: 'YouTube, Netflix ve diğer platform oturumlarınız yalnızca kendi cihazınızdaki güvenli yerel tarayıcı hafızasında saklanır. Şifreleriniz sunucularımıza iletilmez.',
+    privacy_sec3_title: '3. Kamera ve Ses Verileri',
+    privacy_sec3_desc: 'Canlı odalarda mikrofon ve kamera yayınları WebRTC ile doğrudan eşler arasında (P2P) aktarılır. Ses veya video kayıtları tutulmaz.',
+    privacy_sec4_title: '4. Veri Güvenliği ve Silme',
+    privacy_sec4_desc: 'Hesabınızı Ayarlar menüsünden dilediğiniz an silebilirsiniz. Silinen hesapların tüm verileri anında ve kalıcı olarak kaldırılır.',
+    miruo_terms_badge: 'Miruo Hizmet Şartları',
+    terms_intro: 'Miruo platformunu kullanarak aşağıdaki kullanım şartlarını ve topluluk kurallarını kabul etmiş sayılırsınız.',
+    terms_sec1_title: '1. Hizmetin Amacı',
+    terms_sec1_desc: 'Miruo, arkadaş gruplarının ve toplulukların yasal video platformlarını eşzamanlı olarak birlikte izlemesini ve sesli/görüntülü sohbet etmesini sağlayan bir ortak izleme servisidir.',
+    terms_sec2_title: '2. Topluluk Kuralları',
+    terms_sec2_desc: 'Odalarda nefret söylemi, taciz, yasa dışı içerik paylaşımı veya diğer kullanıcıları rahatsız edici davranışlar yasaktır. İhlal durumunda hesap kalıcı olarak askıya alınabilir.',
+    terms_sec3_title: '3. Üçüncü Taraf İçerikleri',
+    terms_sec3_desc: 'İzlenen videolar ilgili platformların (YouTube, Netflix vb.) kullanım şartlarına tabidir. Miruo hiçbir video içeriğinin telif hakkı sahibi değildir.',
+    terms_sec4_title: '4. Hizmet Değişiklikleri',
+    terms_sec4_desc: 'Miruo, özelliklerde güncelleme yapma veya hizmet şartlarını revize etme hakkını saklı tutar.',
     rave_title: 'YouTube',
     rave_subtitle: 'Video seçin ve odadakilerle birlikte izleyin.',
     rave_search_ph: 'YouTube\'da şarkı, klip, sanatçı, dizi veya kanal ara...',
@@ -381,7 +482,7 @@ const I18N = {
     nav_settings: 'Settings',
     nav_friends: 'Friends',
     nav_profile: 'Profile',
-    nav_explore: 'Explore',
+    nav_explore: 'Rooms',
     hero_title: 'Watch Together. Laugh Together. Synchronized.',
     hero_subtitle: 'Watch YouTube, Netflix, Prime and more with friends in zero latency alongside live voice and video chat.',
     create_room: 'Create Room',
@@ -394,11 +495,23 @@ const I18N = {
     tab_profile: 'Profile & PP',
     tab_settings: 'Settings',
     tab_accounts: 'Accounts',
-    display_name: 'Display Name (Username)',
+    display_name: 'Display Name',
+    full_name: 'Full Name',
+    full_name_ph: 'e.g. Mehmet Karabulut',
+    username: 'Username',
+    username_ph: 'username',
     default_room_code: 'Default / Shared Room Code',
     registered_email: 'Registered Email',
-    active_session: 'Active Session',
-    save_changes: 'Save Changes',
+    active_session: '✓ Active Session',
+    provider_apple: 'Signed in with Apple ID',
+    provider_apple_badge: '✓ Verified with Apple',
+    provider_google: 'Signed in with Google',
+    provider_google_badge: '✓ Verified with Google',
+    provider_phone: 'Signed in with Phone Number',
+    provider_phone_badge: '✓ Verified with SMS',
+    provider_email: 'Registered with Email',
+    provider_email_badge: '✓ Active Session',
+    save_changes: 'Save',
     logout: 'Log Out',
     select_photo: 'Choose Photo',
     upload_photo: 'Upload Photo',
@@ -408,6 +521,9 @@ const I18N = {
     ducking_title: 'Voice Ducking Level',
     ducking_desc: 'Lowers video volume when someone speaks.',
     mic_sens_title: 'Microphone Sensitivity',
+    sens_high: 'High',
+    sens_med: 'Medium',
+    sens_low: 'Low',
     pip_corner_title: 'Camera Position',
     pip_corner_desc: 'Corner where camera stays in fullscreen:',
     pip_show_camera: 'Show camera in fullscreen',
@@ -417,10 +533,13 @@ const I18N = {
     corner_tl: 'Top Left',
     accounts_info: 'You can log into your platform accounts (YouTube, Netflix, Prime etc.) directly via the in-app browser. Your sessions are saved securely on your device.',
     open_in_browser: 'Sign In / Open ↗',
+    open_in_browser_btn: 'Open ↗',
     yt_card_sub: 'Playlists and video watching',
     netflix_card_sub: 'Movies & TV Shows',
     prime_card_sub: 'Amazon Prime Streaming',
     disney_card_sub: 'Disney, Marvel & Star Wars',
+    connected_platforms_title: 'Connected Platforms',
+    connected_platforms_sub: 'Persistent session in built-in browser',
     create_room_title: 'New Watch Room',
     room_name_label: 'Room Name',
     platform_label: 'Content Platform',
@@ -428,18 +547,101 @@ const I18N = {
     private_room: 'Private / Locked (Code only)',
     create_and_start: 'Create & Start',
     cancel: 'Cancel',
+    cancel_btn: 'Cancel',
     join_modal_title: 'Join Room',
     join_code_ph: 'ENTER ROOM CODE OR LINK...',
     join_btn: 'Join',
     auth_title: 'Sign in to Miruo',
     login_tab: 'Sign In',
     register_tab: 'Sign Up',
-    email_label: 'Email Address',
+    auth_heading_login: 'Sign In',
+    auth_subtitle_login: 'Sign in with your email and password.',
+    auth_heading_register: 'Sign Up',
+    auth_subtitle_register: 'Sign up with your name, email and password.',
+    email_btn: 'Email',
+    phone_btn: 'Phone',
+    first_name_label: 'First Name',
+    first_name_ph: 'Your first name',
+    last_name_label: 'Last Name',
+    last_name_ph: 'Your last name',
+    email_label: 'Email',
+    email_ph: 'example@gmail.com',
     password_label: 'Password',
-    remember_me: 'Remember Me',
+    password_ph: 'At least 6 characters',
+    password_confirm_label: 'Confirm Password',
+    password_confirm_ph: 'Re-enter your password',
+    remember_me: 'Keep me signed in',
     forgot_password: 'Forgot Password?',
+    phone_label: 'Phone Number',
+    phone_sub_info: 'A 6-digit SMS verification code will be sent to your phone to sign in.',
+    sms_code_label: 'SMS Code (6 Digits):',
+    back_btn: '← Back',
+    resend_code_btn: 'Resend Code',
     login_btn: 'Sign In',
-    register_btn: 'Create Account',
+    register_btn: 'Sign Up',
+    or_divider: 'OR CONTINUE WITH',
+    google_login: 'Google',
+    apple_login: 'Apple',
+    auth_footer_login: 'New to Miruo?',
+    auth_footer_action_login: 'Create Account',
+    auth_footer_register: 'Already have an account?',
+    auth_footer_action_register: 'Sign In',
+    settings_title: 'Settings',
+    settings_subtitle: 'Profile, Security & Preferences',
+    profile_info_section: 'Profile Information',
+    account_security_section: 'Account & Security',
+    change_email_title: 'Change Email Address',
+    change_email_sub: 'Link a new email address',
+    change_email_info: 'A 6-digit verification link will be sent to your new email.',
+    change_email_ph: 'Enter new email address',
+    update_btn: 'Update',
+    change_password_title: 'Change Password',
+    change_password_sub: 'Update your account password',
+    change_password_header: 'Password Update',
+    current_pass_ph: 'Current Password',
+    new_pass_ph: 'New Password (min. 6 characters)',
+    confirm_pass_ph: 'Confirm New Password',
+    update_password_btn: 'Update Password',
+    notifications_title: 'Notifications',
+    notifications_sub: 'Instant alerts and invite preferences',
+    notif_push: 'Push Notifications',
+    notif_push_sub: 'Important events and friend alerts',
+    notif_invites: 'Room & Invite Alerts',
+    notif_invites_sub: 'Get notified when friends invite you to a room',
+    notif_sound: 'Sound & Vibration',
+    notif_sound_sub: 'Message and alert sound effects',
+    audio_video_title: 'Audio & Video Settings',
+    audio_video_sub: 'Ducking, microphone, and camera preferences',
+    legal_section: 'Legal & Info',
+    privacy_policy_title: 'Privacy Policy',
+    terms_of_service_title: 'Terms of Service',
+    delete_account_btn: 'Delete Account',
+    delete_account_modal_title: 'Delete My Account',
+    delete_account_modal_sub: 'This action cannot be undone.',
+    delete_account_modal_desc: 'Deleting your account permanently removes your profile data, rooms, and history.',
+    delete_account_pass_label: 'Enter your password to confirm:',
+    confirm_delete_btn: 'Delete My Account',
+    miruo_guarantee: 'Miruo Guarantee',
+    privacy_summary_title: 'Our Commitment:',
+    privacy_summary_desc: 'Miruo respects your personal privacy. Your watch history, private messages, and preferences are never sold or used for ads.',
+    privacy_sec1_title: '1. Information We Collect',
+    privacy_sec1_desc: 'Only basic data (username, email or phone) required to create your account and watch together with friends is stored.',
+    privacy_sec2_title: '2. Cookies & Platform Logins',
+    privacy_sec2_desc: 'Your YouTube, Netflix and other platform logins remain securely in local device storage. Passwords are never sent to our servers.',
+    privacy_sec3_title: '3. Camera and Voice Data',
+    privacy_sec3_desc: 'In live rooms, microphone and camera streams transfer directly peer-to-peer (P2P) via WebRTC. No audio or video is recorded.',
+    privacy_sec4_title: '4. Data Security and Deletion',
+    privacy_sec4_desc: 'You can delete your account from Settings anytime. All deleted user data is instantly and permanently removed.',
+    miruo_terms_badge: 'Miruo Terms of Service',
+    terms_intro: 'By using the Miruo platform, you agree to the following terms and community guidelines.',
+    terms_sec1_title: '1. Purpose of Service',
+    terms_sec1_desc: 'Miruo is a social co-watching platform enabling friends and communities to watch legal video platforms synchronously with audio and video chat.',
+    terms_sec2_title: '2. Community Guidelines',
+    terms_sec2_desc: 'Hate speech, harassment, illegal content, and disruptive behavior are strictly prohibited. Violators may be permanently banned.',
+    terms_sec3_title: '3. Third-Party Content',
+    terms_sec3_desc: 'Content watched is governed by the terms of each platform (YouTube, Netflix, etc.). Miruo does not own any third-party content.',
+    terms_sec4_title: '4. Service Changes',
+    terms_sec4_desc: 'Miruo reserves the right to update features or revise terms of service at any time.',
     rave_title: 'YouTube',
     rave_subtitle: 'Choose a video and watch together with the room.',
     rave_search_ph: 'Search songs, clips, artists or channels on YouTube...',
@@ -477,7 +679,7 @@ const I18N = {
     nav_settings: 'Einstellungen',
     nav_friends: 'Freunde',
     nav_profile: 'Profil',
-    nav_explore: 'Entdecken',
+    nav_explore: 'Räume',
     hero_title: 'Gemeinsam schauen. Gemeinsam lachen. Synchron.',
     hero_subtitle: 'Schauen Sie YouTube, Netflix, Prime und mehr mit Freunden ohne Verzögerung bei gleichzeitigem Sprach- und Video-Chat.',
     create_room: 'Raum erstellen',
@@ -490,11 +692,23 @@ const I18N = {
     tab_profile: 'Profil & PP',
     tab_settings: 'Einstellungen',
     tab_accounts: 'Konten',
-    display_name: 'Anzeigename (Benutzername)',
+    display_name: 'Anzeigename',
+    full_name: 'Vor- und Nachname',
+    full_name_ph: 'z.B. Mehmet Karabulut',
+    username: 'Benutzername',
+    username_ph: 'benutzername',
     default_room_code: 'Standard- / Raumcode',
     registered_email: 'Registrierte E-Mail',
-    active_session: 'Aktive Sitzung',
-    save_changes: 'Änderungen speichern',
+    active_session: '✓ Aktive Sitzung',
+    provider_apple: 'Mit Apple ID angemeldet',
+    provider_apple_badge: '✓ Mit Apple bestätigt',
+    provider_google: 'Mit Google angemeldet',
+    provider_google_badge: '✓ Mit Google bestätigt',
+    provider_phone: 'Mit Telefonnummer angemeldet',
+    provider_phone_badge: '✓ Mit SMS bestätigt',
+    provider_email: 'Mit E-Mail registriert',
+    provider_email_badge: '✓ Aktive Sitzung',
+    save_changes: 'Speichern',
     logout: 'Abmelden',
     select_photo: 'Foto wählen',
     upload_photo: 'Foto hochladen',
@@ -504,6 +718,9 @@ const I18N = {
     ducking_title: 'Audio-Absenkung',
     ducking_desc: 'Senkt die Videolautstärke beim Sprechen.',
     mic_sens_title: 'Mikrofonempfindlichkeit',
+    sens_high: 'Hoch',
+    sens_med: 'Mittel',
+    sens_low: 'Niedrig',
     pip_corner_title: 'Kameraposition',
     pip_corner_desc: 'Ecke für die Kamera im Vollbild:',
     pip_show_camera: 'Kamera im Vollbild anzeigen',
@@ -513,10 +730,13 @@ const I18N = {
     corner_tl: 'Oben Links',
     accounts_info: 'Sie können sich über den In-App-Browser direkt bei Ihren Plattformkonten (YouTube, Netflix, Prime usw.) anmelden. Ihre Sitzungen werden sicher auf Ihrem Gerät gespeichert.',
     open_in_browser: 'Anmelden / Öffnen ↗',
+    open_in_browser_btn: 'Öffnen ↗',
     yt_card_sub: 'Playlists und Videos',
     netflix_card_sub: 'Serien & Filme',
     prime_card_sub: 'Amazon Prime Streaming',
     disney_card_sub: 'Disney, Marvel & Star Wars',
+    connected_platforms_title: 'Verbundene Plattformen',
+    connected_platforms_sub: 'Dauerhafte Sitzung im integrierten Browser',
     create_room_title: 'Neuer Raum',
     room_name_label: 'Raumname',
     platform_label: 'Plattform',
@@ -524,18 +744,101 @@ const I18N = {
     private_room: 'Privater Raum (Nur mit Code)',
     create_and_start: 'Erstellen & Starten',
     cancel: 'Abbrechen',
+    cancel_btn: 'Abbrechen',
     join_modal_title: 'Raum beitreten',
     join_code_ph: 'RAUMCODE ODER LINK EINGEBEN...',
     join_btn: 'Beitreten',
     auth_title: 'Bei Miruo anmelden',
     login_tab: 'Anmelden',
     register_tab: 'Registrieren',
-    email_label: 'E-Mail-Adresse',
+    auth_heading_login: 'Anmelden',
+    auth_subtitle_login: 'Melden Sie sich mit E-Mail und Passwort an.',
+    auth_heading_register: 'Registrieren',
+    auth_subtitle_register: 'Registrieren Sie sich mit Name, E-Mail und Passwort.',
+    email_btn: 'E-Mail',
+    phone_btn: 'Telefon',
+    first_name_label: 'Vorname',
+    first_name_ph: 'Ihr Vorname',
+    last_name_label: 'Nachname',
+    last_name_ph: 'Ihr Nachname',
+    email_label: 'E-Mail',
+    email_ph: 'beispiel@gmail.com',
     password_label: 'Passwort',
+    password_ph: 'Mindestens 6 Zeichen',
+    password_confirm_label: 'Passwort bestätigen',
+    password_confirm_ph: 'Passwort erneut eingeben',
     remember_me: 'Angemeldet bleiben',
     forgot_password: 'Passwort vergessen?',
+    phone_label: 'Telefonnummer',
+    phone_sub_info: 'Ein 6-stelliger SMS-Code wird an Ihr Telefon gesendet, um sich anzumelden.',
+    sms_code_label: 'SMS-Code (6 Ziffern):',
+    back_btn: '← Zurück',
+    resend_code_btn: 'Code erneut senden',
     login_btn: 'Anmelden',
-    register_btn: 'Konto erstellen',
+    register_btn: 'Registrieren',
+    or_divider: 'ODER WEITER MIT',
+    google_login: 'Google',
+    apple_login: 'Apple',
+    auth_footer_login: 'Neu bei Miruo?',
+    auth_footer_action_login: 'Konto erstellen',
+    auth_footer_register: 'Bereits ein Konto?',
+    auth_footer_action_register: 'Anmelden',
+    settings_title: 'Einstellungen',
+    settings_subtitle: 'Profil, Sicherheit & Vorlieben',
+    profile_info_section: 'Profilinformationen',
+    account_security_section: 'Konto & Sicherheit',
+    change_email_title: 'E-Mail-Adresse ändern',
+    change_email_sub: 'Neue E-Mail verknüpfen',
+    change_email_info: 'Ein 6-stelliger Bestätigungslink wird an Ihre neue E-Mail gesendet.',
+    change_email_ph: 'Neue E-Mail-Adresse eingeben',
+    update_btn: 'Aktualisieren',
+    change_password_title: 'Passwort ändern',
+    change_password_sub: 'Passwort für Ihr Konto aktualisieren',
+    change_password_header: 'Passwort-Aktualisierung',
+    current_pass_ph: 'Aktuelles Passwort',
+    new_pass_ph: 'Neues Passwort (mind. 6 Zeichen)',
+    confirm_pass_ph: 'Neues Passwort bestätigen',
+    update_password_btn: 'Passwort aktualisieren',
+    notifications_title: 'Benachrichtigungen',
+    notifications_sub: 'Sofortmeldungen und Einladungen',
+    notif_push: 'Push-Benachrichtigungen',
+    notif_push_sub: 'Wichtige Ereignisse und Freundesmeldungen',
+    notif_invites: 'Raum- & Einladungsmeldungen',
+    notif_invites_sub: 'Benachrichtigen, wenn Freunde Sie in einen Raum einladen',
+    notif_sound: 'Ton & Vibration',
+    notif_sound_sub: 'Nachrichten- und Signalton-Effekte',
+    audio_video_title: 'Audio- & Video-Einstellungen',
+    audio_video_sub: 'Ducking, Mikrofon und Kamera-Optionen',
+    legal_section: 'Rechtliches & Info',
+    privacy_policy_title: 'Datenschutzrichtlinie',
+    terms_of_service_title: 'Nutzungsbedingungen',
+    delete_account_btn: 'Konto löschen',
+    delete_account_modal_title: 'Mein Konto löschen',
+    delete_account_modal_sub: 'Diese Aktion kann nicht rückgängig gemacht werden.',
+    delete_account_modal_desc: 'Durch das Löschen Ihres Kontos werden Ihre Profildaten und Räume dauerhaft entfernt.',
+    delete_account_pass_label: 'Geben Sie Ihr Passwort zur Bestätigung ein:',
+    confirm_delete_btn: 'Mein Konto löschen',
+    miruo_guarantee: 'Miruo-Garantie',
+    privacy_summary_title: 'Unsere Verpflichtung:',
+    privacy_summary_desc: 'Miruo respektiert Ihre Privatsphäre. Ihr Wiedergabeverlauf, Ihre privaten Chats und Vorlieben werden niemals verkauft.',
+    privacy_sec1_title: '1. Gesammelte Informationen',
+    privacy_sec1_desc: 'Nur grundlegende Daten (Benutzername, E-Mail oder Telefon), die für Ihr Konto und das gemeinsame Schauen erforderlich sind, werden gespeichert.',
+    privacy_sec2_title: '2. Cookies & Plattform-Anmeldungen',
+    privacy_sec2_desc: 'Ihre Anmeldungen bei YouTube, Netflix usw. verbleiben sicher im lokalen Gerätespeicher. Passwörter werden nie übertragen.',
+    privacy_sec3_title: '3. Kamera- und Sprachdaten',
+    privacy_sec3_desc: 'In Live-Räumen werden Mikrofon- und Kameraströme direkt von Peer zu Peer (P2P) übertragen. Es werden keine Aufzeichnungen erstellt.',
+    privacy_sec4_title: '4. Datensicherheit und Löschung',
+    privacy_sec4_desc: 'Sie können Ihr Konto jederzeit in den Einstellungen löschen. Alle gelöschten Benutzerdaten werden sofort dauerhaft entfernt.',
+    miruo_terms_badge: 'Miruo Nutzungsbedingungen',
+    terms_intro: 'Durch die Nutzung der Miruo-Plattform akzeptieren Sie die folgenden Nutzungsbedingungen.',
+    terms_sec1_title: '1. Zweck des Dienstes',
+    terms_sec1_desc: 'Miruo ist eine soziale Co-Watching-Plattform, die es Freunden ermöglicht, legale Videoplattformen synchron mit Sprach- und Video-Chat zu schauen.',
+    terms_sec2_title: '2. Community-Richtlinien',
+    terms_sec2_desc: 'Hassrede, Belästigung und rechtswidrige Inhalte sind strengstens verboten.',
+    terms_sec3_title: '3. Inhalte Dritter',
+    terms_sec3_desc: 'Angesehene Inhalte unterliegen den Bedingungen der jeweiligen Plattform (YouTube, Netflix usw.).',
+    terms_sec4_title: '4. Service-Änderungen',
+    terms_sec4_desc: 'Miruo behält sich das Recht vor, Funktionen oder Bedingungen jederzeit anzupassen.',
     rave_title: 'YouTube',
     rave_subtitle: 'Video auswählen und gemeinsam im Raum ansehen.',
     rave_search_ph: 'Auf YouTube nach Videos, Musik oder Kanälen suchen...',
@@ -596,12 +899,30 @@ function applyLanguage(lang) {
     }
   });
 
-  // Update active style on lang-btns
+  // Update active style on Settings lang-btns
   document.querySelectorAll('#langSelectorGroup .lang-btn').forEach(btn => {
     if (btn.getAttribute('data-lang') === lang) {
-      btn.className = 'lang-btn active p-2.5 rounded-xl border-2 border-rose-500 bg-rose-500/20 text-center font-bold text-white cursor-pointer transition-all shadow-sm';
+      btn.className = 'lang-btn active p-2.5 rounded-xl border-2 border-[#A64D79] bg-[#A64D79]/20 text-center font-bold text-white cursor-pointer transition-all shadow-sm';
     } else {
       btn.className = 'lang-btn p-2.5 rounded-xl border border-white/10 bg-white/5 hover:bg-white/10 text-center font-medium text-gray-300 cursor-pointer transition-all';
+    }
+  });
+
+  // Update active style on Auth modal lang-btns
+  document.querySelectorAll('#authLangSelectorGroup .auth-lang-btn').forEach(btn => {
+    if (btn.getAttribute('data-lang') === lang) {
+      btn.className = 'auth-lang-btn active px-2.5 py-1 rounded-lg text-xs font-bold bg-[#A64D79] text-white shadow-sm transition-all cursor-pointer';
+    } else {
+      btn.className = 'auth-lang-btn px-2.5 py-1 rounded-lg text-xs font-medium text-gray-400 hover:text-white transition-all cursor-pointer';
+    }
+  });
+
+  // Update active style on Header lang-btns
+  document.querySelectorAll('#headerLangSelectorGroup .header-lang-btn').forEach(btn => {
+    if (btn.getAttribute('data-lang') === lang) {
+      btn.className = 'header-lang-btn active px-2 py-0.5 rounded-lg text-[10px] font-bold bg-[#A64D79] text-white transition-all cursor-pointer';
+    } else {
+      btn.className = 'header-lang-btn px-2 py-0.5 rounded-lg text-[10px] font-medium text-gray-400 hover:text-white transition-all cursor-pointer';
     }
   });
 
@@ -611,6 +932,53 @@ function applyLanguage(lang) {
     if (lang === 'tr') badge.textContent = 'Türkçe';
     else if (lang === 'en') badge.textContent = 'English';
     else if (lang === 'de') badge.textContent = 'Deutsch';
+  }
+
+  // Update dynamic audio labels
+  if (dom && dom.micSensVal && dom.micSensSlider) {
+    const val = Number(dom.micSensSlider.value || 25);
+    dom.micSensVal.textContent = val < 15 ? (dict.sens_high || 'Yüksek') : (val < 30 ? (dict.sens_med || 'Orta') : (dict.sens_low || 'Düşük'));
+  }
+
+  // Update dynamic auth modal strings for active mode
+  if (typeof updateAuthStringsForCurrentLang === 'function') {
+    updateAuthStringsForCurrentLang();
+  }
+}
+
+function updateAuthStringsForCurrentLang() {
+  const dict = I18N[currentLang] || I18N.tr;
+  if (dom && dom.authTabSignIn) {
+    const sp = dom.authTabSignIn.querySelector('span');
+    if (sp) sp.textContent = dict.login_tab;
+  }
+  if (dom && dom.authTabSignUp) {
+    const sp = dom.authTabSignUp.querySelector('span');
+    if (sp) sp.textContent = dict.register_tab;
+  }
+  if (dom && dom.authContactLabel) {
+    dom.authContactLabel.textContent = dict.email_label;
+  }
+  if (dom && dom.authContactInput) {
+    dom.authContactInput.placeholder = dict.email_ph;
+  }
+  if (dom && dom.authPasswordInput) {
+    dom.authPasswordInput.placeholder = dict.password_ph;
+  }
+  if (typeof isSignUpMode !== 'undefined') {
+    if (isSignUpMode) {
+      if (dom && dom.authHeadingTitle) dom.authHeadingTitle.textContent = dict.auth_heading_register || dict.register_tab;
+      if (dom && dom.authSubtitle) dom.authSubtitle.textContent = dict.auth_subtitle_register || '';
+      if (dom && dom.authSubmitBtn) dom.authSubmitBtn.textContent = dict.register_btn;
+      if (dom && dom.authFooterText) dom.authFooterText.textContent = dict.auth_footer_register;
+      if (dom && dom.authFooterAction) dom.authFooterAction.textContent = dict.auth_footer_action_register;
+    } else {
+      if (dom && dom.authHeadingTitle) dom.authHeadingTitle.textContent = dict.auth_heading_login || dict.login_tab;
+      if (dom && dom.authSubtitle) dom.authSubtitle.textContent = dict.auth_subtitle_login || '';
+      if (dom && dom.authSubmitBtn) dom.authSubmitBtn.textContent = dict.login_btn;
+      if (dom && dom.authFooterText) dom.authFooterText.textContent = dict.auth_footer_login;
+      if (dom && dom.authFooterAction) dom.authFooterAction.textContent = dict.auth_footer_action_login;
+    }
   }
 }
 
@@ -920,6 +1288,8 @@ const dom = {
   // Profile Edit & Settings Hub Modal
   profileEditModal: document.getElementById('profileEditModal'),
   closeProfileEditBtn: document.getElementById('closeProfileEditBtn'),
+  editProfileFullNameInput: document.getElementById('editProfileFullNameInput'),
+  editProfileUsernameInput: document.getElementById('editProfileUsernameInput'),
   editProfileNameInput: document.getElementById('editProfileNameInput'),
   editProfileRoomInput: document.getElementById('editProfileRoomInput'),
   saveProfileBtn: document.getElementById('saveProfileBtn'),
@@ -4156,36 +4526,24 @@ function setAuthMode(signUp) {
   isSignUpMode = signUp;
   hideAuthAlert();
   if (signUp) {
-    if (dom.authHeadingTitle) dom.authHeadingTitle.textContent = "Kayıt Ol";
-    if (dom.authSubtitle) dom.authSubtitle.textContent = "İsim, e-posta ve şifrenizle hemen kaydolun.";
     if (dom.signUpNameField) dom.signUpNameField.classList.remove('hidden');
     if (dom.signUpAvatarSection) dom.signUpAvatarSection.classList.add('hidden');
     if (dom.signUpPasswordConfirmField) dom.signUpPasswordConfirmField.classList.remove('hidden');
     if (dom.authRememberRow) dom.authRememberRow.classList.add('hidden');
-    if (dom.authContactLabel) dom.authContactLabel.textContent = "E-posta";
-    if (dom.authContactInput) dom.authContactInput.placeholder = "ornek@gmail.com";
     if (dom.authTabSignUp) dom.authTabSignUp.className = "flex-1 py-2.5 rounded-xl text-xs font-bold bg-[#18181B] text-white shadow-sm transition-all text-center cursor-pointer";
     if (dom.authTabSignIn) dom.authTabSignIn.className = "flex-1 py-2.5 rounded-xl text-xs font-semibold text-gray-500 hover:text-gray-900 transition-all text-center cursor-pointer";
-    if (dom.authSubmitBtn) dom.authSubmitBtn.textContent = "Kayıt Ol";
     if (dom.authPasswordInput) dom.authPasswordInput.setAttribute('autocomplete', 'new-password');
-    if (dom.authFooterText) dom.authFooterText.textContent = "Zaten bir hesabın var mı?";
-    if (dom.authFooterAction) dom.authFooterAction.textContent = "Giriş Yap";
   } else {
-    if (dom.authHeadingTitle) dom.authHeadingTitle.textContent = "Giriş Yap";
-    if (dom.authSubtitle) dom.authSubtitle.textContent = "E-posta ve şifrenizle giriş yapın.";
     if (dom.signUpNameField) dom.signUpNameField.classList.add('hidden');
     if (dom.signUpAvatarSection) dom.signUpAvatarSection.classList.add('hidden');
     if (dom.signUpPasswordConfirmField) dom.signUpPasswordConfirmField.classList.add('hidden');
     if (dom.authRememberRow) dom.authRememberRow.classList.remove('hidden');
-    if (dom.authContactLabel) dom.authContactLabel.textContent = "E-posta";
-    if (dom.authContactInput) dom.authContactInput.placeholder = "ornek@gmail.com";
     if (dom.authPasswordInput) dom.authPasswordInput.setAttribute('autocomplete', 'current-password');
     if (dom.authTabSignIn) dom.authTabSignIn.className = "flex-1 py-2.5 rounded-xl text-xs font-bold bg-[#18181B] text-white shadow-sm transition-all text-center cursor-pointer";
     if (dom.authTabSignUp) dom.authTabSignUp.className = "flex-1 py-2.5 rounded-xl text-xs font-semibold text-gray-500 hover:text-gray-900 transition-all text-center cursor-pointer";
-    if (dom.authSubmitBtn) dom.authSubmitBtn.textContent = "Giriş Yap";
-    if (dom.authFooterText) dom.authFooterText.textContent = "Miruo'da yeni misin?";
-    if (dom.authFooterAction) dom.authFooterAction.textContent = "Kayıt Ol";
   }
+
+  updateAuthStringsForCurrentLang();
 
   // Preserve phone mode submit button text
   if (currentAuthMethod === 'phone') {
@@ -4238,6 +4596,10 @@ function setAuthMethod(method) {
 function loadUserSession() {
   const savedUser = localStorage.getItem('miruo_user');
   const urlParams = new URLSearchParams(window.location.search);
+  const langFromUrl = urlParams.get('lang');
+  if (langFromUrl && ['tr', 'en', 'de'].includes(langFromUrl)) {
+    applyLanguage(langFromUrl);
+  }
   const hash = (window.location.hash || '').replace('#', '');
   const initialView = localStorage.getItem('miruo_initial_view');
   let roomFromUrl = urlParams.get('room');
@@ -4470,6 +4832,8 @@ function updateUserUI(user) {
   const cleanUsername = '@' + (user.username || user.name || displayName || 'kullanici').replace(/^@/, '');
   if (dom.tabMyFriendCodeDisplay) dom.tabMyFriendCodeDisplay.textContent = cleanUsername;
   if (dom.myFriendCodeDisplay) dom.myFriendCodeDisplay.textContent = cleanUsername;
+  if (dom.editProfileFullNameInput) dom.editProfileFullNameInput.value = user.fullName || user.name || '';
+  if (dom.editProfileUsernameInput) dom.editProfileUsernameInput.value = (user.username || '').replace(/^@/, '');
   if (dom.editProfileNameInput) dom.editProfileNameInput.value = (user.username || user.name || displayName || '').replace(/^@/, '');
   if (dom.profileEmailDisplay) dom.profileEmailDisplay.textContent = user.email || 'user@miruo.app';
   if (dom.currentRoomDisplay) dom.currentRoomDisplay.textContent = state.roomId;
@@ -6404,9 +6768,11 @@ function initEvents() {
 
   function openProfileEditModal(section = 'profile') {
     if (dom.userProfileDropdown) dom.userProfileDropdown.classList.add('hidden');
-    if (dom.editProfileNameInput) dom.editProfileNameInput.value = (state.username || '').replace(/^@/, '');
-
     const savedUser = JSON.parse(localStorage.getItem('miruo_user') || '{}');
+    if (dom.editProfileFullNameInput) dom.editProfileFullNameInput.value = savedUser.fullName || savedUser.name || '';
+    if (dom.editProfileUsernameInput) dom.editProfileUsernameInput.value = (savedUser.username || state.username || '').replace(/^@/, '');
+    if (dom.editProfileNameInput) dom.editProfileNameInput.value = (savedUser.username || state.username || '').replace(/^@/, '');
+
     pendingAvatarUrl = savedUser.avatarUrl || '';
     pendingAvatarBg = savedUser.avatarBg || 'from-[#A64D79] to-[#6A1E55]';
 
@@ -6415,34 +6781,35 @@ function initEvents() {
     }
 
     // 1. Detect and render provider badge (Neyle Kayıt Olduğu)
+    const dict = I18N[currentLang] || I18N.tr;
     const authProvider = savedUser.provider || (savedUser.phone ? 'phone' : (savedUser.isApple ? 'apple' : (savedUser.isGoogle ? 'google' : 'email')));
     if (dom.accountProviderIcon && dom.accountProviderName) {
       if (authProvider === 'apple' || savedUser.isApple) {
         dom.accountProviderIcon.innerHTML = '🍎';
-        dom.accountProviderName.textContent = 'Apple ID ile Giriş Yapıldı';
+        dom.accountProviderName.textContent = dict.provider_apple || 'Apple ID ile Giriş Yapıldı';
         if (dom.profileAuthBadge) {
-          dom.profileAuthBadge.textContent = '✓ Apple ile Doğrulandı';
+          dom.profileAuthBadge.textContent = dict.provider_apple_badge || '✓ Apple ile Doğrulandı';
           dom.profileAuthBadge.className = 'px-2.5 py-1 rounded-full text-[10px] font-bold bg-white/10 text-white border border-white/20';
         }
       } else if (authProvider === 'google' || savedUser.isGoogle) {
         dom.accountProviderIcon.innerHTML = '🌐';
-        dom.accountProviderName.textContent = 'Google ile Giriş Yapıldı';
+        dom.accountProviderName.textContent = dict.provider_google || 'Google ile Giriş Yapıldı';
         if (dom.profileAuthBadge) {
-          dom.profileAuthBadge.textContent = '✓ Google ile Doğrulandı';
+          dom.profileAuthBadge.textContent = dict.provider_google_badge || '✓ Google ile Doğrulandı';
           dom.profileAuthBadge.className = 'px-2.5 py-1 rounded-full text-[10px] font-bold bg-blue-500/15 text-blue-400 border border-blue-500/30';
         }
       } else if (authProvider === 'phone' || savedUser.phone) {
         dom.accountProviderIcon.innerHTML = '📱';
-        dom.accountProviderName.textContent = 'Telefon Numarası ile Giriş';
+        dom.accountProviderName.textContent = dict.provider_phone || 'Telefon Numarası ile Giriş';
         if (dom.profileAuthBadge) {
-          dom.profileAuthBadge.textContent = '✓ SMS ile Doğrulandı';
+          dom.profileAuthBadge.textContent = dict.provider_phone_badge || '✓ SMS ile Doğrulandı';
           dom.profileAuthBadge.className = 'px-2.5 py-1 rounded-full text-[10px] font-bold bg-amber-500/15 text-amber-400 border border-amber-500/30';
         }
       } else {
         dom.accountProviderIcon.innerHTML = '✉️';
-        dom.accountProviderName.textContent = 'E-posta ile Kayıt Olundu';
+        dom.accountProviderName.textContent = dict.provider_email || 'E-posta ile Kayıt Olundu';
         if (dom.profileAuthBadge) {
-          dom.profileAuthBadge.textContent = '✓ Aktif Oturum';
+          dom.profileAuthBadge.textContent = dict.provider_email_badge || dict.active_session || '✓ Aktif Oturum';
           dom.profileAuthBadge.className = 'px-2.5 py-1 rounded-full text-[10px] font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30';
         }
       }
@@ -6799,11 +7166,12 @@ function initEvents() {
       pendingAvatarUrl = '';
       pendingAvatarBg = 'from-rose-500 to-indigo-600';
       if (dom.editAvatarPreview) {
-        const nameChar = (dom.editProfileNameInput?.value.trim() || state.username || 'M').charAt(0).toUpperCase();
+        const nameChar = (dom.editProfileFullNameInput?.value.trim() || dom.editProfileUsernameInput?.value.trim() || dom.editProfileNameInput?.value.trim() || state.username || 'M').charAt(0).toUpperCase();
         dom.editAvatarPreview.innerHTML = nameChar;
         dom.editAvatarPreview.className = `w-22 h-22 rounded-2xl bg-gradient-to-tr ${pendingAvatarBg} flex items-center justify-center text-3xl font-bold text-white shadow-xl overflow-hidden border-2 border-white/20 ring-4 ring-white/5`;
       }
-      showToast('Profil fotoğrafı kaldırıldı.');
+      const dict = I18N[currentLang] || I18N.tr;
+      showToast(dict.remove_photo ? (dict.remove_photo + ' ' + (dict.save_changes ? `("${dict.save_changes}")` : '')) : 'Profil fotoğrafı kaldırıldı.');
     });
   }
 
@@ -6813,7 +7181,7 @@ function initEvents() {
       pendingAvatarBg = btn.dataset.bg || 'from-rose-500 to-indigo-600';
       pendingAvatarUrl = '';
       if (dom.editAvatarPreview) {
-        const nameChar = (dom.editProfileNameInput.value.trim() || state.username || 'M').charAt(0).toUpperCase();
+        const nameChar = (dom.editProfileFullNameInput?.value.trim() || dom.editProfileUsernameInput?.value.trim() || dom.editProfileNameInput?.value.trim() || state.username || 'M').charAt(0).toUpperCase();
         dom.editAvatarPreview.innerHTML = nameChar;
         dom.editAvatarPreview.className = `w-22 h-22 rounded-2xl bg-gradient-to-tr ${pendingAvatarBg} flex items-center justify-center text-3xl font-bold text-white shadow-xl overflow-hidden border-2 border-white/20 ring-4 ring-white/5`;
       }
@@ -6822,14 +7190,22 @@ function initEvents() {
 
   if (dom.saveProfileBtn) {
     dom.saveProfileBtn.addEventListener('click', () => {
-      const newName = (dom.editProfileNameInput && dom.editProfileNameInput.value.trim().replace(/^@/, '')) || '';
-      if (newName) {
-        state.username = newName;
-      }
+      const fullNameVal = (dom.editProfileFullNameInput && dom.editProfileFullNameInput.value.trim()) || '';
+      const usernameVal = (dom.editProfileUsernameInput && dom.editProfileUsernameInput.value.trim().replace(/^@/, '')) || (dom.editProfileNameInput && dom.editProfileNameInput.value.trim().replace(/^@/, '')) || '';
 
       const savedUser = JSON.parse(localStorage.getItem('miruo_user') || '{}');
-      savedUser.name = state.username;
-      savedUser.username = state.username;
+      if (fullNameVal) {
+        savedUser.fullName = fullNameVal;
+        savedUser.name = fullNameVal;
+      }
+      if (usernameVal) {
+        savedUser.username = usernameVal;
+        state.username = usernameVal;
+      }
+      if (!savedUser.name && usernameVal) {
+        savedUser.name = usernameVal;
+      }
+
       if (pendingAvatarUrl) {
         savedUser.avatarUrl = pendingAvatarUrl;
         savedUser.avatarBg = '';
@@ -6848,7 +7224,10 @@ function initEvents() {
 
       updateUserUI(savedUser);
       if (dom.profileEditModal) dom.profileEditModal.classList.add('hidden');
-      showToast('Profil ve fotoğraf güncellendi ✨');
+      unfreezeBackgroundAfterModal();
+
+      const dict = I18N[currentLang] || I18N.tr;
+      showToast(dict.profile_updated || 'Profil ve tercihler güncellendi ✨');
     });
   }
 
@@ -8035,7 +8414,8 @@ function generateUniqueRoomCode(isPrivate = false) {
   if (dom.micSensSlider) {
     dom.micSensSlider.addEventListener('input', (e) => {
       state.speechThreshold = e.target.value / 255;
-      if (dom.micSensVal) dom.micSensVal.textContent = e.target.value < 15 ? 'Yüksek' : (e.target.value < 30 ? 'Orta' : 'Düşük');
+      const dict = I18N[currentLang] || I18N.tr;
+      if (dom.micSensVal) dom.micSensVal.textContent = e.target.value < 15 ? (dict.sens_high || 'Yüksek') : (e.target.value < 30 ? (dict.sens_med || 'Orta') : (dict.sens_low || 'Düşük'));
     });
   }
 
@@ -8211,13 +8591,16 @@ function generateUniqueRoomCode(isPrivate = false) {
   const savedLang = localStorage.getItem('miruo_lang') || 'tr';
   applyLanguage(savedLang);
 
-  // Wire up language selector buttons in Settings modal
-  document.querySelectorAll('#langSelectorGroup .lang-btn').forEach(btn => {
-    btn.addEventListener('click', () => {
+  // Wire up language selector buttons across Settings modal, Auth modal, and Header
+  document.querySelectorAll('#langSelectorGroup .lang-btn, #authLangSelectorGroup .auth-lang-btn, #headerLangSelectorGroup .header-lang-btn').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
       const selected = btn.dataset.lang;
-      applyLanguage(selected);
-      const msg = I18N[selected] ? I18N[selected].lang_changed : 'Dil güncellendi';
-      showToast(msg);
+      if (selected) {
+        applyLanguage(selected);
+        const msg = I18N[selected] ? I18N[selected].lang_changed : 'Dil güncellendi';
+        showToast(msg);
+      }
     });
   });
 }

@@ -229,6 +229,10 @@ class ViewController: UIViewController, WKNavigationDelegate, WKUIDelegate, WKSc
         if let view = testView {
             queryParts.append("view=\(view)")
         }
+        let testLang = ProcessInfo.processInfo.environment["MIRUO_LANG"]
+        if let lang = testLang {
+            queryParts.append("lang=\(lang)")
+        }
         let query = !queryParts.isEmpty ? "?" + queryParts.joined(separator: "&") : ""
         if let server = localServer, server.isRunning {
             let url = URL(string: "http://127.0.0.1:\(server.port)/index.html\(query)")!
