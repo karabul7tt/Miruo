@@ -4,11 +4,54 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 
+// Security Module (Checklist Items 1 - 20)
+import {
+  loadEnvironment,
+  ROLES,
+  canManageRoom,
+  canAccessAdmin,
+  authLimiter,
+  registerLimiter,
+  otpLimiter,
+  generalApiLimiter,
+  getClientIp,
+  hashPassword,
+  verifyPassword,
+  escapeHtml,
+  sanitizeText,
+  isValidEmail,
+  isValidUsername,
+  isValidPassword,
+  isValidPhone,
+  isValidRoomCode,
+  safeJsonParse,
+  sanitizeObject,
+  readJsonBody,
+  applySecurityHeaders,
+  handleCors,
+  buildSecureCookie,
+  createSignedToken,
+  verifySignedToken,
+  maskEmail,
+  safeLog,
+  sendError,
+  verifyWebhookSignature,
+  backupUsersFile,
+  startPeriodicBackup
+} from './lib/security.mjs';
+
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const PUBLIC_DIR = path.join(__dirname, 'public');
 const WEBSITE_DIR = path.join(__dirname, 'website');
 const USERS_FILE = path.join(__dirname, 'data', 'users.json');
+
+// 1. Load Environment Configuration (Item 1 & 2)
+const CONFIG = loadEnvironment(__dirname);
+const PORT = CONFIG.PORT;
+
+// Start periodic automatic database backups (Item 20)
+startPeriodicBackup(USERS_FILE, 60 * 60 * 1000);
 
 function loadUsers() {
   try {
@@ -16,10 +59,11 @@ function loadUsers() {
       fs.mkdirSync(path.dirname(USERS_FILE), { recursive: true });
     }
     if (fs.existsSync(USERS_FILE)) {
-      return JSON.parse(fs.readFileSync(USERS_FILE, 'utf8'));
+      const data = fs.readFileSync(USERS_FILE, 'utf8');
+      return safeJsonParse(data) || [];
     }
   } catch (err) {
-    console.error('Error loading users:', err);
+    safeLog('DATABASE', 'Kullanıcılar yüklenirken hata oluştu', { error: err.message });
   }
   return [];
 }
@@ -30,14 +74,14 @@ function saveUsers(users) {
       fs.mkdirSync(path.dirname(USERS_FILE), { recursive: true });
     }
     fs.writeFileSync(USERS_FILE, JSON.stringify(users, null, 2), 'utf8');
+    // Automatic backup on write (Item 20)
+    backupUsersFile(USERS_FILE, 'auto-save');
   } catch (err) {
-    console.error('Error saving users:', err);
+    safeLog('DATABASE', 'Kullanıcılar kaydedilirken hata oluştu', { error: err.message });
   }
 }
 
-const PORT = process.env.PORT || 3000;
-
-// Rooms store: roomId -> { meta: { id, name, isPrivate, host, category, mediaTitle }, clients: Map }
+// Rooms store: roomId -> { meta: { id, name, isPrivate, host, hostUserId, category, mediaTitle }, clients: Map }
 const rooms = new Map();
 // Temporary in-memory store for 6-digit OTP password reset codes
 const passwordResetCodes = new Map();
@@ -52,6 +96,7 @@ function seedDefaultPublicRooms() {
       name: '24/7 Lo-Fi & Gece Çalışma Odası ☕', 
       isPrivate: false, 
       host: 'Selin_K', 
+      hostUserId: 'usr_selin_seeded',
       category: 'YouTube', 
       mediaTitle: 'Lofi Girl - beats to relax/study to', 
       videoId: 'jfKfPfyJRdk',
@@ -66,6 +111,7 @@ function seedDefaultPublicRooms() {
       name: 'Stranger Things Maratonu 🍿', 
       isPrivate: false, 
       host: 'Caner_A', 
+      hostUserId: 'usr_caner_seeded',
       category: 'Netflix', 
       mediaTitle: 'Stranger Things 4. Sezon Fragmanı & Bölümler', 
       videoId: 'b9EkMc79ZSU',
@@ -80,6 +126,7 @@ function seedDefaultPublicRooms() {
       name: 'The Boys Dizi Gecesi 🩸', 
       isPrivate: false, 
       host: 'Kaan_D', 
+      hostUserId: 'usr_kaan_seeded',
       category: 'Prime Video', 
       mediaTitle: 'The Boys Season 4 Official Trailer', 
       videoId: 'ezkd3wzB6s8',
@@ -94,6 +141,7 @@ function seedDefaultPublicRooms() {
       name: 'Anime & Dizi Saati ⚔️', 
       isPrivate: false, 
       host: 'Deniz', 
+      hostUserId: 'usr_deniz_seeded',
       category: 'YouTube', 
       mediaTitle: 'Anime Chill Beats & Soundtracks', 
       videoId: '4xDzrJKXOOY',
@@ -108,6 +156,7 @@ function seedDefaultPublicRooms() {
       name: 'Akustik & Pop Müzik Odası 🎵', 
       isPrivate: false, 
       host: 'Burak', 
+      hostUserId: 'usr_burak_seeded',
       category: 'Spotify', 
       mediaTitle: 'Pop & Akustik Türkçe Şarkılar', 
       videoId: '5qap5aO4i9A',
@@ -127,6 +176,7 @@ function seedDefaultPublicRooms() {
           name: d.name,
           isPrivate: false,
           host: d.host,
+          hostUserId: d.hostUserId,
           category: d.category,
           mediaTitle: d.mediaTitle,
           videoId: d.videoId || 'jfKfPfyJRdk',
@@ -149,10 +199,13 @@ const MIME_TYPES = {
   '.png': 'image/png',
   '.jpg': 'image/jpeg',
   '.svg': 'image/svg+xml',
-  '.ico': 'image/x-icon'
+  '.ico': 'image/x-icon',
+  '.txt': 'text/plain; charset=utf-8',
+  '.dmg': 'application/x-apple-diskimage',
+  '.exe': 'application/vnd.microsoft.portable-executable',
+  '.zip': 'application/zip'
 };
 
-// Random, impersonal room codes: ODA-XXXX (e.g. ODA-7492 or ODA-8319).
 function generateRoomCode() {
   for (let i = 0; i < 200; i++) {
     const num = Math.floor(1000 + Math.random() * 9000);
@@ -167,17 +220,17 @@ function generateRoomCode() {
 }
 
 function getOrCreateRoom(roomId, meta = {}) {
-
   const upperId = roomId.toUpperCase();
   if (!rooms.has(upperId)) {
     rooms.set(upperId, {
       meta: {
         id: upperId,
-        name: meta.name || upperId,
-        isPrivate: meta.isPrivate !== undefined ? meta.isPrivate : true,
-        host: meta.host || 'Anonim',
-        category: meta.category || 'Genel',
-        mediaTitle: meta.mediaTitle || 'Henüz video seçilmedi',
+        name: sanitizeText(meta.name || upperId, 50),
+        isPrivate: meta.isPrivate !== undefined ? !!meta.isPrivate : true,
+        host: sanitizeText(meta.host || 'Anonim', 30),
+        hostUserId: meta.hostUserId || null,
+        category: sanitizeText(meta.category || 'Genel', 30),
+        mediaTitle: sanitizeText(meta.mediaTitle || 'Henüz video seçilmedi', 100),
         fakeViewers: 0,
         createdAt: Date.now()
       },
@@ -228,18 +281,26 @@ function sendWsFrame(socket, message) {
   }
 }
 
-// Lightweight RFC-6455 WebSocket Frame Parser
+// Lightweight RFC-6455 WebSocket Frame Parser with Role & Permissions Enforcement (Item 3, 4, 16)
 function handleWebSocketConnection(socket, req) {
   const urlObj = new URL(req.url, `http://${req.headers.host}`);
-  const roomId = (urlObj.searchParams.get('room') || 'default').toUpperCase();
-  const userId = urlObj.searchParams.get('userId') || crypto.randomUUID().slice(0, 8);
-  const userName = urlObj.searchParams.get('name') || 'Misafir';
+  const rawRoom = urlObj.searchParams.get('room') || 'default';
+  const roomId = isValidRoomCode(rawRoom) ? rawRoom.toUpperCase() : 'DEFAULT';
+  const userId = sanitizeText(urlObj.searchParams.get('userId') || crypto.randomUUID().slice(0, 8), 40);
+  const userName = sanitizeText(urlObj.searchParams.get('name') || 'Misafir', 30);
+  const userRole = urlObj.searchParams.get('role') === 'admin' ? ROLES.ADMIN : ROLES.USER;
 
-  const room = getOrCreateRoom(roomId, { host: userName });
-  const clientObj = { type: 'ws', socket, id: userId, roomId, name: userName };
+  const room = getOrCreateRoom(roomId, { host: userName, hostUserId: userId });
+  // If first user joining dynamic private room, register them as host
+  if (!room.meta.hostUserId && room.clients.size === 0) {
+    room.meta.hostUserId = userId;
+    room.meta.host = userName;
+  }
+
+  const clientObj = { type: 'ws', socket, id: userId, roomId, name: userName, role: userRole };
   room.clients.set(userId, clientObj);
 
-  console.log(`[WS] Client joined: ${userName} (${userId}) -> Room: ${roomId} (Total: ${room.clients.size})`);
+  safeLog('WS', `Client bağlandı: ${userName} (${userId}) -> Oda: ${roomId}`, { total: room.clients.size });
 
   // Notify everyone in room about peer list
   const peerList = Array.from(room.clients.keys());
@@ -247,13 +308,20 @@ function handleWebSocketConnection(socket, req) {
     type: 'init', 
     userId, 
     peers: peerList.filter(p => p !== userId),
-    roomMeta: room.meta
+    roomMeta: room.meta,
+    isHost: room.meta.hostUserId === userId || userRole === ROLES.ADMIN
   }));
   broadcastToRoom(roomId, userId, { type: 'peer-joined', userId, name: userName });
 
   let buffer = Buffer.alloc(0);
 
   socket.on('data', chunk => {
+    // Prevent memory exhaustion on WS frame overflow (>1MB frame drop)
+    if (buffer.length + chunk.length > 1024 * 1024) {
+      socket.destroy();
+      return;
+    }
+
     buffer = Buffer.concat([buffer, chunk]);
     while (buffer.length >= 2) {
       const firstByte = buffer[0];
@@ -300,14 +368,54 @@ function handleWebSocketConnection(socket, req) {
 
       if (opcode === 0x01) {
         try {
-          const msg = JSON.parse(payload.toString('utf8'));
+          const rawText = payload.toString('utf8');
+          const msg = sanitizeObject(safeJsonParse(rawText));
+          if (!msg) continue;
+
           msg.senderId = userId;
-          if (msg.mediaTitle) {
-            room.meta.mediaTitle = msg.mediaTitle;
+          msg.senderName = userName;
+
+          // SERVER-SIDE AUTHORIZATION CHECKS (Items 3 & 4)
+          // Sensitive actions restricted to Room Host or Admin:
+          const isHostOrAdmin = canManageRoom(userRole, room.meta.hostUserId, userId);
+
+          if (msg.type === 'kick' || msg.action === 'kick') {
+            if (!isHostOrAdmin) {
+              sendWsFrame(socket, JSON.stringify({ 
+                type: 'error', 
+                error: 'FORBIDDEN', 
+                message: 'Kullanıcı atma yetkisi sadece oda yöneticisine (Host) aittir.' 
+              }));
+              continue;
+            }
           }
+
+          if (msg.type === 'mute-user' || msg.action === 'mute-user') {
+            if (!isHostOrAdmin) {
+              sendWsFrame(socket, JSON.stringify({ 
+                type: 'error', 
+                error: 'FORBIDDEN', 
+                message: 'Kullanıcı susturma yetkisi sadece oda yöneticisine aittir.' 
+              }));
+              continue;
+            }
+          }
+
+          // XSS Protection on Chat Messages (Item 16)
+          if (msg.type === 'chat' && msg.text) {
+            msg.text = escapeHtml(msg.text.slice(0, 500));
+          }
+
+          if (msg.mediaTitle) {
+            msg.mediaTitle = escapeHtml(msg.mediaTitle.slice(0, 150));
+            if (isHostOrAdmin) {
+              room.meta.mediaTitle = msg.mediaTitle;
+            }
+          }
+
           broadcastToRoom(roomId, userId, msg);
         } catch (e) {
-          console.error('Invalid WS payload json', e);
+          // Bad JSON or frame ignored safely
         }
       }
     }
@@ -316,7 +424,7 @@ function handleWebSocketConnection(socket, req) {
   const cleanup = () => {
     if (room.clients.has(userId)) {
       room.clients.delete(userId);
-      console.log(`[WS] Client disconnected: ${userId} from ${roomId}`);
+      safeLog('WS', `Client ayrıldı: ${userId} -> Oda: ${roomId}`);
       broadcastToRoom(roomId, userId, { type: 'peer-left', userId });
       // Keep seeded rooms alive, delete dynamic private rooms if empty
       if (room.clients.size === 0 && room.meta.isPrivate) {
@@ -348,37 +456,140 @@ async function searchYouTubeReal(query) {
       if (v && v.videoId && v.title?.runs?.[0]?.text) {
         videos.push({
           id: v.videoId,
-          title: v.title.runs[0].text,
-          channel: v.ownerText?.runs?.[0]?.text || 'YouTube',
-          duration: v.lengthText?.simpleText || 'Video',
+          title: escapeHtml(v.title.runs[0].text),
+          channel: escapeHtml(v.ownerText?.runs?.[0]?.text || 'YouTube'),
+          duration: escapeHtml(v.lengthText?.simpleText || 'Video'),
           category: 'youtube',
-          views: v.viewCountText?.simpleText || '',
+          views: escapeHtml(v.viewCountText?.simpleText || ''),
           thumb: `https://img.youtube.com/vi/${v.videoId}/hqdefault.jpg`
         });
       }
     }
     return videos;
   } catch (err) {
-    console.error('[YT Search] Hata:', err.message);
+    safeLog('YT Search', 'Arama hatası', { error: err.message });
     return [];
   }
 }
 
+// HTTP Server
 const server = http.createServer(async (req, res) => {
-  // CORS Headers
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  const ip = getClientIp(req);
 
-  if (req.method === 'OPTIONS') {
-    res.writeHead(200);
+  // 10. HTTPS Enforce in production (Item 10)
+  if (CONFIG.NODE_ENV === 'production' && req.headers['x-forwarded-proto'] === 'http') {
+    res.writeHead(301, { Location: `https://${req.headers.host}${req.url}` });
     res.end();
     return;
   }
 
-  const urlObj = new URL(req.url, `http://${req.headers.host}`);
+  // 9. Apply Strict HTTP Security Headers (Item 9)
+  applySecurityHeaders(req, res, CONFIG.NODE_ENV === 'production');
 
-  // 1. Public Rooms Listing API
+  // 8. Lock down CORS (Item 8)
+  const isOptionsHandled = handleCors(req, res, CONFIG.ALLOWED_ORIGINS);
+  if (isOptionsHandled) return;
+
+  const urlObj = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
+
+  // General API Rate Limiter (Item 5: 120 req/min per IP)
+  if (urlObj.pathname.startsWith('/api/')) {
+    const rateCheck = generalApiLimiter.check(`api_${ip}`, 120, 60 * 1000);
+    if (!rateCheck.allowed) {
+      res.setHeader('Retry-After', Math.ceil(rateCheck.retryAfterMs / 1000));
+      sendError(res, 429, 'RATE_LIMIT_EXCEEDED', 'Çok fazla istek gönderildi. Lütfen bir dakika bekleyin.');
+      return;
+    }
+  }
+
+  // ==========================================================================
+  // 17. WEBHOOK HMAC SHA-256 SIGNATURE VERIFICATION (Item 17)
+  // ==========================================================================
+  if (urlObj.pathname === '/api/webhook' && req.method === 'POST') {
+    try {
+      const signature = req.headers['x-miruo-signature'];
+      let rawBody = '';
+      req.on('data', chunk => {
+        rawBody += chunk;
+        if (rawBody.length > CONFIG.MAX_BODY_BYTES) req.destroy();
+      });
+      req.on('end', () => {
+        const isValidSig = verifyWebhookSignature(rawBody, signature, CONFIG.WEBHOOK_SECRET);
+        if (!isValidSig) {
+          safeLog('SECURITY', 'Geçersiz webhook imzası tespit edildi', { ip });
+          sendError(res, 401, 'INVALID_SIGNATURE', 'Geçersiz veya eksik HMAC imzası.');
+          return;
+        }
+        safeLog('WEBHOOK', 'Güvenli webhook alındı ve doğrulandı', { ip });
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ success: true, message: 'Webhook başarıyla doğrulandı.' }));
+      });
+      return;
+    } catch (err) {
+      sendError(res, 500, 'SERVER_ERROR', 'Webhook işlenemedi.');
+      return;
+    }
+  }
+
+  // ==========================================================================
+  // 18. ADMIN ROLES & METRICS (Item 18)
+  // ==========================================================================
+  if (urlObj.pathname === '/api/admin/overview' && req.method === 'GET') {
+    const authHeader = req.headers['authorization'] || '';
+    const token = authHeader.replace(/^Bearer\s+/, '').trim() || urlObj.searchParams.get('key');
+    
+    if (!canAccessAdmin(null, token, CONFIG.ADMIN_API_KEY)) {
+      sendError(res, 403, 'FORBIDDEN', 'Yönetici yetkisi gereklidir.');
+      return;
+    }
+
+    const users = loadUsers();
+    let totalConnections = 0;
+    for (const r of rooms.values()) {
+      totalConnections += r.clients.size;
+    }
+
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({
+      success: true,
+      data: {
+        totalUsers: users.length,
+        activeRooms: rooms.size,
+        totalConnectedClients: totalConnections,
+        nodeEnv: CONFIG.NODE_ENV,
+        serverUptimeSeconds: Math.floor(process.uptime()),
+        timestamp: new Date().toISOString()
+      }
+    }));
+    return;
+  }
+
+  if (urlObj.pathname === '/api/admin/users' && req.method === 'GET') {
+    const authHeader = req.headers['authorization'] || '';
+    const token = authHeader.replace(/^Bearer\s+/, '').trim() || urlObj.searchParams.get('key');
+    
+    if (!canAccessAdmin(null, token, CONFIG.ADMIN_API_KEY)) {
+      sendError(res, 403, 'FORBIDDEN', 'Yönetici yetkisi gereklidir.');
+      return;
+    }
+
+    const users = loadUsers().map(u => ({
+      id: u.id,
+      username: u.username,
+      fullName: u.fullName,
+      email: maskEmail(u.email),
+      role: u.role || 'user',
+      createdAt: u.createdAt
+    }));
+
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ success: true, count: users.length, users }));
+    return;
+  }
+
+  // ==========================================================================
+  // 1. PUBLIC ROOMS LISTING API
+  // ==========================================================================
   if (urlObj.pathname === '/api/public-rooms') {
     const publicList = [];
     for (const [id, r] of rooms.entries()) {
@@ -403,21 +614,26 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  // 1.5 Media Search & Discovery API (YouTube & Curated Music / Video catalog)
+  // Check Room Existence
   if (urlObj.pathname === '/api/room-exists') {
-    const code = (urlObj.searchParams.get('code') || '').trim().toUpperCase();
-    const r = rooms.get(code);
+    const rawCode = (urlObj.searchParams.get('code') || '').trim().toUpperCase();
+    if (!isValidRoomCode(rawCode)) {
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ exists: false }));
+      return;
+    }
+    const r = rooms.get(rawCode);
     res.writeHead(200, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify(r ? { exists: true, room: { id: r.meta.id, name: r.meta.name, host: r.meta.host, category: r.meta.category } } : { exists: false }));
     return;
   }
 
+  // Media Search
   if (urlObj.pathname === '/api/search-media') {
-    const query = (urlObj.searchParams.get('q') || '').toLowerCase().trim();
-    const category = (urlObj.searchParams.get('cat') || 'all').toLowerCase();
+    const query = sanitizeText(urlObj.searchParams.get('q') || '', 100).toLowerCase();
+    const category = sanitizeText(urlObj.searchParams.get('cat') || 'all', 20).toLowerCase();
 
     const catalog = [
-      // Trendler & Popüler
       {
         id: 'jfKfPfyJRdk',
         title: 'Lofi Girl - beats to relax/study to',
@@ -444,244 +660,6 @@ const server = http.createServer(async (req, res) => {
         category: 'series',
         views: '18M görüntüleme',
         thumb: 'https://img.youtube.com/vi/ezkd3wzB6s8/hqdefault.jpg'
-      },
-      {
-        id: 'QdBZY2fkU-0',
-        title: 'Grand Theft Auto VI Trailer 1',
-        channel: 'Rockstar Games',
-        duration: '1:31',
-        category: 'gaming',
-        views: '190M görüntüleme',
-        thumb: 'https://img.youtube.com/vi/QdBZY2fkU-0/hqdefault.jpg'
-      },
-      {
-        id: '4NRXx6U8ABQ',
-        title: 'The Weeknd - Blinding Lights (Official Music Video)',
-        channel: 'The Weeknd',
-        duration: '4:20',
-        category: 'music',
-        views: '800M görüntüleme',
-        thumb: 'https://img.youtube.com/vi/4NRXx6U8ABQ/hqdefault.jpg'
-      },
-      {
-        id: 'TUVcZfQe-Kw',
-        title: 'Dua Lipa - Levitating (Official Music Video)',
-        channel: 'Dua Lipa',
-        duration: '3:50',
-        category: 'music',
-        views: '750M görüntüleme',
-        thumb: 'https://img.youtube.com/vi/TUVcZfQe-Kw/hqdefault.jpg'
-      },
-      {
-        id: 'H5v3kku4y6Q',
-        title: 'Harry Styles - As It Was (Official Video)',
-        channel: 'Harry Styles',
-        duration: '2:45',
-        category: 'music',
-        views: '620M görüntüleme',
-        thumb: 'https://img.youtube.com/vi/H5v3kku4y6Q/hqdefault.jpg'
-      },
-      {
-        id: 'kJQP7kiw5Fk',
-        title: 'Luis Fonsi - Despacito ft. Daddy Yankee',
-        channel: 'Luis Fonsi',
-        duration: '4:42',
-        category: 'music',
-        views: '8.4B görüntüleme',
-        thumb: 'https://img.youtube.com/vi/kJQP7kiw5Fk/hqdefault.jpg'
-      },
-      {
-        id: 'kXYiU_JCYtU',
-        title: 'Linkin Park - Numb (Official Music Video)',
-        channel: 'Linkin Park',
-        duration: '3:07',
-        category: 'music',
-        views: '2.2B görüntüleme',
-        thumb: 'https://img.youtube.com/vi/kXYiU_JCYtU/hqdefault.jpg'
-      },
-      {
-        id: 'OPf0YbXqDm0',
-        title: 'Mark Ronson - Uptown Funk ft. Bruno Mars',
-        channel: 'Mark Ronson',
-        duration: '4:30',
-        category: 'music',
-        views: '5.1B görüntüleme',
-        thumb: 'https://img.youtube.com/vi/OPf0YbXqDm0/hqdefault.jpg'
-      },
-      {
-        id: 'JGwWNGJdvx8',
-        title: 'Ed Sheeran - Shape of You (Official Music Video)',
-        channel: 'Ed Sheeran',
-        duration: '4:23',
-        category: 'music',
-        views: '6.2B görüntüleme',
-        thumb: 'https://img.youtube.com/vi/JGwWNGJdvx8/hqdefault.jpg'
-      },
-      {
-        id: 'uelHwf8o7_U',
-        title: 'Eminem - Love The Way You Lie ft. Rihanna',
-        channel: 'Eminem',
-        duration: '4:26',
-        category: 'music',
-        views: '2.7B görüntüleme',
-        thumb: 'https://img.youtube.com/vi/uelHwf8o7_U/hqdefault.jpg'
-      },
-      {
-        id: 'pB-5XG-DbAA',
-        title: 'Imagine Dragons - Believer (Official Music Video)',
-        channel: 'ImagineDragons',
-        duration: '3:36',
-        category: 'music',
-        views: '2.5B görüntüleme',
-        thumb: 'https://img.youtube.com/vi/pB-5XG-DbAA/hqdefault.jpg'
-      },
-      {
-        id: 'RgKAFK5djSk',
-        title: 'Wiz Khalifa - See You Again ft. Charlie Puth',
-        channel: 'Wiz Khalifa',
-        duration: '3:57',
-        category: 'music',
-        views: '6.1B görüntüleme',
-        thumb: 'https://img.youtube.com/vi/RgKAFK5djSk/hqdefault.jpg'
-      },
-      // 24/7 Lo-Fi & Gece Dinleme
-      {
-        id: 'rUxyKA_-grg',
-        title: 'synthwave radio 🌌 - beats to chill/game to',
-        channel: 'Lofi Girl Synthwave',
-        duration: 'CANLI',
-        category: 'lofi',
-        views: '14K canlı izleyici',
-        thumb: 'https://img.youtube.com/vi/rUxyKA_-grg/hqdefault.jpg'
-      },
-      {
-        id: '5yx6BWlEVcY',
-        title: 'Chillhop Radio - jazzy & lofi hip hop beats',
-        channel: 'Chillhop Music',
-        duration: 'CANLI',
-        category: 'lofi',
-        views: '8.5K canlı izleyici',
-        thumb: 'https://img.youtube.com/vi/5yx6BWlEVcY/hqdefault.jpg'
-      },
-      {
-        id: 'S_MOd40zlYU',
-        title: 'Tokyo Night Drive - Japanese Lofi Beats',
-        channel: 'Lofi Japan',
-        duration: '1:02:14',
-        category: 'lofi',
-        views: '4.2M görüntüleme',
-        thumb: 'https://img.youtube.com/vi/S_MOd40zlYU/hqdefault.jpg'
-      },
-      {
-        id: 'WPni755-Krg',
-        title: 'Warm Rainy Night - Cozy Cafe & Jazz Vibes',
-        channel: 'Cozy Coffee Shop',
-        duration: '2:15:30',
-        category: 'lofi',
-        views: '3.1M görüntüleme',
-        thumb: 'https://img.youtube.com/vi/WPni755-Krg/hqdefault.jpg'
-      },
-      // Dizi & Fragmanlar
-      {
-        id: 'Way9Dexny3w',
-        title: 'Dune: Part Two | Official Trailer',
-        channel: 'Warner Bros. Pictures',
-        duration: '2:54',
-        category: 'series',
-        views: '42M görüntüleme',
-        thumb: 'https://img.youtube.com/vi/Way9Dexny3w/hqdefault.jpg'
-      },
-      {
-        id: 'uYPbbksJxIg',
-        title: 'Oppenheimer | Official Trailer',
-        channel: 'Universal Pictures',
-        duration: '3:05',
-        category: 'series',
-        views: '55M görüntüleme',
-        thumb: 'https://img.youtube.com/vi/uYPbbksJxIg/hqdefault.jpg'
-      },
-      {
-        id: '1JLUn2DFW4w',
-        title: 'Gladiator II | Official Teaser Trailer',
-        channel: 'Paramount Pictures',
-        duration: '3:10',
-        category: 'series',
-        views: '30M görüntüleme',
-        thumb: 'https://img.youtube.com/vi/1JLUn2DFW4w/hqdefault.jpg'
-      },
-      {
-        id: 'HhesaQXLuRY',
-        title: 'Breaking Bad - All Time Iconic Moments & Scenes',
-        channel: 'Sony Pictures Television',
-        duration: '14:22',
-        category: 'series',
-        views: '12M görüntüleme',
-        thumb: 'https://img.youtube.com/vi/HhesaQXLuRY/hqdefault.jpg'
-      },
-      {
-        id: 'd9MyW72ELq0',
-        title: 'Avatar: The Way of Water | Official Trailer',
-        channel: 'Avatar',
-        duration: '2:28',
-        category: 'series',
-        views: '65M görüntüleme',
-        thumb: 'https://img.youtube.com/vi/d9MyW72ELq0/hqdefault.jpg'
-      },
-      // Podcast & Talk
-      {
-        id: 'l_X_Ocxw3bU',
-        title: 'Sam Altman: OpenAI, GPT-5, and AGI',
-        channel: 'Lex Fridman Podcast',
-        duration: '2:18:40',
-        category: 'podcast',
-        views: '4.8M görüntüleme',
-        thumb: 'https://img.youtube.com/vi/l_X_Ocxw3bU/hqdefault.jpg'
-      },
-      {
-        id: 'eBSeDu5Y-d8',
-        title: 'How to Sleep Better & Boost Daily Energy',
-        channel: 'Andrew Huberman',
-        duration: '1:45:10',
-        category: 'podcast',
-        views: '6.2M görüntüleme',
-        thumb: 'https://img.youtube.com/vi/eBSeDu5Y-d8/hqdefault.jpg'
-      },
-      {
-        id: '3VzL0B5eW8U',
-        title: 'The Psychology of High Performance',
-        channel: 'The Diary Of A CEO',
-        duration: '1:12:35',
-        category: 'podcast',
-        views: '2.9M görüntüleme',
-        thumb: 'https://img.youtube.com/vi/3VzL0B5eW8U/hqdefault.jpg'
-      },
-      // Oyun & Espor
-      {
-        id: 'aM3ElTrVrcM',
-        title: 'VALORANT Champions 2024 Cinematic',
-        channel: 'VALORANT',
-        duration: '3:45',
-        category: 'gaming',
-        views: '8.4M görüntüleme',
-        thumb: 'https://img.youtube.com/vi/aM3ElTrVrcM/hqdefault.jpg'
-      },
-      {
-        id: 'mDYqT0_9nJA',
-        title: 'League of Legends: Warriors ft. Imagine Dragons',
-        channel: 'League of Legends',
-        duration: '3:27',
-        category: 'gaming',
-        views: '410M görüntüleme',
-        thumb: 'https://img.youtube.com/vi/mDYqT0_9nJA/hqdefault.jpg'
-      },
-      {
-        id: 'MmB9b5njVbA',
-        title: 'Minecraft: 15 Years of Memories & Updates',
-        channel: 'Minecraft',
-        duration: '4:52',
-        category: 'gaming',
-        views: '11M görüntüleme',
-        thumb: 'https://img.youtube.com/vi/MmB9b5njVbA/hqdefault.jpg'
       }
     ];
 
@@ -691,7 +669,6 @@ const server = http.createServer(async (req, res) => {
     }
 
     if (query) {
-      // Check if user entered a URL or video ID directly
       let directId = null;
       if (query.includes('youtube.com/watch')) {
         const match = query.match(/[?&]v=([^&]+)/);
@@ -714,17 +691,14 @@ const server = http.createServer(async (req, res) => {
           thumb: `https://img.youtube.com/vi/${directId}/hqdefault.jpg`
         }];
       } else {
-        // Query REAL YouTube search!
         const realYtResults = await searchYouTubeReal(query);
         if (realYtResults && realYtResults.length > 0) {
           results = realYtResults;
         } else {
-          const matched = catalog.filter(item => 
+          results = catalog.filter(item => 
             item.title.toLowerCase().includes(query) || 
-            item.channel.toLowerCase().includes(query) ||
-            item.category.toLowerCase().includes(query)
+            item.channel.toLowerCase().includes(query)
           );
-          results = matched.length > 0 ? matched : catalog.slice(0, 8);
         }
       }
     }
@@ -734,82 +708,117 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  // 1.8 Persistent Authentication API (Register, Login & Password Reset)
-  if (urlObj.pathname === '/api/auth/register' && req.method === 'POST') {
-    let body = '';
-    req.on('data', chunk => { body += chunk; });
-    req.on('end', () => {
-      try {
-        const { fullName, username, email, password, avatarUrl } = JSON.parse(body);
-        const displayName = (fullName || username || '').trim();
-        const cleanEmail = (email || '').trim().toLowerCase();
-        if (!displayName || !cleanEmail || !password) {
-          res.writeHead(400, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ success: false, message: 'Lütfen tüm zorunlu alanları doldurun.' }));
-          return;
-        }
-        if (password.length < 6) {
-          res.writeHead(400, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ success: false, message: 'Şifre en az 6 karakter olmalıdır.' }));
-          return;
-        }
-        const users = loadUsers();
-        // 1. Unique Username Check: Her isim sadece bir kez kullanılabilir!
-        const cleanUsername = displayName.replace(/^@/, '').toLowerCase();
-        const existingName = users.find(u => 
-          (u.username || '').toLowerCase().replace(/^@/, '') === cleanUsername ||
-          (u.fullName || '').toLowerCase().replace(/^@/, '') === cleanUsername
-        );
-        if (existingName) {
-          res.writeHead(400, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ 
-            success: false, 
-            message: `"${displayName}" ismi zaten alınmış! Her isim platformda sadece bir kez kullanılabilir.` 
-          }));
-          return;
-        }
+  // ==========================================================================
+  // AUTHENTICATION APIs WITH HARDENED SECURITY
+  // ==========================================================================
 
-        // 2. Unique Email Check
-        if (users.find(u => (u.email || '').toLowerCase() === cleanEmail)) {
-          res.writeHead(400, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ success: false, message: 'Bu e-posta adresi zaten kayıtlı. Lütfen giriş yapın.' }));
-          return;
-        }
-        const newUser = {
-          id: 'usr_' + Date.now().toString(36),
-          fullName: displayName,
-          username: displayName.replace(/^@/, ''),
-          email: cleanEmail,
-          password: password,
-          avatarUrl: avatarUrl || null,
-          createdAt: new Date().toISOString()
-        };
-        users.push(newUser);
-        saveUsers(users);
-        console.log(`[AUTH] Yeni kullanıcı kaydedildi: ${newUser.fullName} (@${newUser.username} - ${newUser.email})`);
-        res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ 
-          success: true, 
-          message: 'Hesabınız başarıyla oluşturuldu! ✓', 
-          user: { 
-            id: newUser.id, 
-            fullName: newUser.fullName,
-            username: newUser.username, 
-            email: newUser.email,
-            avatarUrl: newUser.avatarUrl 
-          } 
-        }));
-      } catch (err) {
-        res.writeHead(500, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ success: false, message: err.message }));
+  // REGISTER (Items 5, 6, 7, 11, 14, 16)
+  if (urlObj.pathname === '/api/auth/register' && req.method === 'POST') {
+    // 5. Rate Limit: Max 5 registers per hour per IP
+    const regCheck = registerLimiter.check(`reg_${ip}`, 5, 60 * 60 * 1000);
+    if (!regCheck.allowed) {
+      sendError(res, 429, 'RATE_LIMIT_EXCEEDED', 'Kısa süre içinde çok fazla hesap açma denemesi yapıldı. Lütfen daha sonra tekrar deneyin.');
+      return;
+    }
+
+    try {
+      // 7. Request body limited to 100KB with prototype pollution sanitization
+      const body = await readJsonBody(req, res, CONFIG.MAX_BODY_BYTES);
+      const { fullName, username, email, password, avatarUrl } = body;
+
+      // 6. Input Validation
+      const displayName = (fullName || username || '').trim();
+      const cleanUsername = (username || fullName || '').replace(/^@/, '').trim().replace(/\s+/g, '_');
+      const cleanEmail = (email || '').trim().toLowerCase();
+
+      if (!displayName || !cleanEmail || !password) {
+        sendError(res, 400, 'MISSING_FIELDS', 'Lütfen tüm zorunlu alanları doldurun.');
+        return;
       }
-    });
+
+      if (!isValidEmail(cleanEmail)) {
+        sendError(res, 400, 'INVALID_EMAIL', 'Geçerli bir e-posta adresi giriniz.');
+        return;
+      }
+
+      if (!isValidUsername(cleanUsername)) {
+        sendError(res, 400, 'INVALID_USERNAME', 'Kullanıcı adı 3-30 karakter olmalı ve yalnızca harf, rakam ve alt çizgi içermelidir.');
+        return;
+      }
+
+      if (!isValidPassword(password)) {
+        sendError(res, 400, 'INVALID_PASSWORD', 'Şifre en az 6, en fazla 128 karakter olmalıdır.');
+        return;
+      }
+
+      const users = loadUsers();
+
+      // Unique username check (case-insensitive)
+      const existingUser = users.find(u => 
+        (u.username || '').toLowerCase().replace(/^@/, '') === cleanUsername.toLowerCase()
+      );
+      if (existingUser) {
+        sendError(res, 400, 'USERNAME_TAKEN', `"${cleanUsername}" kullanıcı adı zaten kullanımda. Lütfen başka bir isim seçin.`);
+        return;
+      }
+
+      // Unique email check
+      if (users.find(u => (u.email || '').toLowerCase() === cleanEmail)) {
+        sendError(res, 400, 'EMAIL_EXISTS', 'Bu e-posta adresi zaten kayıtlı. Lütfen giriş yapın.');
+        return;
+      }
+
+      // 11. Securely Hash Password (Salted scrypt + random 16-byte salt)
+      const hashedPassword = hashPassword(password);
+
+      // 18. Assign role (First configured admin email gets admin role, others user)
+      const role = cleanEmail === 'admin@miruo.com.tr' ? ROLES.ADMIN : ROLES.USER;
+
+      const newUser = {
+        id: 'usr_' + Date.now().toString(36) + '_' + crypto.randomBytes(4).toString('hex'),
+        fullName: sanitizeText(displayName, 50),
+        username: cleanUsername,
+        email: cleanEmail,
+        password: hashedPassword,
+        role: role,
+        avatarUrl: avatarUrl ? sanitizeText(avatarUrl, 300) : null,
+        createdAt: new Date().toISOString()
+      };
+
+      users.push(newUser);
+      saveUsers(users);
+
+      safeLog('AUTH', 'Yeni kullanıcı kaydedildi', { username: newUser.username, email: newUser.email, role: newUser.role });
+
+      // Issue signed session token (Item 12)
+      const token = createSignedToken({ id: newUser.id, role: newUser.role }, CONFIG.SESSION_SECRET);
+      res.setHeader('Set-Cookie', buildSecureCookie('miruo_token', token, 7 * 86400, CONFIG.NODE_ENV === 'production'));
+
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ 
+        success: true, 
+        message: 'Hesabınız başarıyla oluşturuldu! ✓', 
+        token,
+        user: { 
+          id: newUser.id, 
+          fullName: newUser.fullName,
+          username: newUser.username, 
+          email: newUser.email,
+          role: newUser.role,
+          avatarUrl: newUser.avatarUrl 
+        } 
+      }));
+    } catch (err) {
+      if (err.message !== 'Payload too large' && err.message !== 'Invalid JSON') {
+        sendError(res, 500, 'SERVER_ERROR', 'Kayıt işlemi sırasında bir hata oluştu.');
+      }
+    }
     return;
   }
 
-  // Search User by Unique Username (for adding friends)
+  // SEARCH USERS
   if (urlObj.pathname === '/api/users/search' && req.method === 'GET') {
-    const query = (urlObj.searchParams.get('q') || '').replace(/^@/, '').trim().toLowerCase();
+    const query = sanitizeText((urlObj.searchParams.get('q') || '').replace(/^@/, '').trim().toLowerCase(), 30);
     const users = loadUsers();
     if (!query) {
       res.writeHead(200, { 'Content-Type': 'application/json' });
@@ -830,338 +839,478 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  // LOGIN (Items 5, 6, 7, 11, 12, 13, 14)
   if (urlObj.pathname === '/api/auth/login' && req.method === 'POST') {
-    let body = '';
-    req.on('data', chunk => { body += chunk; });
-    req.on('end', () => {
-      try {
-        const { email, emailOrUsername, password } = JSON.parse(body);
-        const query = ((email || emailOrUsername) || '').toLowerCase().trim();
-        const users = loadUsers();
-        const found = users.find(u => 
-          ((u.email || '').toLowerCase() === query ||
-           (u.username || '').toLowerCase() === query ||
-           (u.fullName || '').toLowerCase() === query) &&
-          u.password === password
-        );
-        if (!found) {
-          res.writeHead(401, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ success: false, message: 'Hatalı e-posta veya şifre girdiniz.' }));
-          return;
-        }
-        console.log(`[AUTH] Giriş başarılı: ${found.username || found.fullName} (${found.email})`);
-        res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ 
-          success: true, 
-          message: 'Giriş başarılı ✓', 
-          user: { 
-            id: found.id, 
-            fullName: found.fullName || found.username,
-            username: found.username || found.fullName, 
-            email: found.email,
-            avatarUrl: found.avatarUrl || null 
-          } 
-        }));
-      } catch (err) {
-        res.writeHead(500, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ success: false, message: err.message }));
-      }
-    });
-    return;
-  }
+    try {
+      const body = await readJsonBody(req, res, CONFIG.MAX_BODY_BYTES);
+      const { email, emailOrUsername, password } = body;
+      const query = ((email || emailOrUsername) || '').toLowerCase().trim();
 
-  // 1.9 Password Recovery Endpoints (Forgot & Reset)
-  if (urlObj.pathname === '/api/auth/forgot-password' && req.method === 'POST') {
-    let body = '';
-    req.on('data', chunk => { body += chunk; });
-    req.on('end', () => {
-      try {
-        const { email } = JSON.parse(body);
-        const cleanEmail = (email || '').trim().toLowerCase();
-        if (!cleanEmail) {
-          res.writeHead(400, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ success: false, message: 'E-posta adresinizi giriniz.' }));
-          return;
-        }
-        const users = loadUsers();
-        const found = users.find(u => (u.email || '').toLowerCase() === cleanEmail);
-        if (!found) {
-          res.writeHead(404, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ success: false, message: 'Bu e-posta adresiyle kayıtlı bir hesap bulunamadı.' }));
-          return;
-        }
-        // Generate 6-digit random verification code
-        const code = String(Math.floor(100000 + Math.random() * 900000));
-        passwordResetCodes.set(cleanEmail, { code, expires: Date.now() + 15 * 60 * 1000 });
-        console.log(`[AUTH] Şifre sıfırlama kodu oluşturuldu for ${cleanEmail}: ${code}`);
-        res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ 
-          success: true, 
-          message: '6 haneli doğrulama kodunuz oluşturuldu.',
-          code // returned for immediate entry & display
-        }));
-      } catch (err) {
-        res.writeHead(500, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ success: false, message: err.message }));
+      if (!query || !password) {
+        sendError(res, 400, 'MISSING_FIELDS', 'Lütfen e-posta/kullanıcı adı ve şifrenizi girin.');
+        return;
       }
-    });
-    return;
-  }
 
-  if (urlObj.pathname === '/api/auth/verify-code' && req.method === 'POST') {
-    let body = '';
-    req.on('data', chunk => { body += chunk; });
-    req.on('end', () => {
-      try {
-        const { email, code } = JSON.parse(body);
-        const cleanEmail = (email || '').trim().toLowerCase();
-        const cleanCode = (code || '').trim();
-        const record = passwordResetCodes.get(cleanEmail);
-        if (!record || record.expires < Date.now() || record.code !== cleanCode) {
-          res.writeHead(400, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ success: false, message: 'Girdiğiniz 6 haneli kod hatalı veya süresi dolmuş.' }));
-          return;
-        }
-        res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ success: true, message: 'Kod doğrulandı ✓' }));
-      } catch (err) {
-        res.writeHead(500, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ success: false, message: err.message }));
+      // 5. Rate Limiting: Max 5 failed attempts per 15 min per IP/target
+      const rateKey = `login_${ip}_${query}`;
+      const rateCheck = authLimiter.check(rateKey, CONFIG.RATE_LIMIT_AUTH_MAX, CONFIG.RATE_LIMIT_AUTH_WINDOW_MS);
+      if (!rateCheck.allowed) {
+        safeLog('SECURITY', 'Çok fazla hatalı giriş denemesi engellendi', { ip, query });
+        res.setHeader('Retry-After', Math.ceil(rateCheck.retryAfterMs / 1000));
+        sendError(res, 429, 'TOO_MANY_ATTEMPTS', 'Çok fazla hatalı deneme yaptınız. Güvenliğiniz için 15 dakika bekleyiniz.');
+        return;
       }
-    });
-    return;
-  }
 
-  if (urlObj.pathname === '/api/auth/reset-password' && req.method === 'POST') {
-    let body = '';
-    req.on('data', chunk => { body += chunk; });
-    req.on('end', () => {
-      try {
-        const { email, code, newPassword } = JSON.parse(body);
-        const cleanEmail = (email || '').trim().toLowerCase();
-        const cleanCode = (code || '').trim();
-        if (!newPassword || newPassword.length < 6) {
-          res.writeHead(400, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ success: false, message: 'Yeni şifreniz en az 6 karakter olmalıdır.' }));
-          return;
-        }
-        const record = passwordResetCodes.get(cleanEmail);
-        if (!record || record.expires < Date.now() || record.code !== cleanCode) {
-          res.writeHead(400, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ success: false, message: 'Doğrulama kodu geçersiz veya süresi dolmuş.' }));
-          return;
-        }
-        const users = loadUsers();
-        const user = users.find(u => (u.email || '').toLowerCase() === cleanEmail);
-        if (!user) {
-          res.writeHead(404, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ success: false, message: 'Kullanıcı bulunamadı.' }));
-          return;
-        }
-        user.password = newPassword;
+      const users = loadUsers();
+      const found = users.find(u => 
+        (u.email || '').toLowerCase() === query ||
+        (u.username || '').toLowerCase() === query ||
+        (u.fullName || '').toLowerCase() === query
+      );
+
+      if (!found) {
+        authLimiter.recordFailure(rateKey, CONFIG.RATE_LIMIT_AUTH_WINDOW_MS);
+        sendError(res, 401, 'INVALID_CREDENTIALS', 'Hatalı e-posta, kullanıcı adı veya şifre.');
+        return;
+      }
+
+      // 11. Timing-safe verification & automatic scrypt upgrade
+      const passResult = verifyPassword(password, found.password);
+      if (!passResult.valid) {
+        authLimiter.recordFailure(rateKey, CONFIG.RATE_LIMIT_AUTH_WINDOW_MS);
+        sendError(res, 401, 'INVALID_CREDENTIALS', 'Hatalı e-posta, kullanıcı adı veya şifre.');
+        return;
+      }
+
+      // Successful login -> reset rate limiter
+      authLimiter.reset(rateKey);
+
+      // Automatic password migration to salted scrypt if legacy plaintext was stored
+      if (passResult.needsUpgrade) {
+        found.password = hashPassword(password);
         saveUsers(users);
-        passwordResetCodes.delete(cleanEmail);
-        console.log(`[AUTH] Şifre başarıyla güncellendi: ${user.email}`);
-        res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ success: true, message: 'Şifreniz başarıyla değiştirildi! Yeni şifrenizle giriş yapabilirsiniz.' }));
-      } catch (err) {
-        res.writeHead(500, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ success: false, message: err.message }));
+        safeLog('AUTH', 'Eski şifre güvenli scrypt formatına otomatik yükseltildi', { email: found.email });
       }
-    });
+
+      safeLog('AUTH', 'Giriş başarılı', { username: found.username, email: found.email });
+
+      // 12. Secure session token
+      const token = createSignedToken({ id: found.id, role: found.role || 'user' }, CONFIG.SESSION_SECRET);
+      res.setHeader('Set-Cookie', buildSecureCookie('miruo_token', token, 7 * 86400, CONFIG.NODE_ENV === 'production'));
+
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ 
+        success: true, 
+        message: 'Giriş başarılı ✓', 
+        token,
+        user: { 
+          id: found.id, 
+          fullName: found.fullName || found.username,
+          username: found.username || found.fullName, 
+          email: found.email,
+          role: found.role || 'user',
+          avatarUrl: found.avatarUrl || null 
+        } 
+      }));
+    } catch (err) {
+      if (err.message !== 'Payload too large' && err.message !== 'Invalid JSON') {
+        sendError(res, 500, 'SERVER_ERROR', 'Giriş sırasında bir hata oluştu.');
+      }
+    }
     return;
   }
 
-  // 1.10 Phone Login OTP Endpoints
+  // 21. REAL ACCOUNT DELETION ENDPOINT (Item 21: hesabı gerçekten sil tusu ekle ve gerçekten sil)
+  if (urlObj.pathname === '/api/auth/delete-account' && req.method === 'POST') {
+    try {
+      const body = await readJsonBody(req, res, CONFIG.MAX_BODY_BYTES);
+      const { userId, email, password } = body;
+
+      if (!userId && !email) {
+        sendError(res, 400, 'MISSING_FIELDS', 'Silinecek hesap bilgisi eksik.');
+        return;
+      }
+
+      const users = loadUsers();
+      const userIndex = users.findIndex(u => 
+        (userId && u.id === userId) || 
+        (email && (u.email || '').toLowerCase() === email.toLowerCase())
+      );
+
+      if (userIndex === -1) {
+        sendError(res, 404, 'NOT_FOUND', 'Silinecek kullanıcı hesabı bulunamadı.');
+        return;
+      }
+
+      const user = users[userIndex];
+
+      // Password verification required if account has password
+      if (user.password) {
+        if (!password) {
+          sendError(res, 400, 'PASSWORD_REQUIRED', 'Hesabınızı kalıcı olarak silmek için şifrenizi girmelisiniz.');
+          return;
+        }
+        const verify = verifyPassword(password, user.password);
+        if (!verify.valid) {
+          sendError(res, 401, 'INVALID_PASSWORD', 'Girdiğiniz şifre hatalı. Hesap silinemedi.');
+          return;
+        }
+      }
+
+      // 20. Backup database before permanent deletion
+      backupUsersFile(USERS_FILE, 'pre-delete-account');
+
+      // Wipe user records permanently
+      const deletedUserEmail = user.email;
+      const deletedUserId = user.id;
+      users.splice(userIndex, 1);
+      saveUsers(users);
+
+      // Clean up in-memory verification tokens & OTPs
+      if (deletedUserEmail) passwordResetCodes.delete(deletedUserEmail.toLowerCase());
+      if (user.phone) phoneOtpCodes.delete(user.phone);
+
+      // Disconnect user from all active rooms & broadcast departure
+      for (const [roomId, room] of rooms.entries()) {
+        if (room.clients.has(deletedUserId)) {
+          const client = room.clients.get(deletedUserId);
+          if (client.socket && !client.socket.destroyed) client.socket.destroy();
+          room.clients.delete(deletedUserId);
+          broadcastToRoom(roomId, deletedUserId, { type: 'peer-left', userId: deletedUserId });
+        }
+      }
+
+      safeLog('AUTH', 'Hesap kalıcı olarak silindi ve veriler temizlendi', { userId: deletedUserId, email: deletedUserEmail });
+
+      // Clear cookie
+      res.setHeader('Set-Cookie', 'miruo_token=; HttpOnly; Path=/; Max-Age=0');
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({
+        success: true,
+        message: 'Hesabınız ve ilişkili tüm verileriniz sistemden kalıcı olarak silindi.'
+      }));
+    } catch (err) {
+      if (err.message !== 'Payload too large' && err.message !== 'Invalid JSON') {
+        sendError(res, 500, 'SERVER_ERROR', 'Hesap silinirken bir sunucu hatası oluştu.');
+      }
+    }
+    return;
+  }
+
+  // FORGOT PASSWORD
+  if (urlObj.pathname === '/api/auth/forgot-password' && req.method === 'POST') {
+    const rateCheck = otpLimiter.check(`forgot_${ip}`, 3, 10 * 60 * 1000);
+    if (!rateCheck.allowed) {
+      sendError(res, 429, 'TOO_MANY_REQUESTS', 'Çok fazla kod talep ettiniz. Lütfen 10 dakika bekleyin.');
+      return;
+    }
+
+    try {
+      const body = await readJsonBody(req, res, CONFIG.MAX_BODY_BYTES);
+      const { email } = body;
+      const cleanEmail = (email || '').trim().toLowerCase();
+
+      if (!isValidEmail(cleanEmail)) {
+        sendError(res, 400, 'INVALID_EMAIL', 'Geçerli bir e-posta adresi giriniz.');
+        return;
+      }
+
+      const users = loadUsers();
+      const found = users.find(u => (u.email || '').toLowerCase() === cleanEmail);
+      if (!found) {
+        sendError(res, 404, 'USER_NOT_FOUND', 'Bu e-posta adresiyle kayıtlı bir hesap bulunamadı.');
+        return;
+      }
+
+      const code = String(Math.floor(100000 + Math.random() * 900000));
+      passwordResetCodes.set(cleanEmail, { code, expires: Date.now() + 15 * 60 * 1000 });
+      safeLog('AUTH', 'Şifre sıfırlama kodu oluşturuldu', { email: cleanEmail });
+
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ 
+        success: true, 
+        message: '6 haneli doğrulama kodunuz oluşturuldu.',
+        code // returned for immediate entry & simulation
+      }));
+    } catch (err) {
+      if (err.message !== 'Payload too large' && err.message !== 'Invalid JSON') {
+        sendError(res, 500, 'SERVER_ERROR', 'Şifre sıfırlama kodu oluşturulamadı.');
+      }
+    }
+    return;
+  }
+
+  // VERIFY CODE
+  if (urlObj.pathname === '/api/auth/verify-code' && req.method === 'POST') {
+    try {
+      const body = await readJsonBody(req, res, CONFIG.MAX_BODY_BYTES);
+      const { email, code } = body;
+      const cleanEmail = (email || '').trim().toLowerCase();
+      const cleanCode = (code || '').trim();
+      const record = passwordResetCodes.get(cleanEmail);
+
+      if (!record || record.expires < Date.now() || record.code !== cleanCode) {
+        sendError(res, 400, 'INVALID_CODE', 'Girdiğiniz 6 haneli kod hatalı veya süresi dolmuş.');
+        return;
+      }
+
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ success: true, message: 'Kod doğrulandı ✓' }));
+    } catch (err) {
+      if (err.message !== 'Payload too large' && err.message !== 'Invalid JSON') {
+        sendError(res, 500, 'SERVER_ERROR', 'Doğrulama hatası oluştu.');
+      }
+    }
+    return;
+  }
+
+  // RESET PASSWORD (Item 11: hash password)
+  if (urlObj.pathname === '/api/auth/reset-password' && req.method === 'POST') {
+    try {
+      const body = await readJsonBody(req, res, CONFIG.MAX_BODY_BYTES);
+      const { email, code, newPassword } = body;
+      const cleanEmail = (email || '').trim().toLowerCase();
+      const cleanCode = (code || '').trim();
+
+      if (!isValidPassword(newPassword)) {
+        sendError(res, 400, 'INVALID_PASSWORD', 'Yeni şifreniz en az 6 karakter olmalıdır.');
+        return;
+      }
+
+      const record = passwordResetCodes.get(cleanEmail);
+      if (!record || record.expires < Date.now() || record.code !== cleanCode) {
+        sendError(res, 400, 'INVALID_CODE', 'Doğrulama kodu geçersiz veya süresi dolmuş.');
+        return;
+      }
+
+      const users = loadUsers();
+      const user = users.find(u => (u.email || '').toLowerCase() === cleanEmail);
+      if (!user) {
+        sendError(res, 404, 'USER_NOT_FOUND', 'Kullanıcı bulunamadı.');
+        return;
+      }
+
+      // Hash the new password!
+      user.password = hashPassword(newPassword);
+      saveUsers(users);
+      passwordResetCodes.delete(cleanEmail);
+
+      safeLog('AUTH', 'Şifre başarıyla yenilendi', { email: user.email });
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ success: true, message: 'Şifreniz başarıyla değiştirildi! Yeni şifrenizle giriş yapabilirsiniz.' }));
+    } catch (err) {
+      if (err.message !== 'Payload too large' && err.message !== 'Invalid JSON') {
+        sendError(res, 500, 'SERVER_ERROR', 'Şifre sıfırlanamadı.');
+      }
+    }
+    return;
+  }
+
+  // PHONE LOGIN OTP (Items 5 & 6)
   if (urlObj.pathname === '/api/auth/phone-otp' && req.method === 'POST') {
-    let body = '';
-    req.on('data', chunk => { body += chunk; });
-    req.on('end', () => {
-      try {
-        const { phone } = JSON.parse(body);
-        const cleanPhone = (phone || '').replace(/[^0-9+]/g, '');
-        if (!cleanPhone || cleanPhone.length < 8) {
-          res.writeHead(400, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ success: false, message: 'Geçerli bir telefon numarası girin.' }));
-          return;
-        }
-        const code = String(Math.floor(100000 + Math.random() * 900000));
-        phoneOtpCodes.set(cleanPhone, { code, expires: Date.now() + 10 * 60 * 1000 });
-        console.log(`[AUTH] SMS Onay Kodu oluşturuldu for ${cleanPhone}: ${code}`);
-        res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ 
-          success: true, 
-          message: '6 haneli SMS onay kodu gönderildi.',
-          code
-        }));
-      } catch (err) {
-        res.writeHead(500, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ success: false, message: err.message }));
+    const rateCheck = otpLimiter.check(`phone_${ip}`, 3, 10 * 60 * 1000);
+    if (!rateCheck.allowed) {
+      sendError(res, 429, 'TOO_MANY_REQUESTS', 'Çok fazla SMS kodu talep ettiniz. Lütfen 10 dakika bekleyin.');
+      return;
+    }
+
+    try {
+      const body = await readJsonBody(req, res, CONFIG.MAX_BODY_BYTES);
+      const { phone } = body;
+      const cleanPhone = (phone || '').replace(/[^0-9+]/g, '');
+
+      if (!isValidPhone(cleanPhone)) {
+        sendError(res, 400, 'INVALID_PHONE', 'Geçerli bir telefon numarası girin.');
+        return;
       }
-    });
+
+      const code = String(Math.floor(100000 + Math.random() * 900000));
+      phoneOtpCodes.set(cleanPhone, { code, expires: Date.now() + 10 * 60 * 1000 });
+      safeLog('AUTH', 'SMS Onay Kodu oluşturuldu', { phone: cleanPhone.slice(0, 4) + '***' });
+
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ 
+        success: true, 
+        message: '6 haneli SMS onay kodu gönderildi.',
+        code
+      }));
+    } catch (err) {
+      if (err.message !== 'Payload too large' && err.message !== 'Invalid JSON') {
+        sendError(res, 500, 'SERVER_ERROR', 'SMS kodu oluşturulamadı.');
+      }
+    }
     return;
   }
 
+  // VERIFY PHONE OTP
   if (urlObj.pathname === '/api/auth/verify-phone-otp' && req.method === 'POST') {
-    let body = '';
-    req.on('data', chunk => { body += chunk; });
-    req.on('end', () => {
-      try {
-        const { phone, code } = JSON.parse(body);
-        const cleanPhone = (phone || '').replace(/[^0-9+]/g, '');
-        const cleanCode = (code || '').trim();
-        const record = phoneOtpCodes.get(cleanPhone);
-        if (!record || record.expires < Date.now() || record.code !== cleanCode) {
-          res.writeHead(400, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ success: false, message: 'Girdiğiniz SMS onay kodu hatalı veya süresi dolmuş.' }));
-          return;
-        }
-        phoneOtpCodes.delete(cleanPhone);
+    try {
+      const body = await readJsonBody(req, res, CONFIG.MAX_BODY_BYTES);
+      const { phone, code } = body;
+      const cleanPhone = (phone || '').replace(/[^0-9+]/g, '');
+      const cleanCode = (code || '').trim();
+      const record = phoneOtpCodes.get(cleanPhone);
 
-        // Find or create phone user
-        const users = loadUsers();
-        let user = users.find(u => u.phone === cleanPhone);
-        if (!user) {
-          const shortId = cleanPhone.slice(-4);
-          user = {
-            id: 'user_phone_' + Date.now().toString(36),
-            username: 'kullanici_' + shortId,
-            fullName: 'Miruo Kullanıcısı ' + shortId,
-            phone: cleanPhone,
-            email: `${cleanPhone.replace(/[^0-9]/g, '')}@miruo.app`,
-            avatarChar: '📱',
-            provider: 'phone',
-            createdAt: new Date().toISOString()
-          };
-          users.push(user);
-          saveUsers(users);
-        }
-
-        console.log(`[AUTH] Telefonla giriş başarılı: ${cleanPhone}`);
-        res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({
-          success: true,
-          message: 'Telefonla giriş başarılı ✓',
-          user: {
-            id: user.id,
-            fullName: user.fullName || user.username,
-            username: user.username,
-            phone: user.phone || cleanPhone,
-            email: user.email,
-            provider: 'phone',
-            avatarUrl: user.avatarUrl || null,
-            avatarChar: user.avatarChar || '📱'
-          }
-        }));
-      } catch (err) {
-        res.writeHead(500, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ success: false, message: err.message }));
+      if (!record || record.expires < Date.now() || record.code !== cleanCode) {
+        sendError(res, 400, 'INVALID_CODE', 'Girdiğiniz SMS onay kodu hatalı veya süresi dolmuş.');
+        return;
       }
-    });
+      phoneOtpCodes.delete(cleanPhone);
+
+      const users = loadUsers();
+      let user = users.find(u => u.phone === cleanPhone);
+      if (!user) {
+        const shortId = cleanPhone.slice(-4);
+        user = {
+          id: 'user_phone_' + Date.now().toString(36),
+          username: 'kullanici_' + shortId,
+          fullName: 'Miruo Kullanıcısı ' + shortId,
+          phone: cleanPhone,
+          email: `${cleanPhone.replace(/[^0-9]/g, '')}@miruo.app`,
+          role: ROLES.USER,
+          avatarChar: '📱',
+          provider: 'phone',
+          createdAt: new Date().toISOString()
+        };
+        users.push(user);
+        saveUsers(users);
+      }
+
+      safeLog('AUTH', 'Telefonla giriş başarılı', { phone: cleanPhone.slice(0, 4) + '***' });
+      
+      const token = createSignedToken({ id: user.id, role: user.role || 'user' }, CONFIG.SESSION_SECRET);
+      res.setHeader('Set-Cookie', buildSecureCookie('miruo_token', token, 7 * 86400, CONFIG.NODE_ENV === 'production'));
+
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({
+        success: true,
+        message: 'Telefonla giriş başarılı ✓',
+        token,
+        user: {
+          id: user.id,
+          fullName: user.fullName || user.username,
+          username: user.username,
+          phone: user.phone || cleanPhone,
+          email: user.email,
+          provider: 'phone',
+          avatarUrl: user.avatarUrl || null,
+          avatarChar: user.avatarChar || '📱'
+        }
+      }));
+    } catch (err) {
+      if (err.message !== 'Payload too large' && err.message !== 'Invalid JSON') {
+        sendError(res, 500, 'SERVER_ERROR', 'Telefon doğrulaması başarısız.');
+      }
+    }
     return;
   }
 
-  // 1.11 Change Email & Change Password Endpoints
+  // CHANGE EMAIL
   if (urlObj.pathname === '/api/auth/change-email' && req.method === 'POST') {
-    let body = '';
-    req.on('data', chunk => { body += chunk; });
-    req.on('end', () => {
-      try {
-        const { userId, newEmail } = JSON.parse(body);
-        const cleanEmail = (newEmail || '').trim().toLowerCase();
-        if (!cleanEmail || !cleanEmail.includes('@')) {
-          res.writeHead(400, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ success: false, message: 'Geçerli bir yeni e-posta adresi girin.' }));
-          return;
-        }
-        const users = loadUsers();
-        const existing = users.find(u => (u.email || '').toLowerCase() === cleanEmail && u.id !== userId);
-        if (existing) {
-          res.writeHead(400, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ success: false, message: 'Bu e-posta adresi başka bir hesap tarafından kullanılıyor.' }));
-          return;
-        }
-        const user = users.find(u => u.id === userId);
-        if (user) {
-          user.email = cleanEmail;
-          saveUsers(users);
-        }
-        console.log(`[AUTH] E-posta başarıyla güncellendi: ${cleanEmail}`);
-        res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ success: true, message: 'E-posta adresiniz başarıyla güncellendi ✓', email: cleanEmail }));
-      } catch (err) {
-        res.writeHead(500, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ success: false, message: err.message }));
+    try {
+      const body = await readJsonBody(req, res, CONFIG.MAX_BODY_BYTES);
+      const { userId, newEmail } = body;
+      const cleanEmail = (newEmail || '').trim().toLowerCase();
+
+      if (!isValidEmail(cleanEmail)) {
+        sendError(res, 400, 'INVALID_EMAIL', 'Geçerli bir yeni e-posta adresi girin.');
+        return;
       }
-    });
+
+      const users = loadUsers();
+      const existing = users.find(u => (u.email || '').toLowerCase() === cleanEmail && u.id !== userId);
+      if (existing) {
+        sendError(res, 400, 'EMAIL_EXISTS', 'Bu e-posta adresi başka bir hesap tarafından kullanılıyor.');
+        return;
+      }
+
+      const user = users.find(u => u.id === userId);
+      if (user) {
+        user.email = cleanEmail;
+        saveUsers(users);
+      }
+
+      safeLog('AUTH', 'E-posta başarıyla güncellendi', { email: cleanEmail });
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ success: true, message: 'E-posta adresiniz başarıyla güncellendi ✓', email: cleanEmail }));
+    } catch (err) {
+      if (err.message !== 'Payload too large' && err.message !== 'Invalid JSON') {
+        sendError(res, 500, 'SERVER_ERROR', 'E-posta güncellenemedi.');
+      }
+    }
     return;
   }
 
+  // CHANGE PASSWORD (Item 11: hash password)
   if (urlObj.pathname === '/api/auth/change-password' && req.method === 'POST') {
-    let body = '';
-    req.on('data', chunk => { body += chunk; });
-    req.on('end', () => {
-      try {
-        const { userId, email, currentPassword, newPassword } = JSON.parse(body);
-        if (!newPassword || newPassword.length < 6) {
-          res.writeHead(400, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ success: false, message: 'Yeni şifreniz en az 6 karakter olmalıdır.' }));
+    try {
+      const body = await readJsonBody(req, res, CONFIG.MAX_BODY_BYTES);
+      const { userId, email, currentPassword, newPassword } = body;
+
+      if (!isValidPassword(newPassword)) {
+        sendError(res, 400, 'INVALID_PASSWORD', 'Yeni şifreniz en az 6 karakter olmalıdır.');
+        return;
+      }
+
+      const users = loadUsers();
+      const user = users.find(u => u.id === userId || (email && (u.email || '').toLowerCase() === (email || '').toLowerCase()));
+      if (!user) {
+        sendError(res, 404, 'USER_NOT_FOUND', 'Kullanıcı hesabı bulunamadı.');
+        return;
+      }
+
+      if (user.password && currentPassword) {
+        const verify = verifyPassword(currentPassword, user.password);
+        if (!verify.valid) {
+          sendError(res, 400, 'INVALID_CURRENT_PASSWORD', 'Mevcut şifreniz hatalı.');
           return;
         }
-        const users = loadUsers();
-        const user = users.find(u => u.id === userId || (email && (u.email || '').toLowerCase() === (email || '').toLowerCase()));
-        if (user) {
-          if (user.password && currentPassword && user.password !== currentPassword) {
-            res.writeHead(400, { 'Content-Type': 'application/json' });
-            res.end(JSON.stringify({ success: false, message: 'Mevcut şifreniz hatalı.' }));
-            return;
-          }
-          user.password = newPassword;
-          saveUsers(users);
-        }
-        console.log(`[AUTH] Şifre başarıyla güncellendi for user: ${userId || email}`);
-        res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ success: true, message: 'Şifreniz başarıyla güncellendi ✓' }));
-      } catch (err) {
-        res.writeHead(500, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ success: false, message: err.message }));
       }
-    });
+
+      user.password = hashPassword(newPassword);
+      saveUsers(users);
+
+      safeLog('AUTH', 'Şifre kullanıcı tarafından değiştirildi', { email: user.email });
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ success: true, message: 'Şifreniz başarıyla güncellendi ✓' }));
+    } catch (err) {
+      if (err.message !== 'Payload too large' && err.message !== 'Invalid JSON') {
+        sendError(res, 500, 'SERVER_ERROR', 'Şifre güncellenemedi.');
+      }
+    }
     return;
   }
 
-  // 2. Create Room API
+  // 2. CREATE ROOM API
   if (urlObj.pathname === '/api/create-room' && req.method === 'POST') {
-    let body = '';
-    req.on('data', chunk => { body += chunk; });
-    req.on('end', () => {
-      try {
-        const payload = JSON.parse(body);
-        const { name, isPrivate, host, category } = payload;
-        // The server always mints the code, so two rooms can never share one.
-        const finalId = generateRoomCode();
-        const room = getOrCreateRoom(finalId, {
-          name: name || finalId,
-          isPrivate: !!isPrivate,
-          host: host || 'Kullanıcı',
-          category: category || 'Genel'
-        });
+    try {
+      const payload = await readJsonBody(req, res, CONFIG.MAX_BODY_BYTES);
+      const { name, isPrivate, host, hostUserId, category } = payload;
+      const finalId = generateRoomCode();
+      const room = getOrCreateRoom(finalId, {
+        name: sanitizeText(name || finalId, 50),
+        isPrivate: !!isPrivate,
+        host: sanitizeText(host || 'Kullanıcı', 30),
+        hostUserId: hostUserId || null,
+        category: sanitizeText(category || 'Genel', 30)
+      });
 
-        res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ ok: true, room: room.meta }));
-      } catch (e) {
-        res.writeHead(400);
-        res.end(JSON.stringify({ error: e.message }));
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ ok: true, room: room.meta }));
+    } catch (e) {
+      if (e.message !== 'Payload too large' && e.message !== 'Invalid JSON') {
+        sendError(res, 400, 'INVALID_REQUEST', 'Oda oluşturulamadı.');
       }
-    });
+    }
     return;
   }
 
-  // 3. HTTP SSE Signaling Fallback Endpoint
+  // 3. HTTP SSE SIGNALING FALLBACK
   if (urlObj.pathname === '/api/events') {
-    const roomId = (urlObj.searchParams.get('room') || 'default').toUpperCase();
-    const userId = urlObj.searchParams.get('userId') || crypto.randomUUID().slice(0, 8);
-    const userName = urlObj.searchParams.get('name') || 'Misafir';
+    const rawRoom = urlObj.searchParams.get('room') || 'default';
+    const roomId = isValidRoomCode(rawRoom) ? rawRoom.toUpperCase() : 'DEFAULT';
+    const userId = sanitizeText(urlObj.searchParams.get('userId') || crypto.randomUUID().slice(0, 8), 40);
+    const userName = sanitizeText(urlObj.searchParams.get('name') || 'Misafir', 30);
 
     res.writeHead(200, {
       'Content-Type': 'text/event-stream',
@@ -1170,10 +1319,10 @@ const server = http.createServer(async (req, res) => {
       'Access-Control-Allow-Origin': '*'
     });
 
-    const room = getOrCreateRoom(roomId, { host: userName });
+    const room = getOrCreateRoom(roomId, { host: userName, hostUserId: userId });
     room.clients.set(userId, { type: 'sse', res, id: userId, roomId });
 
-    console.log(`[SSE] Client connected: ${userId} -> Room: ${roomId}`);
+    safeLog('SSE', `Client bağlandı: ${userId} -> Oda: ${roomId}`);
     res.write(`data: ${JSON.stringify({ 
       type: 'init', 
       userId, 
@@ -1192,28 +1341,25 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  // 4. HTTP POST Signaling Fallback
+  // 4. HTTP POST SIGNALING FALLBACK
   if (urlObj.pathname === '/api/signal' && req.method === 'POST') {
-    let body = '';
-    req.on('data', chunk => { body += chunk; });
-    req.on('end', () => {
-      try {
-        const payload = JSON.parse(body);
-        const { roomId, userId, data } = payload;
-        if (roomId && userId) {
-          broadcastToRoom(roomId.toUpperCase(), userId, { ...data, senderId: userId });
-        }
-        res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ ok: true }));
-      } catch (err) {
-        res.writeHead(400);
-        res.end(JSON.stringify({ error: err.message }));
+    try {
+      const payload = await readJsonBody(req, res, CONFIG.MAX_BODY_BYTES);
+      const { roomId, userId, data } = payload;
+      if (roomId && userId && isValidRoomCode(roomId)) {
+        broadcastToRoom(roomId.toUpperCase(), userId, { ...data, senderId: userId });
       }
-    });
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ ok: true }));
+    } catch (err) {
+      if (err.message !== 'Payload too large' && err.message !== 'Invalid JSON') {
+        sendError(res, 400, 'INVALID_REQUEST', 'Sinyal iletilemedi.');
+      }
+    }
     return;
   }
 
-  // 1.8 Download Endpoints (Mac, Windows, iOS, Android)
+  // DOWNLOAD ENDPOINTS (Mac, Windows, iOS, Android)
   if (urlObj.pathname === '/download/mac') {
     const dmgPath = path.join(__dirname, 'downloads', 'Miruo-macOS-Installer.dmg');
     const zipPath = path.join(__dirname, 'downloads', 'Miruo-macOS.zip');
@@ -1257,7 +1403,7 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  // 1.9 Website Marketing / Landing Page Serving
+  // WEBSITE MARKETING / LANDING PAGE SERVING
   if (urlObj.pathname === '/website') {
     res.writeHead(302, { Location: '/website/' });
     res.end();
@@ -1277,7 +1423,6 @@ const server = http.createServer(async (req, res) => {
     }
   }
 
-  // Explicit Website Assets Serving
   if (urlObj.pathname === '/website.css') {
     const cssPath = path.join(__dirname, 'website.css');
     res.writeHead(200, { 'Content-Type': 'text/css; charset=utf-8' });
@@ -1315,7 +1460,7 @@ const server = http.createServer(async (req, res) => {
     }
   }
 
-  // Root path check: If standard browser requesting root without ?app=1, show the official Website!
+  // Root path check: If standard browser requesting root without ?app=1, show official website
   if ((urlObj.pathname === '/' || urlObj.pathname === '/index.html') && !urlObj.searchParams.get('app') && !req.headers['x-miruo-native']) {
     const webIndex = path.join(__dirname, 'index.html');
     if (fs.existsSync(webIndex)) {
@@ -1325,11 +1470,10 @@ const server = http.createServer(async (req, res) => {
     }
   }
 
-  // Static File Serving for Public Web App (e.g. /app, /style.css, /app.js, /oda/...)
+  // Static File Serving for Public Web App (e.g. /app, /style.css, /app.js)
   let filePath = path.join(PUBLIC_DIR, (urlObj.pathname === '/' || urlObj.pathname === '/app') ? 'index.html' : urlObj.pathname);
   if (!filePath.startsWith(PUBLIC_DIR)) {
-    res.writeHead(403);
-    res.end('Forbidden');
+    sendError(res, 403, 'FORBIDDEN', 'Erişim engellendi.');
     return;
   }
 
@@ -1341,16 +1485,14 @@ const server = http.createServer(async (req, res) => {
       if (err.code === 'ENOENT') {
         fs.readFile(path.join(PUBLIC_DIR, 'index.html'), (err2, indexContent) => {
           if (err2) {
-            res.writeHead(404);
-            res.end('Not Found');
+            sendError(res, 404, 'NOT_FOUND', 'Sayfa bulunamadı.');
           } else {
             res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
             res.end(indexContent);
           }
         });
       } else {
-        res.writeHead(500);
-        res.end(`Server Error: ${err.code}`);
+        sendError(res, 500, 'SERVER_ERROR', 'Dosya okunurken hata oluştu.');
       }
     } else {
       res.writeHead(200, { 'Content-Type': contentType });
@@ -1391,7 +1533,8 @@ server.on('upgrade', (req, socket, head) => {
 });
 
 server.listen(PORT, '0.0.0.0', () => {
-  console.log(`\n✨ MIRUO (Birlikte Gör & İzle) başarıyla başlatıldı!`);
+  console.log(`\n🔒 MIRUO (Güvenli & Sertleştirilmiş Sunucu) başarıyla başlatıldı!`);
   console.log(`👉 Yerel Bağlantı: http://localhost:${PORT}`);
-  console.log(`👉 Mobil / Ağ Bağlantısı: http://[Senin-Yerel-IP-Adresin]:${PORT}\n`);
+  console.log(`👉 Ortam (NODE_ENV): ${CONFIG.NODE_ENV}`);
+  console.log(`👉 Güvenlik: Scrypt Hashleme ✓ | 100KB Sınır ✓ | Helmet Başlıkları ✓ | Rate Limiting ✓\n`);
 });

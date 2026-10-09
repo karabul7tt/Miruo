@@ -6322,6 +6322,83 @@ function initEvents() {
     dom.logoutBtn.addEventListener('click', logoutUser);
   }
 
+  // Delete Account (Item 21: hesabı gerçekten sil)
+  const openDeleteModalBtn = document.getElementById('openDeleteAccountModalBtn');
+  const deleteModal = document.getElementById('deleteAccountModal');
+  const cancelDeleteBtn = document.getElementById('cancelDeleteAccountBtn');
+  const confirmDeleteBtn = document.getElementById('confirmDeleteAccountBtn');
+  const deletePassInput = document.getElementById('deleteAccountPasswordInput');
+  const deleteErrorAlert = document.getElementById('deleteAccountErrorAlert');
+
+  if (openDeleteModalBtn && deleteModal) {
+    openDeleteModalBtn.addEventListener('click', () => {
+      if (deleteErrorAlert) deleteErrorAlert.classList.add('hidden');
+      if (deletePassInput) deletePassInput.value = '';
+      deleteModal.classList.remove('hidden');
+      deleteModal.classList.add('flex');
+    });
+  }
+
+  if (cancelDeleteBtn && deleteModal) {
+    cancelDeleteBtn.addEventListener('click', () => {
+      deleteModal.classList.add('hidden');
+      deleteModal.classList.remove('flex');
+    });
+  }
+
+  if (confirmDeleteBtn && deleteModal) {
+    confirmDeleteBtn.addEventListener('click', async () => {
+      const stored = localStorage.getItem('miruo_user');
+      const currentUser = stored ? JSON.parse(stored) : null;
+      if (!currentUser || !currentUser.id) {
+        showToast('Aktif bir oturum bulunamadı.');
+        deleteModal.classList.add('hidden');
+        return;
+      }
+
+      const password = deletePassInput ? deletePassInput.value.trim() : '';
+      confirmDeleteBtn.disabled = true;
+      confirmDeleteBtn.textContent = 'Siliniyor...';
+
+      try {
+        const res = await fetch('/api/auth/delete-account', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            userId: currentUser.id,
+            email: currentUser.email,
+            password: password
+          })
+        });
+        const data = await res.json();
+        if (data.success) {
+          localStorage.removeItem('miruo_user');
+          deleteModal.classList.add('hidden');
+          showToast('Hesabınız ve tüm verileriniz kalıcı olarak silindi.');
+          setTimeout(() => {
+            location.href = '/';
+          }, 1200);
+        } else {
+          if (deleteErrorAlert) {
+            deleteErrorAlert.textContent = data.message || 'Hesap silinemedi.';
+            deleteErrorAlert.classList.remove('hidden');
+          } else {
+            showToast(data.message || 'Hesap silinemedi.');
+          }
+          confirmDeleteBtn.disabled = false;
+          confirmDeleteBtn.textContent = 'Evet, Hesabımı Sil';
+        }
+      } catch (err) {
+        if (deleteErrorAlert) {
+          deleteErrorAlert.textContent = 'Sunucuyla bağlantı kurulamadı.';
+          deleteErrorAlert.classList.remove('hidden');
+        }
+        confirmDeleteBtn.disabled = false;
+        confirmDeleteBtn.textContent = 'Evet, Hesabımı Sil';
+      }
+    });
+  }
+
   // Room Badge - Open Participants & Role Management Modal
   if (dom.roomBadge) {
     dom.roomBadge.addEventListener('click', () => {
