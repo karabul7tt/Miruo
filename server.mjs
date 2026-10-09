@@ -839,6 +839,60 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  // CHECK USERNAME AVAILABILITY (Item: aynı kullanıcı adı 2 defa alınmasın)
+  if (urlObj.pathname === '/api/users/check-username' && req.method === 'GET') {
+    const rawUsername = (urlObj.searchParams.get('username') || '').replace(/^@/, '').trim().toLowerCase();
+    const excludeUserId = (urlObj.searchParams.get('userId') || '').trim();
+    if (!rawUsername) {
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ available: false, error: 'Kullanıcı adı boş olamaz.' }));
+      return;
+    }
+    const users = loadUsers();
+    const taken = users.some(u => 
+      u.id !== excludeUserId && 
+      (u.username || '').toLowerCase().replace(/^@/, '') === rawUsername
+    );
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ available: !taken, username: rawUsername }));
+    return;
+  }
+
+  // UPDATE USER PROFILE
+  if (urlObj.pathname === '/api/auth/update-profile' && req.method === 'POST') {
+    try {
+      const body = await readJsonBody(req, res, CONFIG.MAX_BODY_BYTES);
+      const { userId, username, fullName, avatarUrl } = body;
+      const cleanUsername = sanitizeText((username || '').replace(/^@/, '').trim(), 30);
+      const cleanFullName = sanitizeText(fullName || cleanUsername, 50);
+
+      const users = loadUsers();
+      if (cleanUsername) {
+        const taken = users.some(u => 
+          u.id !== userId && 
+          (u.username || '').toLowerCase().replace(/^@/, '') === cleanUsername.toLowerCase()
+        );
+        if (taken) {
+          sendError(res, 400, 'USERNAME_TAKEN', `"${cleanUsername}" kullanıcı adı zaten kullanımda.`);
+          return;
+        }
+      }
+
+      let user = users.find(u => u.id === userId);
+      if (user) {
+        if (cleanUsername) user.username = cleanUsername;
+        if (cleanFullName) user.fullName = cleanFullName;
+        if (avatarUrl !== undefined) user.avatarUrl = avatarUrl;
+        saveUsers(users);
+      }
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ success: true, user: user || { id: userId, username: cleanUsername, fullName: cleanFullName } }));
+    } catch (err) {
+      sendError(res, 500, 'SERVER_ERROR', 'Profil güncellenirken hata oluştu.');
+    }
+    return;
+  }
+
   // LOGIN (Items 5, 6, 7, 11, 12, 13, 14)
   if (urlObj.pathname === '/api/auth/login' && req.method === 'POST') {
     try {

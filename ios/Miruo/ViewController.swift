@@ -546,6 +546,26 @@ class ViewController: UIViewController, WKNavigationDelegate, WKUIDelegate, WKSc
             let js = "setTimeout(() => { const el = document.getElementById('profileEditModalScrollBody') || window; el.scrollTop = \(scrollVal); }, 1200);"
             webView.evaluateJavaScript(js, completionHandler: nil)
         }
+        if let _ = ProcessInfo.processInfo.environment["OPEN_LOBBY"] {
+            let js = """
+            setTimeout(() => {
+                document.getElementById('authModal')?.classList.add('hidden');
+                if (typeof unfreezeBackgroundAfterModal === 'function') unfreezeBackgroundAfterModal();
+                if (typeof switchToExplore === 'function') switchToExplore();
+            }, 500);
+            """
+            webView.evaluateJavaScript(js, completionHandler: nil)
+        }
+        if let _ = ProcessInfo.processInfo.environment["OPEN_SETTINGS"] {
+            let js = """
+            setTimeout(() => {
+                document.getElementById('authModal')?.classList.add('hidden');
+                if (typeof unfreezeBackgroundAfterModal === 'function') unfreezeBackgroundAfterModal();
+                if (typeof openProfileEditModal === 'function') openProfileEditModal('settings');
+            }, 500);
+            """
+            webView.evaluateJavaScript(js, completionHandler: nil)
+        }
         if let _ = ProcessInfo.processInfo.environment["OPEN_GOOGLE_LOGIN"] {
             let js = "setTimeout(() => { document.getElementById('googleLoginBtn')?.click(); }, 1500);"
             webView.evaluateJavaScript(js, completionHandler: nil)
@@ -687,7 +707,14 @@ class PlatformBrowserViewController: UIViewController, WKNavigationDelegate, WKU
             style.innerHTML = `
                 ytm-promoted-sparkles-web-renderer,
                 .ad-container,
-                .ytm-promoted-item {
+                .ytm-promoted-item,
+                ytm-open-app-banner-renderer,
+                .open-app-banner,
+                .upsell-dialog,
+                .ytm-open-app-tool-renderer,
+                .smartbanner,
+                .open-in-app,
+                ytm-pivot-bar-renderer {
                     display: none !important;
                 }
             `;
@@ -936,6 +963,12 @@ class PlatformBrowserViewController: UIViewController, WKNavigationDelegate, WKU
             return
         }
         
+        if let scheme = url.scheme?.lowercased(), scheme != "http" && scheme != "https" && scheme != "about" {
+            // Block external app switching (e.g. youtube://, netflix://) so it never kicks the user out of Miruo
+            decisionHandler(.cancel)
+            return
+        }
+        
         let urlStr = url.absoluteString
         if urlStr.contains("/@") || urlStr.contains("/channel/") || urlStr.contains("/c/") || urlStr.contains("/user/") {
             decisionHandler(.allow)
@@ -1133,9 +1166,27 @@ extension ViewController: PHPickerViewControllerDelegate, UIImagePickerControlle
     func picker(_ picker: PHPickerViewController, didFinishPicking results: [PHPickerResult]) {
         picker.dismiss(animated: true)
         guard let result = results.first else { return }
-        result.itemProvider.loadObject(ofClass: UIImage.self) { [weak self] (object, error) in
-            guard let self = self, let image = object as? UIImage else { return }
-            self.processAndSendPickedImage(image)
+        let provider = result.itemProvider
+        if provider.canLoadObject(ofClass: UIImage.self) {
+            provider.loadObject(ofClass: UIImage.self) { [weak self] (object, error) in
+                if let image = object as? UIImage {
+                    self?.processAndSendPickedImage(image)
+                } else {
+                    self?.loadDataRepresentation(from: provider)
+                }
+            }
+        } else {
+            self.loadDataRepresentation(from: provider)
+        }
+    }
+    
+    private func loadDataRepresentation(from provider: NSItemProvider) {
+        if #available(iOS 14.0, *) {
+            provider.loadDataRepresentation(forTypeIdentifier: "public.image") { [weak self] (data, error) in
+                if let data = data, let image = UIImage(data: data) {
+                    self?.processAndSendPickedImage(image)
+                }
+            }
         }
     }
     

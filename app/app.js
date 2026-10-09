@@ -173,25 +173,42 @@ function initSupabase() {
   }
 }
 
+// Global Avatar & Profile Upload State
+window.pendingAvatarUrl = '';
+window.pendingAvatarBg = 'from-[#A64D79] to-[#6A1E55]';
+window.selectedSignUpAvatarData = null;
+window.selectedSignUpAvatarBg = 'from-rose-500 to-indigo-600';
+window.selectedSignUpAvatarChar = 'M';
+
 function syncUserProfileToSupabase(user) {
   if (!user || !supabaseClient) return;
   try {
-    if (supabaseClient.auth && user.name) {
+    const rawUsername = (user.username || user.name || '').replace(/^@/, '').trim();
+    const fullName = user.fullName || user.name || rawUsername;
+    const avatarUrl = user.avatarUrl || window.pendingAvatarUrl || '';
+    const avatarBg = user.avatarBg || window.pendingAvatarBg || '';
+
+    if (supabaseClient.auth) {
       supabaseClient.auth.updateUser({
         data: {
-          username: user.name,
-          name: user.name,
-          avatar_url: user.avatarUrl || '',
-          avatar_bg: user.avatarBg || ''
+          username: rawUsername,
+          full_name: fullName,
+          name: fullName,
+          avatar_url: avatarUrl,
+          avatar_bg: avatarBg
         }
       }).catch(e => console.warn('[Supabase Profile Update Error]:', e));
     }
-    supabaseClient.from('profiles').upsert({
-      id: user.id,
-      username: user.name,
-      avatar_url: user.avatarUrl || '',
-      updated_at: new Date().toISOString()
-    }).catch(e => console.warn('[Supabase profiles upsert info]:', e));
+    const uid = user.id || state.userId;
+    if (uid) {
+      supabaseClient.from('profiles').upsert({
+        id: uid,
+        username: rawUsername,
+        full_name: fullName,
+        avatar_url: avatarUrl,
+        updated_at: new Date().toISOString()
+      }).catch(e => console.warn('[Supabase profiles upsert info]:', e));
+    }
   } catch (err) {
     console.warn('[Supabase sync error]:', err);
   }
@@ -199,24 +216,33 @@ function syncUserProfileToSupabase(user) {
 
 function applySupabaseSessionUser(sbUser) {
   if (!sbUser) return;
+  const existingLocal = JSON.parse(localStorage.getItem('miruo_user') || '{}');
   const meta = sbUser.user_metadata || {};
-  const displayName = meta.full_name || meta.name || meta.username || sbUser.email?.split('@')[0] || 'Kullanıcı';
+  const fullName = existingLocal.fullName || meta.full_name || meta.name || sbUser.email?.split('@')[0] || 'Kullanıcı';
+  const rawUsername = existingLocal.username || meta.username || sbUser.email?.split('@')[0] || 'kullanici';
+  const cleanUsername = rawUsername.replace(/^@/, '').trim();
+  const avatarUrl = window.pendingAvatarUrl || existingLocal.avatarUrl || meta.avatar_url || meta.picture || '';
+  const avatarBg = window.pendingAvatarBg || existingLocal.avatarBg || meta.avatar_bg || 'from-[#A64D79] to-[#6A1E55]';
+
   const user = {
     id: sbUser.id,
-    name: displayName,
-    email: sbUser.email || '',
-    avatarUrl: meta.avatar_url || meta.picture || '',
-    avatarChar: displayName.charAt(0).toUpperCase(),
-    avatarBg: meta.avatar_bg || 'from-violet-600 to-indigo-700',
-    defaultRoom: 'ODA-77'
+    name: fullName,
+    fullName: fullName,
+    username: cleanUsername,
+    email: sbUser.email || existingLocal.email || '',
+    avatarUrl: avatarUrl,
+    avatarChar: (fullName || cleanUsername || 'M').charAt(0).toUpperCase(),
+    avatarBg: avatarBg,
+    defaultRoom: existingLocal.defaultRoom || 'ODA-77'
   };
   localStorage.setItem('miruo_user', JSON.stringify(user));
   state.userId = user.id;
-  state.username = user.name;
+  state.username = user.username;
+  state.avatarUrl = user.avatarUrl;
+  state.avatarBg = user.avatarBg;
   if (typeof updateUserUI === 'function') {
     updateUserUI(user);
   }
-  syncUserProfileToSupabase(user);
 }
 
 initSupabase();
@@ -252,21 +278,45 @@ window.triggerPhotoPicker = triggerPhotoPicker;
 window.handleNativeImagePicked = function(base64Data, target) {
   if (!base64Data) return;
   if (target === 'avatar') {
-    pendingAvatarUrl = base64Data;
-    pendingAvatarBg = '';
+    window.pendingAvatarUrl = base64Data;
+    window.pendingAvatarBg = '';
     const previewEl = (dom && dom.editAvatarPreview) || document.getElementById('editAvatarPreview');
     if (previewEl) {
-      previewEl.innerHTML = `<img src="${pendingAvatarUrl}" class="w-full h-full object-cover" alt="PP">`;
-      previewEl.className = 'w-22 h-22 rounded-2xl overflow-hidden shadow-xl border-2 border-white/20 ring-4 ring-white/5 flex items-center justify-center';
+      previewEl.innerHTML = `<img src="${base64Data}" class="w-full h-full object-cover rounded-2xl" alt="PP">`;
+      previewEl.className = 'w-20 h-20 rounded-2xl overflow-hidden shadow-xl border-2 border-[#A64D79] ring-4 ring-[#A64D79]/20 flex items-center justify-center';
     }
-    showToast('Profil fotoğrafı seçildi! "Kaydet"e basın ✨');
+
+    // Auto-save & activate immediately
+    const savedUser = JSON.parse(localStorage.getItem('miruo_user') || '{}');
+    savedUser.avatarUrl = base64Data;
+    savedUser.avatarBg = '';
+    state.avatarUrl = base64Data;
+    state.avatarBg = '';
+    localStorage.setItem('miruo_user', JSON.stringify(savedUser));
+
+    try {
+      fetch('/api/auth/update-profile', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userId: savedUser.id || state.userId,
+          username: (savedUser.username || state.username || '').replace(/^@/, ''),
+          fullName: savedUser.fullName || savedUser.name || '',
+          avatarUrl: base64Data
+        })
+      }).catch(e => console.warn('[Update Avatar Backend Error]:', e));
+    } catch (e) {}
+    syncUserProfileToSupabase(savedUser);
+
+    updateUserUI(savedUser);
+    showToast('✓ Profil fotoğrafı güncellendi ✨');
   } else if (target === 'chat') {
     sendChatMessage('', base64Data);
     showToast('📷 Fotoğraf sohbete yüklendi!');
     const stickerPopover = document.getElementById('chatStickerPopover');
     if (stickerPopover) stickerPopover.classList.add('hidden');
   } else if (target === 'signup') {
-    selectedSignUpAvatarData = base64Data;
+    window.selectedSignUpAvatarData = base64Data;
     const previewEl = (dom && dom.signUpAvatarPreview) || document.getElementById('signUpAvatarPreview');
     if (previewEl) {
       previewEl.innerHTML = `<img src="${base64Data}" class="w-full h-full object-cover rounded-full" alt="Avatar">`;
@@ -335,12 +385,13 @@ const I18N = {
     corner_tr: 'Sağ Üst',
     corner_tl: 'Sol Üst',
     accounts_info: 'Platform hesaplarınıza (YouTube, Netflix, Prime vb.) dahili tarayıcı üzerinden doğrudan giriş yapabilirsiniz. Oturumlarınız cihazınızda güvenle saklanır.',
-    open_in_browser: 'Giriş Yap / Aç ↗',
-    open_in_browser_btn: 'Aç ↗',
-    yt_card_sub: 'Oynatma listeleri ve video izleme',
-    netflix_card_sub: 'Dizi & Film İzleme',
-    prime_card_sub: 'Amazon Prime Yayını',
-    disney_card_sub: 'Disney, Marvel & Star Wars',
+    open_in_browser: 'Giriş Yap',
+    open_in_browser_btn: 'Giriş Yap',
+    platform_signin_btn: 'Giriş Yap',
+    yt_card_sub: 'Google hesabı ile oturum aç',
+    netflix_card_sub: 'Netflix hesabı ile oturum aç',
+    prime_card_sub: 'Prime hesabı ile oturum aç',
+    disney_card_sub: 'Disney+ hesabı ile oturum aç',
     connected_platforms_title: 'Bağlı Platformlar',
     connected_platforms_sub: 'Dahili tarayıcıda kalıcı oturum',
     create_room_title: 'Yeni İzleme Odası',
@@ -532,12 +583,13 @@ const I18N = {
     corner_tr: 'Top Right',
     corner_tl: 'Top Left',
     accounts_info: 'You can log into your platform accounts (YouTube, Netflix, Prime etc.) directly via the in-app browser. Your sessions are saved securely on your device.',
-    open_in_browser: 'Sign In / Open ↗',
-    open_in_browser_btn: 'Open ↗',
-    yt_card_sub: 'Playlists and video watching',
-    netflix_card_sub: 'Movies & TV Shows',
-    prime_card_sub: 'Amazon Prime Streaming',
-    disney_card_sub: 'Disney, Marvel & Star Wars',
+    open_in_browser: 'Sign In',
+    open_in_browser_btn: 'Sign In',
+    platform_signin_btn: 'Sign In',
+    yt_card_sub: 'Sign in with Google account',
+    netflix_card_sub: 'Sign in with Netflix account',
+    prime_card_sub: 'Sign in with Prime account',
+    disney_card_sub: 'Sign in with Disney+ account',
     connected_platforms_title: 'Connected Platforms',
     connected_platforms_sub: 'Persistent session in built-in browser',
     create_room_title: 'New Watch Room',
@@ -729,12 +781,13 @@ const I18N = {
     corner_tr: 'Oben Rechts',
     corner_tl: 'Oben Links',
     accounts_info: 'Sie können sich über den In-App-Browser direkt bei Ihren Plattformkonten (YouTube, Netflix, Prime usw.) anmelden. Ihre Sitzungen werden sicher auf Ihrem Gerät gespeichert.',
-    open_in_browser: 'Anmelden / Öffnen ↗',
-    open_in_browser_btn: 'Öffnen ↗',
-    yt_card_sub: 'Playlists und Videos',
-    netflix_card_sub: 'Serien & Filme',
-    prime_card_sub: 'Amazon Prime Streaming',
-    disney_card_sub: 'Disney, Marvel & Star Wars',
+    open_in_browser: 'Anmelden',
+    open_in_browser_btn: 'Anmelden',
+    platform_signin_btn: 'Anmelden',
+    yt_card_sub: 'Mit Google-Konto anmelden',
+    netflix_card_sub: 'Mit Netflix-Konto anmelden',
+    prime_card_sub: 'Mit Prime-Konto anmelden',
+    disney_card_sub: 'Mit Disney+-Konto anmelden',
     connected_platforms_title: 'Verbundene Plattformen',
     connected_platforms_sub: 'Dauerhafte Sitzung im integrierten Browser',
     create_room_title: 'Neuer Raum',
@@ -916,23 +969,6 @@ function applyLanguage(lang) {
       btn.className = 'auth-lang-btn px-2.5 py-1 rounded-lg text-xs font-medium text-gray-400 hover:text-white transition-all cursor-pointer';
     }
   });
-
-  // Update active style on Header lang-btns
-  document.querySelectorAll('#headerLangSelectorGroup .header-lang-btn').forEach(btn => {
-    if (btn.getAttribute('data-lang') === lang) {
-      btn.className = 'header-lang-btn active px-2 py-0.5 rounded-lg text-[10px] font-bold bg-[#A64D79] text-white transition-all cursor-pointer';
-    } else {
-      btn.className = 'header-lang-btn px-2 py-0.5 rounded-lg text-[10px] font-medium text-gray-400 hover:text-white transition-all cursor-pointer';
-    }
-  });
-
-  // Update badge in settings
-  const badge = document.getElementById('currentLangBadge');
-  if (badge) {
-    if (lang === 'tr') badge.textContent = 'Türkçe';
-    else if (lang === 'en') badge.textContent = 'English';
-    else if (lang === 'de') badge.textContent = 'Deutsch';
-  }
 
   // Update dynamic audio labels
   if (dom && dom.micSensVal && dom.micSensSlider) {
@@ -6738,9 +6774,6 @@ function initEvents() {
   }
 
   // Unified Profile, Settings & Accounts Hub
-  let pendingAvatarUrl = '';
-  let pendingAvatarBg = '';
-
   function switchProfileTab(tabName) {
     // Kept for backward compatibility
     if (tabName === 'accounts') {
@@ -6773,8 +6806,8 @@ function initEvents() {
     if (dom.editProfileUsernameInput) dom.editProfileUsernameInput.value = (savedUser.username || state.username || '').replace(/^@/, '');
     if (dom.editProfileNameInput) dom.editProfileNameInput.value = (savedUser.username || state.username || '').replace(/^@/, '');
 
-    pendingAvatarUrl = savedUser.avatarUrl || '';
-    pendingAvatarBg = savedUser.avatarBg || 'from-[#A64D79] to-[#6A1E55]';
+    window.pendingAvatarUrl = savedUser.avatarUrl || '';
+    window.pendingAvatarBg = savedUser.avatarBg || 'from-[#A64D79] to-[#6A1E55]';
 
     if (dom.profileEmailDisplay) {
       dom.profileEmailDisplay.textContent = savedUser.email || `${(state.username || 'user').toLowerCase()}@miruo.app`;
@@ -6816,12 +6849,13 @@ function initEvents() {
     }
 
     if (dom.editAvatarPreview) {
-      if (pendingAvatarUrl) {
-        dom.editAvatarPreview.innerHTML = `<img src="${pendingAvatarUrl}" class="w-full h-full object-cover" alt="PP">`;
-        dom.editAvatarPreview.className = 'w-20 h-20 rounded-2xl overflow-hidden shadow-xl border-2 border-white/20 ring-4 ring-white/5 flex items-center justify-center';
+      if (window.pendingAvatarUrl) {
+        dom.editAvatarPreview.innerHTML = `<img src="${window.pendingAvatarUrl}" class="w-full h-full object-cover rounded-2xl" alt="PP">`;
+        dom.editAvatarPreview.className = 'w-20 h-20 rounded-2xl overflow-hidden shadow-xl border-2 border-[#A64D79] ring-4 ring-[#A64D79]/20 flex items-center justify-center';
       } else {
-        dom.editAvatarPreview.innerHTML = (state.username || 'M').charAt(0).toUpperCase();
-        dom.editAvatarPreview.className = `w-20 h-20 rounded-2xl bg-gradient-to-tr ${pendingAvatarBg} flex items-center justify-center text-3xl font-bold text-white shadow-xl overflow-hidden border-2 border-white/20 ring-4 ring-white/5`;
+        const char = (savedUser.fullName || savedUser.username || state.username || 'M').charAt(0).toUpperCase();
+        dom.editAvatarPreview.innerHTML = char;
+        dom.editAvatarPreview.className = `w-20 h-20 rounded-2xl bg-gradient-to-tr ${window.pendingAvatarBg} flex items-center justify-center text-3xl font-bold text-white shadow-xl overflow-hidden border-2 border-white/20 ring-4 ring-white/5`;
       }
     }
 
@@ -7128,7 +7162,9 @@ function initEvents() {
 
   // Avatar file upload trigger & reader
   const triggerAvatarPicker = (e) => {
-    if (e) e.preventDefault();
+    if (e && window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.pickImage) {
+      e.preventDefault();
+    }
     triggerPhotoPicker('avatar');
   };
 
@@ -7148,13 +7184,38 @@ function initEvents() {
 
       const reader = new FileReader();
       reader.onload = (ev) => {
-        pendingAvatarUrl = ev.target.result;
-        pendingAvatarBg = '';
+        const base64Data = ev.target.result;
+        window.pendingAvatarUrl = base64Data;
+        window.pendingAvatarBg = '';
         if (dom.editAvatarPreview) {
-          dom.editAvatarPreview.innerHTML = `<img src="${pendingAvatarUrl}" class="w-full h-full object-cover" alt="PP">`;
-          dom.editAvatarPreview.className = 'w-22 h-22 rounded-2xl overflow-hidden shadow-xl border-2 border-white/20 ring-4 ring-white/5 flex items-center justify-center';
+          dom.editAvatarPreview.innerHTML = `<img src="${window.pendingAvatarUrl}" class="w-full h-full object-cover rounded-2xl" alt="PP">`;
+          dom.editAvatarPreview.className = 'w-20 h-20 rounded-2xl overflow-hidden shadow-xl border-2 border-[#A64D79] ring-4 ring-[#A64D79]/20 flex items-center justify-center';
         }
-        showToast('Profil fotoğrafı seçildi! "Kaydet"e basın.');
+
+        // Auto-save & activate immediately
+        const savedUser = JSON.parse(localStorage.getItem('miruo_user') || '{}');
+        savedUser.avatarUrl = base64Data;
+        savedUser.avatarBg = '';
+        state.avatarUrl = base64Data;
+        state.avatarBg = '';
+        localStorage.setItem('miruo_user', JSON.stringify(savedUser));
+
+        try {
+          fetch('/api/auth/update-profile', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              userId: savedUser.id || state.userId,
+              username: (savedUser.username || state.username || '').replace(/^@/, ''),
+              fullName: savedUser.fullName || savedUser.name || '',
+              avatarUrl: base64Data
+            })
+          }).catch(e => console.warn('[Update Avatar Backend Error]:', e));
+        } catch (e) {}
+        syncUserProfileToSupabase(savedUser);
+
+        updateUserUI(savedUser);
+        showToast('✓ Profil fotoğrafı güncellendi ✨');
       };
       reader.readAsDataURL(file);
     });
@@ -7163,71 +7224,219 @@ function initEvents() {
   // Remove Custom Avatar Photo
   if (dom.removeAvatarPhotoBtn) {
     dom.removeAvatarPhotoBtn.addEventListener('click', () => {
-      pendingAvatarUrl = '';
-      pendingAvatarBg = 'from-rose-500 to-indigo-600';
+      window.pendingAvatarUrl = '';
+      window.pendingAvatarBg = 'from-[#A64D79] to-[#6A1E55]';
+      const savedUser = JSON.parse(localStorage.getItem('miruo_user') || '{}');
+      savedUser.avatarUrl = '';
+      savedUser.avatarBg = window.pendingAvatarBg;
+      state.avatarUrl = '';
+      state.avatarBg = window.pendingAvatarBg;
+      localStorage.setItem('miruo_user', JSON.stringify(savedUser));
+
+      try {
+        fetch('/api/auth/update-profile', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            userId: savedUser.id || state.userId,
+            username: (savedUser.username || state.username || '').replace(/^@/, ''),
+            fullName: savedUser.fullName || savedUser.name || '',
+            avatarUrl: ''
+          })
+        }).catch(e => console.warn('[Remove Avatar Backend Error]:', e));
+      } catch (e) {}
+      syncUserProfileToSupabase(savedUser);
+
+      updateUserUI(savedUser);
+
       if (dom.editAvatarPreview) {
         const nameChar = (dom.editProfileFullNameInput?.value.trim() || dom.editProfileUsernameInput?.value.trim() || dom.editProfileNameInput?.value.trim() || state.username || 'M').charAt(0).toUpperCase();
         dom.editAvatarPreview.innerHTML = nameChar;
-        dom.editAvatarPreview.className = `w-22 h-22 rounded-2xl bg-gradient-to-tr ${pendingAvatarBg} flex items-center justify-center text-3xl font-bold text-white shadow-xl overflow-hidden border-2 border-white/20 ring-4 ring-white/5`;
+        dom.editAvatarPreview.className = `w-20 h-20 rounded-2xl bg-gradient-to-tr ${window.pendingAvatarBg} flex items-center justify-center text-3xl font-bold text-white shadow-xl overflow-hidden border-2 border-white/20 ring-4 ring-white/5`;
       }
-      const dict = I18N[currentLang] || I18N.tr;
-      showToast(dict.remove_photo ? (dict.remove_photo + ' ' + (dict.save_changes ? `("${dict.save_changes}")` : '')) : 'Profil fotoğrafı kaldırıldı.');
+      showToast('Profil fotoğrafı kaldırıldı.');
     });
   }
 
   // Preset avatar buttons
   document.querySelectorAll('.preset-avatar-btn').forEach(btn => {
     btn.addEventListener('click', () => {
-      pendingAvatarBg = btn.dataset.bg || 'from-rose-500 to-indigo-600';
-      pendingAvatarUrl = '';
+      const bg = btn.dataset.bg || 'from-rose-500 to-indigo-600';
+      window.pendingAvatarBg = bg;
+      window.pendingAvatarUrl = '';
+      const savedUser = JSON.parse(localStorage.getItem('miruo_user') || '{}');
+      savedUser.avatarUrl = '';
+      savedUser.avatarBg = bg;
+      state.avatarUrl = '';
+      state.avatarBg = bg;
+      localStorage.setItem('miruo_user', JSON.stringify(savedUser));
+
+      try {
+        fetch('/api/auth/update-profile', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            userId: savedUser.id || state.userId,
+            username: (savedUser.username || state.username || '').replace(/^@/, ''),
+            fullName: savedUser.fullName || savedUser.name || '',
+            avatarUrl: ''
+          })
+        }).catch(e => console.warn('[Preset Avatar Backend Error]:', e));
+      } catch (e) {}
+      syncUserProfileToSupabase(savedUser);
+
+      updateUserUI(savedUser);
+
       if (dom.editAvatarPreview) {
         const nameChar = (dom.editProfileFullNameInput?.value.trim() || dom.editProfileUsernameInput?.value.trim() || dom.editProfileNameInput?.value.trim() || state.username || 'M').charAt(0).toUpperCase();
         dom.editAvatarPreview.innerHTML = nameChar;
-        dom.editAvatarPreview.className = `w-22 h-22 rounded-2xl bg-gradient-to-tr ${pendingAvatarBg} flex items-center justify-center text-3xl font-bold text-white shadow-xl overflow-hidden border-2 border-white/20 ring-4 ring-white/5`;
+        dom.editAvatarPreview.className = `w-20 h-20 rounded-2xl bg-gradient-to-tr ${window.pendingAvatarBg} flex items-center justify-center text-3xl font-bold text-white shadow-xl overflow-hidden border-2 border-white/20 ring-4 ring-white/5`;
       }
+      showToast('Avatar rengi güncellendi ✨');
     });
   });
 
   if (dom.saveProfileBtn) {
-    dom.saveProfileBtn.addEventListener('click', () => {
+    dom.saveProfileBtn.addEventListener('click', async () => {
       const fullNameVal = (dom.editProfileFullNameInput && dom.editProfileFullNameInput.value.trim()) || '';
-      const usernameVal = (dom.editProfileUsernameInput && dom.editProfileUsernameInput.value.trim().replace(/^@/, '')) || (dom.editProfileNameInput && dom.editProfileNameInput.value.trim().replace(/^@/, '')) || '';
+      const rawUsername = (dom.editProfileUsernameInput && dom.editProfileUsernameInput.value.trim().replace(/^@/, '')) || (dom.editProfileNameInput && dom.editProfileNameInput.value.trim().replace(/^@/, '')) || '';
+
+      const dict = I18N[currentLang] || I18N.tr;
+      const statusEl = document.getElementById('editProfileUsernameStatus');
+      if (statusEl) {
+        statusEl.className = 'hidden text-[11px] font-medium pt-0.5';
+        statusEl.textContent = '';
+      }
+
+      if (!rawUsername) {
+        if (statusEl) {
+          statusEl.textContent = '⚠️ Kullanıcı adı boş bırakılamaz.';
+          statusEl.className = 'text-[11px] font-semibold text-rose-400 pt-0.5 block';
+        }
+        if (dom.editProfileUsernameInput) dom.editProfileUsernameInput.focus();
+        showToast('Kullanıcı adı boş bırakılamaz!');
+        return;
+      }
+
+      const cleanUsername = rawUsername.toLowerCase().replace(/[^a-z0-9_.]/g, '');
+      if (cleanUsername.length < 3) {
+        if (statusEl) {
+          statusEl.textContent = '⚠️ Kullanıcı adı en az 3 karakter olmalıdır.';
+          statusEl.className = 'text-[11px] font-semibold text-rose-400 pt-0.5 block';
+        }
+        if (dom.editProfileUsernameInput) dom.editProfileUsernameInput.focus();
+        showToast('Kullanıcı adı en az 3 karakter olmalıdır!');
+        return;
+      }
 
       const savedUser = JSON.parse(localStorage.getItem('miruo_user') || '{}');
+      const currentActiveUsername = (savedUser.username || state.username || '').toLowerCase().replace(/^@/, '');
+
+      // Duplicate username check (if changing to a new username)
+      if (cleanUsername !== currentActiveUsername) {
+        const prevBtnHtml = dom.saveProfileBtn.innerHTML;
+        dom.saveProfileBtn.disabled = true;
+        dom.saveProfileBtn.innerHTML = `<span>Kontrol ediliyor...</span>`;
+
+        // 1. Check local backend
+        try {
+          const checkRes = await fetch(`/api/users/check-username?username=${encodeURIComponent(cleanUsername)}&userId=${encodeURIComponent(savedUser.id || state.userId || '')}`);
+          if (checkRes.ok) {
+            const checkData = await checkRes.json();
+            if (!checkData.available) {
+              dom.saveProfileBtn.disabled = false;
+              dom.saveProfileBtn.innerHTML = prevBtnHtml;
+              if (statusEl) {
+                statusEl.textContent = `⚠️ "@${cleanUsername}" kullanıcı adı zaten alınmış. Lütfen başka bir kullanıcı adı seçin.`;
+                statusEl.className = 'text-[11px] font-semibold text-rose-400 pt-0.5 block';
+              }
+              if (dom.editProfileUsernameInput) dom.editProfileUsernameInput.focus();
+              showToast(`"${cleanUsername}" kullanıcı adı zaten alınmış!`);
+              return;
+            }
+          }
+        } catch (e) {}
+
+        // 2. Check Supabase profiles table
+        if (supabaseClient) {
+          try {
+            const { data: supaProfiles, error } = await supabaseClient
+              .from('profiles')
+              .select('id, username')
+              .ilike('username', cleanUsername);
+            if (!error && supaProfiles && supaProfiles.length > 0) {
+              const takenByOther = supaProfiles.some(p => p.id !== (savedUser.id || state.userId) && (p.username || '').toLowerCase() === cleanUsername);
+              if (takenByOther) {
+                dom.saveProfileBtn.disabled = false;
+                dom.saveProfileBtn.innerHTML = prevBtnHtml;
+                if (statusEl) {
+                  statusEl.textContent = `⚠️ "@${cleanUsername}" kullanıcı adı zaten alınmış. Lütfen başka bir kullanıcı adı seçin.`;
+                  statusEl.className = 'text-[11px] font-semibold text-rose-400 pt-0.5 block';
+                }
+                if (dom.editProfileUsernameInput) dom.editProfileUsernameInput.focus();
+                showToast(`"${cleanUsername}" kullanıcı adı zaten alınmış!`);
+                return;
+              }
+            }
+          } catch (e) {}
+        }
+
+        dom.saveProfileBtn.disabled = false;
+        dom.saveProfileBtn.innerHTML = prevBtnHtml;
+      }
+
+      // Apply changes to user profile
+      savedUser.username = cleanUsername;
+      state.username = cleanUsername;
       if (fullNameVal) {
         savedUser.fullName = fullNameVal;
         savedUser.name = fullNameVal;
-      }
-      if (usernameVal) {
-        savedUser.username = usernameVal;
-        state.username = usernameVal;
-      }
-      if (!savedUser.name && usernameVal) {
-        savedUser.name = usernameVal;
+      } else if (!savedUser.name) {
+        savedUser.name = cleanUsername;
       }
 
-      if (pendingAvatarUrl) {
-        savedUser.avatarUrl = pendingAvatarUrl;
+      if (window.pendingAvatarUrl) {
+        savedUser.avatarUrl = window.pendingAvatarUrl;
         savedUser.avatarBg = '';
-        state.avatarUrl = pendingAvatarUrl;
+        state.avatarUrl = window.pendingAvatarUrl;
         state.avatarBg = '';
-      } else if (pendingAvatarBg) {
-        savedUser.avatarBg = pendingAvatarBg;
+      } else if (window.pendingAvatarBg) {
+        savedUser.avatarBg = window.pendingAvatarBg;
         savedUser.avatarUrl = '';
-        state.avatarBg = pendingAvatarBg;
+        state.avatarBg = window.pendingAvatarBg;
         state.avatarUrl = '';
       }
+
       localStorage.setItem('miruo_user', JSON.stringify(savedUser));
 
-      // Keep Supabase user record updated
+      // 1. Sync to backend users.json
+      try {
+        fetch('/api/auth/update-profile', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            userId: savedUser.id || state.userId,
+            username: cleanUsername,
+            fullName: savedUser.fullName || cleanUsername,
+            avatarUrl: savedUser.avatarUrl || ''
+          })
+        }).catch(e => console.warn('[Update Profile Backend Error]:', e));
+      } catch (e) {}
+
+      // 2. Sync to Supabase profiles
       syncUserProfileToSupabase(savedUser);
 
+      // 3. Immediately update UI everywhere on the page!
       updateUserUI(savedUser);
-      if (dom.profileEditModal) dom.profileEditModal.classList.add('hidden');
-      unfreezeBackgroundAfterModal();
 
-      const dict = I18N[currentLang] || I18N.tr;
-      showToast(dict.profile_updated || 'Profil ve tercihler güncellendi ✨');
+      if (dom.editProfileUsernameInput) dom.editProfileUsernameInput.value = cleanUsername;
+
+      if (statusEl) {
+        statusEl.textContent = `✓ Kullanıcı adı @${cleanUsername} olarak kaydedildi!`;
+        statusEl.className = 'text-[11px] font-semibold text-emerald-400 pt-0.5 block';
+      }
+
+      showToast(dict.profile_updated || `Profil güncellendi ✨ (@${cleanUsername})`);
     });
   }
 
@@ -8591,8 +8800,8 @@ function generateUniqueRoomCode(isPrivate = false) {
   const savedLang = localStorage.getItem('miruo_lang') || 'tr';
   applyLanguage(savedLang);
 
-  // Wire up language selector buttons across Settings modal, Auth modal, and Header
-  document.querySelectorAll('#langSelectorGroup .lang-btn, #authLangSelectorGroup .auth-lang-btn, #headerLangSelectorGroup .header-lang-btn').forEach(btn => {
+  // Wire up language selector buttons across Settings modal and Auth modal
+  document.querySelectorAll('#langSelectorGroup .lang-btn, #authLangSelectorGroup .auth-lang-btn').forEach(btn => {
     btn.addEventListener('click', (e) => {
       e.stopPropagation();
       const selected = btn.dataset.lang;
