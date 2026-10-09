@@ -182,20 +182,20 @@ const I18N = {
     upload_photo: 'Fotoğraf Yükle',
     remove_photo: 'Kaldır',
     preset_avatars: 'veya hazır renkli avatar seçin:',
-    language_title: 'Uygulama Dili / Language / Sprache',
-    ducking_title: 'Akıllı Ses Kısma (Ducking) Seviyesi',
-    ducking_desc: 'Partner konuştuğunda film sesinin düşeceği hedef ses düzeyi.',
-    mic_sens_title: 'Mikrofon Hassasiyeti (Konuşma Eşiği)',
-    pip_corner_title: 'Tam Ekran Kamera Konumu',
-    pip_corner_desc: 'Tam ekran modunda video kameranın duracağı köşe:',
-    pip_show_camera: 'Tam ekranda kamera görünsün',
-    corner_br: '↘️ Sağ Alt (Varsayılan)',
-    corner_bl: '↙️ Sol Alt',
-    corner_tr: '↗️ Sağ Üst',
-    corner_tl: '↖️ Sol Üst',
-    accounts_info: 'Platform hesaplarınıza (YouTube, Netflix, Prime vb.) dahili tarayıcı üzerinden doğrudan giriş yapabilirsiniz. YouTube Premium ve üyelikleriniz cihazınızda güvenle saklanır.',
+    language_title: 'Uygulama Dili',
+    ducking_title: 'Konuşma Sırasında Video Sesi',
+    ducking_desc: 'Biri konuştuğunda video sesini otomatik kısar.',
+    mic_sens_title: 'Mikrofon Hassasiyeti',
+    pip_corner_title: 'Kamera Konumu',
+    pip_corner_desc: 'Tam ekranda kameranın duracağı köşe:',
+    pip_show_camera: 'Tam ekranda kamerayı göster',
+    corner_br: 'Sağ Alt (Varsayılan)',
+    corner_bl: 'Sol Alt',
+    corner_tr: 'Sağ Üst',
+    corner_tl: 'Sol Üst',
+    accounts_info: 'Platform hesaplarınıza (YouTube, Netflix, Prime vb.) dahili tarayıcı üzerinden doğrudan giriş yapabilirsiniz. Oturumlarınız cihazınızda güvenle saklanır.',
     open_in_browser: 'Giriş Yap / Aç ↗',
-    yt_card_sub: 'Oynatma listeleri, arama & Premium',
+    yt_card_sub: 'Oynatma listeleri ve video izleme',
     netflix_card_sub: 'Dizi & Film İzleme',
     prime_card_sub: 'Amazon Prime Yayını',
     disney_card_sub: 'Disney, Marvel & Star Wars',
@@ -236,7 +236,7 @@ const I18N = {
     refresh_btn: 'Yenile',
     invite_copied: 'Oda davet linki kopyalandı! 📋',
     profile_updated: 'Profil ve tercihler güncellendi ✨',
-    lang_changed: 'Uygulama dili Türkçe olarak ayarlandı 🇹🇷',
+    lang_changed: 'Uygulama dili Türkçe olarak ayarlandı',
     synced: 'Senkronize edildi',
     room_participants_title: 'Odadakiler',
     room_participants_sub: 'Katılımcı rolleri ve oda yönetimi',
@@ -278,20 +278,20 @@ const I18N = {
     upload_photo: 'Upload Photo',
     remove_photo: 'Remove',
     preset_avatars: 'or choose a preset avatar:',
-    language_title: 'App Language / Dil / Sprache',
-    ducking_title: 'Smart Audio Ducking Level',
-    ducking_desc: 'Target movie audio volume when your partner speaks.',
-    mic_sens_title: 'Microphone Sensitivity (Voice Gate)',
-    pip_corner_title: 'Fullscreen Camera Position',
-    pip_corner_desc: 'Corner where camera overlay stays in fullscreen:',
+    language_title: 'App Language',
+    ducking_title: 'Voice Ducking Level',
+    ducking_desc: 'Lowers video volume when someone speaks.',
+    mic_sens_title: 'Microphone Sensitivity',
+    pip_corner_title: 'Camera Position',
+    pip_corner_desc: 'Corner where camera stays in fullscreen:',
     pip_show_camera: 'Show camera in fullscreen',
-    corner_br: '↘️ Bottom Right (Default)',
-    corner_bl: '↙️ Bottom Left',
-    corner_tr: '↗️ Top Right',
-    corner_tl: '↖️ Top Left',
-    accounts_info: 'You can log into your platform accounts (YouTube, Netflix, Prime etc.) directly via the in-app browser. Your YouTube Premium and subscriptions are saved securely on your device.',
+    corner_br: 'Bottom Right (Default)',
+    corner_bl: 'Bottom Left',
+    corner_tr: 'Top Right',
+    corner_tl: 'Top Left',
+    accounts_info: 'You can log into your platform accounts (YouTube, Netflix, Prime etc.) directly via the in-app browser. Your sessions are saved securely on your device.',
     open_in_browser: 'Sign In / Open ↗',
-    yt_card_sub: 'Playlists, search & Premium',
+    yt_card_sub: 'Playlists and video watching',
     netflix_card_sub: 'Movies & TV Shows',
     prime_card_sub: 'Amazon Prime Streaming',
     disney_card_sub: 'Disney, Marvel & Star Wars',
@@ -332,7 +332,7 @@ const I18N = {
     refresh_btn: 'Refresh',
     invite_copied: 'Room invite link copied! 📋',
     profile_updated: 'Profile and preferences updated ✨',
-    lang_changed: 'Language set to English 🇬🇧',
+    lang_changed: 'Language set to English',
     synced: 'Synchronized',
     room_participants_title: 'Room Participants',
     room_participants_sub: 'Participant roles and room management',
@@ -374,20 +374,20 @@ const I18N = {
     upload_photo: 'Foto hochladen',
     remove_photo: 'Entfernen',
     preset_avatars: 'oder wählen Sie einen Avatar:',
-    language_title: 'App-Sprache / Language / Dil',
-    ducking_title: 'Intelligente Audio-Absenkung',
-    ducking_desc: 'Ziel-Lautstärke des Films, wenn der Partner spricht.',
-    mic_sens_title: 'Mikrofon-Empfindlichkeit (Voice Gate)',
-    pip_corner_title: 'Vollbild-Kameraposition',
-    pip_corner_desc: 'Ecke für die Kameraüberlagerung im Vollbild:',
+    language_title: 'App-Sprache',
+    ducking_title: 'Audio-Absenkung',
+    ducking_desc: 'Senkt die Videolautstärke beim Sprechen.',
+    mic_sens_title: 'Mikrofonempfindlichkeit',
+    pip_corner_title: 'Kameraposition',
+    pip_corner_desc: 'Ecke für die Kamera im Vollbild:',
     pip_show_camera: 'Kamera im Vollbild anzeigen',
-    corner_br: '↘️ Unten Rechts (Standard)',
-    corner_bl: '↙️ Unten Links',
-    corner_tr: '↗️ Oben Rechts',
-    corner_tl: '↖️ Oben Links',
-    accounts_info: 'Sie können sich über den In-App-Browser direkt bei Ihren Plattformkonten (YouTube, Netflix, Prime usw.) anmelden. Ihr YouTube Premium und Ihre Abonnements werden sicher auf Ihrem Gerät gespeichert.',
+    corner_br: 'Unten Rechts (Standard)',
+    corner_bl: 'Unten Links',
+    corner_tr: 'Oben Rechts',
+    corner_tl: 'Oben Links',
+    accounts_info: 'Sie können sich über den In-App-Browser direkt bei Ihren Plattformkonten (YouTube, Netflix, Prime usw.) anmelden. Ihre Sitzungen werden sicher auf Ihrem Gerät gespeichert.',
     open_in_browser: 'Anmelden / Öffnen ↗',
-    yt_card_sub: 'Playlists, Suche & Premium',
+    yt_card_sub: 'Playlists und Videos',
     netflix_card_sub: 'Serien & Filme',
     prime_card_sub: 'Amazon Prime Streaming',
     disney_card_sub: 'Disney, Marvel & Star Wars',
@@ -428,7 +428,7 @@ const I18N = {
     refresh_btn: 'Aktualisieren',
     invite_copied: 'Raum-Einladungslink kopiert! 📋',
     profile_updated: 'Profil und Einstellungen aktualisiert ✨',
-    lang_changed: 'Sprache auf Deutsch gesetzt 🇩🇪',
+    lang_changed: 'Sprache auf Deutsch gesetzt',
     synced: 'Synchronisiert',
     room_participants_title: 'Teilnehmer',
     room_participants_sub: 'Teilnehmerrollen und Raumverwaltung',
@@ -482,9 +482,9 @@ function applyLanguage(lang) {
   // Update badge in settings
   const badge = document.getElementById('currentLangBadge');
   if (badge) {
-    if (lang === 'tr') badge.textContent = '🇹🇷 Türkçe';
-    else if (lang === 'en') badge.textContent = '🇬🇧 English';
-    else if (lang === 'de') badge.textContent = '🇩🇪 Deutsch';
+    if (lang === 'tr') badge.textContent = 'Türkçe';
+    else if (lang === 'en') badge.textContent = 'English';
+    else if (lang === 'de') badge.textContent = 'Deutsch';
   }
 }
 
@@ -994,8 +994,37 @@ const dom = {
   suggestionSender: document.getElementById('suggestionSender'),
   acceptSuggestionPlayNowBtn: document.getElementById('acceptSuggestionPlayNowBtn'),
   acceptSuggestionQueueBtn: document.getElementById('acceptSuggestionQueueBtn'),
-  roomQuickSearchBtnText: document.getElementById('roomQuickSearchBtnText')
+  roomQuickSearchBtnText: document.getElementById('roomQuickSearchBtnText'),
+  profileEditModalScrollBody: document.getElementById('profileEditModalScrollBody')
 };
+
+// Background View Freezing & Unfreezing for Modals (Guarantees zero background bleed)
+let activeModalCount = 0;
+
+function freezeBackgroundForModal() {
+  activeModalCount++;
+  document.body.classList.add('modal-open-freeze');
+  if (dom.exploreLobbySection) dom.exploreLobbySection.classList.add('hidden');
+  if (dom.mainHeader) dom.mainHeader.classList.add('hidden');
+  if (dom.mobileBottomNav) dom.mobileBottomNav.classList.add('hidden');
+  if (dom.friendsTabSection) dom.friendsTabSection.classList.add('hidden');
+}
+
+function unfreezeBackgroundAfterModal() {
+  activeModalCount = Math.max(0, activeModalCount - 1);
+  if (activeModalCount === 0) {
+    document.body.classList.remove('modal-open-freeze');
+    if (!state.isInRoom) {
+      if (state.currentTab === 'friends') {
+        if (dom.friendsTabSection) dom.friendsTabSection.classList.remove('hidden');
+      } else {
+        if (dom.exploreLobbySection) dom.exploreLobbySection.classList.remove('hidden');
+      }
+      if (dom.mainHeader) dom.mainHeader.classList.remove('hidden');
+      if (dom.mobileBottomNav) dom.mobileBottomNav.classList.remove('hidden');
+    }
+  }
+}
 
 // Universal responsive click & tap handler
 function addInstantTap(el, handler) {
@@ -1478,7 +1507,7 @@ function loadYoutubeVideo(urlOrId) {
 
   // Direct responsive embed iframe that plays 100% reliably in WKWebView
   // controls=0: completely eliminates YouTube's red scrubber bar, controls, and branding so only Miruo controls show!
-  // Uses youtube.com (not nocookie) to allow shared session cookies with logged in YouTube Premium accounts!
+  // Uses youtube.com (not nocookie) to allow shared session cookies with logged in YouTube accounts!
   const originParam = (window.location.origin && window.location.origin !== 'null') ? `&origin=${encodeURIComponent(window.location.origin)}` : '';
   dom.ytPlayerContainer.innerHTML = `
     <iframe id="miruoYtIframe" 
@@ -2069,7 +2098,7 @@ function savePlatformAccounts() {
 }
 
 function updatePlatformAccountsUI() {
-  // Platform sessions (YouTube Premium, Netflix, Prime) persist automatically in native in-app browser cookies
+  // Platform sessions (YouTube, Netflix, Prime) persist automatically in native in-app browser cookies
 }
 
 function openPlatformAccountsModal() {
@@ -2827,7 +2856,11 @@ function createAndJoinRoom(title, isPrivate = false, category = 'YouTube', video
     if (dom.raveInviteLinkText) dom.raveInviteLinkText.textContent = getMiruoRoomUrl(state.roomId);
     switchToMyRoom();
     connectSignaling();
-    if (videoId) setTimeout(() => loadYoutubeVideo(videoId), 400);
+    if (videoId) {
+      setTimeout(() => loadYoutubeVideo(videoId), 400);
+    } else if (category === 'YouTube' || category === 'youtube') {
+      setTimeout(() => openVideoChooser(), 500);
+    }
   });
 }
 
@@ -4113,6 +4146,7 @@ function loadUserSession() {
     };
     if (dom.authModal) {
       if (!roomFromUrl && !urlParams.get('modal') && !urlParams.get('view') && !urlParams.get('room') && !urlParams.get('profile') && urlParams.get('auth') !== 'reset' && hash !== 'reset') {
+        freezeBackgroundForModal();
         dom.authModal.classList.remove('hidden');
         setAuthMode(false);
       } else {
@@ -4128,11 +4162,13 @@ function loadUserSession() {
     setTimeout(() => { if (typeof openProfileEditModal === 'function') openProfileEditModal(targetTab); }, 350);
   } else if (urlParams.get('auth') === 'signup' || urlParams.get('modal') === 'signup' || hash === 'signup') {
     if (dom.authModal) {
+      freezeBackgroundForModal();
       dom.authModal.classList.remove('hidden');
       setAuthMode(true);
     }
   } else if (urlParams.get('auth') === 'phone' || hash === 'phone') {
     if (dom.authModal) {
+      freezeBackgroundForModal();
       dom.authModal.classList.remove('hidden');
       setAuthMethod('phone');
     }
@@ -4343,6 +4379,7 @@ async function logoutUser() {
 
   // Directly show Giriş Yap (Login) screen
   if (dom.authModal) {
+    freezeBackgroundForModal();
     dom.authModal.classList.remove('hidden');
     setAuthMode(false);
     setAuthMethod('email');
@@ -5385,7 +5422,10 @@ function initEvents() {
           syncUserProfileToSupabase(user);
           setTimeout(() => {
             updateUserUI(user);
-            if (dom.authModal) dom.authModal.classList.add('hidden');
+            if (dom.authModal) {
+              dom.authModal.classList.add('hidden');
+              unfreezeBackgroundAfterModal();
+            }
             showToast(`Hoş geldin @${cleanUsername}! Kayıt başarılı ✨`);
           }, 350);
         } catch (err) {
@@ -5453,7 +5493,10 @@ function initEvents() {
           syncUserProfileToSupabase(user);
           setTimeout(() => {
             updateUserUI(user);
-            if (dom.authModal) dom.authModal.classList.add('hidden');
+            if (dom.authModal) {
+              dom.authModal.classList.add('hidden');
+              unfreezeBackgroundAfterModal();
+            }
             showToast(`Giriş yapıldı, hoş geldin ${user.name}! ✨`);
           }, 350);
         } catch (err) {
@@ -5474,7 +5517,10 @@ function initEvents() {
           state.username = user.name;
           syncUserProfileToSupabase(user);
           updateUserUI(user);
-          if (dom.authModal) dom.authModal.classList.add('hidden');
+          if (dom.authModal) {
+            dom.authModal.classList.add('hidden');
+            unfreezeBackgroundAfterModal();
+          }
         }
       }
     });
@@ -5506,6 +5552,7 @@ function initEvents() {
   if (dom.openAuthModalBtn) {
     dom.openAuthModalBtn.addEventListener('click', () => {
       if (dom.userProfileDropdown) dom.userProfileDropdown.classList.add('hidden');
+      freezeBackgroundForModal();
       if (dom.authModal) dom.authModal.classList.remove('hidden');
     });
   }
@@ -5513,6 +5560,7 @@ function initEvents() {
   if (dom.closeAuthModalBtn) {
     addInstantTap(dom.closeAuthModalBtn, () => {
       if (dom.authModal) dom.authModal.classList.add('hidden');
+      unfreezeBackgroundAfterModal();
       if (!localStorage.getItem('miruo_user')) {
         const guestUser = {
           id: state.userId || ('user_' + Math.random().toString(36).substring(2, 8)),
@@ -6202,6 +6250,7 @@ function initEvents() {
     if (dom.changePassAlert) dom.changePassAlert.classList.add('hidden');
 
     if (dom.profileEditModal) {
+      freezeBackgroundForModal();
       dom.profileEditModal.classList.remove('hidden');
       if (section === 'accounts') {
         const el = document.getElementById('settingsSectionAccounts');
@@ -6227,7 +6276,8 @@ function initEvents() {
         const el = document.getElementById('settingsSectionSecurity');
         if (el) el.scrollIntoView({ behavior: 'smooth' });
       } else {
-        dom.profileEditModal.scrollTop = 0;
+        const sb = dom.profileEditModalScrollBody || document.getElementById('profileEditModalScrollBody');
+        if (sb) sb.scrollTop = 0;
       }
     }
   }
@@ -6270,6 +6320,7 @@ function initEvents() {
       if (dom.profileEditModal) dom.profileEditModal.classList.add('hidden');
       if (dom.privacyPolicyModal) dom.privacyPolicyModal.classList.add('hidden');
       if (dom.termsModal) dom.termsModal.classList.add('hidden');
+      unfreezeBackgroundAfterModal();
     });
   }
 
@@ -7212,13 +7263,14 @@ function initEvents() {
     });
   }
 
-  // Stage Search / Quick Video Changer
+  // Stage Search / Quick Video Changer (Opens authenticated YouTube account session!)
   const openVideoChooser = () => {
-    if (state.roomId && dom.roomWorkspaceSection && !dom.roomWorkspaceSection.classList.contains('hidden')) {
-      openRaveYoutubeModal();
-    } else {
+    // In iOS app, directly launch native YouTube browser with persistent logged-in cookies
+    if (window.webkit && window.webkit.messageHandlers && (window.webkit.messageHandlers.openPlatform || window.webkit.messageHandlers.openYouTube)) {
       handleYouTubeLaunch();
+      return;
     }
+    openRaveYoutubeModal();
   };
   window.openVideoChooser = openVideoChooser;
   if (dom.roomTopSearchBtn) addInstantTap(dom.roomTopSearchBtn, openVideoChooser);

@@ -8,7 +8,7 @@ import AuthenticationServices
 class ViewController: UIViewController, WKNavigationDelegate, WKUIDelegate, WKScriptMessageHandler {
     static let sharedProcessPool = WKProcessPool()
     private var webView: WKWebView!
-    private var refreshControl: UIRefreshControl!
+    private var refreshControl: UIRefreshControl?
     private var loadingIndicator: UIActivityIndicatorView!
     private var loadingLabel: UILabel!
     private var errorContainerView: UIView?
@@ -25,10 +25,10 @@ class ViewController: UIViewController, WKNavigationDelegate, WKUIDelegate, WKSc
     
     override func viewDidLoad() {
         super.viewDidLoad()
-        view.backgroundColor = .black
+        let miruoDark = UIColor(red: 0.043, green: 0.035, blue: 0.063, alpha: 1.0)
+        view.backgroundColor = miruoDark
         setupAudioSession()
         setupWebView()
-        setupRefreshControl()
         setupLoadingUI()
         loadPage()
     }
@@ -111,20 +111,15 @@ class ViewController: UIViewController, WKNavigationDelegate, WKUIDelegate, WKSc
         webView.autoresizingMask = [.flexibleWidth, .flexibleHeight]
         webView.navigationDelegate = self
         webView.uiDelegate = self
-        webView.isOpaque = false
-        webView.backgroundColor = .black
-        webView.scrollView.backgroundColor = .black
-        webView.scrollView.bounces = true
-        webView.allowsBackForwardNavigationGestures = true
+        webView.isOpaque = true
+        let miruoDark = UIColor(red: 0.043, green: 0.035, blue: 0.063, alpha: 1.0)
+        webView.backgroundColor = miruoDark
+        webView.scrollView.backgroundColor = miruoDark
+        webView.scrollView.contentInsetAdjustmentBehavior = .never
+        webView.scrollView.bounces = false
+        webView.allowsBackForwardNavigationGestures = false
         
         view.addSubview(webView)
-    }
-    
-    private func setupRefreshControl() {
-        refreshControl = UIRefreshControl()
-        refreshControl.tintColor = .systemPink
-        refreshControl.addTarget(self, action: #selector(handleRefresh), for: .valueChanged)
-        webView.scrollView.refreshControl = refreshControl
     }
     
     private func setupLoadingUI() {
@@ -253,7 +248,7 @@ class ViewController: UIViewController, WKNavigationDelegate, WKUIDelegate, WKSc
     private func showErrorUI(message: String) {
         loadingIndicator.stopAnimating()
         loadingLabel.isHidden = true
-        refreshControl.endRefreshing()
+        refreshControl?.endRefreshing()
         
         if errorContainerView != nil { return }
         
@@ -448,7 +443,7 @@ class ViewController: UIViewController, WKNavigationDelegate, WKUIDelegate, WKSc
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
         loadingIndicator.stopAnimating()
         loadingLabel.isHidden = true
-        refreshControl.endRefreshing()
+        refreshControl?.endRefreshing()
         hideErrorUI()
 
         if let autoRoom = ProcessInfo.processInfo.environment["AUTO_ROOM"] {
@@ -481,6 +476,10 @@ class ViewController: UIViewController, WKNavigationDelegate, WKUIDelegate, WKSc
         }
         if let _ = ProcessInfo.processInfo.environment["OPEN_QUEUE"] {
             let js = "setTimeout(() => { document.getElementById('roomQueueBadgeBtn')?.click(); }, 1200);"
+            webView.evaluateJavaScript(js, completionHandler: nil)
+        }
+        if let scrollVal = ProcessInfo.processInfo.environment["MIRUO_SCROLL"] {
+            let js = "setTimeout(() => { const el = document.getElementById('profileEditModalScrollBody') || window; el.scrollTop = \(scrollVal); }, 1200);"
             webView.evaluateJavaScript(js, completionHandler: nil)
         }
     }

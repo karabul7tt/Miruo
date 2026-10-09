@@ -359,7 +359,11 @@ input, textarea {
   min-height: 100vh !important;
   background-color: #0B0910 !important;
   z-index: 99999 !important;
-  padding-top: max(16px, env(safe-area-inset-top));
+  padding: 0 !important;
+  margin: 0 !important;
+  overscroll-behavior: none !important;
+  overflow-y: auto !important;
+  -webkit-overflow-scrolling: touch !important;
 }
 
 .owl3d {
@@ -385,11 +389,17 @@ input, textarea {
   min-height: 100vh !important;
   background-color: #0B0910 !important;
   z-index: 99999 !important;
-  padding-top: max(16px, env(safe-area-inset-top)) !important;
-  padding-bottom: max(24px, env(safe-area-inset-bottom)) !important;
+  padding: 0 !important;
+  margin: 0 !important;
   box-sizing: border-box !important;
+  overflow: hidden !important;
+  overscroll-behavior: none !important;
+}
+
+#profileEditModalScrollBody {
   overflow-y: auto !important;
   -webkit-overflow-scrolling: touch !important;
+  overscroll-behavior-y: contain !important;
 }
 
 #profileEditModal.hidden {
@@ -413,10 +423,15 @@ input, textarea {
   min-height: 100vh !important;
   background-color: #0B0910 !important;
   z-index: 100000 !important;
-  padding-top: max(16px, env(safe-area-inset-top)) !important;
-  padding-bottom: max(24px, env(safe-area-inset-bottom)) !important;
+  padding: 0 !important;
+  margin: 0 !important;
   box-sizing: border-box !important;
-  overflow-y: auto !important;
-  -webkit-overflow-scrolling: touch !important;
+  overflow: hidden !important;
+  overscroll-behavior: none !important;
 }
+
+body.modal-open-freeze {
+  overflow: hidden !important;
+}
+
 
