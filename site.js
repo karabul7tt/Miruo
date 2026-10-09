@@ -483,12 +483,15 @@
   }
 
   // 6. FAQ ACCORDION INTERACTIVITY
-  document.querySelectorAll('.faq-question').forEach((q) => {
+  document.querySelectorAll('.faq-question, .rave-faq-head').forEach((q) => {
     q.addEventListener('click', () => {
-      const item = q.closest('.faq-item');
+      const item = q.closest('.faq-item') || q.closest('.rave-faq-bar');
       if (item) {
         const wasActive = item.classList.contains('active');
-        document.querySelectorAll('.faq-item').forEach(i => i.classList.remove('active'));
+        const container = item.parentElement;
+        if (container) {
+          container.querySelectorAll('.faq-item, .rave-faq-bar').forEach(i => i.classList.remove('active'));
+        }
         if (!wasActive) {
           item.classList.add('active');
         }

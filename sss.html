@@ -3,8 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Sıkça Sorulan Sorular (SSS) — Miruo</title>
-<meta name="description" content="Miruo hakkında merak ettiğiniz tüm sorular ve pratik yanıtlar.">
+<title>Sıkça Sorulan Sorular — Miruo</title>
+<meta name="description" content="Miruo hakkında merak ettiğiniz tüm sorular ve yanıtları.">
 <link rel="icon" href="logo.png">
 <link rel="stylesheet" href="website.css">
 <style>
@@ -13,71 +13,18 @@
     min-height: 100vh;
     display: flex;
     flex-direction: column;
+    background-color: #0E0512;
   }
-  .page-content {
+  .page-main {
     flex: 1;
-    padding: 60px 0 80px;
-    position: relative;
-    z-index: 2;
-  }
-  .back-btn {
-    display: inline-flex;
-    align-items: center;
-    gap: 8px;
-    color: var(--mut);
-    text-decoration: none;
-    font-size: 13.5px;
-    font-weight: 600;
-    margin-bottom: 28px;
-    padding: 8px 16px;
-    border-radius: 999px;
-    background: rgba(255, 255, 255, 0.05);
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    transition: all 0.2s ease;
-  }
-  .back-btn:hover {
-    color: #fff;
-    background: rgba(255, 110, 180, 0.15);
-    border-color: rgba(255, 110, 180, 0.3);
-    transform: translateX(-3px);
-  }
-  .faq-container {
-    max-width: 860px;
-    margin: 0 auto;
-  }
-  .sec-header {
-    text-align: center;
-    max-width: 760px;
-    margin: 0 auto 40px;
-  }
-  .sec-badge {
-    display: inline-block;
-    padding: 5px 14px;
-    border-radius: 999px;
-    font-size: 11px;
-    font-weight: 800;
-    letter-spacing: 0.1em;
-    text-transform: uppercase;
-    color: var(--magenta-bright);
-    background: rgba(255, 110, 180, 0.12);
-    border: 1px solid rgba(255, 110, 180, 0.25);
-    margin-bottom: 16px;
-  }
-  .sec-title {
-    font-size: clamp(32px, 4.5vw, 52px);
-    font-weight: 900;
-    color: #fff;
-    letter-spacing: -0.02em;
-    margin-bottom: 14px;
-  }
-  .sec-lead {
-    font-size: 16px;
-    line-height: 1.65;
-    color: var(--mut);
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
   }
 </style>
 </head>
 <body>
+<!-- Starfield Canvas -->
 <canvas id="starCanvas"></canvas>
 
 <!-- Top Navigation -->
@@ -85,103 +32,109 @@
   <div class="wrap">
     <a class="brand" href="/">
       <div class="brand-icon">
-        <svg id="navOwlSvg" viewBox="0 0 120 120" width="28" height="28">
-          <rect width="120" height="120" rx="26" fill="#1A1A1D"/>
-          <path d="M60 38H76L90 26V68Q90 96 60 96" fill="#3B1C32" fill-opacity="0.5" stroke="#6A1E55" stroke-width="2"/>
-          <path d="M60 38H44L30 26V68Q30 96 60 96Z" fill="#C26D97"/>
-          <circle cx="45" cy="62" r="10.5" fill="#1A1A1D"/>
-          <circle class="owl-pupil owl-pupil-left" cx="45" cy="62" r="4.2" fill="#FFFFFF"/>
-          <circle cx="75" cy="62" r="11.5" fill="#3B1C32" stroke="#6A1E55" stroke-width="1.5"/>
-          <circle class="owl-pupil owl-pupil-right" cx="75" cy="62" r="5.5" fill="#FF6EB4"/>
-        </svg>
+        <img src="logo.png" alt="Miruo Baykuşu" class="nav-spinning-owl">
       </div>
       MIRUO
     </a>
     <div class="nav-links">
       <a href="/guvenlik">Güvenlik</a>
-      <a href="/sss" style="color:#fff;">SSS</a>
       <a href="/basin">Basın</a>
       <a href="/iletisim">İletişim</a>
     </div>
   </div>
 </nav>
 
-<main class="page-content">
-  <div class="wrap">
-    <a href="/" class="back-btn">← Ana Sayfaya Dön</a>
+<!-- Main FAQ Content -->
+<main class="page-main">
+  <div class="rave-faq-container">
+    <h1 class="rave-faq-title">Sıkça Sorulan Sorular</h1>
 
-    <div class="sec-header">
-      <span class="sec-badge">YARDIM VE DESTEK</span>
-      <h1 class="sec-title">Sıkça Sorulan Sorular</h1>
-      <p class="sec-lead">Miruo'nun kurulumu, video senkronizasyonu ve oda özellikleri hakkında tüm detaylar.</p>
-    </div>
-
-    <div class="faq-container">
-      <div class="faq-list">
-        <!-- Q1 -->
-        <div class="faq-item active">
-          <div class="faq-question">
-            <span>Miruo tamamen ücretsiz mi?</span>
-            <svg class="faq-chevron" viewBox="0 0 24 24"><path d="M7 10l5 5 5-5z"/></svg>
-          </div>
-          <div class="faq-answer">
-            <p>Evet! Miruo'nun Mac, Windows ve iOS sürümleri tamamen ücretsizdir. Arkadaşlarınızla sınırsız süreyle birlikte YouTube videoları izleyebilir, sesli ve kameralı canlı sinema odaları oluşturabilirsiniz.</p>
-          </div>
+    <div class="rave-faq-list">
+      <!-- 1 -->
+      <div class="rave-faq-bar active">
+        <div class="rave-faq-head">
+          <span class="rave-faq-question">Miruo ne iş yapar?</span>
+          <svg class="rave-faq-chevron" viewBox="0 0 24 24"><path d="M7 10l5 5 5-5z"/></svg>
         </div>
-
-        <!-- Q2 -->
-        <div class="faq-item">
-          <div class="faq-question">
-            <span>Birlikte izlerken senkronizasyon nasıl çalışıyor?</span>
-            <svg class="faq-chevron" viewBox="0 0 24 24"><path d="M7 10l5 5 5-5z"/></svg>
-          </div>
-          <div class="faq-answer">
-            <p>Miruo, tescilli WebRTC P2P senkronizasyon motoru kullanır. Bir kişi videoyu durdurduğunda, ileri veya geri sardığında odadaki tüm katılımcıların ekranları milisaniyelik gecikmeyle aynı kareye geçer.</p>
-          </div>
+        <div class="rave-faq-body">
+          Miruo; arkadaşlarınızla mesafeler ne olursa olsun aynı anda, sıfır gecikmeyle YouTube, film ve videoları birlikte izlemenizi, eş zamanlı müzik dinlemenizi ve sesli/yazılı sohbet etmenizi sağlayan yeni nesil bir ortak izleme platformudur.
         </div>
+      </div>
 
-        <!-- Q3 -->
-        <div class="faq-item">
-          <div class="faq-question">
-            <span>Farklı işletim sistemlerindeki arkadaşlarım aynı odaya girebilir mi?</span>
-            <svg class="faq-chevron" viewBox="0 0 24 24"><path d="M7 10l5 5 5-5z"/></svg>
-          </div>
-          <div class="faq-answer">
-            <p>Kesinlikle evet! Miruo platformlar arası tam uyumludur (Cross-Platform). Mac kullanan bir kullanıcı, iPhone veya Windows PC kullanan arkadaşlarıyla aynı odaya tek tıkla bağlanıp birlikte izleyebilir.</p>
-          </div>
+      <!-- 2 -->
+      <div class="rave-faq-bar">
+        <div class="rave-faq-head">
+          <span class="rave-faq-question">Miruo'nun maliyeti ne kadar?</span>
+          <svg class="rave-faq-chevron" viewBox="0 0 24 24"><path d="M7 10l5 5 5-5z"/></svg>
         </div>
-
-        <!-- Q4 -->
-        <div class="faq-item">
-          <div class="faq-question">
-            <span>Kamera ve mikrofon açmak zorunlu mu?</span>
-            <svg class="faq-chevron" viewBox="0 0 24 24"><path d="M7 10l5 5 5-5z"/></svg>
-          </div>
-          <div class="faq-answer">
-            <p>Hayır. İster sadece izleyici olarak yazılı sohbetle eşlik edebilir, isterseniz mikrofon ve kameranızı açarak yüz yüze sinema partisi yapabilirsiniz. Gizlilik tamamen sizin tercihinize bırakılmıştır.</p>
-          </div>
+        <div class="rave-faq-body">
+          Miruo'yu indirmek ve arkadaşlarınızla oda kurup birlikte izlemek tamamen ücretsizdir.
         </div>
+      </div>
 
-        <!-- Q5 -->
-        <div class="faq-item">
-          <div class="faq-question">
-            <span>Bilgisayara (Mac & Windows) nasıl kurarım?</span>
-            <svg class="faq-chevron" viewBox="0 0 24 24"><path d="M7 10l5 5 5-5z"/></svg>
-          </div>
-          <div class="faq-answer">
-            <p>Ana sayfadaki Mac veya Windows ikonuna tıklayarak kurulum dosyasını (.dmg veya .exe) doğrudan indirebilirsiniz. Dosyayı açtıktan sonra 5 saniye içinde kurulum tamamlanır ve masaüstünüzden çalışmaya hazır hale gelir.</p>
-          </div>
+      <!-- 3 -->
+      <div class="rave-faq-bar">
+        <div class="rave-faq-head">
+          <span class="rave-faq-question">Miruo'da ne izleyebilirim?</span>
+          <svg class="rave-faq-chevron" viewBox="0 0 24 24"><path d="M7 10l5 5 5-5z"/></svg>
         </div>
+        <div class="rave-faq-body">
+          YouTube videoları, canlı yayınlar, müzik klipleri, diziler, filmler ve Google Drive veya cihazınızdaki kendi video dosyalarınızı arkadaşlarınızla gerçek zamanlı senkronize olarak izleyebilirsiniz.
+        </div>
+      </div>
 
-        <!-- Q6 -->
-        <div class="faq-item">
-          <div class="faq-question">
-            <span>Android sürümü ne zaman yayınlanacak?</span>
-            <svg class="faq-chevron" viewBox="0 0 24 24"><path d="M7 10l5 5 5-5z"/></svg>
-          </div>
-          <div class="faq-answer">
-            <p>Android sürümümüz şu an son optimizasyon ve mağaza onay aşamasındadır. Çok yakında Google Play Store üzerinden indirilebilir olacaktır. Ana sayfadaki Android kartına tıklayarak duyuruları takip edebilirsiniz.</p>
-          </div>
+      <!-- 4 -->
+      <div class="rave-faq-bar">
+        <div class="rave-faq-head">
+          <span class="rave-faq-question">Hangi cihazlar Miruo'yu destekliyor?</span>
+          <svg class="rave-faq-chevron" viewBox="0 0 24 24"><path d="M7 10l5 5 5-5z"/></svg>
+        </div>
+        <div class="rave-faq-body">
+          Miruo; Mac (Apple Silicon ve Intel), iPhone (iOS), Android telefon ve tabletler ile Windows PC bilgisayarlarda tam senkronize olarak çalışmaktadır.
+        </div>
+      </div>
+
+      <!-- 5 -->
+      <div class="rave-faq-bar">
+        <div class="rave-faq-head">
+          <span class="rave-faq-question">Kaç kişiyle izleyebilirim?</span>
+          <svg class="rave-faq-chevron" viewBox="0 0 24 24"><path d="M7 10l5 5 5-5z"/></svg>
+        </div>
+        <div class="rave-faq-body">
+          Herkese açık veya arkadaşlarınıza özel odalarda dilediğiniz sayıda katılımcıyla birlikte izleme partisi düzenleyebilirsiniz.
+        </div>
+      </div>
+
+      <!-- 6 -->
+      <div class="rave-faq-bar">
+        <div class="rave-faq-head">
+          <span class="rave-faq-question">Arkadaşlarımı Miruo'ya nasıl davet edebilirim?</span>
+          <svg class="rave-faq-chevron" viewBox="0 0 24 24"><path d="M7 10l5 5 5-5z"/></svg>
+        </div>
+        <div class="rave-faq-body">
+          Odanızı kurduktan sonra oda bağlantısını veya 6 haneli oda kodunu kopyalayıp WhatsApp, Telegram veya Discord üzerinden arkadaşlarınızla paylaşarak tek tıkla odaya katılmalarını sağlayabilirsiniz.
+        </div>
+      </div>
+
+      <!-- 7 -->
+      <div class="rave-faq-bar">
+        <div class="rave-faq-head">
+          <span class="rave-faq-question">Google Drive veya Google Fotoğraflar'ı Miruo ile nasıl kullanabilirim?</span>
+          <svg class="rave-faq-chevron" viewBox="0 0 24 24"><path d="M7 10l5 5 5-5z"/></svg>
+        </div>
+        <div class="rave-faq-body">
+          Oda içindeki medya seçiciden Google Drive hesabınızı bağlayabilir, bulutta sakladığınız video veya anılarınızı odadaki tüm arkadaşlarınızla aynı anda izleyebilirsiniz.
+        </div>
+      </div>
+
+      <!-- 8 -->
+      <div class="rave-faq-bar">
+        <div class="rave-faq-head">
+          <span class="rave-faq-question">Miruo'da izlemek için Netflix, Amazon Prime, Disney+ veya HBO Max gibi bir hesaba ihtiyacım var mı?</span>
+          <svg class="rave-faq-chevron" viewBox="0 0 24 24"><path d="M7 10l5 5 5-5z"/></svg>
+        </div>
+        <div class="rave-faq-body">
+          YouTube ve yerel medya içeriklerini izlemek için herhangi bir abonelik gerekmez. Ücretli yayın servislerinde ise her kullanıcının ilgili platformda kendi aktif hesabının bulunması yeterlidir.
         </div>
       </div>
     </div>
@@ -190,20 +143,34 @@
 
 <!-- Footer -->
 <footer class="footer-rave" style="margin-top:auto;">
-  <div class="wrap" style="text-align:center;">
-    <div class="footer-legal-links" style="justify-content:center; margin-bottom:16px;">
+  <div class="wrap">
+    <div class="social-icons-row">
+      <a href="https://facebook.com" target="_blank" rel="noopener" class="social-circle-btn" aria-label="Facebook">
+        <svg viewBox="0 0 24 24"><path d="M18 2h-3a5 5 0 0 0-5 5v3H7v4h3v8h4v-8h3l1-4h-4V7a1 1 0 0 1 1-1h3z"/></svg>
+      </a>
+      <a href="https://instagram.com" target="_blank" rel="noopener" class="social-circle-btn" aria-label="Instagram">
+        <svg viewBox="0 0 24 24"><rect x="2" y="2" width="20" height="20" rx="5" ry="5" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="12" cy="12" r="4" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="17.5" cy="6.5" r="1.2" fill="currentColor"/></svg>
+      </a>
+      <a href="https://x.com" target="_blank" rel="noopener" class="social-circle-btn" aria-label="X">
+        <svg viewBox="0 0 24 24"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/></svg>
+      </a>
+      <a href="https://youtube.com" target="_blank" rel="noopener" class="social-circle-btn" aria-label="YouTube">
+        <svg viewBox="0 0 24 24"><path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z"/></svg>
+      </a>
+    </div>
+
+    <div class="footer-legal-links">
       <a href="/gizlilik">Gizlilik</a>
-      <span>·</span>
-      <a href="/guvenlik">Güvenlik</a>
-      <span>·</span>
-      <a href="/sss" style="color:#fff;">SSS</a>
       <span>·</span>
       <a href="/sartlar">Hizmet Şartları</a>
       <span>·</span>
+      <a href="/guvenlik">Güvenlik</a>
+      <span>·</span>
       <a href="/iletisim">İletişim</a>
     </div>
-    <div style="font-size:12.5px; color:#7E7182;">
-      © 2026 Miruo Inc. Tüm hakları saklıdır.
+
+    <div class="footer-copy">
+      © 2026 Miruo Inc.
     </div>
   </div>
 </footer>

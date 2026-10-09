@@ -3,8 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Güvenlik ve Altyapı — Miruo</title>
-<meta name="description" content="Miruo güvenlik protokolleri, uçtan uca WebRTC şifreleme ve sıfır sunucu kaydı mimarisi.">
+<title>Miruo Güvenliği — Miruo'yu nasıl güvende tutuyoruz</title>
+<meta name="description" content="Miruo güvenlik protokolleri, içerik tarama, WebRTC şifreleme ve güvenli izleme deneyimi.">
 <link rel="icon" href="logo.png">
 <link rel="stylesheet" href="website.css">
 <style>
@@ -13,137 +13,18 @@
     min-height: 100vh;
     display: flex;
     flex-direction: column;
+    background-color: #0E0512;
   }
-  .page-content {
+  .page-main {
     flex: 1;
-    padding: 60px 0 80px;
-    position: relative;
-    z-index: 2;
-  }
-  .back-btn {
-    display: inline-flex;
-    align-items: center;
-    gap: 8px;
-    color: var(--mut);
-    text-decoration: none;
-    font-size: 13.5px;
-    font-weight: 600;
-    margin-bottom: 28px;
-    padding: 8px 16px;
-    border-radius: 999px;
-    background: rgba(255, 255, 255, 0.05);
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    transition: all 0.2s ease;
-  }
-  .back-btn:hover {
-    color: #fff;
-    background: rgba(255, 110, 180, 0.15);
-    border-color: rgba(255, 110, 180, 0.3);
-    transform: translateX(-3px);
-  }
-  .sec-header {
-    text-align: center;
-    max-width: 760px;
-    margin: 0 auto 50px;
-  }
-  .sec-badge {
-    display: inline-block;
-    padding: 5px 14px;
-    border-radius: 999px;
-    font-size: 11px;
-    font-weight: 800;
-    letter-spacing: 0.1em;
-    text-transform: uppercase;
-    color: var(--magenta-bright);
-    background: rgba(255, 110, 180, 0.12);
-    border: 1px solid rgba(255, 110, 180, 0.25);
-    margin-bottom: 16px;
-  }
-  .sec-title {
-    font-size: clamp(32px, 4.5vw, 52px);
-    font-weight: 900;
-    color: #fff;
-    letter-spacing: -0.02em;
-    margin-bottom: 16px;
-  }
-  .sec-lead {
-    font-size: 16px;
-    line-height: 1.65;
-    color: var(--mut);
-  }
-  .cards-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
-    gap: 24px;
-    margin-top: 30px;
-  }
-  .info-card {
-    background: rgba(20, 10, 26, 0.65);
-    border: 1px solid rgba(255, 110, 180, 0.15);
-    border-radius: 24px;
-    padding: 32px 28px;
-    backdrop-filter: blur(16px);
-    transition: transform 0.25s ease, border-color 0.25s ease, box-shadow 0.25s ease;
-  }
-  .info-card:hover {
-    transform: translateY(-4px);
-    border-color: rgba(255, 110, 180, 0.35);
-    box-shadow: 0 12px 32px rgba(255, 110, 180, 0.12);
-  }
-  .card-icon {
-    width: 48px;
-    height: 48px;
-    border-radius: 14px;
-    background: linear-gradient(135deg, rgba(255, 110, 180, 0.2), rgba(106, 30, 85, 0.4));
-    border: 1px solid rgba(255, 110, 180, 0.3);
     display: flex;
-    align-items: center;
+    flex-direction: column;
     justify-content: center;
-    margin-bottom: 20px;
-    color: var(--magenta-bright);
-  }
-  .card-icon svg {
-    width: 24px;
-    height: 24px;
-    fill: currentColor;
-  }
-  .info-card h3 {
-    font-size: 19px;
-    font-weight: 800;
-    color: #fff;
-    margin-bottom: 12px;
-  }
-  .info-card p {
-    font-size: 14px;
-    line-height: 1.65;
-    color: var(--mut);
-  }
-  .compliance-banner {
-    margin-top: 48px;
-    padding: 28px 32px;
-    border-radius: 20px;
-    background: rgba(34, 197, 94, 0.08);
-    border: 1px solid rgba(34, 197, 94, 0.25);
-    display: flex;
-    align-items: center;
-    gap: 20px;
-    flex-wrap: wrap;
-  }
-  .compliance-badge {
-    width: 44px;
-    height: 44px;
-    border-radius: 12px;
-    background: rgba(34, 197, 94, 0.15);
-    color: #4ade80;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 22px;
-    flex-shrink: 0;
   }
 </style>
 </head>
 <body>
+<!-- Starfield Canvas -->
 <canvas id="starCanvas"></canvas>
 
 <!-- Top Navigation -->
@@ -151,20 +32,11 @@
   <div class="wrap">
     <a class="brand" href="/">
       <div class="brand-icon">
-        <svg id="navOwlSvg" viewBox="0 0 120 120" width="28" height="28">
-          <rect width="120" height="120" rx="26" fill="#1A1A1D"/>
-          <path d="M60 38H76L90 26V68Q90 96 60 96" fill="#3B1C32" fill-opacity="0.5" stroke="#6A1E55" stroke-width="2"/>
-          <path d="M60 38H44L30 26V68Q30 96 60 96Z" fill="#C26D97"/>
-          <circle cx="45" cy="62" r="10.5" fill="#1A1A1D"/>
-          <circle class="owl-pupil owl-pupil-left" cx="45" cy="62" r="4.2" fill="#FFFFFF"/>
-          <circle cx="75" cy="62" r="11.5" fill="#3B1C32" stroke="#6A1E55" stroke-width="1.5"/>
-          <circle class="owl-pupil owl-pupil-right" cx="75" cy="62" r="5.5" fill="#FF6EB4"/>
-        </svg>
+        <img src="logo.png" alt="Miruo Baykuşu" class="nav-spinning-owl">
       </div>
       MIRUO
     </a>
     <div class="nav-links">
-      <a href="/guvenlik" style="color:#fff;">Güvenlik</a>
       <a href="/sss">SSS</a>
       <a href="/basin">Basın</a>
       <a href="/iletisim">İletişim</a>
@@ -172,71 +44,89 @@
   </div>
 </nav>
 
-<main class="page-content">
-  <div class="wrap">
-    <a href="/" class="back-btn">← Ana Sayfaya Dön</a>
+<!-- Main Safety Content -->
+<main class="page-main">
+  <div class="rave-safety-container">
+    <h1 class="rave-safety-title">Miruo'yu nasıl güvende tutuyoruz</h1>
+    <p class="rave-safety-subtitle">Her yüklemeyi, mesajı ve bağlantıyı; müstehcen içerik, grafik şiddet ve CSAM için gerçek zamanlı tarıyoruz. Yapay zekâ, hash eşleştirme ve insan denetimiyle.</p>
 
-    <div class="sec-header">
-      <span class="sec-badge">GÜVENLİK VE ALTYAPI</span>
-      <h1 class="sec-title">Gizliliğiniz ve Güvenliğiniz Önceliğimizdir</h1>
-      <p class="sec-lead">Miruo, en son WebRTC şifreleme protokolleri ve sunucusuz veri aktarım mimarisi ile tasarlanmıştır. Verileriniz üçüncü kişilerin erişimine kapalıdır.</p>
-    </div>
-
-    <div class="cards-grid">
-      <div class="info-card">
-        <div class="card-icon">
-          <svg viewBox="0 0 24 24"><path d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4zm0 10.99h7c-.53 4.12-3.28 7.79-7 8.94V12H5V6.3l7-3.11v8.8z"/></svg>
+    <div class="rave-safety-grid">
+      <!-- 1. Hash Eşleştirme -->
+      <div class="rave-safety-card">
+        <div class="rave-card-icon">
+          <svg viewBox="0 0 24 24">
+            <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z" stroke-width="1.8" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+            <path d="M12 6a3 3 0 0 0-3 3" stroke-width="1.8" stroke="currentColor" fill="none" stroke-linecap="round"/>
+            <path d="M9 12a3 3 0 0 0 6 0" stroke-width="1.8" stroke="currentColor" fill="none" stroke-linecap="round"/>
+          </svg>
         </div>
-        <h3>Uçtan Uca WebRTC Şifreleme</h3>
-        <p>Ses, kamera ve mesaj akışlarınız DTLS-SRTP endüstri standardı ile doğrudan katılımcılar arasında uçtan uca şifrelenir. Araya hiçbir üçüncü taraf giremez.</p>
+        <h3 class="rave-card-title">Hash Eşleştirme</h3>
+        <p class="rave-card-desc">Küresel çocuk güvenliği veritabanlarındaki hash'lerle karşılaştırırız. Her eşleşmeye sıfır tolerans.</p>
       </div>
 
-      <div class="info-card">
-        <div class="card-icon">
-          <svg viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z"/></svg>
+      <!-- 2. Özel Yapay Zekâ -->
+      <div class="rave-safety-card">
+        <div class="rave-card-icon">
+          <svg viewBox="0 0 24 24">
+            <rect x="4" y="4" width="16" height="16" rx="3" stroke-width="1.8" stroke="currentColor" fill="none"/>
+            <path d="M9 9h6v6H9z" stroke-width="1.8" stroke="currentColor" fill="none"/>
+            <path d="M9 1v3M15 1v3M9 20v3M15 20v3M1 9h3M1 15h3M20 9h3M20 15h3" stroke-width="1.8" stroke="currentColor" stroke-linecap="round"/>
+          </svg>
         </div>
-        <h3>Sunucuda Sıfır Kayıt</h3>
-        <p>Kamera görüntüleriniz veya mikrofon sesleriniz sunucularımızda asla depolanmaz veya kaydedilmez. Akış doğrudan cihazdan cihaza eşler arası gerçekleşir.</p>
+        <h3 class="rave-card-title">Özel Yapay Zekâ</h3>
+        <p class="rave-card-desc">Makine öğrenmesi modelimiz, CSAM içeriklerinin otomatik tespiti ve engellenmesinde sektörün önde gelen performansını sunar.</p>
       </div>
 
-      <div class="info-card">
-        <div class="card-icon">
-          <svg viewBox="0 0 24 24"><path d="M18 8h-1V6c0-2.76-2.24-5-5-5S7 3.24 7 6v2H6c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V10c0-1.1-.9-2-2-2zm-6 9c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2zm3.1-9H8.9V6c0-1.71 1.39-3.1 3.1-3.1 1.71 0 3.1 1.39 3.1 3.1v2z"/></svg>
+      <!-- 3. Davranış Analizi -->
+      <div class="rave-safety-card">
+        <div class="rave-card-icon">
+          <svg viewBox="0 0 24 24">
+            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" stroke-width="1.8" stroke="currentColor" fill="none" stroke-linejoin="round"/>
+            <path d="M8 9h8M8 13h4" stroke-width="1.8" stroke="currentColor" stroke-linecap="round"/>
+          </svg>
         </div>
-        <h3>Scrypt & Tuzlu Şifreleme</h3>
-        <p>Hesap şifreleriniz düz metin olarak asla tutulmaz. Her kullanıcıya özel 16 baytlık rastgele tuz ve scrypt kriptografik algoritmasıyla güvence altına alınır.</p>
+        <h3 class="rave-card-title">Davranış Analizi</h3>
+        <p class="rave-card-desc">Taciz, yırtıcı davranış kalıplarını ve kural ihlallerini anında işaretliyoruz. İhlal eden hesaplar derhal yasaklanır.</p>
       </div>
 
-      <div class="info-card">
-        <div class="card-icon">
-          <svg viewBox="0 0 24 24"><path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></svg>
+      <!-- 4. Spam ve Bot Tespiti -->
+      <div class="rave-safety-card">
+        <div class="rave-card-icon">
+          <svg viewBox="0 0 24 24">
+            <rect x="3" y="11" width="18" height="10" rx="3" stroke-width="1.8" stroke="currentColor" fill="none"/>
+            <circle cx="9" cy="16" r="1.5" fill="currentColor"/>
+            <circle cx="15" cy="16" r="1.5" fill="currentColor"/>
+            <path d="M12 2v5M8 7h8M2 15h1M21 15h1" stroke-width="1.8" stroke="currentColor" stroke-linecap="round"/>
+          </svg>
         </div>
-        <h3>Gelişmiş Oda Yetkilendirme</h3>
-        <p>Oda kurucusu olarak video seçme yetkisi, mikrofon denetimi, DJ modu ve katılımcı yönetimi tamamen sizin kontrolünüzdedir. Yetkiler doğrudan sunucuda teyit edilir.</p>
+        <h3 class="rave-card-title">Spam ve Bot Tespiti</h3>
+        <p class="rave-card-desc">Bot hesapları, dolandırıcıları, korsanları ve yasa dışı aktörleri ortaya çıktıkları anda engelleriz.</p>
       </div>
 
-      <div class="info-card">
-        <div class="card-icon">
-          <svg viewBox="0 0 24 24"><path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-7 14l-5-5 1.41-1.41L12 14.17l7.59-7.59L21 8l-9 9z"/></svg>
+      <!-- 5. Bağlantı Engelleme -->
+      <div class="rave-safety-card">
+        <div class="rave-card-icon">
+          <svg viewBox="0 0 24 24">
+            <circle cx="12" cy="12" r="10" stroke-width="1.8" stroke="currentColor" fill="none"/>
+            <path d="M4.93 4.93l14.14 14.14" stroke-width="1.8" stroke="currentColor"/>
+          </svg>
         </div>
-        <h3>Hatalı Giriş ve Kaba Kuvvet Koruması</h3>
-        <p>Kötü niyetli parola denemelerine karşı akıllı istek sınırlayıcı (Rate Limiter) devrededir. 15 dakikada 5 hatalı denemeden sonra hesap geçici olarak korumaya alınır.</p>
+        <h3 class="rave-card-title">Bağlantı Engelleme</h3>
+        <p class="rave-card-desc">Yasa dışı içerik için kullanılan dış uygulamalara giden bağlantıları engelleriz. Telegram, Signal, Zangi ve daha fazlası.</p>
       </div>
 
-      <div class="info-card">
-        <div class="card-icon">
-          <svg viewBox="0 0 24 24"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg>
+      <!-- 6. Şiddet İçeriği Tespiti -->
+      <div class="rave-safety-card">
+        <div class="rave-card-icon">
+          <svg viewBox="0 0 24 24">
+            <path d="M12 2a8 8 0 0 0-8 8c0 3.2 1.8 6 4.5 7.3V20a1 1 0 0 0 1 1h5a1 1 0 0 0 1-1v-2.7c2.7-1.3 4.5-4.1 4.5-7.3a8 8 0 0 0-8-8z" stroke-width="1.8" stroke="currentColor" fill="none"/>
+            <circle cx="9" cy="10" r="1.5" fill="currentColor"/>
+            <circle cx="15" cy="10" r="1.5" fill="currentColor"/>
+            <path d="M10 16h4" stroke-width="1.8" stroke="currentColor" stroke-linecap="round"/>
+          </svg>
         </div>
-        <h3>Tek Tıkla Kalıcı Hesap Silme</h3>
-        <p>Uygulama içi Ayarlar menüsünden hesabınızı dilediğiniz an kalıcı olarak silebilirsiniz. Silme işlemiyle veritabanındaki tüm kullanıcı kayıtlarınız derhal temizlenir.</p>
-      </div>
-    </div>
-
-    <div class="compliance-banner">
-      <div class="compliance-badge">✓</div>
-      <div style="flex:1;">
-        <h4 style="font-size:16px; font-weight:800; color:#fff; margin-bottom:4px;">30/30 Penetrasyon Testi Onaylı</h4>
-        <p style="font-size:13.5px; color:var(--mut); line-height:1.5;">Miruo altyapısı; XSS kod enjeksiyonu, DoS yük şişirme, CORS kilitleri ve brute-force saldırılarına karşı tam kapsamlı test edilmiş ve sertifikalandırılmıştır.</p>
+        <h3 class="rave-card-title">Şiddet İçeriği Tespiti</h3>
+        <p class="rave-card-desc">Grafik şiddet ve kanlı içerikleri başka bir kullanıcıya ulaşmadan önce tespit edip engelleriz.</p>
       </div>
     </div>
   </div>
@@ -244,20 +134,34 @@
 
 <!-- Footer -->
 <footer class="footer-rave" style="margin-top:auto;">
-  <div class="wrap" style="text-align:center;">
-    <div class="footer-legal-links" style="justify-content:center; margin-bottom:16px;">
+  <div class="wrap">
+    <div class="social-icons-row">
+      <a href="https://facebook.com" target="_blank" rel="noopener" class="social-circle-btn" aria-label="Facebook">
+        <svg viewBox="0 0 24 24"><path d="M18 2h-3a5 5 0 0 0-5 5v3H7v4h3v8h4v-8h3l1-4h-4V7a1 1 0 0 1 1-1h3z"/></svg>
+      </a>
+      <a href="https://instagram.com" target="_blank" rel="noopener" class="social-circle-btn" aria-label="Instagram">
+        <svg viewBox="0 0 24 24"><rect x="2" y="2" width="20" height="20" rx="5" ry="5" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="12" cy="12" r="4" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="17.5" cy="6.5" r="1.2" fill="currentColor"/></svg>
+      </a>
+      <a href="https://x.com" target="_blank" rel="noopener" class="social-circle-btn" aria-label="X">
+        <svg viewBox="0 0 24 24"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/></svg>
+      </a>
+      <a href="https://youtube.com" target="_blank" rel="noopener" class="social-circle-btn" aria-label="YouTube">
+        <svg viewBox="0 0 24 24"><path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z"/></svg>
+      </a>
+    </div>
+
+    <div class="footer-legal-links">
       <a href="/gizlilik">Gizlilik</a>
-      <span>·</span>
-      <a href="/guvenlik">Güvenlik</a>
-      <span>·</span>
-      <a href="/sss">SSS</a>
       <span>·</span>
       <a href="/sartlar">Hizmet Şartları</a>
       <span>·</span>
+      <a href="/sss">SSS</a>
+      <span>·</span>
       <a href="/iletisim">İletişim</a>
     </div>
-    <div style="font-size:12.5px; color:#7E7182;">
-      © 2026 Miruo Inc. Tüm hakları saklıdır.
+
+    <div class="footer-copy">
+      © 2026 Miruo Inc.
     </div>
   </div>
 </footer>

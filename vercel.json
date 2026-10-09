@@ -1,40 +1,19 @@
 {
   "version": 2,
   "cleanUrls": true,
-  "routes": [
-    {
-      "src": "/download/mac",
-      "dest": "/downloads/Miruo-macOS-Installer.dmg",
-      "headers": {
-        "Content-Disposition": "attachment; filename=\"Miruo-macOS-Installer.dmg\"",
-        "Content-Type": "application/x-apple-diskimage"
-      }
-    },
-    {
-      "src": "/download/windows",
-      "dest": "/downloads/Miruo-Windows-Setup.exe",
-      "headers": {
-        "Content-Disposition": "attachment; filename=\"Miruo-Windows-Setup.exe\"",
-        "Content-Type": "application/vnd.microsoft.portable-executable"
-      }
-    },
-    {
-      "src": "/download/ios",
-      "status": 302,
-      "headers": {
-        "Location": "https://apps.apple.com/app/miruo/id6738928411"
-      }
-    },
-    {
-      "src": "/download/android",
-      "status": 302,
-      "headers": {
-        "Location": "https://play.google.com/store/apps/details?id=com.miruo.app"
-      }
-    },
-    {
-      "src": "/(.*)",
-      "dest": "/$1"
-    }
+  "trailingSlash": false,
+  "rewrites": [
+    { "source": "/download/mac", "destination": "/downloads/Miruo-macOS-Installer.dmg" },
+    { "source": "/download/windows", "destination": "/downloads/Miruo-Windows-Setup.exe" },
+    { "source": "/guvenlik", "destination": "/guvenlik.html" },
+    { "source": "/sss", "destination": "/sss.html" },
+    { "source": "/basin", "destination": "/basin.html" },
+    { "source": "/iletisim", "destination": "/iletisim.html" },
+    { "source": "/gizlilik", "destination": "/gizlilik.html" },
+    { "source": "/sartlar", "destination": "/sartlar.html" }
+  ],
+  "redirects": [
+    { "source": "/download/ios", "destination": "https://apps.apple.com/app/miruo/id6738928411", "permanent": false },
+    { "source": "/download/android", "destination": "https://play.google.com/store/apps/details?id=com.miruo.app", "permanent": false }
   ]
 }
