@@ -817,6 +817,31 @@ const dom = {
   togglePrimeAccountBtn: document.getElementById('togglePrimeAccountBtn'),
   toggleDisneyAccountBtn: document.getElementById('toggleDisneyAccountBtn'),
 
+  // Settings Accordions & Extras
+  toggleChangeEmailAccordionBtn: document.getElementById('toggleChangeEmailAccordionBtn'),
+  changeEmailChevron: document.getElementById('changeEmailChevron'),
+  changeEmailCollapseArea: document.getElementById('changeEmailCollapseArea'),
+  toggleChangePassAccordionBtn: document.getElementById('toggleChangePassAccordionBtn'),
+  changePassChevron: document.getElementById('changePassChevron'),
+  changePasswordCollapseArea: document.getElementById('changePasswordCollapseArea'),
+
+  // Personal Room in Settings
+  personalRoomPublicToggle: document.getElementById('personalRoomPublicToggle'),
+  joinPersonalRoomBtn: document.getElementById('joinPersonalRoomBtn'),
+
+  // Notification Toggles
+  notifPushToggle: document.getElementById('notifPushToggle'),
+  notifInvitesToggle: document.getElementById('notifInvitesToggle'),
+  notifSoundToggle: document.getElementById('notifSoundToggle'),
+
+  // Legal Modals
+  privacyPolicyModal: document.getElementById('privacyPolicyModal'),
+  openPrivacyPolicyBtn: document.getElementById('openPrivacyPolicyBtn'),
+  closePrivacyPolicyBtn: document.getElementById('closePrivacyPolicyBtn'),
+  termsModal: document.getElementById('termsModal'),
+  openTermsBtn: document.getElementById('openTermsBtn'),
+  closeTermsBtn: document.getElementById('closeTermsBtn'),
+
   // Explore Lobby, Provider Picker & Workspace Switching
   viewMyRoomBtn: document.getElementById('viewMyRoomBtn'),
   viewExploreBtn: document.getElementById('viewExploreBtn'),
@@ -4099,7 +4124,7 @@ function loadUserSession() {
   }
 
   if (urlParams.get('profile') || hash === 'settings' || hash === 'profile') {
-    const targetTab = urlParams.get('profile') === 'settings' || hash === 'settings' ? 'settings' : 'profile';
+    const targetTab = urlParams.get('profile') || (hash === 'settings' ? 'settings' : 'profile');
     setTimeout(() => { if (typeof openProfileEditModal === 'function') openProfileEditModal(targetTab); }, 350);
   } else if (urlParams.get('auth') === 'signup' || urlParams.get('modal') === 'signup' || hash === 'signup') {
     if (dom.authModal) {
@@ -6076,29 +6101,14 @@ function initEvents() {
   let pendingAvatarBg = '';
 
   function switchProfileTab(tabName) {
-    const tabs = {
-      profile: { btn: dom.profileTabBtnProfile, pane: dom.profilePaneProfile },
-      settings: { btn: dom.profileTabBtnSettings, pane: dom.profilePaneSettings },
-      accounts: { btn: dom.profileTabBtnAccounts, pane: dom.profilePaneAccounts }
-    };
-
-    Object.keys(tabs).forEach(k => {
-      const t = tabs[k];
-      if (t.btn) {
-        if (k === tabName) {
-          t.btn.className = 'profile-nav-tab active py-1.5 rounded-xl text-center text-white bg-gradient-to-r from-rose-500 to-indigo-600 shadow-sm transition-all cursor-pointer font-bold';
-        } else {
-          t.btn.className = 'profile-nav-tab py-1.5 rounded-xl text-center text-gray-400 hover:text-white transition-all cursor-pointer font-semibold';
-        }
-      }
-      if (t.pane) {
-        if (k === tabName) {
-          t.pane.classList.remove('hidden');
-        } else {
-          t.pane.classList.add('hidden');
-        }
-      }
-    });
+    // Kept for backward compatibility
+    if (tabName === 'accounts') {
+      const el = document.getElementById('settingsSectionAccounts');
+      if (el) el.scrollIntoView({ behavior: 'smooth' });
+    } else if (tabName === 'settings') {
+      const el = document.getElementById('settingsSectionApp');
+      if (el) el.scrollIntoView({ behavior: 'smooth' });
+    }
   }
 
   function showChangeEmailAlert(message, isSuccess = false) {
@@ -6115,13 +6125,13 @@ function initEvents() {
     dom.changePassAlert.classList.remove('hidden');
   }
 
-  function openProfileEditModal(activeTab = 'profile') {
+  function openProfileEditModal(section = 'profile') {
     if (dom.userProfileDropdown) dom.userProfileDropdown.classList.add('hidden');
     if (dom.editProfileNameInput) dom.editProfileNameInput.value = (state.username || '').replace(/^@/, '');
 
     const savedUser = JSON.parse(localStorage.getItem('miruo_user') || '{}');
     pendingAvatarUrl = savedUser.avatarUrl || '';
-    pendingAvatarBg = savedUser.avatarBg || 'from-rose-500 to-indigo-600';
+    pendingAvatarBg = savedUser.avatarBg || 'from-[#A64D79] to-[#6A1E55]';
 
     if (dom.profileEmailDisplay) {
       dom.profileEmailDisplay.textContent = savedUser.email || `${(state.username || 'user').toLowerCase()}@miruo.app`;
@@ -6164,22 +6174,68 @@ function initEvents() {
     if (dom.editAvatarPreview) {
       if (pendingAvatarUrl) {
         dom.editAvatarPreview.innerHTML = `<img src="${pendingAvatarUrl}" class="w-full h-full object-cover" alt="PP">`;
-        dom.editAvatarPreview.className = 'w-22 h-22 rounded-2xl overflow-hidden shadow-xl border-2 border-white/20 ring-4 ring-white/5 flex items-center justify-center';
+        dom.editAvatarPreview.className = 'w-20 h-20 rounded-2xl overflow-hidden shadow-xl border-2 border-white/20 ring-4 ring-white/5 flex items-center justify-center';
       } else {
         dom.editAvatarPreview.innerHTML = (state.username || 'M').charAt(0).toUpperCase();
-        dom.editAvatarPreview.className = `w-22 h-22 rounded-2xl bg-gradient-to-tr ${pendingAvatarBg} flex items-center justify-center text-3xl font-bold text-white shadow-xl overflow-hidden border-2 border-white/20 ring-4 ring-white/5`;
+        dom.editAvatarPreview.className = `w-20 h-20 rounded-2xl bg-gradient-to-tr ${pendingAvatarBg} flex items-center justify-center text-3xl font-bold text-white shadow-xl overflow-hidden border-2 border-white/20 ring-4 ring-white/5`;
       }
     }
 
-    switchProfileTab(activeTab);
+    // Load Notification preferences
+    const notifSettings = JSON.parse(localStorage.getItem('miruo_notifications') || '{"push":true,"invites":true,"sound":true}');
+    if (dom.notifPushToggle) dom.notifPushToggle.checked = notifSettings.push !== false;
+    if (dom.notifInvitesToggle) dom.notifInvitesToggle.checked = notifSettings.invites !== false;
+    if (dom.notifSoundToggle) dom.notifSoundToggle.checked = notifSettings.sound !== false;
 
-    if (dom.profileEditModal) dom.profileEditModal.classList.remove('hidden');
+    // Load Personal Room public preference
+    const isPublic = localStorage.getItem('miruo_personal_room_public');
+    if (dom.personalRoomPublicToggle) {
+      dom.personalRoomPublicToggle.checked = isPublic === null ? true : (isPublic === 'true');
+    }
+
+    // Reset Accordions
+    if (dom.changeEmailCollapseArea) dom.changeEmailCollapseArea.classList.add('hidden');
+    if (dom.changeEmailChevron) dom.changeEmailChevron.classList.remove('rotate-180');
+    if (dom.changePasswordCollapseArea) dom.changePasswordCollapseArea.classList.add('hidden');
+    if (dom.changePassChevron) dom.changePassChevron.classList.remove('rotate-180');
+    if (dom.changeEmailAlert) dom.changeEmailAlert.classList.add('hidden');
+    if (dom.changePassAlert) dom.changePassAlert.classList.add('hidden');
+
+    if (dom.profileEditModal) {
+      dom.profileEditModal.classList.remove('hidden');
+      if (section === 'accounts') {
+        const el = document.getElementById('settingsSectionAccounts');
+        if (el) el.scrollIntoView({ behavior: 'smooth' });
+      } else if (section === 'settings') {
+        const el = document.getElementById('settingsSectionApp');
+        if (el) el.scrollIntoView({ behavior: 'smooth' });
+      } else if (section === 'notif') {
+        const el = document.getElementById('settingsSectionNotif');
+        if (el) el.scrollIntoView({ behavior: 'smooth' });
+      } else if (section === 'legal') {
+        const el = document.getElementById('settingsSectionLegal');
+        if (el) el.scrollIntoView({ behavior: 'smooth' });
+      } else if (section === 'privacy') {
+        if (dom.privacyPolicyModal) dom.privacyPolicyModal.classList.remove('hidden');
+      } else if (section === 'terms') {
+        if (dom.termsModal) dom.termsModal.classList.remove('hidden');
+      } else if (section === 'accordions_open') {
+        if (dom.changeEmailCollapseArea) dom.changeEmailCollapseArea.classList.remove('hidden');
+        if (dom.changeEmailChevron) dom.changeEmailChevron.classList.add('rotate-180');
+        if (dom.changePasswordCollapseArea) dom.changePasswordCollapseArea.classList.remove('hidden');
+        if (dom.changePassChevron) dom.changePassChevron.classList.add('rotate-180');
+        const el = document.getElementById('settingsSectionSecurity');
+        if (el) el.scrollIntoView({ behavior: 'smooth' });
+      } else {
+        dom.profileEditModal.scrollTop = 0;
+      }
+    }
   }
 
   window.openProfileEditModal = openProfileEditModal;
   window.switchProfileTab = switchProfileTab;
 
-  // Profile Nav Tabs Click Handlers
+  // Profile Nav Tabs Click Handlers (Backwards Compatibility)
   if (dom.profileTabBtnProfile) dom.profileTabBtnProfile.addEventListener('click', () => switchProfileTab('profile'));
   if (dom.profileTabBtnSettings) dom.profileTabBtnSettings.addEventListener('click', () => switchProfileTab('settings'));
   if (dom.profileTabBtnAccounts) dom.profileTabBtnAccounts.addEventListener('click', () => switchProfileTab('accounts'));
@@ -6212,6 +6268,96 @@ function initEvents() {
   if (dom.closeProfileEditBtn) {
     addInstantTap(dom.closeProfileEditBtn, () => {
       if (dom.profileEditModal) dom.profileEditModal.classList.add('hidden');
+      if (dom.privacyPolicyModal) dom.privacyPolicyModal.classList.add('hidden');
+      if (dom.termsModal) dom.termsModal.classList.add('hidden');
+    });
+  }
+
+  // Accordion 1: E-posta Değiştir
+  if (dom.toggleChangeEmailAccordionBtn) {
+    dom.toggleChangeEmailAccordionBtn.addEventListener('click', () => {
+      if (!dom.changeEmailCollapseArea) return;
+      const isClosed = dom.changeEmailCollapseArea.classList.contains('hidden');
+      if (isClosed) {
+        dom.changeEmailCollapseArea.classList.remove('hidden');
+        if (dom.changeEmailChevron) dom.changeEmailChevron.classList.add('rotate-180');
+        if (dom.changeEmailNewInput) dom.changeEmailNewInput.focus();
+      } else {
+        dom.changeEmailCollapseArea.classList.add('hidden');
+        if (dom.changeEmailChevron) dom.changeEmailChevron.classList.remove('rotate-180');
+      }
+    });
+  }
+
+  // Accordion 2: Şifre Değiştir
+  if (dom.toggleChangePassAccordionBtn) {
+    dom.toggleChangePassAccordionBtn.addEventListener('click', () => {
+      if (!dom.changePasswordCollapseArea) return;
+      const isClosed = dom.changePasswordCollapseArea.classList.contains('hidden');
+      if (isClosed) {
+        dom.changePasswordCollapseArea.classList.remove('hidden');
+        if (dom.changePassChevron) dom.changePassChevron.classList.add('rotate-180');
+        if (dom.changePassCurrentInput) dom.changePassCurrentInput.focus();
+      } else {
+        dom.changePasswordCollapseArea.classList.add('hidden');
+        if (dom.changePassChevron) dom.changePassChevron.classList.remove('rotate-180');
+      }
+    });
+  }
+
+  // Notifications Toggles Persistence
+  function saveNotifSettings() {
+    const s = {
+      push: dom.notifPushToggle ? dom.notifPushToggle.checked : true,
+      invites: dom.notifInvitesToggle ? dom.notifInvitesToggle.checked : true,
+      sound: dom.notifSoundToggle ? dom.notifSoundToggle.checked : true
+    };
+    localStorage.setItem('miruo_notifications', JSON.stringify(s));
+    showToast('Bildirim tercihleri güncellendi ✨');
+  }
+
+  if (dom.notifPushToggle) dom.notifPushToggle.addEventListener('change', saveNotifSettings);
+  if (dom.notifInvitesToggle) dom.notifInvitesToggle.addEventListener('change', saveNotifSettings);
+  if (dom.notifSoundToggle) dom.notifSoundToggle.addEventListener('change', saveNotifSettings);
+
+  // Personal Room Toggle & Start Button
+  if (dom.personalRoomPublicToggle) {
+    dom.personalRoomPublicToggle.addEventListener('change', () => {
+      localStorage.setItem('miruo_personal_room_public', dom.personalRoomPublicToggle.checked);
+    });
+  }
+
+  if (dom.joinPersonalRoomBtn) {
+    addInstantTap(dom.joinPersonalRoomBtn, () => {
+      if (dom.profileEditModal) dom.profileEditModal.classList.add('hidden');
+      const isPublic = dom.personalRoomPublicToggle ? dom.personalRoomPublicToggle.checked : true;
+      const cleanUser = (state.username || 'Benim').replace(/^@/, '');
+      const roomTitle = `${cleanUser} Canlı Odası`;
+      createAndJoinRoom(roomTitle, !isPublic, 'YouTube');
+      showToast('Kişisel odan başlatıldı! 🚀');
+    });
+  }
+
+  // Legal Modals (Gizlilik Politikası & Kullanım Koşulları)
+  if (dom.openPrivacyPolicyBtn && dom.privacyPolicyModal) {
+    addInstantTap(dom.openPrivacyPolicyBtn, () => {
+      dom.privacyPolicyModal.classList.remove('hidden');
+    });
+  }
+  if (dom.closePrivacyPolicyBtn && dom.privacyPolicyModal) {
+    addInstantTap(dom.closePrivacyPolicyBtn, () => {
+      dom.privacyPolicyModal.classList.add('hidden');
+    });
+  }
+
+  if (dom.openTermsBtn && dom.termsModal) {
+    addInstantTap(dom.openTermsBtn, () => {
+      dom.termsModal.classList.remove('hidden');
+    });
+  }
+  if (dom.closeTermsBtn && dom.termsModal) {
+    addInstantTap(dom.closeTermsBtn, () => {
+      dom.termsModal.classList.add('hidden');
     });
   }
 
