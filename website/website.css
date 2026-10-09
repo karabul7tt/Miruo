@@ -1607,3 +1607,195 @@ nav .wrap {
     grid-template-columns: 1fr;
   }
 }
+
+/* ==========================================
+   RAVE SINGLE-PAGE DESKTOP VIEWPORT LOCK (NO SCROLL)
+   ========================================== */
+@media (min-width: 900px) {
+  body.single-page-rave {
+    height: 100vh !important;
+    max-height: 100vh !important;
+    overflow: hidden !important;
+    display: flex !important;
+    flex-direction: column !important;
+    justify-content: space-between !important;
+  }
+
+  body.single-page-rave nav {
+    flex-shrink: 0;
+    height: 64px;
+    border-bottom: 1px solid rgba(255, 110, 180, 0.14);
+    background: rgba(14, 8, 17, 0.78);
+  }
+
+  body.single-page-rave nav .wrap {
+    height: 64px;
+  }
+
+  body.single-page-rave .hero-rave {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    padding: 0;
+    margin: 0;
+  }
+
+  body.single-page-rave .hero-rave .wrap {
+    width: 100%;
+    max-width: 1320px;
+    padding: 0 24px;
+  }
+
+  body.single-page-rave .hero-rave .title-wrapper {
+    margin-bottom: clamp(14px, 2.8vh, 28px);
+  }
+
+  body.single-page-rave .hero-rave h1 {
+    font-size: clamp(40px, 5.2vw, 68px);
+    font-weight: 900;
+    letter-spacing: 0.04em;
+    color: #FFFFFF;
+    margin: 0;
+    line-height: 1;
+    text-shadow: 0 0 35px rgba(255, 110, 180, 0.35);
+  }
+
+  body.single-page-rave .devices-grid {
+    display: flex;
+    justify-content: center;
+    align-items: flex-end;
+    gap: clamp(16px, 3.2vw, 44px);
+    margin: 0 auto;
+    width: 100%;
+  }
+
+  body.single-page-rave .device-card {
+    flex: 0 0 auto;
+  }
+
+  body.single-page-rave .mockup-container {
+    margin-bottom: 10px;
+    min-height: auto;
+  }
+
+  body.single-page-rave .footer-rave {
+    flex-shrink: 0;
+    padding: clamp(8px, 1.8vh, 18px) 0;
+  }
+}
+
+/* ==========================================
+   MINIMALIST RAVE PLATFORM LABELS
+   ========================================== */
+.platform-label-rave {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  font-size: clamp(18px, 1.5vw, 22px);
+  font-weight: 700;
+  color: #FFFFFF;
+  letter-spacing: -0.01em;
+  margin-top: 8px;
+  transition: transform 0.2s ease, text-shadow 0.2s ease;
+}
+
+.device-card:hover .platform-label-rave {
+  transform: scale(1.06);
+  text-shadow: 0 0 16px rgba(255, 110, 180, 0.6);
+}
+
+.platform-label-rave svg {
+  width: 20px;
+  height: 20px;
+  fill: #FFFFFF;
+  flex-shrink: 0;
+}
+
+/* ==========================================
+   ANIMATED OWL PUPILS (AUTOMATIC ROTATION & ROLL)
+   ========================================== */
+.owl-pupil-wrap {
+  animation: owlEyeRollAuto 5.4s cubic-bezier(0.45, 0.05, 0.55, 0.95) infinite;
+  transform-origin: 60px 62px;
+  will-change: transform;
+}
+
+@keyframes owlEyeRollAuto {
+  0% { transform: translate(0, 0); }
+  14% { transform: translate(-3.8px, 0); } /* Sola bak */
+  26% { transform: translate(-2.6px, -3.2px); } /* Sol yukarı */
+  38% { transform: translate(3.2px, -3px); } /* Sağ yukarı */
+  50% { transform: translate(4px, 0.6px); } /* Sağa bak */
+  62% { transform: translate(2px, 3.6px); } /* Aşağı bak */
+  74% { transform: translate(-3.2px, 2px); } /* Sol alt dairesel dönüş */
+  84% { transform: translate(0, 0); } /* Merkeze dönüş */
+  92% { transform: translate(0, 0) scaleY(1); }
+  95% { transform: translate(0, 0) scaleY(0.15); } /* Göz kırpma */
+  98% { transform: translate(0, 0) scaleY(1); }
+  100% { transform: translate(0, 0); }
+}
+
+/* Social icons Rave circular outline */
+.social-icons-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  margin-bottom: 10px;
+}
+
+.social-circle-btn {
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  border: 1.5px solid rgba(255, 255, 255, 0.45);
+  background: transparent;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #FFFFFF;
+  text-decoration: none;
+  transition: all 0.2s ease;
+}
+
+.social-circle-btn svg {
+  width: 17px;
+  height: 17px;
+  fill: currentColor;
+}
+
+.social-circle-btn:hover {
+  border-color: #FFFFFF;
+  background: rgba(255, 255, 255, 0.14);
+  transform: scale(1.08);
+}
+
+.footer-legal-links {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  margin-bottom: 10px;
+}
+
+.footer-legal-links a {
+  font-size: 13.5px;
+  font-weight: 600;
+  color: #FFFFFF;
+  text-decoration: none;
+  transition: color 0.2s ease;
+}
+
+.footer-legal-links a:hover {
+  color: var(--magenta-bright);
+  text-decoration: underline;
+}
+
+.footer-copy {
+  font-size: 11.5px;
+  color: rgba(255, 255, 255, 0.55);
+  margin-top: 8px;
+}

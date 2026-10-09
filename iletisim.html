@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>İletişim ve Destek — Miruo</title>
+<meta name="description" content="Miruo ekibiyle iletişime geçin, teknik destek alın veya önerilerinizi paylaşın.">
+<link rel="icon" href="logo.png">
+<link rel="stylesheet" href="website.css">
+<style>
+  body {
+    overflow-y: auto !important;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+  }
+  .page-content {
+    flex: 1;
+    padding: 60px 0 80px;
+    position: relative;
+    z-index: 2;
+  }
+  .back-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    color: var(--mut);
+    text-decoration: none;
+    font-size: 13.5px;
+    font-weight: 600;
+    margin-bottom: 28px;
+    padding: 8px 16px;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    transition: all 0.2s ease;
+  }
+  .back-btn:hover {
+    color: #fff;
+    background: rgba(255, 110, 180, 0.15);
+    border-color: rgba(255, 110, 180, 0.3);
+    transform: translateX(-3px);
+  }
+  .sec-header {
+    text-align: center;
+    max-width: 760px;
+    margin: 0 auto 50px;
+  }
+  .sec-badge {
+    display: inline-block;
+    padding: 5px 14px;
+    border-radius: 999px;
+    font-size: 11px;
+    font-weight: 800;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--magenta-bright);
+    background: rgba(255, 110, 180, 0.12);
+    border: 1px solid rgba(255, 110, 180, 0.25);
+    margin-bottom: 16px;
+  }
+  .sec-title {
+    font-size: clamp(32px, 4.5vw, 52px);
+    font-weight: 900;
+    color: #fff;
+    letter-spacing: -0.02em;
+    margin-bottom: 16px;
+  }
+  .sec-lead {
+    font-size: 16px;
+    line-height: 1.65;
+    color: var(--mut);
+  }
+  .contact-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: 24px;
+    max-width: 1040px;
+    margin: 0 auto;
+  }
+  .contact-card {
+    background: rgba(20, 10, 26, 0.65);
+    border: 1px solid rgba(255, 110, 180, 0.15);
+    border-radius: 24px;
+    padding: 36px 30px;
+    backdrop-filter: blur(16px);
+    text-align: center;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    transition: transform 0.25s ease, border-color 0.25s ease;
+  }
+  .contact-card:hover {
+    transform: translateY(-4px);
+    border-color: rgba(255, 110, 180, 0.35);
+  }
+  .contact-icon-circle {
+    width: 56px;
+    height: 56px;
+    border-radius: 16px;
+    background: linear-gradient(135deg, rgba(255, 110, 180, 0.2), rgba(106, 30, 85, 0.4));
+    border: 1px solid rgba(255, 110, 180, 0.3);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-bottom: 20px;
+    color: var(--magenta-bright);
+  }
+  .contact-icon-circle svg {
+    width: 26px;
+    height: 26px;
+    fill: currentColor;
+  }
+  .contact-card h3 {
+    font-size: 20px;
+    font-weight: 800;
+    color: #fff;
+    margin-bottom: 10px;
+  }
+  .contact-card p {
+    font-size: 14px;
+    line-height: 1.6;
+    color: var(--mut);
+    margin-bottom: 24px;
+    flex: 1;
+  }
+  .contact-action-btn {
+    display: inline-block;
+    padding: 12px 28px;
+    border-radius: 999px;
+    background: linear-gradient(135deg, #C26D97, #6A1E55);
+    color: #fff;
+    text-decoration: none;
+    font-size: 13.5px;
+    font-weight: 700;
+    transition: all 0.2s ease;
+    box-shadow: 0 4px 16px rgba(194, 109, 151, 0.3);
+  }
+  .contact-action-btn:hover {
+    transform: scale(1.04);
+    box-shadow: 0 6px 20px rgba(255, 110, 180, 0.4);
+  }
+</style>
+</head>
+<body>
+<canvas id="starCanvas"></canvas>
+
+<!-- Top Navigation -->
+<nav>
+  <div class="wrap">
+    <a class="brand" href="/">
+      <div class="brand-icon">
+        <svg id="navOwlSvg" viewBox="0 0 120 120" width="28" height="28">
+          <rect width="120" height="120" rx="26" fill="#1A1A1D"/>
+          <path d="M60 38H76L90 26V68Q90 96 60 96" fill="#3B1C32" fill-opacity="0.5" stroke="#6A1E55" stroke-width="2"/>
+          <path d="M60 38H44L30 26V68Q30 96 60 96Z" fill="#C26D97"/>
+          <circle cx="45" cy="62" r="10.5" fill="#1A1A1D"/>
+          <circle class="owl-pupil owl-pupil-left" cx="45" cy="62" r="4.2" fill="#FFFFFF"/>
+          <circle cx="75" cy="62" r="11.5" fill="#3B1C32" stroke="#6A1E55" stroke-width="1.5"/>
+          <circle class="owl-pupil owl-pupil-right" cx="75" cy="62" r="5.5" fill="#FF6EB4"/>
+        </svg>
+      </div>
+      MIRUO
+    </a>
+    <div class="nav-links">
+      <a href="/guvenlik">Güvenlik</a>
+      <a href="/sss">SSS</a>
+      <a href="/basin">Basın</a>
+      <a href="/iletisim" style="color:#fff;">İletişim</a>
+    </div>
+  </div>
+</nav>
+
+<main class="page-content">
+  <div class="wrap">
+    <a href="/" class="back-btn">← Ana Sayfaya Dön</a>
+
+    <div class="sec-header">
+      <span class="sec-badge">BİZE ULAŞIN</span>
+      <h1 class="sec-title">Destek ve İletişim</h1>
+      <p class="sec-lead">Bir sorunuz, teknik bir probleminiz veya Miruo için yeni bir fikir öneriniz mi var? Size yardımcı olmaktan mutluluk duyarız.</p>
+    </div>
+
+    <div class="contact-grid">
+      <div class="contact-card">
+        <div class="contact-icon-circle">
+          <svg viewBox="0 0 24 24"><path d="M20 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 4l-8 5-8-5V6l8 5 8-5v2z"/></svg>
+        </div>
+        <h3>E-posta Desteği</h3>
+        <p>Hesap, güvenlik ve genel teknik sorularınız için destek ekibimize doğrudan e-posta gönderebilirsiniz. 24 saat içinde yanıt verilir.</p>
+        <a href="mailto:destek@miruo.app" class="contact-action-btn">destek@miruo.app</a>
+      </div>
+
+      <div class="contact-card">
+        <div class="contact-icon-circle">
+          <svg viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 14.5v-9l6 4.5-6 4.5z"/></svg>
+        </div>
+        <h3>Discord Topluluğu</h3>
+        <p>Binlerce Miruo kullanıcısıyla tanışın, film partilerine katılın ve güncellemelerden anında haberdar olun.</p>
+        <a href="https://discord.com" target="_blank" rel="noreferrer" class="contact-action-btn">Discord'a Katıl →</a>
+      </div>
+
+      <div class="contact-card">
+        <div class="contact-icon-circle">
+          <svg viewBox="0 0 24 24"><path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm-2 12H6v-2h12v2zm0-3H6V9h12v2zm0-3H6V6h12v2z"/></svg>
+        </div>
+        <h3>Hızlı Geri Bildirim</h3>
+        <p>Masaüstü veya mobil uygulama içinden tek tıkla hata bildirebilir veya yeni özellik önerisinde bulunabilirsiniz.</p>
+        <a href="/sss" class="contact-action-btn">SSS Sayfası →</a>
+      </div>
+    </div>
+  </div>
+</main>
+
+<!-- Footer -->
+<footer class="footer-rave" style="margin-top:auto;">
+  <div class="wrap" style="text-align:center;">
+    <div class="footer-legal-links" style="justify-content:center; margin-bottom:16px;">
+      <a href="/gizlilik">Gizlilik</a>
+      <span>·</span>
+      <a href="/guvenlik">Güvenlik</a>
+      <span>·</span>
+      <a href="/sss">SSS</a>
+      <span>·</span>
+      <a href="/sartlar">Hizmet Şartları</a>
+      <span>·</span>
+      <a href="/iletisim" style="color:#fff;">İletişim</a>
+    </div>
+    <div style="font-size:12.5px; color:#7E7182;">
+      © 2026 Miruo Inc. Tüm hakları saklıdır.
+    </div>
+  </div>
+</footer>
+
+<script src="site.js"></script>
+</body>
+</html>

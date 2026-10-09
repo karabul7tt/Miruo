@@ -437,8 +437,8 @@
       }
 
       if (platform === 'android') {
-        // User requested: "android altındada çok yakında yazsın"
-        showToast('Android sürümümüz çok yakında Google Play Store\'da yayınlanacak! 🚀');
+        window.open('https://play.google.com/store/apps/details?id=com.miruo.app', '_blank');
+        showToast('Google Play Store açılıyor... 🚀');
         return;
       }
 
@@ -447,6 +447,40 @@
       }
     });
   });
+
+  // 6. MIRUO OWL EYE TRACKER & AUTO-ROTATION CONTROLLER
+  const pupilLeft = document.getElementById('brandOwlPupilLeft');
+  const pupilRight = document.getElementById('brandOwlPupilRight');
+  const navOwlSvg = document.getElementById('navOwlSvg');
+
+  if (pupilLeft && pupilRight && navOwlSvg) {
+    let idleTimer = null;
+
+    function handleMouseMove(e) {
+      const rect = navOwlSvg.getBoundingClientRect();
+      const cx = rect.left + rect.width / 2;
+      const cy = rect.top + rect.height / 2;
+      const dx = Math.max(-1, Math.min(1, (e.clientX - cx) / 250));
+      const dy = Math.max(-1, Math.min(1, (e.clientY - cy) / 250));
+
+      pupilLeft.style.animation = 'none';
+      pupilRight.style.animation = 'none';
+
+      const move = 4.2;
+      pupilLeft.style.transform = `translate(${dx * move}px, ${dy * move}px)`;
+      pupilRight.style.transform = `translate(${dx * move}px, ${dy * move}px)`;
+
+      clearTimeout(idleTimer);
+      idleTimer = setTimeout(() => {
+        pupilLeft.style.animation = '';
+        pupilRight.style.animation = '';
+        pupilLeft.style.transform = '';
+        pupilRight.style.transform = '';
+      }, 1800);
+    }
+
+    window.addEventListener('mousemove', handleMouseMove, { passive: true });
+  }
 
   // 6. FAQ ACCORDION INTERACTIVITY
   document.querySelectorAll('.faq-question').forEach((q) => {

@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Gizlilik Politikası — Miruo</title>
+<meta name="description" content="Miruo gizlilik taahhüdü: verileriniz asla satılmaz, üçüncü taraflarla paylaşılmaz.">
+<link rel="icon" href="logo.png">
+<link rel="stylesheet" href="website.css">
+<style>
+  body {
+    overflow-y: auto !important;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+  }
+  .page-content {
+    flex: 1;
+    padding: 60px 0 80px;
+    position: relative;
+    z-index: 2;
+  }
+  .back-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    color: var(--mut);
+    text-decoration: none;
+    font-size: 13.5px;
+    font-weight: 600;
+    margin-bottom: 28px;
+    padding: 8px 16px;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    transition: all 0.2s ease;
+  }
+  .back-btn:hover {
+    color: #fff;
+    background: rgba(255, 110, 180, 0.15);
+    border-color: rgba(255, 110, 180, 0.3);
+    transform: translateX(-3px);
+  }
+  .doc-container {
+    max-width: 860px;
+    margin: 0 auto;
+    background: rgba(20, 10, 26, 0.65);
+    border: 1px solid rgba(255, 110, 180, 0.15);
+    border-radius: 28px;
+    padding: 44px 40px;
+    backdrop-filter: blur(16px);
+  }
+  .doc-badge {
+    display: inline-block;
+    padding: 5px 14px;
+    border-radius: 999px;
+    font-size: 11px;
+    font-weight: 800;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--magenta-bright);
+    background: rgba(255, 110, 180, 0.12);
+    border: 1px solid rgba(255, 110, 180, 0.25);
+    margin-bottom: 14px;
+  }
+  .doc-title {
+    font-size: clamp(28px, 4vw, 42px);
+    font-weight: 900;
+    color: #fff;
+    margin-bottom: 8px;
+  }
+  .doc-date {
+    font-size: 13px;
+    color: var(--mut);
+    margin-bottom: 28px;
+  }
+  .doc-highlight {
+    padding: 18px 22px;
+    border-radius: 16px;
+    background: rgba(255, 110, 180, 0.08);
+    border: 1px solid rgba(255, 110, 180, 0.2);
+    color: #fff;
+    font-size: 14.5px;
+    line-height: 1.6;
+    margin-bottom: 34px;
+  }
+  .doc-section {
+    margin-bottom: 30px;
+  }
+  .doc-section h2 {
+    font-size: 20px;
+    font-weight: 800;
+    color: #fff;
+    margin-bottom: 12px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .doc-section p, .doc-section li {
+    font-size: 14.5px;
+    line-height: 1.7;
+    color: var(--mut);
+    margin-bottom: 8px;
+  }
+  .doc-section ul {
+    padding-left: 22px;
+  }
+</style>
+</head>
+<body>
+<canvas id="starCanvas"></canvas>
+
+<!-- Top Navigation -->
+<nav>
+  <div class="wrap">
+    <a class="brand" href="/">
+      <div class="brand-icon">
+        <svg id="navOwlSvg" viewBox="0 0 120 120" width="28" height="28">
+          <rect width="120" height="120" rx="26" fill="#1A1A1D"/>
+          <path d="M60 38H76L90 26V68Q90 96 60 96" fill="#3B1C32" fill-opacity="0.5" stroke="#6A1E55" stroke-width="2"/>
+          <path d="M60 38H44L30 26V68Q30 96 60 96Z" fill="#C26D97"/>
+          <circle cx="45" cy="62" r="10.5" fill="#1A1A1D"/>
+          <circle class="owl-pupil owl-pupil-left" cx="45" cy="62" r="4.2" fill="#FFFFFF"/>
+          <circle cx="75" cy="62" r="11.5" fill="#3B1C32" stroke="#6A1E55" stroke-width="1.5"/>
+          <circle class="owl-pupil owl-pupil-right" cx="75" cy="62" r="5.5" fill="#FF6EB4"/>
+        </svg>
+      </div>
+      MIRUO
+    </a>
+    <div class="nav-links">
+      <a href="/guvenlik">Güvenlik</a>
+      <a href="/sss">SSS</a>
+      <a href="/basin">Basın</a>
+      <a href="/iletisim">İletişim</a>
+    </div>
+  </div>
+</nav>
+
+<main class="page-content">
+  <div class="wrap">
+    <a href="/" class="back-btn">← Ana Sayfaya Dön</a>
+
+    <div class="doc-container">
+      <span class="doc-badge">GİZLİLİK POLİTİKASI</span>
+      <h1 class="doc-title">Miruo Gizlilik İlkeleri</h1>
+      <div class="doc-date">Son Güncelleme: 9 Ekim 2026</div>
+
+      <div class="doc-highlight">
+        <strong>Özet Taahhüt:</strong> Miruo'da kişisel verileriniz asla satılmaz, kiralanmaz ve reklam verenlerle paylaşılmaz. Kamera veya mikrofon sesleriniz sunucularımızda kaydedilmez.
+      </div>
+
+      <div class="doc-section">
+        <h2>1. Toplanan Bilgiler</h2>
+        <p>Miruo'yu kullanırken yalnızca hizmetin temel fonksiyonlarını yerine getirebilmesi için gerekli minimum teknik bilgiler işlenir:</p>
+        <ul>
+          <li><strong>Hesap Bilgileri:</strong> Kayıt sırasında belirlediğiniz e-posta adresi, kullanıcı adı ve parola (scrypt algoritmasıyla tuzlanarak şifrelenmiş halde).</li>
+          <li><strong>Oda Verileri:</strong> Canlı izleme odasının kodu, oda adı ve senkronizasyon için anlık video duraklatma/oynatma zaman damgaları.</li>
+          <li><strong>Medya Verisi Toplanmaz:</strong> Kamera görüntüleriniz ve mikrofon konuşmalarınız sunucuda tutulmaz; WebRTC üzerinden doğrudan cihazdan cihaza aktarılır.</li>
+        </ul>
+      </div>
+
+      <div class="doc-section">
+        <h2>2. Bilgilerin Kullanım Amacı</h2>
+        <p>Toplanan sınırlı veriler şu amaçlarla kullanılır:</p>
+        <ul>
+          <li>Kullanıcı oturumunun güvenli biçimde açılması ve doğrulanması.</li>
+          <li>Oda katılımcıları arasındaki anlık video senkronizasyonunun sağlanması.</li>
+          <li>Kötü niyetli girişimlerin (spam, brute-force vb.) engellenmesi.</li>
+        </ul>
+      </div>
+
+      <div class="doc-section">
+        <h2>3. Üçüncü Taraflar ve Reklam</h2>
+        <p>Miruo'da üçüncü taraf reklam takipçileri (Ad Trackers) veya gözetim yazılımları kesinlikle bulunmaz. Google veya Facebook reklam ağları ile veri paylaşımı yapılmaz.</p>
+      </div>
+
+      <div class="doc-section">
+        <h2>4. Tek Tıkla Kalıcı Hesap Silme</h2>
+        <p>Kullanıcılarımız diledikleri zaman Ayarlar ekranındaki <strong>"Hesabı Kalıcı Olarak Sil"</strong> butonunu kullanarak tüm kişisel verilerini, hesaplarını ve kayıtlarını sunucularımızdan anında ve geri döndürülemez şekilde silebilirler.</p>
+      </div>
+
+      <div class="doc-section">
+        <h2>5. KVKK ve GDPR Uyumluluğu</h2>
+        <p>Kullanıcılarımız 6698 sayılı Kişisel Verilerin Korunması Kanunu (KVKK) ve AB Genel Veri Koruma Tüzüğü (GDPR) kapsamında verilerine erişme, düzeltme talep etme ve silinmesini isteme hakkına sahiptir.</p>
+        <p>İletişim ve veri talepleri için: <a href="mailto:destek@miruo.app" style="color:var(--magenta-bright); text-decoration:none; font-weight:700;">destek@miruo.app</a></p>
+      </div>
+    </div>
+  </div>
+</main>
+
+<!-- Footer -->
+<footer class="footer-rave" style="margin-top:auto;">
+  <div class="wrap" style="text-align:center;">
+    <div class="footer-legal-links" style="justify-content:center; margin-bottom:16px;">
+      <a href="/gizlilik" style="color:#fff;">Gizlilik</a>
+      <span>·</span>
+      <a href="/guvenlik">Güvenlik</a>
+      <span>·</span>
+      <a href="/sss">SSS</a>
+      <span>·</span>
+      <a href="/sartlar">Hizmet Şartları</a>
+      <span>·</span>
+      <a href="/iletisim">İletişim</a>
+    </div>
+    <div style="font-size:12.5px; color:#7E7182;">
+      © 2026 Miruo Inc. Tüm hakları saklıdır.
+    </div>
+  </div>
+</footer>
+
+<script src="site.js"></script>
+</body>
+</html>

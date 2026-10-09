@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Hizmet Şartları ve Kullanım Koşulları — Miruo</title>
+<meta name="description" content="Miruo platformu kullanım kuralları ve hizmet şartları.">
+<link rel="icon" href="logo.png">
+<link rel="stylesheet" href="website.css">
+<style>
+  body {
+    overflow-y: auto !important;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+  }
+  .page-content {
+    flex: 1;
+    padding: 60px 0 80px;
+    position: relative;
+    z-index: 2;
+  }
+  .back-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    color: var(--mut);
+    text-decoration: none;
+    font-size: 13.5px;
+    font-weight: 600;
+    margin-bottom: 28px;
+    padding: 8px 16px;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    transition: all 0.2s ease;
+  }
+  .back-btn:hover {
+    color: #fff;
+    background: rgba(255, 110, 180, 0.15);
+    border-color: rgba(255, 110, 180, 0.3);
+    transform: translateX(-3px);
+  }
+  .doc-container {
+    max-width: 860px;
+    margin: 0 auto;
+    background: rgba(20, 10, 26, 0.65);
+    border: 1px solid rgba(255, 110, 180, 0.15);
+    border-radius: 28px;
+    padding: 44px 40px;
+    backdrop-filter: blur(16px);
+  }
+  .doc-badge {
+    display: inline-block;
+    padding: 5px 14px;
+    border-radius: 999px;
+    font-size: 11px;
+    font-weight: 800;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--magenta-bright);
+    background: rgba(255, 110, 180, 0.12);
+    border: 1px solid rgba(255, 110, 180, 0.25);
+    margin-bottom: 14px;
+  }
+  .doc-title {
+    font-size: clamp(28px, 4vw, 42px);
+    font-weight: 900;
+    color: #fff;
+    margin-bottom: 8px;
+  }
+  .doc-date {
+    font-size: 13px;
+    color: var(--mut);
+    margin-bottom: 28px;
+  }
+  .doc-section {
+    margin-bottom: 30px;
+  }
+  .doc-section h2 {
+    font-size: 20px;
+    font-weight: 800;
+    color: #fff;
+    margin-bottom: 12px;
+  }
+  .doc-section p, .doc-section li {
+    font-size: 14.5px;
+    line-height: 1.7;
+    color: var(--mut);
+    margin-bottom: 8px;
+  }
+  .doc-section ul {
+    padding-left: 22px;
+  }
+</style>
+</head>
+<body>
+<canvas id="starCanvas"></canvas>
+
+<!-- Top Navigation -->
+<nav>
+  <div class="wrap">
+    <a class="brand" href="/">
+      <div class="brand-icon">
+        <svg id="navOwlSvg" viewBox="0 0 120 120" width="28" height="28">
+          <rect width="120" height="120" rx="26" fill="#1A1A1D"/>
+          <path d="M60 38H76L90 26V68Q90 96 60 96" fill="#3B1C32" fill-opacity="0.5" stroke="#6A1E55" stroke-width="2"/>
+          <path d="M60 38H44L30 26V68Q30 96 60 96Z" fill="#C26D97"/>
+          <circle cx="45" cy="62" r="10.5" fill="#1A1A1D"/>
+          <circle class="owl-pupil owl-pupil-left" cx="45" cy="62" r="4.2" fill="#FFFFFF"/>
+          <circle cx="75" cy="62" r="11.5" fill="#3B1C32" stroke="#6A1E55" stroke-width="1.5"/>
+          <circle class="owl-pupil owl-pupil-right" cx="75" cy="62" r="5.5" fill="#FF6EB4"/>
+        </svg>
+      </div>
+      MIRUO
+    </a>
+    <div class="nav-links">
+      <a href="/guvenlik">Güvenlik</a>
+      <a href="/sss">SSS</a>
+      <a href="/basin">Basın</a>
+      <a href="/iletisim">İletişim</a>
+    </div>
+  </div>
+</nav>
+
+<main class="page-content">
+  <div class="wrap">
+    <a href="/" class="back-btn">← Ana Sayfaya Dön</a>
+
+    <div class="doc-container">
+      <span class="doc-badge">KULLANIM KOŞULLARI</span>
+      <h1 class="doc-title">Miruo Hizmet Şartları</h1>
+      <div class="doc-date">Son Güncelleme: 9 Ekim 2026</div>
+
+      <div class="doc-section">
+        <h2>1. Genel Kabul</h2>
+        <p>Miruo web sitesini, masaüstü veya mobil uygulamalarını kullanarak bu koşulları kabul etmiş sayılırsınız. Miruo, arkadaş gruplarının yasal olarak erişebildikleri medyaları birlikte eşzamanlı izlemelerini sağlayan bir iletişim aracıdır.</p>
+      </div>
+
+      <div class="doc-section">
+        <h2>2. Hizmet Kapsamı ve Telif Hakları</h2>
+        <p>Miruo, telif hakkıyla korunan video dosyalarını kendi sunucularında barındırmaz veya saklamaz. İzlenen içerikler YouTube veya kullanıcıların yasal abonelikleri üzerinden cihazlarında yerel olarak oynatılır ve WebRTC protokolüyle zaman damgaları senkronize edilir.</p>
+      </div>
+
+      <div class="doc-section">
+        <h2>3. Topluluk ve Davranış Kuralları</h2>
+        <p>Miruo odalarında şu davranışlar kesinlikle yasaktır:</p>
+        <ul>
+          <li>Diğer kullanıcılara hakaret, nefret söylemi veya tacizde bulunmak.</li>
+          <li>Zararlı yazılım, spam veya yasa dışı bağlantılar paylaşmak.</li>
+          <li>Sunucu altyapısına kaba kuvvet (brute-force) veya DoS saldırısı girişiminde bulunmak.</li>
+        </ul>
+      </div>
+
+      <div class="doc-section">
+        <h2>4. Hesap Güvenliği ve Fesih</h2>
+        <p>Hesabınızın güvenliği sizin sorumluluğunuzdadır. Kullanıcılar diledikleri zaman hesaplarını uygulama içinden kalıcı olarak silebilirler.</p>
+      </div>
+
+      <div class="doc-section">
+        <h2>5. İletişim</h2>
+        <p>Şartlar hakkında sorularınız için: <a href="mailto:hukuk@miruo.app" style="color:var(--magenta-bright); font-weight:700; text-decoration:none;">hukuk@miruo.app</a></p>
+      </div>
+    </div>
+  </div>
+</main>
+
+<!-- Footer -->
+<footer class="footer-rave" style="margin-top:auto;">
+  <div class="wrap" style="text-align:center;">
+    <div class="footer-legal-links" style="justify-content:center; margin-bottom:16px;">
+      <a href="/gizlilik">Gizlilik</a>
+      <span>·</span>
+      <a href="/guvenlik">Güvenlik</a>
+      <span>·</span>
+      <a href="/sss">SSS</a>
+      <span>·</span>
+      <a href="/sartlar" style="color:#fff;">Hizmet Şartları</a>
+      <span>·</span>
+      <a href="/iletisim">İletişim</a>
+    </div>
+    <div style="font-size:12.5px; color:#7E7182;">
+      © 2026 Miruo Inc. Tüm hakları saklıdır.
+    </div>
+  </div>
+</footer>
+
+<script src="site.js"></script>
+</body>
+</html>

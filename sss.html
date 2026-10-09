@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Sıkça Sorulan Sorular (SSS) — Miruo</title>
+<meta name="description" content="Miruo hakkında merak ettiğiniz tüm sorular ve pratik yanıtlar.">
+<link rel="icon" href="logo.png">
+<link rel="stylesheet" href="website.css">
+<style>
+  body {
+    overflow-y: auto !important;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+  }
+  .page-content {
+    flex: 1;
+    padding: 60px 0 80px;
+    position: relative;
+    z-index: 2;
+  }
+  .back-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    color: var(--mut);
+    text-decoration: none;
+    font-size: 13.5px;
+    font-weight: 600;
+    margin-bottom: 28px;
+    padding: 8px 16px;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    transition: all 0.2s ease;
+  }
+  .back-btn:hover {
+    color: #fff;
+    background: rgba(255, 110, 180, 0.15);
+    border-color: rgba(255, 110, 180, 0.3);
+    transform: translateX(-3px);
+  }
+  .faq-container {
+    max-width: 860px;
+    margin: 0 auto;
+  }
+  .sec-header {
+    text-align: center;
+    max-width: 760px;
+    margin: 0 auto 40px;
+  }
+  .sec-badge {
+    display: inline-block;
+    padding: 5px 14px;
+    border-radius: 999px;
+    font-size: 11px;
+    font-weight: 800;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--magenta-bright);
+    background: rgba(255, 110, 180, 0.12);
+    border: 1px solid rgba(255, 110, 180, 0.25);
+    margin-bottom: 16px;
+  }
+  .sec-title {
+    font-size: clamp(32px, 4.5vw, 52px);
+    font-weight: 900;
+    color: #fff;
+    letter-spacing: -0.02em;
+    margin-bottom: 14px;
+  }
+  .sec-lead {
+    font-size: 16px;
+    line-height: 1.65;
+    color: var(--mut);
+  }
+</style>
+</head>
+<body>
+<canvas id="starCanvas"></canvas>
+
+<!-- Top Navigation -->
+<nav>
+  <div class="wrap">
+    <a class="brand" href="/">
+      <div class="brand-icon">
+        <svg id="navOwlSvg" viewBox="0 0 120 120" width="28" height="28">
+          <rect width="120" height="120" rx="26" fill="#1A1A1D"/>
+          <path d="M60 38H76L90 26V68Q90 96 60 96" fill="#3B1C32" fill-opacity="0.5" stroke="#6A1E55" stroke-width="2"/>
+          <path d="M60 38H44L30 26V68Q30 96 60 96Z" fill="#C26D97"/>
+          <circle cx="45" cy="62" r="10.5" fill="#1A1A1D"/>
+          <circle class="owl-pupil owl-pupil-left" cx="45" cy="62" r="4.2" fill="#FFFFFF"/>
+          <circle cx="75" cy="62" r="11.5" fill="#3B1C32" stroke="#6A1E55" stroke-width="1.5"/>
+          <circle class="owl-pupil owl-pupil-right" cx="75" cy="62" r="5.5" fill="#FF6EB4"/>
+        </svg>
+      </div>
+      MIRUO
+    </a>
+    <div class="nav-links">
+      <a href="/guvenlik">Güvenlik</a>
+      <a href="/sss" style="color:#fff;">SSS</a>
+      <a href="/basin">Basın</a>
+      <a href="/iletisim">İletişim</a>
+    </div>
+  </div>
+</nav>
+
+<main class="page-content">
+  <div class="wrap">
+    <a href="/" class="back-btn">← Ana Sayfaya Dön</a>
+
+    <div class="sec-header">
+      <span class="sec-badge">YARDIM VE DESTEK</span>
+      <h1 class="sec-title">Sıkça Sorulan Sorular</h1>
+      <p class="sec-lead">Miruo'nun kurulumu, video senkronizasyonu ve oda özellikleri hakkında tüm detaylar.</p>
+    </div>
+
+    <div class="faq-container">
+      <div class="faq-list">
+        <!-- Q1 -->
+        <div class="faq-item active">
+          <div class="faq-question">
+            <span>Miruo tamamen ücretsiz mi?</span>
+            <svg class="faq-chevron" viewBox="0 0 24 24"><path d="M7 10l5 5 5-5z"/></svg>
+          </div>
+          <div class="faq-answer">
+            <p>Evet! Miruo'nun Mac, Windows ve iOS sürümleri tamamen ücretsizdir. Arkadaşlarınızla sınırsız süreyle birlikte YouTube videoları izleyebilir, sesli ve kameralı canlı sinema odaları oluşturabilirsiniz.</p>
+          </div>
+        </div>
+
+        <!-- Q2 -->
+        <div class="faq-item">
+          <div class="faq-question">
+            <span>Birlikte izlerken senkronizasyon nasıl çalışıyor?</span>
+            <svg class="faq-chevron" viewBox="0 0 24 24"><path d="M7 10l5 5 5-5z"/></svg>
+          </div>
+          <div class="faq-answer">
+            <p>Miruo, tescilli WebRTC P2P senkronizasyon motoru kullanır. Bir kişi videoyu durdurduğunda, ileri veya geri sardığında odadaki tüm katılımcıların ekranları milisaniyelik gecikmeyle aynı kareye geçer.</p>
+          </div>
+        </div>
+
+        <!-- Q3 -->
+        <div class="faq-item">
+          <div class="faq-question">
+            <span>Farklı işletim sistemlerindeki arkadaşlarım aynı odaya girebilir mi?</span>
+            <svg class="faq-chevron" viewBox="0 0 24 24"><path d="M7 10l5 5 5-5z"/></svg>
+          </div>
+          <div class="faq-answer">
+            <p>Kesinlikle evet! Miruo platformlar arası tam uyumludur (Cross-Platform). Mac kullanan bir kullanıcı, iPhone veya Windows PC kullanan arkadaşlarıyla aynı odaya tek tıkla bağlanıp birlikte izleyebilir.</p>
+          </div>
+        </div>
+
+        <!-- Q4 -->
+        <div class="faq-item">
+          <div class="faq-question">
+            <span>Kamera ve mikrofon açmak zorunlu mu?</span>
+            <svg class="faq-chevron" viewBox="0 0 24 24"><path d="M7 10l5 5 5-5z"/></svg>
+          </div>
+          <div class="faq-answer">
+            <p>Hayır. İster sadece izleyici olarak yazılı sohbetle eşlik edebilir, isterseniz mikrofon ve kameranızı açarak yüz yüze sinema partisi yapabilirsiniz. Gizlilik tamamen sizin tercihinize bırakılmıştır.</p>
+          </div>
+        </div>
+
+        <!-- Q5 -->
+        <div class="faq-item">
+          <div class="faq-question">
+            <span>Bilgisayara (Mac & Windows) nasıl kurarım?</span>
+            <svg class="faq-chevron" viewBox="0 0 24 24"><path d="M7 10l5 5 5-5z"/></svg>
+          </div>
+          <div class="faq-answer">
+            <p>Ana sayfadaki Mac veya Windows ikonuna tıklayarak kurulum dosyasını (.dmg veya .exe) doğrudan indirebilirsiniz. Dosyayı açtıktan sonra 5 saniye içinde kurulum tamamlanır ve masaüstünüzden çalışmaya hazır hale gelir.</p>
+          </div>
+        </div>
+
+        <!-- Q6 -->
+        <div class="faq-item">
+          <div class="faq-question">
+            <span>Android sürümü ne zaman yayınlanacak?</span>
+            <svg class="faq-chevron" viewBox="0 0 24 24"><path d="M7 10l5 5 5-5z"/></svg>
+          </div>
+          <div class="faq-answer">
+            <p>Android sürümümüz şu an son optimizasyon ve mağaza onay aşamasındadır. Çok yakında Google Play Store üzerinden indirilebilir olacaktır. Ana sayfadaki Android kartına tıklayarak duyuruları takip edebilirsiniz.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</main>
+
+<!-- Footer -->
+<footer class="footer-rave" style="margin-top:auto;">
+  <div class="wrap" style="text-align:center;">
+    <div class="footer-legal-links" style="justify-content:center; margin-bottom:16px;">
+      <a href="/gizlilik">Gizlilik</a>
+      <span>·</span>
+      <a href="/guvenlik">Güvenlik</a>
+      <span>·</span>
+      <a href="/sss" style="color:#fff;">SSS</a>
+      <span>·</span>
+      <a href="/sartlar">Hizmet Şartları</a>
+      <span>·</span>
+      <a href="/iletisim">İletişim</a>
+    </div>
+    <div style="font-size:12.5px; color:#7E7182;">
+      © 2026 Miruo Inc. Tüm hakları saklıdır.
+    </div>
+  </div>
+</footer>
+
+<script src="site.js"></script>
+</body>
+</html>

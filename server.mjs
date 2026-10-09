@@ -1403,6 +1403,34 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  // Dedicated Standalone Pages: Güvenlik, Gizlilik, SSS, Basın, İletişim, Şartlar
+  const standalonePages = {
+    '/guvenlik': 'guvenlik.html',
+    '/guvenlik.html': 'guvenlik.html',
+    '/gizlilik': 'gizlilik.html',
+    '/gizlilik.html': 'gizlilik.html',
+    '/sss': 'sss.html',
+    '/sss.html': 'sss.html',
+    '/basin': 'basin.html',
+    '/basin.html': 'basin.html',
+    '/iletisim': 'iletisim.html',
+    '/iletisim.html': 'iletisim.html',
+    '/sartlar': 'sartlar.html',
+    '/sartlar.html': 'sartlar.html',
+    '/privacy': 'gizlilik.html',
+    '/terms': 'sartlar.html',
+    '/support': 'iletisim.html'
+  };
+
+  if (standalonePages[urlObj.pathname]) {
+    const pageFile = path.join(__dirname, standalonePages[urlObj.pathname]);
+    if (fs.existsSync(pageFile)) {
+      res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+      fs.createReadStream(pageFile).pipe(res);
+      return;
+    }
+  }
+
   // WEBSITE MARKETING / LANDING PAGE SERVING
   if (urlObj.pathname === '/website') {
     res.writeHead(302, { Location: '/website/' });

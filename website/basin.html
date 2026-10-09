@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Basın ve Medya Kiti — Miruo</title>
+<meta name="description" content="Miruo hikayesi, misyonu, marka varlıkları ve basın bülteni.">
+<link rel="icon" href="logo.png">
+<link rel="stylesheet" href="website.css">
+<style>
+  body {
+    overflow-y: auto !important;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+  }
+  .page-content {
+    flex: 1;
+    padding: 60px 0 80px;
+    position: relative;
+    z-index: 2;
+  }
+  .back-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    color: var(--mut);
+    text-decoration: none;
+    font-size: 13.5px;
+    font-weight: 600;
+    margin-bottom: 28px;
+    padding: 8px 16px;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    transition: all 0.2s ease;
+  }
+  .back-btn:hover {
+    color: #fff;
+    background: rgba(255, 110, 180, 0.15);
+    border-color: rgba(255, 110, 180, 0.3);
+    transform: translateX(-3px);
+  }
+  .doc-container {
+    max-width: 860px;
+    margin: 0 auto;
+    background: rgba(20, 10, 26, 0.65);
+    border: 1px solid rgba(255, 110, 180, 0.15);
+    border-radius: 28px;
+    padding: 44px 40px;
+    backdrop-filter: blur(16px);
+  }
+  .doc-badge {
+    display: inline-block;
+    padding: 5px 14px;
+    border-radius: 999px;
+    font-size: 11px;
+    font-weight: 800;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--magenta-bright);
+    background: rgba(255, 110, 180, 0.12);
+    border: 1px solid rgba(255, 110, 180, 0.25);
+    margin-bottom: 14px;
+  }
+  .doc-title {
+    font-size: clamp(28px, 4vw, 42px);
+    font-weight: 900;
+    color: #fff;
+    margin-bottom: 8px;
+  }
+  .doc-lead {
+    font-size: 16px;
+    color: var(--mut);
+    line-height: 1.6;
+    margin-bottom: 32px;
+  }
+  .press-box {
+    margin-bottom: 32px;
+  }
+  .press-box h2 {
+    font-size: 20px;
+    font-weight: 800;
+    color: #fff;
+    margin-bottom: 12px;
+  }
+  .press-box p {
+    font-size: 14.5px;
+    line-height: 1.7;
+    color: var(--mut);
+    margin-bottom: 12px;
+  }
+  .brand-assets-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    gap: 16px;
+    margin-top: 16px;
+  }
+  .asset-card {
+    padding: 20px;
+    background: rgba(0, 0, 0, 0.35);
+    border: 1px solid rgba(255, 110, 180, 0.15);
+    border-radius: 16px;
+    text-align: center;
+  }
+  .asset-card img {
+    width: 64px;
+    height: 64px;
+    border-radius: 14px;
+    margin-bottom: 12px;
+  }
+  .asset-card a {
+    display: inline-block;
+    margin-top: 8px;
+    font-size: 12.5px;
+    font-weight: 700;
+    color: var(--magenta-bright);
+    text-decoration: none;
+  }
+</style>
+</head>
+<body>
+<canvas id="starCanvas"></canvas>
+
+<!-- Top Navigation -->
+<nav>
+  <div class="wrap">
+    <a class="brand" href="/">
+      <div class="brand-icon">
+        <svg id="navOwlSvg" viewBox="0 0 120 120" width="28" height="28">
+          <rect width="120" height="120" rx="26" fill="#1A1A1D"/>
+          <path d="M60 38H76L90 26V68Q90 96 60 96" fill="#3B1C32" fill-opacity="0.5" stroke="#6A1E55" stroke-width="2"/>
+          <path d="M60 38H44L30 26V68Q30 96 60 96Z" fill="#C26D97"/>
+          <circle cx="45" cy="62" r="10.5" fill="#1A1A1D"/>
+          <circle class="owl-pupil owl-pupil-left" cx="45" cy="62" r="4.2" fill="#FFFFFF"/>
+          <circle cx="75" cy="62" r="11.5" fill="#3B1C32" stroke="#6A1E55" stroke-width="1.5"/>
+          <circle class="owl-pupil owl-pupil-right" cx="75" cy="62" r="5.5" fill="#FF6EB4"/>
+        </svg>
+      </div>
+      MIRUO
+    </a>
+    <div class="nav-links">
+      <a href="/guvenlik">Güvenlik</a>
+      <a href="/sss">SSS</a>
+      <a href="/basin" style="color:#fff;">Basın</a>
+      <a href="/iletisim">İletişim</a>
+    </div>
+  </div>
+</nav>
+
+<main class="page-content">
+  <div class="wrap">
+    <a href="/" class="back-btn">← Ana Sayfaya Dön</a>
+
+    <div class="doc-container">
+      <span class="doc-badge">BASIN KİTİ & HİKAYEMİZ</span>
+      <h1 class="doc-title">Mesafeleri Yok Eden Canlı Birliktelik</h1>
+      <p class="doc-lead">Ayrı evlerde, farklı şehirlerde veya uzak ülkelerde... Miruo ile hep aynı koltuktasınız.</p>
+
+      <div class="press-box">
+        <h2>Hikayemiz</h2>
+        <p>Miruo, sevdikleriyle ve arkadaş gruplarıyla birlikte film, dizi veya müzik izlerken yaşanan "3, 2, 1 bas" karmaşasına ve senkronizasyon kopukluklarına son vermek için geliştirildi.</p>
+        <p>Karanlık kadife şarap estetiği, fütüristik pembe ve mor yıldız aurası, tescilli WebRTC P2P motoru ile her anı paylaşımlı bir anıya dönüştürüyoruz.</p>
+      </div>
+
+      <div class="press-box">
+        <h2>Misyonumuz</h2>
+        <p>Dünyanın neresinde olursa olsun insanları sevdikleriyle aynı ekranda buluşturmak. Gecikmesiz ses, yüksek çözünürlüklü görüntü ve akıllı ses kısma teknolojisi ile sanal sinema deneyimini yeniden tanımlıyoruz.</p>
+      </div>
+
+      <div class="press-box">
+        <h2>Marka Varlıkları</h2>
+        <p>Basın bültenlerinizde ve haberlerinizde kullanabileceğiniz yüksek çözünürlüklü Miruo logo ve ikonları:</p>
+        <div class="brand-assets-grid">
+          <div class="asset-card">
+            <img src="logo.png" alt="Miruo Logo">
+            <h4 style="font-size:14px; font-weight:700; color:#fff;">Miruo Gece İkonu</h4>
+            <a href="logo.png" download="miruo-logo.png">İndir (.PNG) →</a>
+          </div>
+        </div>
+      </div>
+
+      <div class="press-box">
+        <h2>Basın İletişimi</h2>
+        <p>Röportaj talepleri, basın bülteni ve kurumsal sorular için:</p>
+        <p><a href="mailto:basin@miruo.app" style="color:var(--magenta-bright); font-weight:700; text-decoration:none;">basin@miruo.app</a></p>
+      </div>
+    </div>
+  </div>
+</main>
+
+<!-- Footer -->
+<footer class="footer-rave" style="margin-top:auto;">
+  <div class="wrap" style="text-align:center;">
+    <div class="footer-legal-links" style="justify-content:center; margin-bottom:16px;">
+      <a href="/gizlilik">Gizlilik</a>
+      <span>·</span>
+      <a href="/guvenlik">Güvenlik</a>
+      <span>·</span>
+      <a href="/sss">SSS</a>
+      <span>·</span>
+      <a href="/sartlar">Hizmet Şartları</a>
+      <span>·</span>
+      <a href="/iletisim">İletişim</a>
+    </div>
+    <div style="font-size:12.5px; color:#7E7182;">
+      © 2026 Miruo Inc. Tüm hakları saklıdır.
+    </div>
+  </div>
+</footer>
+
+<script src="site.js"></script>
+</body>
+</html>
