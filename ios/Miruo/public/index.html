@@ -92,7 +92,7 @@
   <!-- Main Workspace -->
   <main class="flex-1 flex flex-col p-3 sm:p-5 max-w-xl mx-auto w-full gap-4 relative pb-28 lg:pb-8">
     
-    <!-- 1. RAVE HOME FEED (Image 1 media_1791260253500.png) -->
+    <!-- 1. LOBBY FEED -->
     <div id="exploreLobbySection" class="flex flex-col gap-3.5 w-full">
       
       <!-- Unified Single Search Bar (Oda Adı, Oda Kodu veya Arkadaş) -->
@@ -117,7 +117,7 @@
         <!-- Dynamically rendered pill capsule rooms -->
       </div>
 
-    </div> <!-- End 1. RAVE HOME FEED -->
+    </div> <!-- End 1. LOBBY FEED -->
 
     <!-- 1.2 DEDICATED FRIENDS FULL TAB SECTION (Ayrı Sekme Olarak Arkadaşlar) -->
     <div id="friendsTabSection" class="hidden flex-col gap-4 w-full">
@@ -180,7 +180,7 @@
       </div>
     </div> <!-- End 1.2 FRIENDS FULL TAB SECTION -->
 
-    <!-- 1.5 RAVE PROVIDER PICKER SCREEN (Image 2 media_1791260285074.png - Opened on '+' FAB click) -->
+    <!-- 1.5 PROVIDER PICKER SCREEN -->
     <div id="providerPickerSection" class="hidden flex-col gap-4 w-full">
       
       <!-- Top Bar: Back Arrow & MIRUO Logo -->
@@ -283,7 +283,7 @@
         </button>
 
       </div>
-    </div> <!-- End 1.5 RAVE PROVIDER PICKER SCREEN -->
+    </div> <!-- End 1.5 PROVIDER PICKER SCREEN -->
 
     <!-- 2. THEATER / ROOM WORKSPACE (Opened when joining a room or clicking a platform) -->
     <div id="roomWorkspaceSection" class="hidden flex-col gap-3 flex-1 w-full max-w-[1400px] mx-auto px-2 sm:px-4">
@@ -376,7 +376,7 @@
           <p class="text-[11px] text-gray-400 mt-1 max-w-xs">Üstteki arama ikonuna veya platform kartına basarak dilediğiniz YouTube videosunu başlatın.</p>
         </div>
 
-        <!-- Rave Player Overlay Controls (Fadeable On-Demand Control Layer) -->
+        <!-- Miruo Player Overlay Controls -->
         <div id="ravePlayerOverlay" class="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-black/40 opacity-0 pointer-events-none transition-opacity duration-300 flex flex-col justify-between p-3 sm:p-4 z-10">
           <div class="flex items-center justify-between pointer-events-auto">
             <span class="text-xs text-gray-300 font-semibold px-2 py-0.5 rounded-md bg-black/50 backdrop-blur-sm">Miruo Oynatıcı</span>
@@ -641,7 +641,7 @@
         <span>Sohbeti Göster</span>
       </button>
 
-    </div> <!-- End MY ROOM WORKSPACE (Exact Rave Image 4) -->
+    </div> <!-- End MY ROOM WORKSPACE -->
 
   </main>
 
@@ -659,7 +659,7 @@
       <span class="text-[10px] font-medium" data-i18n="nav_friends">Arkadaşlar</span>
     </button>
 
-    <!-- 3. Prominent White Circular '+' Button (Rave Style, Centered, Elevated) -->
+    <!-- 3. Prominent White Circular "+" Button -->
     <button id="raveFabPlusBtn" type="button" class="w-14 h-14 -mt-6 rounded-full bg-white text-black hover:scale-105 active:scale-95 shadow-2xl shadow-white/30 flex items-center justify-center font-bold text-2xl transition-all border-4 border-[#0B0D14] cursor-pointer" title="Yeni Oda / Platform Seç">
       <svg class="w-7 h-7 text-black stroke-[3]" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/></svg>
     </button>

@@ -3491,11 +3491,11 @@ function renderStackedAvatars(avatars) {
 
 const DEFAULT_COMMUNITY_ROOMS = [
   {
-    id: 'O-SES-RAVE',
-    name: 'O SES RAVE • 🎤',
+    id: 'O-SES-TURKIYE',
+    name: 'O Ses Türkiye — En İyi Performanslar 🎤',
     category: 'YouTube',
-    host: 'RaveTR',
-    mediaTitle: 'O SES RAVE • 🎤',
+    host: 'MiruoTR',
+    mediaTitle: 'O Ses Türkiye — En İyi Performanslar 🎤',
     videoId: '4NRXx6U8ABQ',
     viewers: 10,
     avatars: [
@@ -3602,7 +3602,7 @@ function renderRoomList(roomsToRender) {
         </div>
       </div>
 
-      <!-- Right: Title, Category & Overlapping Avatars with +viewers badge (Rave Layout) -->
+      <!-- Right: Title, Category & Overlapping Avatars -->
       <div class="flex-1 min-w-0 flex flex-col justify-between py-0.5 pointer-events-none">
         <div>
           <div class="flex items-center gap-2 mb-1">

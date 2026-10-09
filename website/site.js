@@ -567,7 +567,7 @@
       press_title: "Basın ve Medya Kiti",
       press_lead: "Miruo'nun doğuş hikâyesi, kurumsal kimliği ve resmi basın varlıkları.",
       press_story_title: "Hikâyemiz",
-      press_story_p: "Miruo, fiziksel mesafelerin birlikte eğlenmeye ve film geceleri düzenlemeye engel olamayacağı inancıyla yola çıktı. Rave tarzı sıfır gecikmeli senkronizasyon motorumuz ve sevimli baykuş maskotumuz ile Mac, iOS, Android ve Windows kullanıcılarını tek bir sanal salonda bir araya getiriyoruz.",
+      press_story_p: "Miruo, fiziksel mesafelerin birlikte eğlenmeye ve film geceleri düzenlemeye engel olamayacağı inancıyla yola çıktı. Sıfır gecikmeli yeni nesil senkronizasyon motorumuz ve sevimli baykuş maskotumuz ile Mac, iOS, Android ve Windows kullanıcılarını tek bir sanal salonda bir araya getiriyoruz.",
       press_assets_title: "Resmi Marka Varlıkları",
       press_asset1_title: "Resmi Baykuş Maskotu",
       press_asset1_sub: "512x512 PNG",
