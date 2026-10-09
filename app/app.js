@@ -23,7 +23,7 @@ localStorage.setItem('miruo_supabase_anon_key', SUPABASE_CONFIG.anonKey);
 let supabaseClient = null;
 
 // -------------------------------------------------------------
-// SUPABASE / OAUTH HELPER (Dythin Architecture)
+// SUPABASE / OAUTH HELPER (Native iOS ASWebAuthenticationSession & Web Flow)
 // -------------------------------------------------------------
 function extractAuthFromUrl(url) {
   if (!url) return null;
@@ -139,7 +139,7 @@ function initSupabase() {
           flowType: 'implicit'
         }
       });
-      console.log('[Miruo] Supabase Auth initialized successfully (Dythin flow) with project:', SUPABASE_CONFIG.url);
+      console.log('[Miruo] Supabase Auth initialized successfully with project:', SUPABASE_CONFIG.url);
 
       // Check existing session from Supabase
       supabaseClient.auth.getSession().then(({ data: { session } }) => {
@@ -4694,7 +4694,7 @@ function initEvents() {
     }
   };
 
-  // Native OAuth (Google) Callback from iOS ASWebAuthenticationSession (Dythin method)
+  // Native OAuth (Google) Callback from iOS ASWebAuthenticationSession
   window.handleNativeOAuthResponse = async function(response) {
     if (dom.googleLoginBtn) {
       dom.googleLoginBtn.classList.remove('opacity-60', 'pointer-events-none');
@@ -4769,12 +4769,12 @@ function initEvents() {
     }
   };
 
-  // Social Auth Handlers (Google OAuth & Native Apple Sign In - Dythin Architecture)
+  // Social Auth Handlers (Google OAuth & Native Apple Sign In)
   async function handleSocialLogin(provider) {
     const isGoogle = provider.toLowerCase() === 'google';
     const btn = isGoogle ? dom.googleLoginBtn : dom.appleLoginBtn;
 
-    // 1. Native iOS Apple Sign In (Dythin method via ASAuthorizationController)
+    // 1. Native iOS Apple Sign In (via ASAuthorizationController)
     if (!isGoogle && window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.startAppleSignIn) {
       hideAuthAlert();
       if (btn) btn.classList.add('opacity-60', 'pointer-events-none');
@@ -4787,7 +4787,7 @@ function initEvents() {
       return;
     }
 
-    // 2. Native iOS Google OAuth (Dythin method via ASWebAuthenticationSession)
+    // 2. Native iOS Google OAuth (via ASWebAuthenticationSession)
     if (isGoogle && window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.startOAuthSignIn) {
       hideAuthAlert();
       if (btn) btn.classList.add('opacity-60', 'pointer-events-none');
