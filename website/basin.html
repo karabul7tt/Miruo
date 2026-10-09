@@ -114,9 +114,9 @@
       MIRUO
     </a>
     <div class="nav-links">
-      <a href="/guvenlik">Güvenlik</a>
-      <a href="/sss">SSS</a>
-      <a href="/iletisim">İletişim</a>
+      <a href="/guvenlik" data-i18n="nav_security">Güvenlik</a>
+      <a href="/sss" data-i18n="nav_faq">SSS</a>
+      <a href="/iletisim" data-i18n="nav_contact">İletişim</a>
     </div>
   </div>
 </nav>
@@ -124,28 +124,28 @@
 <!-- Main Press Content -->
 <main class="page-main">
   <div class="doc-container">
-    <h1 class="doc-title">Basın ve Medya Kiti</h1>
-    <p class="doc-lead">Miruo'nun doğuş hikâyesi, kurumsal kimliği ve resmi basın varlıkları.</p>
+    <h1 class="doc-title" data-i18n="press_title">Basın ve Medya Kiti</h1>
+    <p class="doc-lead" data-i18n="press_lead">Miruo'nun doğuş hikâyesi, kurumsal kimliği ve resmi basın varlıkları.</p>
 
     <div class="press-box">
-      <h3>Hikâyemiz</h3>
-      <p>Miruo, fiziksel mesafelerin birlikte eğlenmeye ve film geceleri düzenlemeye engel olamayacağı inancıyla yola çıktı. Rave tarzı sıfır gecikmeli senkronizasyon motorumuz ve sevimli baykuş maskotumuz ile Mac, iOS, Android ve Windows kullanıcılarını tek bir sanal salonda bir araya getiriyoruz.</p>
+      <h3 data-i18n="press_story_title">Hikâyemiz</h3>
+      <p data-i18n="press_story_p">Miruo, fiziksel mesafelerin birlikte eğlenmeye ve film geceleri düzenlemeye engel olamayacağı inancıyla yola çıktı. Rave tarzı sıfır gecikmeli senkronizasyon motorumuz ve sevimli baykuş maskotumuz ile Mac, iOS, Android ve Windows kullanıcılarını tek bir sanal salonda bir araya getiriyoruz.</p>
     </div>
 
     <div class="press-box">
-      <h3>Resmi Marka Varlıkları</h3>
+      <h3 data-i18n="press_assets_title">Resmi Marka Varlıkları</h3>
       <div class="brand-assets-grid">
         <div class="asset-card">
           <img src="logo.png" alt="Miruo Baykuş Logo">
-          <div style="font-weight:700; color:#fff; font-size:14px;">Resmi Baykuş Maskotu</div>
-          <div style="font-size:12px; color:rgba(255,255,255,0.6);">512x512 PNG</div>
-          <a href="logo.png" download class="dl-asset-btn">İndir (.PNG)</a>
+          <div style="font-weight:700; color:#fff; font-size:14px;" data-i18n="press_asset1_title">Resmi Baykuş Maskotu</div>
+          <div style="font-size:12px; color:rgba(255,255,255,0.6);" data-i18n="press_asset1_sub">512x512 PNG</div>
+          <a href="logo.png" download class="dl-asset-btn" data-i18n="press_download_btn">İndir (.PNG)</a>
         </div>
         <div class="asset-card">
           <div style="font-size:36px; line-height:64px; color:#FF6EB4; font-weight:900;">MIRUO</div>
-          <div style="font-weight:700; color:#fff; font-size:14px;">Tipografi Logosu</div>
-          <div style="font-size:12px; color:rgba(255,255,255,0.6);">Vektörel Font & Renkler</div>
-          <a href="logo.png" download class="dl-asset-btn">İndir</a>
+          <div style="font-weight:700; color:#fff; font-size:14px;" data-i18n="press_asset2_title">Tipografi Logosu</div>
+          <div style="font-size:12px; color:rgba(255,255,255,0.6);" data-i18n="press_asset2_sub">Vektörel Font & Renkler</div>
+          <a href="logo.png" download class="dl-asset-btn" data-i18n="press_download_btn">İndir</a>
         </div>
       </div>
     </div>
@@ -171,18 +171,27 @@
     </div>
 
     <div class="footer-legal-links">
-      <a href="/gizlilik">Gizlilik</a>
+      <a href="/gizlilik" data-i18n="footer_privacy">Gizlilik</a>
       <span>·</span>
-      <a href="/sartlar">Hizmet Şartları</a>
+      <a href="/sartlar" data-i18n="footer_terms">Hizmet Şartları</a>
       <span>·</span>
-      <a href="/guvenlik">Güvenlik</a>
+      <a href="/guvenlik" data-i18n="footer_security">Güvenlik</a>
       <span>·</span>
-      <a href="/sss">SSS</a>
+      <a href="/sss" data-i18n="footer_faq">SSS</a>
       <span>·</span>
-      <a href="/iletisim">İletişim</a>
+      <div class="footer-lang-container">
+        <select id="footerLangSelect" class="footer-lang-select" aria-label="Dil Seçimi">
+          <option value="tr">🇹🇷 Türkçe</option>
+          <option value="en">🇺🇸 English</option>
+          <option value="de">🇩🇪 Deutsch</option>
+          <option value="es">🇪🇸 Español</option>
+        </select>
+      </div>
+      <span>·</span>
+      <a href="/iletisim" data-i18n="footer_contact">İletişim</a>
     </div>
 
-    <div class="footer-copy">
+    <div class="footer-copy" data-i18n="footer_copy">
       © 2026 Miruo Inc.
     </div>
   </div>

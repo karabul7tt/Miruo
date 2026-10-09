@@ -37,9 +37,9 @@
       MIRUO
     </a>
     <div class="nav-links">
-      <a href="/sss">SSS</a>
-      <a href="/basin">Basın</a>
-      <a href="/iletisim">İletişim</a>
+      <a href="/sss" data-i18n="nav_faq">SSS</a>
+      <a href="/basin" data-i18n="nav_press">Basın</a>
+      <a href="/iletisim" data-i18n="nav_contact">İletişim</a>
     </div>
   </div>
 </nav>
@@ -47,8 +47,8 @@
 <!-- Main Safety Content -->
 <main class="page-main">
   <div class="rave-safety-container">
-    <h1 class="rave-safety-title">Miruo'yu nasıl güvende tutuyoruz</h1>
-    <p class="rave-safety-subtitle">Kullanıcılarımızın güvenliğini ve gizliliğini korumak için en yüksek standartlarda uçtan uca şifreleme, sunucu güvenliği ve sıfır veri kaydı protokolleri uyguluyoruz.</p>
+    <h1 class="rave-safety-title" data-i18n="sec_title">Miruo'yu nasıl güvende tutuyoruz</h1>
+    <p class="rave-safety-subtitle" data-i18n="sec_sub">Kullanıcılarımızın güvenliğini ve gizliliğini korumak için en yüksek standartlarda uçtan uca şifreleme, sunucu güvenliği ve sıfır veri kaydı protokolleri uyguluyoruz.</p>
 
     <div class="rave-safety-grid">
       <!-- 1. Uçtan Uca Şifreleme -->
@@ -59,8 +59,8 @@
             <path d="M9 12l2 2 4-4" stroke-width="1.8" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
           </svg>
         </div>
-        <h3 class="rave-card-title">Uçtan Uca Şifreleme</h3>
-        <p class="rave-card-desc">Ses ve canlı veri akışlarınız WebRTC DTLS-SRTP endüstri standardı ile doğrudan eşler arasında şifrelenir. Araya hiçbir üçüncü taraf giremez.</p>
+        <h3 class="rave-card-title" data-i18n="sec_c1_title">Uçtan Uca Şifreleme</h3>
+        <p class="rave-card-desc" data-i18n="sec_c1_desc">Ses ve canlı veri akışlarınız WebRTC DTLS-SRTP endüstri standardı ile doğrudan eşler arasında şifrelenir. Araya hiçbir üçüncü taraf giremez.</p>
       </div>
 
       <!-- 2. Sıfır Sunucu Kaydı -->
@@ -73,8 +73,8 @@
             <line x1="6" y1="17.5" x2="6.01" y2="17.5" stroke-width="2.5" stroke="currentColor" stroke-linecap="round"/>
           </svg>
         </div>
-        <h3 class="rave-card-title">Sıfır Sunucu Kaydı</h3>
-        <p class="rave-card-desc">Canlı odalardaki sesli görüşmeleriniz ve mesajlarınız sunucularımızda asla depolanmaz veya izlenmez. Akış doğrudan cihazlar arası gerçekleşir.</p>
+        <h3 class="rave-card-title" data-i18n="sec_c2_title">Sıfır Sunucu Kaydı</h3>
+        <p class="rave-card-desc" data-i18n="sec_c2_desc">Canlı odalardaki sesli görüşmeleriniz ve mesajlarınız sunucularımızda asla depolanmaz veya izlenmez. Akış doğrudan cihazlar arası gerçekleşir.</p>
       </div>
 
       <!-- 3. Kriptografik Parola Güvenliği -->
@@ -86,8 +86,8 @@
             <circle cx="12" cy="16" r="1.5" fill="currentColor"/>
           </svg>
         </div>
-        <h3 class="rave-card-title">Parola & Hash Koruması</h3>
-        <p class="rave-card-desc">Parolalarınız düz metin olarak asla tutulmaz. Her kullanıcıya özel rastgele tuz (salt) ve güçlü scrypt algoritmasıyla şifrelenerek saklanır.</p>
+        <h3 class="rave-card-title" data-i18n="sec_c3_title">Parola & Hash Koruması</h3>
+        <p class="rave-card-desc" data-i18n="sec_c3_desc">Parolalarınız düz metin olarak asla tutulmaz. Her kullanıcıya özel rastgele tuz (salt) ve güçlü scrypt algoritmasıyla şifrelenerek saklanır.</p>
       </div>
 
       <!-- 4. Kaba Kuvvet & Bot Koruması -->
@@ -100,8 +100,8 @@
             <path d="M12 2v5M8 7h8M2 15h1M21 15h1" stroke-width="1.8" stroke="currentColor" stroke-linecap="round"/>
           </svg>
         </div>
-        <h3 class="rave-card-title">Spam ve Bot Tespiti</h3>
-        <p class="rave-card-desc">Kötü niyetli parola denemelerine ve spam botlara karşı akıllı istek sınırlayıcı (Rate Limiter) ve DoS koruma mekanizmaları devrededir.</p>
+        <h3 class="rave-card-title" data-i18n="sec_c4_title">Spam ve Bot Tespiti</h3>
+        <p class="rave-card-desc" data-i18n="sec_c4_desc">Kötü niyetli parola denemelerine ve spam botlara karşı akıllı istek sınırlayıcı (Rate Limiter) ve DoS koruma mekanizmaları devrededir.</p>
       </div>
 
       <!-- 5. Girdi Doğrulama & XSS Kalkanı -->
@@ -113,8 +113,8 @@
             <line x1="14" y1="4" x2="10" y2="20" stroke-width="1.8" stroke="currentColor" stroke-linecap="round"/>
           </svg>
         </div>
-        <h3 class="rave-card-title">XSS & Girdi Güvenliği</h3>
-        <p class="rave-card-desc">Sohbet mesajları ve oda komutları katı filtrelerden geçirilir; script kod enjeksiyonu ve yetkisiz istekler anında etkisiz hale getirilir.</p>
+        <h3 class="rave-card-title" data-i18n="sec_c5_title">XSS & Girdi Güvenliği</h3>
+        <p class="rave-card-desc" data-i18n="sec_c5_desc">Sohbet mesajları ve oda komutları katı filtrelerden geçirilir; script kod enjeksiyonu ve yetkisiz istekler anında etkisiz hale getirilir.</p>
       </div>
 
       <!-- 6. Kalıcı Hesap Silme Hakkı -->
@@ -127,8 +127,8 @@
             <line x1="14" y1="11" x2="14" y2="17" stroke-width="1.8" stroke="currentColor" stroke-linecap="round"/>
           </svg>
         </div>
-        <h3 class="rave-card-title">Hesap Silme Güvencesi</h3>
-        <p class="rave-card-desc">Kullanıcı gizliliğine tam saygı duyuyoruz. Ayarlar menüsünden hesabınızı dilediğiniz an tek tıkla kalıcı olarak silebilirsiniz.</p>
+        <h3 class="rave-card-title" data-i18n="sec_c6_title">Hesap Silme Güvencesi</h3>
+        <p class="rave-card-desc" data-i18n="sec_c6_desc">Kullanıcı gizliliğine tam saygı duyuyoruz. Ayarlar menüsünden hesabınızı dilediğiniz an tek tıkla kalıcı olarak silebilirsiniz.</p>
       </div>
     </div>
   </div>
@@ -153,16 +153,25 @@
     </div>
 
     <div class="footer-legal-links">
-      <a href="/gizlilik">Gizlilik</a>
+      <a href="/gizlilik" data-i18n="footer_privacy">Gizlilik</a>
       <span>·</span>
-      <a href="/sartlar">Hizmet Şartları</a>
+      <a href="/sartlar" data-i18n="footer_terms">Hizmet Şartları</a>
       <span>·</span>
-      <a href="/sss">SSS</a>
+      <a href="/sss" data-i18n="footer_faq">SSS</a>
       <span>·</span>
-      <a href="/iletisim">İletişim</a>
+      <div class="footer-lang-container">
+        <select id="footerLangSelect" class="footer-lang-select" aria-label="Dil Seçimi">
+          <option value="tr">🇹🇷 Türkçe</option>
+          <option value="en">🇺🇸 English</option>
+          <option value="de">🇩🇪 Deutsch</option>
+          <option value="es">🇪🇸 Español</option>
+        </select>
+      </div>
+      <span>·</span>
+      <a href="/iletisim" data-i18n="footer_contact">İletişim</a>
     </div>
 
-    <div class="footer-copy">
+    <div class="footer-copy" data-i18n="footer_copy">
       © 2026 Miruo Inc.
     </div>
   </div>

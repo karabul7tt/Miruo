@@ -38,11 +38,11 @@
       MIRUO
     </a>
     <div class="nav-links">
-      <a href="/guvenlik">Güvenlik</a>
-      <a href="/gizlilik">Gizlilik</a>
-      <a href="/sss">SSS</a>
-      <a href="/basin">Basın</a>
-      <a href="/iletisim">İletişim</a>
+      <a href="/guvenlik" data-i18n="nav_security">Güvenlik</a>
+      <a href="/gizlilik" data-i18n="nav_privacy">Gizlilik</a>
+      <a href="/sss" data-i18n="nav_faq">SSS</a>
+      <a href="/basin" data-i18n="nav_press">Basın</a>
+      <a href="/iletisim" data-i18n="nav_contact">İletişim</a>
     </div>
   </div>
 </nav>
@@ -51,7 +51,7 @@
 <main class="hero-rave">
   <div class="wrap">
     <div class="title-wrapper">
-      <h1>BİRLİKTE İZLE</h1>
+      <h1 data-i18n="hero_title">BİRLİKTE İZLE</h1>
     </div>
 
     <!-- 4 Devices Grid: Mac, iPhone, Android, Windows -->
@@ -228,33 +228,28 @@
 
     <!-- Legal & Page Links -->
     <div class="footer-legal-links">
-      <a href="/gizlilik">Gizlilik</a>
+      <a href="/gizlilik" data-i18n="footer_privacy">Gizlilik</a>
       <span>·</span>
-      <a href="/guvenlik">Güvenlik</a>
+      <a href="/guvenlik" data-i18n="footer_security">Güvenlik</a>
       <span>·</span>
-      <a href="/sartlar">Hizmet Şartları</a>
+      <a href="/sartlar" data-i18n="footer_terms">Hizmet Şartları</a>
       <span>·</span>
-      <a href="/sss">SSS</a>
+      <a href="/sss" data-i18n="footer_faq">SSS</a>
       <span>·</span>
-      <a href="/iletisim">İletişim</a>
-    </div>
-
-    <!-- Language Selector Dropdown -->
-    <div class="lang-dropdown-wrapper">
-      <div id="langTrigger" class="lang-selector-rave" tabindex="0">
-        <span id="selectedLangText">Türkçe</span>
-        <span class="chevron-down">▾</span>
+      <div class="footer-lang-container">
+        <select id="footerLangSelect" class="footer-lang-select" aria-label="Dil Seçimi">
+          <option value="tr">🇹🇷 Türkçe</option>
+          <option value="en">🇺🇸 English</option>
+          <option value="de">🇩🇪 Deutsch</option>
+          <option value="es">🇪🇸 Español</option>
+        </select>
       </div>
-      <div id="langMenu" class="lang-menu-pop hidden">
-        <div class="lang-option active" data-lang="tr">Türkçe</div>
-        <div class="lang-option" data-lang="en">English</div>
-        <div class="lang-option" data-lang="de">Deutsch</div>
-        <div class="lang-option" data-lang="es">Español</div>
-      </div>
+      <span>·</span>
+      <a href="/iletisim" data-i18n="footer_contact">İletişim</a>
     </div>
 
     <!-- Copyright -->
-    <div class="footer-copy">
+    <div class="footer-copy" data-i18n="footer_copy">
       © 2026 Miruo Inc.
     </div>
   </div>

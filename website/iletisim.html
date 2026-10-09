@@ -37,9 +37,9 @@
       MIRUO
     </a>
     <div class="nav-links">
-      <a href="/guvenlik">Güvenlik</a>
-      <a href="/sss">SSS</a>
-      <a href="/basin">Basın</a>
+      <a href="/guvenlik" data-i18n="nav_security">Güvenlik</a>
+      <a href="/sss" data-i18n="nav_faq">SSS</a>
+      <a href="/basin" data-i18n="nav_press">Basın</a>
     </div>
   </div>
 </nav>
@@ -47,35 +47,35 @@
 <!-- Main Contact Content -->
 <main class="page-main">
   <div class="rave-contact-container">
-    <h1 class="rave-contact-title">Bize Ulaşın</h1>
+    <h1 class="rave-contact-title" data-i18n="contact_title">Bize Ulaşın</h1>
 
     <form id="contactForm" onsubmit="event.preventDefault(); window.handleContactSubmit();">
       <div class="rave-form-group">
-        <label class="rave-form-label" for="contactName">Adınızı girin <span style="color:#FF6EB4;">*</span></label>
-        <input type="text" id="contactName" class="rave-form-input" placeholder="Ahmet Yılmaz" required>
+        <label class="rave-form-label" for="contactName"><span data-i18n="contact_name_label">Adınızı girin</span> <span style="color:#FF6EB4;">*</span></label>
+        <input type="text" id="contactName" class="rave-form-input" data-i18n-placeholder="contact_name_placeholder" placeholder="Ahmet Yılmaz" required>
       </div>
 
       <div class="rave-form-group">
-        <label class="rave-form-label" for="contactEmail">E-postanızı girin <span style="color:#FF6EB4;">*</span></label>
-        <input type="email" id="contactEmail" class="rave-form-input" placeholder="ahmet@ornek.com" required>
+        <label class="rave-form-label" for="contactEmail"><span data-i18n="contact_email_label">E-postanızı girin</span> <span style="color:#FF6EB4;">*</span></label>
+        <input type="email" id="contactEmail" class="rave-form-input" data-i18n-placeholder="contact_email_placeholder" placeholder="ahmet@ornek.com" required>
       </div>
 
       <div class="rave-form-group">
-        <label class="rave-form-label" for="contactUser">Kullanıcı adı</label>
-        <input type="text" id="contactUser" class="rave-form-input" placeholder="@ahmetdoe123">
+        <label class="rave-form-label" for="contactUser" data-i18n="contact_user_label">Kullanıcı adı</label>
+        <input type="text" id="contactUser" class="rave-form-input" data-i18n-placeholder="contact_user_placeholder" placeholder="@ahmetdoe123">
       </div>
 
       <div class="rave-form-group">
-        <label class="rave-form-label" for="contactSubject">Konuyu girin <span style="color:#FF6EB4;">*</span></label>
-        <input type="text" id="contactSubject" class="rave-form-input" placeholder="Nasıl yardımcı olabiliriz?" required>
+        <label class="rave-form-label" for="contactSubject"><span data-i18n="contact_subject_label">Konuyu girin</span> <span style="color:#FF6EB4;">*</span></label>
+        <input type="text" id="contactSubject" class="rave-form-input" data-i18n-placeholder="contact_subject_placeholder" placeholder="Nasıl yardımcı olabiliriz?" required>
       </div>
 
       <div class="rave-form-group">
-        <label class="rave-form-label" for="contactMessage">Mesajınızı girin <span style="color:#FF6EB4;">*</span></label>
-        <textarea id="contactMessage" class="rave-form-textarea" rows="5" placeholder="Lütfen sorunuzu veya endişenizi ayrıntılı olarak açıklayın..." required></textarea>
+        <label class="rave-form-label" for="contactMessage"><span data-i18n="contact_msg_label">Mesajınızı girin</span> <span style="color:#FF6EB4;">*</span></label>
+        <textarea id="contactMessage" class="rave-form-textarea" rows="5" data-i18n-placeholder="contact_msg_placeholder" placeholder="Lütfen sorunuzu veya endişenizi ayrıntılı olarak açıklayın..." required></textarea>
       </div>
 
-      <button type="submit" class="rave-form-btn">Mesajı gönder</button>
+      <button type="submit" class="rave-form-btn" data-i18n="contact_submit_btn">Mesajı gönder</button>
     </form>
   </div>
 </main>
@@ -99,16 +99,27 @@
     </div>
 
     <div class="footer-legal-links">
-      <a href="/gizlilik">Gizlilik</a>
+      <a href="/gizlilik" data-i18n="footer_privacy">Gizlilik</a>
       <span>·</span>
-      <a href="/sartlar">Hizmet Şartları</a>
+      <a href="/sartlar" data-i18n="footer_terms">Hizmet Şartları</a>
       <span>·</span>
-      <a href="/guvenlik">Güvenlik</a>
+      <a href="/guvenlik" data-i18n="footer_security">Güvenlik</a>
       <span>·</span>
-      <a href="/sss">SSS</a>
+      <a href="/sss" data-i18n="footer_faq">SSS</a>
+      <span>·</span>
+      <div class="footer-lang-container">
+        <select id="footerLangSelect" class="footer-lang-select" aria-label="Dil Seçimi">
+          <option value="tr">🇹🇷 Türkçe</option>
+          <option value="en">🇺🇸 English</option>
+          <option value="de">🇩🇪 Deutsch</option>
+          <option value="es">🇪🇸 Español</option>
+        </select>
+      </div>
+      <span>·</span>
+      <a href="/iletisim" data-i18n="footer_contact">İletişim</a>
     </div>
 
-    <div class="footer-copy">
+    <div class="footer-copy" data-i18n="footer_copy">
       © 2026 Miruo Inc.
     </div>
   </div>
