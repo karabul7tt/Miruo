@@ -21,11 +21,125 @@ localStorage.setItem('miruo_supabase_url', SUPABASE_CONFIG.url);
 localStorage.setItem('miruo_supabase_anon_key', SUPABASE_CONFIG.anonKey);
 
 let supabaseClient = null;
+
+// -------------------------------------------------------------
+// SUPABASE / OAUTH HELPER (Dythin Architecture)
+// -------------------------------------------------------------
+function extractAuthFromUrl(url) {
+  if (!url) return null;
+  let accessToken = null;
+  let refreshToken = null;
+  let code = null;
+  let error = null;
+  let errorDescription = null;
+
+  if (url.includes('#')) {
+    const hash = url.split('#')[1];
+    const params = new URLSearchParams(hash);
+    accessToken = params.get('access_token');
+    refreshToken = params.get('refresh_token');
+    code = params.get('code');
+    error = params.get('error');
+    errorDescription = params.get('error_description');
+  }
+
+  if (url.includes('?')) {
+    const query = url.split('?')[1].split('#')[0];
+    const params = new URLSearchParams(query);
+    if (!accessToken) accessToken = params.get('access_token');
+    if (!refreshToken) refreshToken = params.get('refresh_token');
+    if (!code) code = params.get('code');
+    if (!error) error = params.get('error');
+    if (!errorDescription) errorDescription = params.get('error_description');
+  }
+
+  return { accessToken, refreshToken, code, error, errorDescription };
+}
+
+function extractUserProfile(user) {
+  if (!user) return { name: null, avatar: null, email: null, usernameBase: 'user' };
+  const meta = user.user_metadata || {};
+  const googleIdentity = user.identities?.find(i => i.provider === 'google') || user.identities?.[0];
+  const idData = googleIdentity?.identity_data || {};
+
+  const rawName =
+    meta.full_name ||
+    meta.name ||
+    idData.full_name ||
+    idData.name ||
+    (meta.given_name ? `${meta.given_name} ${meta.family_name || ''}`.trim() : null) ||
+    (idData.given_name ? `${idData.given_name} ${idData.family_name || ''}`.trim() : null) ||
+    meta.displayName ||
+    idData.displayName ||
+    null;
+
+  const rawAvatar =
+    meta.avatar_url ||
+    meta.picture ||
+    idData.avatar_url ||
+    idData.picture ||
+    meta.avatar ||
+    idData.avatar ||
+    null;
+
+  const email = user.email || meta.email || idData.email || null;
+  const usernameBase = (
+    meta.preferred_username ||
+    idData.preferred_username ||
+    (rawName ? rawName.replace(/[^a-zA-Z0-9_]/g, '_') : null) ||
+    (email ? email.split('@')[0].replace(/[^a-zA-Z0-9_]/g, '') : null) ||
+    'user'
+  ).toLowerCase().slice(0, 16);
+
+  return {
+    name: rawName,
+    avatar: rawAvatar,
+    email,
+    usernameBase,
+  };
+}
+
+async function authenticateFromUrl(url) {
+  const parsed = extractAuthFromUrl(url);
+  if (!parsed) return null;
+  if (parsed.error || parsed.errorDescription) {
+    throw new Error(parsed.errorDescription || parsed.error || 'Kimlik doğrulama hatası');
+  }
+
+  let session = null;
+  if (parsed.accessToken && parsed.refreshToken && supabaseClient && supabaseClient.auth) {
+    const { data, error } = await supabaseClient.auth.setSession({
+      access_token: parsed.accessToken,
+      refresh_token: parsed.refreshToken
+    });
+    if (!error && data && data.session) session = data.session;
+  }
+
+  if (!session && parsed.code && supabaseClient && supabaseClient.auth) {
+    const { data, error } = await supabaseClient.auth.exchangeCodeForSession(parsed.code);
+    if (!error && data && data.session) session = data.session;
+  }
+
+  if (!session && supabaseClient && supabaseClient.auth) {
+    const { data: cur } = await supabaseClient.auth.getSession();
+    if (cur && cur.session) session = cur.session;
+  }
+
+  return session;
+}
+
 function initSupabase() {
   try {
     if (window.supabase && typeof window.supabase.createClient === 'function') {
-      supabaseClient = window.supabase.createClient(SUPABASE_CONFIG.url, SUPABASE_CONFIG.anonKey);
-      console.log('[Miruo] Supabase Auth initialized successfully with project:', SUPABASE_CONFIG.url);
+      supabaseClient = window.supabase.createClient(SUPABASE_CONFIG.url, SUPABASE_CONFIG.anonKey, {
+        auth: {
+          autoRefreshToken: true,
+          persistSession: true,
+          detectSessionInUrl: true,
+          flowType: 'implicit'
+        }
+      });
+      console.log('[Miruo] Supabase Auth initialized successfully (Dythin flow) with project:', SUPABASE_CONFIG.url);
 
       // Check existing session from Supabase
       supabaseClient.auth.getSession().then(({ data: { session } }) => {
@@ -33,6 +147,18 @@ function initSupabase() {
           applySupabaseSessionUser(session.user);
         }
       }).catch(err => console.warn('[Miruo] getSession warning:', err));
+
+      // Handle OAuth URL tokens if present on page load
+      if (window.location.hash.includes('access_token') || window.location.search.includes('code=')) {
+        authenticateFromUrl(window.location.href).then(session => {
+          if (session && session.user) {
+            applySupabaseSessionUser(session.user);
+            if (window.history && window.history.replaceState) {
+              window.history.replaceState(null, '', window.location.pathname);
+            }
+          }
+        }).catch(e => console.warn('[Miruo] Initial URL auth error:', e));
+      }
 
       // Listen for auth state changes (OAuth callback, login, logout)
       supabaseClient.auth.onAuthStateChange((event, session) => {
@@ -4545,6 +4671,7 @@ function initEvents() {
 
     if (dom.authModal) {
       dom.authModal.classList.add('hidden');
+      unfreezeBackgroundAfterModal();
     }
     showToast(`Hoş geldin, ${displayName} ✨`);
 
@@ -4567,30 +4694,131 @@ function initEvents() {
     }
   };
 
-  // Social Auth Handlers (Google OAuth & Native Apple Sign In)
-  async function handleSocialLogin(provider) {
-    const isGoogle = provider === 'Google';
+  // Native OAuth (Google) Callback from iOS ASWebAuthenticationSession (Dythin method)
+  window.handleNativeOAuthResponse = async function(response) {
+    if (dom.googleLoginBtn) {
+      dom.googleLoginBtn.classList.remove('opacity-60', 'pointer-events-none');
+    }
+    if (dom.appleLoginBtn) {
+      dom.appleLoginBtn.classList.remove('opacity-60', 'pointer-events-none');
+    }
 
-    // Native iOS Apple Sign In (Dythin method via AuthenticationServices)
+    if (!response || !response.success) {
+      if (response && response.canceled) {
+        console.log('[Miruo] OAuth canceled by user');
+        hideAuthAlert();
+        return;
+      }
+      const err = response && response.error ? response.error : 'İşlem tamamlanamadı.';
+      console.warn('[Miruo] Native OAuth error:', err);
+      showAuthAlert('Giriş işlemi tamamlanamadı. Lütfen tekrar deneyin.', false);
+      return;
+    }
+
+    try {
+      hideAuthAlert();
+      const session = await authenticateFromUrl(response.url);
+      if (!session || !session.user) {
+        throw new Error('Kullanıcı oturumu doğrulanamadı.');
+      }
+
+      const user = session.user;
+      const profile = extractUserProfile(user);
+      const displayName = profile.name || user.email?.split('@')[0] || 'Miruo Kullanıcısı';
+      const safeUsername = profile.usernameBase || ('user_' + Math.random().toString(36).substring(2, 6));
+      const avatarChar = displayName.charAt(0).toUpperCase() || 'M';
+
+      // Auto-fill form inputs
+      if (profile.name) {
+        const parts = profile.name.trim().split(/\s+/);
+        if (dom.authFirstNameInput) dom.authFirstNameInput.value = parts[0] || '';
+        if (dom.authLastNameInput) dom.authLastNameInput.value = parts.slice(1).join(' ') || '';
+        if (dom.authNameInput) dom.authNameInput.value = profile.name;
+        if (dom.editProfileNameInput) dom.editProfileNameInput.value = profile.name;
+      }
+      if (user.email && dom.authContactInput) {
+        dom.authContactInput.value = user.email;
+      }
+
+      const verifiedUser = {
+        id: user.id,
+        name: displayName,
+        username: safeUsername,
+        email: user.email || '',
+        avatarChar: avatarChar,
+        avatarUrl: profile.avatar || null,
+        avatarBg: 'from-rose-500 to-indigo-600',
+        isGoogle: true,
+        provider: 'google'
+      };
+
+      localStorage.setItem('miruo_user', JSON.stringify(verifiedUser));
+      state.userId = verifiedUser.id;
+      state.username = verifiedUser.name;
+      updateUserUI(verifiedUser);
+
+      if (dom.authModal) {
+        dom.authModal.classList.add('hidden');
+        unfreezeBackgroundAfterModal();
+      }
+      showToast(`Hoş geldin, ${displayName} ✨`);
+      syncUserProfileToSupabase(verifiedUser);
+    } catch (e) {
+      console.error('[Miruo] handleNativeOAuthResponse error:', e);
+      showAuthAlert('Giriş tamamlanamadı: ' + (e.message || 'Bilinmeyen hata'), false);
+    }
+  };
+
+  // Social Auth Handlers (Google OAuth & Native Apple Sign In - Dythin Architecture)
+  async function handleSocialLogin(provider) {
+    const isGoogle = provider.toLowerCase() === 'google';
+    const btn = isGoogle ? dom.googleLoginBtn : dom.appleLoginBtn;
+
+    // 1. Native iOS Apple Sign In (Dythin method via ASAuthorizationController)
     if (!isGoogle && window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.startAppleSignIn) {
       hideAuthAlert();
-      if (dom.appleLoginBtn) {
-        dom.appleLoginBtn.classList.add('opacity-60', 'pointer-events-none');
-      }
+      if (btn) btn.classList.add('opacity-60', 'pointer-events-none');
       try {
         window.webkit.messageHandlers.startAppleSignIn.postMessage({});
       } catch (e) {
         console.warn('[Miruo] startAppleSignIn failed, falling back:', e);
-        if (dom.appleLoginBtn) {
-          dom.appleLoginBtn.classList.remove('opacity-60', 'pointer-events-none');
-        }
+        if (btn) btn.classList.remove('opacity-60', 'pointer-events-none');
       }
       return;
     }
 
-    // Google OAuth / Web fallback
+    // 2. Native iOS Google OAuth (Dythin method via ASWebAuthenticationSession)
+    if (isGoogle && window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.startOAuthSignIn) {
+      hideAuthAlert();
+      if (btn) btn.classList.add('opacity-60', 'pointer-events-none');
+      try {
+        const redirectUrl = 'miruo://auth/callback';
+        const { data, error } = await supabaseClient.auth.signInWithOAuth({
+          provider: 'google',
+          options: {
+            redirectTo: redirectUrl,
+            skipBrowserRedirect: true
+          }
+        });
+        if (error || !data?.url) {
+          throw new Error(error?.message || 'Google oturum bağlantısı alınamadı.');
+        }
+        window.webkit.messageHandlers.startOAuthSignIn.postMessage({
+          url: data.url,
+          callbackScheme: 'miruo'
+        });
+      } catch (err) {
+        console.warn('[Miruo] startOAuthSignIn error:', err);
+        if (btn) btn.classList.remove('opacity-60', 'pointer-events-none');
+        showAuthAlert('Google girişi başlatılamadı: ' + (err.message || err), false);
+      }
+      return;
+    }
+
+    // 3. Web Fallback (when not on native iOS WKWebView)
     const provId = isGoogle ? 'google' : 'apple';
     hideAuthAlert();
+    if (btn) btn.classList.add('opacity-60', 'pointer-events-none');
 
     if (supabaseClient && supabaseClient.auth) {
       try {
@@ -4604,7 +4832,6 @@ function initEvents() {
         if (error) {
           console.warn(`[Miruo] Supabase ${provider} OAuth error:`, error.message);
           showAuthAlert("Giriş işlemi tamamlanamadı. Lütfen tekrar deneyin.", false);
-          return;
         } else if (data && data.url) {
           window.location.href = data.url;
           return;
@@ -4612,9 +4839,11 @@ function initEvents() {
       } catch (err) {
         console.warn(`[Miruo] Supabase ${provider} OAuth exception:`, err);
         showAuthAlert("Giriş işlemi tamamlanamadı. Lütfen tekrar deneyin.", false);
-        return;
+      } finally {
+        if (btn) btn.classList.remove('opacity-60', 'pointer-events-none');
       }
     } else {
+      if (btn) btn.classList.remove('opacity-60', 'pointer-events-none');
       showAuthAlert("Giriş servisi şu an kullanılamıyor. Lütfen tekrar deneyin.", false);
     }
   }

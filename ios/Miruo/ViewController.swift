@@ -14,6 +14,7 @@ class ViewController: UIViewController, WKNavigationDelegate, WKUIDelegate, WKSc
     private var errorContainerView: UIView?
     private var localServer: LocalStaticServer?
     private var currentImagePickTarget: String = "avatar"
+    private var webAuthSession: ASWebAuthenticationSession?
     
     override var preferredStatusBarStyle: UIStatusBarStyle {
         return .lightContent
@@ -63,6 +64,7 @@ class ViewController: UIViewController, WKNavigationDelegate, WKUIDelegate, WKSc
         userContentController.add(self, name: "openPlatform")
         userContentController.add(self, name: "pickImage")
         userContentController.add(self, name: "startAppleSignIn")
+        userContentController.add(self, name: "startOAuthSignIn")
         
         let authFixScriptSource = """
         (function() {
@@ -189,6 +191,10 @@ class ViewController: UIViewController, WKNavigationDelegate, WKUIDelegate, WKSc
     }
 
     func handleDeepLink(_ url: URL) {
+        if url.scheme == "miruo" && (url.host == "auth" || url.absoluteString.contains("callback") || url.absoluteString.contains("access_token") || url.absoluteString.contains("code")) {
+            sendOAuthResponse(["success": true, "url": url.absoluteString])
+            return
+        }
         if let components = URLComponents(url: url, resolvingAgainstBaseURL: false) {
             var roomId = components.queryItems?.first(where: { $0.name == "room" || $0.name == "id" })?.value ?? ""
             if roomId.isEmpty && url.path.contains("/oda/") {
@@ -376,6 +382,60 @@ class ViewController: UIViewController, WKNavigationDelegate, WKUIDelegate, WKSc
             openNativeImagePicker()
         } else if message.name == "startAppleSignIn" {
             startNativeAppleSignIn()
+        } else if message.name == "startOAuthSignIn" {
+            if let dict = message.body as? [String: Any],
+               let urlString = dict["url"] as? String,
+               let url = URL(string: urlString) {
+                let scheme = (dict["callbackScheme"] as? String) ?? "miruo"
+                startNativeOAuthSignIn(url: url, callbackScheme: scheme)
+            }
+        }
+    }
+    
+    private func startNativeOAuthSignIn(url: URL, callbackScheme: String) {
+        DispatchQueue.main.async { [weak self] in
+            guard let self = self else { return }
+            self.webAuthSession?.cancel()
+            
+            let session = ASWebAuthenticationSession(url: url, callbackURLScheme: callbackScheme) { [weak self] callbackURL, error in
+                guard let self = self else { return }
+                self.webAuthSession = nil
+                
+                if let error = error {
+                    let nsErr = error as NSError
+                    let isCanceled = (nsErr.domain == ASWebAuthenticationSessionError.errorDomain && nsErr.code == ASWebAuthenticationSessionError.canceledLogin.rawValue) || nsErr.code == 1
+                    let payload: [String: Any] = [
+                        "success": false,
+                        "canceled": isCanceled,
+                        "error": isCanceled ? "canceled" : error.localizedDescription
+                    ]
+                    self.sendOAuthResponse(payload)
+                    return
+                }
+                
+                if let callbackURL = callbackURL {
+                    let payload: [String: Any] = [
+                        "success": true,
+                        "url": callbackURL.absoluteString
+                    ]
+                    self.sendOAuthResponse(payload)
+                }
+            }
+            
+            session.presentationContextProvider = self
+            session.prefersEphemeralWebBrowserSession = false
+            self.webAuthSession = session
+            session.start()
+        }
+    }
+    
+    func sendOAuthResponse(_ payload: [String: Any]) {
+        if let jsonData = try? JSONSerialization.data(withJSONObject: payload, options: []),
+           let jsonString = String(data: jsonData, encoding: .utf8) {
+            let js = "if (typeof window.handleNativeOAuthResponse === 'function') { window.handleNativeOAuthResponse(\(jsonString)); }"
+            DispatchQueue.main.async { [weak self] in
+                self?.webView.evaluateJavaScript(js, completionHandler: nil)
+            }
         }
     }
     
@@ -480,6 +540,10 @@ class ViewController: UIViewController, WKNavigationDelegate, WKUIDelegate, WKSc
         }
         if let scrollVal = ProcessInfo.processInfo.environment["MIRUO_SCROLL"] {
             let js = "setTimeout(() => { const el = document.getElementById('profileEditModalScrollBody') || window; el.scrollTop = \(scrollVal); }, 1200);"
+            webView.evaluateJavaScript(js, completionHandler: nil)
+        }
+        if let _ = ProcessInfo.processInfo.environment["OPEN_GOOGLE_LOGIN"] {
+            let js = "setTimeout(() => { document.getElementById('googleLoginBtn')?.click(); }, 1500);"
             webView.evaluateJavaScript(js, completionHandler: nil)
         }
     }
@@ -1185,4 +1249,9 @@ extension ViewController: ASAuthorizationControllerDelegate, ASAuthorizationCont
     }
 }
 
-
+// MARK: - Native Web Authentication Session (ASWebAuthenticationSession - Google OAuth)
+extension ViewController: ASWebAuthenticationPresentationContextProviding {
+    func presentationAnchor(for session: ASWebAuthenticationSession) -> ASPresentationAnchor {
+        return self.view.window ?? UIWindow()
+    }
+}
