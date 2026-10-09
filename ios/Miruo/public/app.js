@@ -671,7 +671,8 @@ const dom = {
   authTabSignUp: document.getElementById('authTabSignUp'),
   signUpNameField: document.getElementById('signUpNameField'),
   authHeadingTitle: document.getElementById('authHeadingTitle'),
-  authSubtitle: document.getElementById('authSubtitle'),
+  authFirstNameInput: document.getElementById('authFirstNameInput'),
+  authLastNameInput: document.getElementById('authLastNameInput'),
   authNameInput: document.getElementById('authNameInput'),
   authContactInput: document.getElementById('authContactInput'),
   authPasswordInput: document.getElementById('authPasswordInput'),
@@ -820,6 +821,8 @@ const dom = {
   viewMyRoomBtn: document.getElementById('viewMyRoomBtn'),
   viewExploreBtn: document.getElementById('viewExploreBtn'),
   exploreLobbySection: document.getElementById('exploreLobbySection'),
+  raveLobbySearchInput: document.getElementById('raveLobbySearchInput'),
+  raveLobbySearchActionBtn: document.getElementById('raveLobbySearchActionBtn'),
   providerPickerSection: document.getElementById('providerPickerSection'),
   closeProviderPickerBtn: document.getElementById('closeProviderPickerBtn'),
   providerSearchInput: document.getElementById('providerSearchInput'),
@@ -4098,6 +4101,11 @@ function loadUserSession() {
   if (urlParams.get('profile') || hash === 'settings' || hash === 'profile') {
     const targetTab = urlParams.get('profile') === 'settings' || hash === 'settings' ? 'settings' : 'profile';
     setTimeout(() => { if (typeof openProfileEditModal === 'function') openProfileEditModal(targetTab); }, 350);
+  } else if (urlParams.get('auth') === 'signup' || urlParams.get('modal') === 'signup' || hash === 'signup') {
+    if (dom.authModal) {
+      dom.authModal.classList.remove('hidden');
+      setAuthMode(true);
+    }
   } else if (urlParams.get('auth') === 'phone' || hash === 'phone') {
     if (dom.authModal) {
       dom.authModal.classList.remove('hidden');
@@ -4176,6 +4184,17 @@ function loadUserSession() {
   } else if (urlParams.get('modal') === 'login') {
     if (dom.authModal) dom.authModal.classList.remove('hidden');
     setAuthMode(false);
+  } else if (urlParams.get('modal') === 'signup' || urlParams.get('auth') === 'signup') {
+    if (dom.authModal) dom.authModal.classList.remove('hidden');
+    setAuthMode(true);
+  } else if (urlParams.get('modal') === 'delete_account') {
+    setTimeout(() => {
+      const delModal = document.getElementById('deleteAccountModal');
+      if (delModal) {
+        delModal.classList.remove('hidden');
+        delModal.classList.add('flex');
+      }
+    }, 350);
   } else if (urlParams.get('modal') === 'reset' || urlParams.get('auth') === 'reset') {
     if (dom.authModal) dom.authModal.classList.add('hidden');
     setTimeout(() => {
@@ -4367,16 +4386,34 @@ function initEvents() {
       }
     });
   });
-  if (dom.authNameInput) {
-    dom.authNameInput.addEventListener('input', (e) => {
-      const char = e.target.value.trim().charAt(0).toUpperCase();
-      if (char) {
-        selectedSignUpAvatarChar = char;
-        if (!selectedSignUpAvatarData && dom.signUpAvatarPreview) {
-          dom.signUpAvatarPreview.innerHTML = char;
-        }
+  const syncFullNameInputs = () => {
+    const fn = (dom.authFirstNameInput && dom.authFirstNameInput.value.trim()) || '';
+    const ln = (dom.authLastNameInput && dom.authLastNameInput.value.trim()) || '';
+    const full = `${fn} ${ln}`.trim();
+    if (dom.authNameInput) dom.authNameInput.value = full;
+    const char = (fn || ln || full).charAt(0).toUpperCase();
+    if (char) {
+      selectedSignUpAvatarChar = char;
+      if (!selectedSignUpAvatarData && dom.signUpAvatarPreview) {
+        dom.signUpAvatarPreview.innerHTML = char;
       }
+    }
+  };
+
+  if (dom.authFirstNameInput) {
+    dom.authFirstNameInput.addEventListener('input', syncFullNameInputs);
+    dom.authFirstNameInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && dom.authLastNameInput) dom.authLastNameInput.focus();
     });
+  }
+  if (dom.authLastNameInput) {
+    dom.authLastNameInput.addEventListener('input', syncFullNameInputs);
+    dom.authLastNameInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && dom.authContactInput) dom.authContactInput.focus();
+    });
+  }
+  if (dom.authNameInput) {
+    dom.authNameInput.addEventListener('input', syncFullNameInputs);
   }
 
   // Toggle Password Visibility
@@ -4411,6 +4448,11 @@ function initEvents() {
 
     // 1. Auto-fill form inputs if present
     if (fullName) {
+      const parts = fullName.trim().split(/\s+/);
+      const fn = parts[0] || '';
+      const ln = parts.slice(1).join(' ') || '';
+      if (dom.authFirstNameInput) dom.authFirstNameInput.value = fn;
+      if (dom.authLastNameInput) dom.authLastNameInput.value = ln;
       if (dom.authNameInput) dom.authNameInput.value = fullName;
       if (dom.editProfileNameInput) dom.editProfileNameInput.value = fullName;
     }
@@ -4486,7 +4528,7 @@ function initEvents() {
 
     // Google OAuth / Web fallback
     const provId = isGoogle ? 'google' : 'apple';
-    showAuthAlert(`⏳ ${provider} ile güvenli Supabase bağlantısı kuruluyor...`, true);
+    hideAuthAlert();
 
     if (supabaseClient && supabaseClient.auth) {
       try {
@@ -4499,7 +4541,7 @@ function initEvents() {
 
         if (error) {
           console.warn(`[Miruo] Supabase ${provider} OAuth error:`, error.message);
-          showAuthAlert(`⚠️ Supabase ${provider} Sağlayıcısı Henüz Aktif Edilmemiş!\n\nSupabase Panelinizde (qvmdzfhjfdoqjmqipvux) "Authentication -> Providers -> ${provider}" sekmesinden sağlayıcıyı etkinleştirmelisiniz.`, false);
+          showAuthAlert("Giriş işlemi tamamlanamadı. Lütfen tekrar deneyin.", false);
           return;
         } else if (data && data.url) {
           window.location.href = data.url;
@@ -4507,11 +4549,11 @@ function initEvents() {
         }
       } catch (err) {
         console.warn(`[Miruo] Supabase ${provider} OAuth exception:`, err);
-        showAuthAlert(`⚠️ ${provider} bağlantı hatası: ${err.message}`, false);
+        showAuthAlert("Giriş işlemi tamamlanamadı. Lütfen tekrar deneyin.", false);
         return;
       }
     } else {
-      showAuthAlert("⚠️ Supabase istemcisi henüz hazır değil.", false);
+      showAuthAlert("Giriş servisi şu an kullanılamıyor. Lütfen tekrar deneyin.", false);
     }
   }
 
@@ -5211,12 +5253,21 @@ function initEvents() {
       const nameVal = (dom.authNameInput && dom.authNameInput.value.trim()) || '';
 
       if (isSignUpMode) {
-        // Sign Up Validation: İsim Soyisim, E-posta, Şifre, Şifre Tekrar
-        if (!nameVal || nameVal.length < 2) {
-          showAuthAlert("Lütfen adınızı ve soyadınızı girin.");
-          if (dom.authNameInput) dom.authNameInput.focus();
+        // Sign Up Validation: Ad, Soyad, E-posta, Şifre, Şifre Tekrar
+        const firstNameVal = (dom.authFirstNameInput && dom.authFirstNameInput.value.trim()) || '';
+        const lastNameVal = (dom.authLastNameInput && dom.authLastNameInput.value.trim()) || '';
+        if (!firstNameVal) {
+          showAuthAlert("Lütfen adınızı girin.");
+          if (dom.authFirstNameInput) dom.authFirstNameInput.focus();
           return;
         }
+        if (!lastNameVal) {
+          showAuthAlert("Lütfen soyadınızı girin.");
+          if (dom.authLastNameInput) dom.authLastNameInput.focus();
+          return;
+        }
+        const nameVal = `${firstNameVal} ${lastNameVal}`.trim();
+        if (dom.authNameInput) dom.authNameInput.value = nameVal;
         if (!contactVal || !contactVal.includes('@')) {
           showAuthAlert("Lütfen geçerli bir e-posta adresi girin (Örn: adiniz@gmail.com).");
           if (dom.authContactInput) dom.authContactInput.focus();
@@ -7661,37 +7712,65 @@ function generateUniqueRoomCode(isPrivate = false) {
     }
   }, 12000);
 
-  // Quick Room Code Join (Collision-Free Rooms)
-  const quickJoinBtn = document.getElementById('quickJoinRoomCodeBtn');
-  const quickJoinInput = document.getElementById('quickJoinRoomCodeInput');
-  if (quickJoinBtn && quickJoinInput) {
-    const doQuickJoin = async () => {
-      const code = quickJoinInput.value.trim().toUpperCase();
-      if (!code) {
-        showToast('Lütfen bir oda kodu girin!');
-        quickJoinInput.focus();
+  // Unified Explore Search & Quick Room Join (Oda adı, oda kodu veya arkadaş ara)
+  if (dom.raveLobbySearchInput) {
+    const handleLobbySearchOrJoin = () => {
+      const q = dom.raveLobbySearchInput.value.trim();
+      if (!q) {
+        loadPublicRooms();
         return;
       }
-      quickJoinBtn.disabled = true;
-      quickJoinBtn.textContent = '...';
-      try {
-        state.roomId = code;
+
+      // Check if user entered an explicit room code (e.g. starts with # or format like ODA-XXX or digits)
+      const cleanCode = q.replace(/^#/, '').trim().toUpperCase();
+      const isRoomCode = (q.startsWith('#') || cleanCode.startsWith('ODA-') || /^\d{3,8}$/.test(cleanCode) || /^[A-Z0-9]{3,12}$/i.test(cleanCode));
+
+      if (isRoomCode && (q.startsWith('#') || cleanCode.startsWith('ODA-') || /^\d{3,8}$/.test(cleanCode))) {
+        const finalRoomId = cleanCode.startsWith('ODA-') ? cleanCode : ('ODA-' + cleanCode);
+        state.roomId = finalRoomId;
         state.isHost = false;
-        if (dom.activeRoomTitle) dom.activeRoomTitle.textContent = code;
-        if (dom.currentRoomDisplay) dom.currentRoomDisplay.textContent = code;
+        if (dom.activeRoomTitle) dom.activeRoomTitle.textContent = finalRoomId;
+        if (dom.currentRoomDisplay) dom.currentRoomDisplay.textContent = finalRoomId;
         switchToMyRoom();
         connectSignaling();
-        showToast(`🎉 ${code} odasına bağlanıldı!`);
-        quickJoinInput.value = '';
-      } finally {
-        quickJoinBtn.disabled = false;
-        quickJoinBtn.textContent = 'Katıl';
+        showToast(`🎉 ${finalRoomId} odasına bağlanıldı!`);
+        dom.raveLobbySearchInput.value = '';
+        return;
       }
+
+      // Live filter public rooms list
+      const lower = q.toLowerCase();
+      const filtered = MOCK_PUBLIC_ROOMS.filter(r => 
+        (r.name && r.name.toLowerCase().includes(lower)) ||
+        (r.topic && r.topic.toLowerCase().includes(lower)) ||
+        (r.host && r.host.toLowerCase().includes(lower)) ||
+        (r.id && r.id.toLowerCase().includes(lower))
+      );
+      renderRoomList(filtered);
     };
-    quickJoinBtn.addEventListener('click', doQuickJoin);
-    quickJoinInput.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter') doQuickJoin();
+
+    dom.raveLobbySearchInput.addEventListener('input', () => {
+      const q = dom.raveLobbySearchInput.value.trim().toLowerCase();
+      if (!q) {
+        loadPublicRooms();
+      } else {
+        const filtered = MOCK_PUBLIC_ROOMS.filter(r => 
+          (r.name && r.name.toLowerCase().includes(q)) ||
+          (r.topic && r.topic.toLowerCase().includes(q)) ||
+          (r.host && r.host.toLowerCase().includes(q)) ||
+          (r.id && r.id.toLowerCase().includes(q))
+        );
+        renderRoomList(filtered);
+      }
     });
+
+    dom.raveLobbySearchInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') handleLobbySearchOrJoin();
+    });
+
+    if (dom.raveLobbySearchActionBtn) {
+      dom.raveLobbySearchActionBtn.addEventListener('click', handleLobbySearchOrJoin);
+    }
   }
 
   // Initial user session and explore feed bootstrap
@@ -7729,33 +7808,32 @@ function initAuthOwlMascot() {
 
   let isInteracting = false;
   let idleTimer = null;
-  let isFocusedOnInput = false;
+  let lastGlanceIndex = -1;
 
   function setEyeOffsets(dx, dy) {
-    const pupilMove = 5.2; // Full dynamic eye mobility (Yukarı, Aşağı, Sağ, Sol)
+    const pupilMove = 5.6; // Full dynamic eye mobility (Sağ, Sol, Yukarı, Aşağı)
     const clampedDx = Math.max(-1, Math.min(1, dx));
     const clampedDy = Math.max(-1, Math.min(1, dy));
 
     if (pupilLeft) pupilLeft.style.transform = `translate(${clampedDx * pupilMove}px, ${clampedDy * pupilMove}px)`;
     if (pupilRight) pupilRight.style.transform = `translate(${clampedDx * pupilMove}px, ${clampedDy * pupilMove}px)`;
     if (pupilRightGlint) pupilRightGlint.style.transform = `translate(${clampedDx * pupilMove}px, ${clampedDy * pupilMove}px)`;
-    if (owlContainer) owlContainer.style.transform = `rotateY(${clampedDx * 18}deg) rotateX(${-clampedDy * 14}deg)`;
+    if (owlContainer) owlContainer.style.transform = `rotateY(${clampedDx * 16}deg) rotateX(${-clampedDy * 12}deg)`;
   }
 
   function handlePointer(clientX, clientY) {
-    if (isFocusedOnInput) return;
     isInteracting = true;
     clearTimeout(idleTimer);
     const rect = owlContainer.getBoundingClientRect();
     const cx = rect.left + rect.width / 2;
     const cy = rect.top + rect.height / 2;
-    const targetDx = Math.max(-1, Math.min(1, (clientX - cx) / 200));
-    const targetDy = Math.max(-1, Math.min(1, (clientY - cy) / 200));
+    const targetDx = Math.max(-1, Math.min(1, (clientX - cx) / 180));
+    const targetDy = Math.max(-1, Math.min(1, (clientY - cy) / 180));
     setEyeOffsets(targetDx, targetDy);
 
     idleTimer = setTimeout(() => {
       isInteracting = false;
-    }, 2200);
+    }, 850);
   }
 
   window.addEventListener('mousemove', (e) => {
@@ -7778,68 +7856,63 @@ function initAuthOwlMascot() {
   }
 
   // Interactive Input Focus Reactions:
-  // When typing contact/phone: owl looks DOWN at inputs
-  const lookDownInputs = [dom.authContactInput, dom.authPhoneInput, dom.authNameInput].filter(Boolean);
+  const lookDownInputs = [dom.authContactInput, dom.authPhoneInput, dom.authNameInput, dom.authFirstNameInput, dom.authLastNameInput].filter(Boolean);
   lookDownInputs.forEach(inp => {
     inp.addEventListener('focus', () => {
-      isFocusedOnInput = true;
       setEyeOffsets(0, 0.85); // Aşağı (Down)
-    });
-    inp.addEventListener('blur', () => {
-      isFocusedOnInput = false;
-      setEyeOffsets(0, 0);
     });
   });
 
-  // When typing password: owl looks SHYLY away / upwards (covers eyes)
   const passwordInputs = [dom.authPasswordInput, dom.authPasswordConfirmInput].filter(Boolean);
   passwordInputs.forEach(inp => {
     inp.addEventListener('focus', () => {
-      isFocusedOnInput = true;
       triggerBlink();
       setEyeOffsets(-0.85, -0.7); // Sol Yukarı (Looking away)
     });
-    inp.addEventListener('blur', () => {
-      isFocusedOnInput = false;
-      setEyeOffsets(0, 0);
-    });
   });
 
-  // When typing OTP digits: owl looks concentrated straight down
   const digitBoxes = document.querySelectorAll('.phone-digit-box');
   digitBoxes.forEach(box => {
     box.addEventListener('focus', () => {
-      isFocusedOnInput = true;
-      setEyeOffsets(0, 0.9); // Straight DOWN at OTP
-    });
-    box.addEventListener('blur', () => {
-      isFocusedOnInput = false;
-      setEyeOffsets(0, 0);
+      setEyeOffsets(0, 0.9);
     });
   });
 
-  // Autonomous organic eye wandering & blinking loop (Up, Down, Left, Right)
-  setInterval(() => {
-    if (isInteracting || isFocusedOnInput) return;
-    if (!dom.authModal || dom.authModal.classList.contains('hidden')) return;
+  // Moves list: sağ, sol, yukarı, aşağı, çaprazlar ve merkez
+  const moves = [
+    { dx: 0.95, dy: 0 },     // Sağ (Right)
+    { dx: -0.95, dy: 0 },    // Sol (Left)
+    { dx: 0, dy: -0.95 },    // Yukarı (Up)
+    { dx: 0, dy: 0.85 },     // Aşağı (Down)
+    { dx: 0.75, dy: -0.6 },  // Sağ Yukarı
+    { dx: -0.75, dy: -0.6 }, // Sol Yukarı
+    { dx: 0.7, dy: 0.65 },   // Sağ Aşağı
+    { dx: -0.7, dy: 0.65 },  // Sol Aşağı
+    { dx: 0, dy: 0 }         // Düz / Merkez
+  ];
+
+  function runAutonomousGlance() {
+    if (isInteracting) return;
+    if (dom.authModal && dom.authModal.classList.contains('hidden')) return;
 
     if (Math.random() < 0.35) {
       triggerBlink();
     }
 
-    const moves = [
-      { dx: 0, dy: -0.85 },   // Yukarı (Up)
-      { dx: 0, dy: 0.85 },    // Aşağı (Down)
-      { dx: -0.9, dy: 0 },    // Sol (Left)
-      { dx: 0.9, dy: 0 },     // Sağ (Right)
-      { dx: 0.65, dy: -0.5 }, // Sağ Yukarı
-      { dx: -0.65, dy: 0.5 }, // Sol Aşağı
-      { dx: 0, dy: 0 },       // Düz / Merkez
-      { dx: 0.5, dy: 0.3 }    // Hafif Sağ Aşağı
-    ];
-    const chosen = moves[Math.floor(Math.random() * moves.length)];
+    let nextIdx;
+    do {
+      nextIdx = Math.floor(Math.random() * moves.length);
+    } while (nextIdx === lastGlanceIndex && moves.length > 1);
+    lastGlanceIndex = nextIdx;
+
+    const chosen = moves[nextIdx];
     setEyeOffsets(chosen.dx, chosen.dy);
-  }, 1900);
+  }
+
+  // Autonomous organic eye wandering & blinking loop:
+  // Starts right away and runs every 1.4s with natural eye glancing
+  setInterval(runAutonomousGlance, 1400);
+  setTimeout(runAutonomousGlance, 350);
 
   owlContainer.addEventListener('click', () => {
     triggerBlink();

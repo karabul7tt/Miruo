@@ -61,27 +61,12 @@
   <!-- Touch & Sparkle Particles Layer -->
   <div id="touchLayer" class="fixed inset-0 pointer-events-none z-40 overflow-hidden"></div>
 
-  <!-- Top Navigation Bar -->
-  <header id="mainHeader" class="h-14 sm:h-16 border-b border-white/10 bg-black/90 backdrop-blur-xl flex items-center justify-between px-4 sm:px-6 z-30 sticky top-0">
-    <!-- Left: Settings Gear -->
-    <button id="openSettingsModalBtn" class="w-9 h-9 rounded-full bg-white/5 hover:bg-white/10 flex items-center justify-center text-gray-300 hover:text-white transition-all cursor-pointer" title="Ayarlar">
-      <svg class="w-5 h-5 text-gray-300" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
-    </button>
-
+  <!-- Top Navigation Bar (Clean Minimal Brand Header - No duplicate buttons) -->
+  <header id="mainHeader" class="h-14 border-b border-white/10 bg-black/90 backdrop-blur-xl flex items-center justify-center px-4 sm:px-6 z-30 sticky top-0">
     <!-- Center: MIRUO logo wordmark with iconic emblem -->
-    <div class="flex items-center gap-2 cursor-pointer" id="navLogoBtn">
+    <div class="flex items-center gap-2.5 cursor-pointer" id="navLogoBtn">
       <img src="logo.svg" alt="Miruo" class="w-7 h-7 rounded-lg shadow-sm">
       <span class="text-2xl sm:text-3xl font-black tracking-tight text-white font-['Plus_Jakarta_Sans']">MIRUO</span>
-    </div>
-
-    <!-- Right: Friends Icon & User Profile -->
-    <div class="flex items-center gap-2">
-      <button id="openFriendsBtn" class="w-9 h-9 rounded-full bg-white/5 hover:bg-white/10 flex items-center justify-center text-gray-300 hover:text-white transition-all cursor-pointer" title="Arkadaşlar">
-        <svg class="w-5 h-5 text-gray-300" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"/></svg>
-      </button>
-      <button id="userProfileBtn" class="w-8 h-8 rounded-full bg-gradient-to-tr from-rose-500 to-indigo-600 flex items-center justify-center text-xs font-bold text-white shadow-sm cursor-pointer" title="Profil">
-        <span id="userAvatarHeader">M</span>
-      </button>
     </div>
   </header>
 
@@ -91,19 +76,10 @@
     <!-- 1. RAVE HOME FEED (Image 1 media_1791260253500.png) -->
     <div id="exploreLobbySection" class="flex flex-col gap-3.5 w-full">
       
-      <!-- Search Bar -->
+      <!-- Unified Single Search Bar (Oda Adı, Oda Kodu veya Arkadaş) -->
       <div class="relative flex items-center">
         <svg class="w-4 h-4 text-gray-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
-        <input type="text" id="raveLobbySearchInput" placeholder="video, kullanıcı, dil veya oda ara..." data-i18n-placeholder="search_rooms_ph" class="w-full bg-[#0C0E17] border border-white/10 rounded-2xl pl-10 pr-4 py-3 text-xs text-white placeholder-gray-500 focus:outline-none focus:border-rose-500/80 transition-all font-medium shadow-lg">
-      </div>
-
-      <!-- Quick Room Code Entry Card (Her kod benzersiz, karismayan odalar) -->
-      <div class="w-full p-2.5 sm:p-3 rounded-2xl bg-[#0C0E17] border border-white/10 flex items-center gap-2.5 shadow-xl">
-        <div class="w-8 h-8 rounded-xl bg-rose-500/10 border border-rose-500/30 flex items-center justify-center text-rose-400 font-mono text-sm font-black shrink-0">#</div>
-        <input type="text" id="quickJoinRoomCodeInput" placeholder="Oda kodu gir (örn. ODA-77)" data-i18n-placeholder="join_code_ph" class="flex-1 bg-transparent text-xs sm:text-sm text-white placeholder-gray-500 font-mono uppercase tracking-wider focus:outline-none min-w-0">
-        <button id="quickJoinRoomCodeBtn" class="px-4 py-2 rounded-xl bg-gradient-to-r from-rose-500 to-indigo-600 hover:opacity-95 text-white font-bold text-xs transition-all shadow-md active:scale-95 shrink-0 cursor-pointer">
-          <span data-i18n="join_btn">Katıl</span>
-        </button>
+        <input type="text" id="raveLobbySearchInput" placeholder="Oda adı, oda kodu veya arkadaş ara..." data-i18n-placeholder="search_rooms_ph" class="w-full bg-[#0C0E17] border border-white/10 rounded-2xl pl-10 pr-4 py-3 text-xs text-white placeholder-gray-500 focus:outline-none focus:border-rose-500/80 transition-all font-medium shadow-lg">
       </div>
 
       <!-- Section Title (🌐 Canlı & Açık Odalar) -->
@@ -652,14 +628,8 @@
 
   <!-- Mobile Native Bottom Navigation Bar (Clean Native Layout - Zero Overlap) -->
   <nav id="mobileBottomNav" class="fixed bottom-0 inset-x-0 bg-[#0B0D14]/95 backdrop-blur-2xl border-t border-white/10 z-40 px-5 py-2 flex items-center justify-between safe-area-bottom shadow-2xl">
-    <!-- 1. Keşfet -->
-    <button id="mobileNavExploreBtn" type="button" class="flex flex-col items-center gap-1 text-rose-400 py-1 px-3 transition-all cursor-pointer">
-      <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polygon points="12 8 8 12 12 16 16 12 12 8"/></svg>
-      <span class="text-[10px] font-bold">Keşfet</span>
-    </button>
-
-    <!-- 2. Arkadaşlar -->
-    <button id="mobileNavFriendsBtn" type="button" class="flex flex-col items-center gap-1 text-gray-400 hover:text-white py-1 px-3 transition-all cursor-pointer">
+    <!-- 1. Arkadaşlar -->
+    <button id="mobileNavFriendsBtn" type="button" class="flex flex-col items-center gap-1 text-gray-400 hover:text-white py-1 px-4 transition-all cursor-pointer">
       <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"/></svg>
       <span class="text-[10px] font-medium">Arkadaşlar</span>
     </button>
@@ -879,7 +849,7 @@
   </div>
 
   <!-- FULLSCREEN AUTH SCREEN (Image 3 Design with Animated Miruo Owl, No Welcome/Lightning, Miruo Colors) -->
-  <div id="authModal" class="fixed inset-0 z-50 flex flex-col justify-between bg-[#0B0910] text-white overflow-y-auto no-scrollbar hidden transition-all duration-300">
+  <div id="authModal" class="fixed inset-0 z-50 flex flex-col justify-between bg-[#0B0910] text-white overflow-y-auto no-scrollbar hidden transition-all duration-300" style="background-color: #0B0910 !important; position: fixed !important; inset: 0 !important; width: 100vw !important; height: 100vh !important; z-index: 99999 !important;">
     <!-- Ambient Aura Glow (No lightning, elegant Miruo tone) -->
     <div class="fixed inset-0 pointer-events-none -z-10 overflow-hidden">
       <div class="absolute -top-20 left-1/2 -translate-x-1/2 w-96 h-96 bg-[#A64D79]/25 rounded-full blur-[120px]"></div>
@@ -917,8 +887,7 @@
           </svg>
         </div>
       </div>
-      <h1 class="text-xl font-black tracking-tight text-white font-['Plus_Jakarta_Sans']">MIRUO</h1>
-      <p class="text-[11px] text-[#E882B2] font-semibold tracking-wide">Birlikte İzle & Konuş</p>
+      <h1 class="text-2xl font-black tracking-wider text-white font-['Plus_Jakarta_Sans']">MIRUO</h1>
     </div>
 
     <!-- FULLSCREEN AUTH CARD (Expands seamlessly to bottom) -->
@@ -977,13 +946,23 @@
 
       <!-- Interactive Auth Form -->
       <form id="authForm" method="post" action="#" onsubmit="event.preventDefault();" class="space-y-3">
-        <!-- Name Field (İsim Soyisim - Only visible on Sign Up) -->
+        <!-- Name Fields (Ad ve Soyad Ayrı - Only visible on Sign Up) -->
         <div id="signUpNameField" class="hidden">
-          <label for="authNameInput" class="block text-[11px] font-bold text-gray-600 mb-1">İsim Soyisim</label>
-          <div class="auth-input-container relative flex items-center border border-gray-200 rounded-2xl px-3.5 py-2.5">
-            <svg class="w-4 h-4 text-gray-400 mr-2.5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
-            <input type="text" id="authNameInput" name="name" autocomplete="name" placeholder="Adınız ve Soyadınız" class="w-full bg-transparent text-xs text-gray-900 placeholder-gray-400 focus:outline-none font-medium">
+          <div class="grid grid-cols-2 gap-2">
+            <div>
+              <label for="authFirstNameInput" class="block text-[11px] font-bold text-gray-600 mb-1">Ad</label>
+              <div class="auth-input-container relative flex items-center border border-gray-200 rounded-2xl px-3 py-2.5">
+                <input type="text" id="authFirstNameInput" name="firstName" autocomplete="given-name" placeholder="Adınız" class="w-full bg-transparent text-xs text-gray-900 placeholder-gray-400 focus:outline-none font-medium">
+              </div>
+            </div>
+            <div>
+              <label for="authLastNameInput" class="block text-[11px] font-bold text-gray-600 mb-1">Soyad</label>
+              <div class="auth-input-container relative flex items-center border border-gray-200 rounded-2xl px-3 py-2.5">
+                <input type="text" id="authLastNameInput" name="lastName" autocomplete="family-name" placeholder="Soyadınız" class="w-full bg-transparent text-xs text-gray-900 placeholder-gray-400 focus:outline-none font-medium">
+              </div>
+            </div>
           </div>
+          <input type="hidden" id="authNameInput" name="name">
         </div>
 
         <!-- EMAIL SECTION (Active when Email method selected) -->
@@ -1110,7 +1089,7 @@
 
       <!-- Step Indicator Bar -->
       <div class="flex items-center justify-center gap-2 pt-1 pb-1">
-        <div id="stepDot1" class="h-1.5 w-8 rounded-full bg-blue-600 transition-all duration-300"></div>
+        <div id="stepDot1" class="h-1.5 w-8 rounded-full bg-[#A64D79] transition-all duration-300"></div>
         <div id="stepDot2" class="h-1.5 w-8 rounded-full bg-gray-200 transition-all duration-300"></div>
         <div id="stepDot3" class="h-1.5 w-8 rounded-full bg-gray-200 transition-all duration-300"></div>
       </div>
@@ -1118,7 +1097,7 @@
       <!-- STEP 1: Enter Email & Request 6-digit Code -->
       <div id="resetStep1" class="space-y-4">
         <div class="flex items-center gap-3">
-          <div class="w-12 h-12 rounded-2xl bg-blue-50 border border-blue-100 flex items-center justify-center text-blue-600 shrink-0">
+          <div class="w-12 h-12 rounded-2xl bg-[#A64D79]/15 border border-[#A64D79]/30 flex items-center justify-center text-[#A64D79] shrink-0">
             <svg class="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
           </div>
           <div>
@@ -1135,25 +1114,25 @@
             <div class="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-gray-400">
               <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="4"/><path d="M16 8v5a3 3 0 0 0 6 0v-1a10 10 0 1 0-3.92 7.94"/></svg>
             </div>
-            <input type="email" id="resetEmailInput" placeholder="ornek@gmail.com" class="w-full bg-[#F4EBDC] border border-gray-200 rounded-2xl pl-10 pr-3.5 py-3 text-sm text-gray-800 placeholder-gray-400 focus:outline-none focus:border-blue-500 focus:bg-white transition-all">
+            <input type="email" id="resetEmailInput" placeholder="ornek@gmail.com" class="w-full bg-gray-50 border border-gray-200 rounded-2xl pl-10 pr-3.5 py-3 text-sm text-gray-800 placeholder-gray-400 focus:outline-none focus:border-[#A64D79] focus:bg-white transition-all">
           </div>
         </div>
 
-        <button id="resetSendCodeBtn" type="button" class="w-full py-3 bg-[#F2603A] hover:bg-blue-600 active:scale-[0.98] text-white font-bold text-sm rounded-2xl shadow-lg shadow-blue-500/30 transition-all cursor-pointer flex items-center justify-center gap-2">
+        <button id="resetSendCodeBtn" type="button" class="w-full py-3.5 bg-gradient-to-r from-[#A64D79] to-[#6A1E55] hover:opacity-95 active:scale-[0.98] text-white font-bold text-sm rounded-2xl shadow-lg shadow-pink-900/20 transition-all cursor-pointer flex items-center justify-center gap-2">
           <span>6 Haneli Kodu Gönder</span>
           <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12h14"/><path d="M12 5l7 7-7 7"/></svg>
         </button>
 
         <p class="text-center text-xs text-gray-500">
           Şifrenizi hatırladınız mı?
-          <button id="resetBackToLoginBtn1" type="button" class="text-blue-600 font-bold hover:underline ml-1 cursor-pointer">Giriş Yap</button>
+          <button id="resetBackToLoginBtn1" type="button" class="text-[#A64D79] font-bold hover:underline ml-1 cursor-pointer">Giriş Yap</button>
         </p>
       </div>
 
       <!-- STEP 2: Verify 6-digit Code (OTP) -->
       <div id="resetStep2" class="space-y-4 hidden">
         <div class="flex items-center gap-3">
-          <div class="w-12 h-12 rounded-2xl bg-amber-50 border border-amber-100 flex items-center justify-center text-amber-600 shrink-0">
+          <div class="w-12 h-12 rounded-2xl bg-[#A64D79]/15 border border-[#A64D79]/30 flex items-center justify-center text-[#A64D79] shrink-0">
             <svg class="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
           </div>
           <div>
@@ -1168,23 +1147,23 @@
         <div>
           <label class="block text-xs font-semibold text-gray-700 mb-2 text-center">Doğrulama Kodu</label>
           <div class="flex items-center justify-between gap-1.5 sm:gap-2" id="otpContainer">
-            <input type="text" id="otpDigit1" maxlength="1" inputmode="numeric" pattern="[0-9]*" class="otp-box w-11 h-13 sm:w-12 sm:h-14 text-center text-xl font-bold bg-[#F4EBDC] border-2 border-gray-200 rounded-2xl focus:outline-none focus:border-blue-500 focus:bg-white text-gray-900 transition-all shadow-xs">
-            <input type="text" id="otpDigit2" maxlength="1" inputmode="numeric" pattern="[0-9]*" class="otp-box w-11 h-13 sm:w-12 sm:h-14 text-center text-xl font-bold bg-[#F4EBDC] border-2 border-gray-200 rounded-2xl focus:outline-none focus:border-blue-500 focus:bg-white text-gray-900 transition-all shadow-xs">
-            <input type="text" id="otpDigit3" maxlength="1" inputmode="numeric" pattern="[0-9]*" class="otp-box w-11 h-13 sm:w-12 sm:h-14 text-center text-xl font-bold bg-[#F4EBDC] border-2 border-gray-200 rounded-2xl focus:outline-none focus:border-blue-500 focus:bg-white text-gray-900 transition-all shadow-xs">
-            <input type="text" id="otpDigit4" maxlength="1" inputmode="numeric" pattern="[0-9]*" class="otp-box w-11 h-13 sm:w-12 sm:h-14 text-center text-xl font-bold bg-[#F4EBDC] border-2 border-gray-200 rounded-2xl focus:outline-none focus:border-blue-500 focus:bg-white text-gray-900 transition-all shadow-xs">
-            <input type="text" id="otpDigit5" maxlength="1" inputmode="numeric" pattern="[0-9]*" class="otp-box w-11 h-13 sm:w-12 sm:h-14 text-center text-xl font-bold bg-[#F4EBDC] border-2 border-gray-200 rounded-2xl focus:outline-none focus:border-blue-500 focus:bg-white text-gray-900 transition-all shadow-xs">
-            <input type="text" id="otpDigit6" maxlength="1" inputmode="numeric" pattern="[0-9]*" class="otp-box w-11 h-13 sm:w-12 sm:h-14 text-center text-xl font-bold bg-[#F4EBDC] border-2 border-gray-200 rounded-2xl focus:outline-none focus:border-blue-500 focus:bg-white text-gray-900 transition-all shadow-xs">
+            <input type="text" id="otpDigit1" maxlength="1" inputmode="numeric" pattern="[0-9]*" class="otp-box w-11 h-13 sm:w-12 sm:h-14 text-center text-xl font-bold bg-gray-50 border-2 border-gray-200 rounded-2xl focus:outline-none focus:border-[#A64D79] focus:bg-white text-gray-900 transition-all shadow-xs">
+            <input type="text" id="otpDigit2" maxlength="1" inputmode="numeric" pattern="[0-9]*" class="otp-box w-11 h-13 sm:w-12 sm:h-14 text-center text-xl font-bold bg-gray-50 border-2 border-gray-200 rounded-2xl focus:outline-none focus:border-[#A64D79] focus:bg-white text-gray-900 transition-all shadow-xs">
+            <input type="text" id="otpDigit3" maxlength="1" inputmode="numeric" pattern="[0-9]*" class="otp-box w-11 h-13 sm:w-12 sm:h-14 text-center text-xl font-bold bg-gray-50 border-2 border-gray-200 rounded-2xl focus:outline-none focus:border-[#A64D79] focus:bg-white text-gray-900 transition-all shadow-xs">
+            <input type="text" id="otpDigit4" maxlength="1" inputmode="numeric" pattern="[0-9]*" class="otp-box w-11 h-13 sm:w-12 sm:h-14 text-center text-xl font-bold bg-gray-50 border-2 border-gray-200 rounded-2xl focus:outline-none focus:border-[#A64D79] focus:bg-white text-gray-900 transition-all shadow-xs">
+            <input type="text" id="otpDigit5" maxlength="1" inputmode="numeric" pattern="[0-9]*" class="otp-box w-11 h-13 sm:w-12 sm:h-14 text-center text-xl font-bold bg-gray-50 border-2 border-gray-200 rounded-2xl focus:outline-none focus:border-[#A64D79] focus:bg-white text-gray-900 transition-all shadow-xs">
+            <input type="text" id="otpDigit6" maxlength="1" inputmode="numeric" pattern="[0-9]*" class="otp-box w-11 h-13 sm:w-12 sm:h-14 text-center text-xl font-bold bg-gray-50 border-2 border-gray-200 rounded-2xl focus:outline-none focus:border-[#A64D79] focus:bg-white text-gray-900 transition-all shadow-xs">
           </div>
         </div>
 
-        <button id="resetVerifyCodeBtn" type="button" class="w-full py-3 bg-[#F2603A] hover:bg-blue-600 active:scale-[0.98] text-white font-bold text-sm rounded-2xl shadow-lg shadow-blue-500/30 transition-all cursor-pointer flex items-center justify-center gap-2">
+        <button id="resetVerifyCodeBtn" type="button" class="w-full py-3.5 bg-gradient-to-r from-[#A64D79] to-[#6A1E55] hover:opacity-95 active:scale-[0.98] text-white font-bold text-sm rounded-2xl shadow-lg shadow-pink-900/20 transition-all cursor-pointer flex items-center justify-center gap-2">
           <span>Kodu Doğrula</span>
           <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
         </button>
 
         <div class="flex items-center justify-between text-xs text-gray-500 pt-1">
           <span>Kodu almadınız mı?</span>
-          <button id="resetResendCodeBtn" type="button" class="text-blue-600 font-bold hover:underline disabled:text-gray-400 disabled:no-underline cursor-pointer">
+          <button id="resetResendCodeBtn" type="button" class="text-[#A64D79] font-bold hover:underline disabled:text-gray-400 disabled:no-underline cursor-pointer">
             Tekrar Gönder <span id="resetTimerSpan">(60s)</span>
           </button>
         </div>
@@ -1193,7 +1172,7 @@
       <!-- STEP 3: Set New Password -->
       <div id="resetStep3" class="space-y-4 hidden">
         <div class="flex items-center gap-3">
-          <div class="w-12 h-12 rounded-2xl bg-emerald-50 border border-emerald-100 flex items-center justify-center text-emerald-600 shrink-0">
+          <div class="w-12 h-12 rounded-2xl bg-[#A64D79]/15 border border-[#A64D79]/30 flex items-center justify-center text-[#A64D79] shrink-0">
             <svg class="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
           </div>
           <div>
@@ -1208,9 +1187,9 @@
           <div>
             <label class="block text-xs font-semibold text-gray-700 mb-1.5">Yeni Şifre</label>
             <div class="relative">
-              <input type="password" id="resetNewPasswordInput" placeholder="••••••••" class="w-full bg-[#F4EBDC] border border-gray-200 rounded-2xl px-3.5 py-3 text-sm text-gray-800 placeholder-gray-400 focus:outline-none focus:border-blue-500 focus:bg-white transition-all pr-10">
+              <input type="password" id="resetNewPasswordInput" placeholder="••••••••" class="w-full bg-gray-50 border border-gray-200 rounded-2xl px-3.5 py-3 text-sm text-gray-800 placeholder-gray-400 focus:outline-none focus:border-[#A64D79] focus:bg-white transition-all pr-10">
               <button id="toggleNewPassVis" type="button" class="absolute inset-y-0 right-0 pr-3.5 flex items-center text-gray-400 hover:text-gray-600 cursor-pointer">
-                <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
               </button>
             </div>
             <!-- Password strength bars -->
@@ -1225,15 +1204,15 @@
           <div>
             <label class="block text-xs font-semibold text-gray-700 mb-1.5">Yeni Şifre (Tekrar)</label>
             <div class="relative">
-              <input type="password" id="resetConfirmPasswordInput" placeholder="••••••••" class="w-full bg-[#F4EBDC] border border-gray-200 rounded-2xl px-3.5 py-3 text-sm text-gray-800 placeholder-gray-400 focus:outline-none focus:border-blue-500 focus:bg-white transition-all pr-10">
+              <input type="password" id="resetConfirmPasswordInput" placeholder="••••••••" class="w-full bg-gray-50 border border-gray-200 rounded-2xl px-3.5 py-3 text-sm text-gray-800 placeholder-gray-400 focus:outline-none focus:border-[#A64D79] focus:bg-white transition-all pr-10">
               <button id="toggleConfirmPassVis" type="button" class="absolute inset-y-0 right-0 pr-3.5 flex items-center text-gray-400 hover:text-gray-600 cursor-pointer">
-                <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
               </button>
             </div>
           </div>
         </div>
 
-        <button id="resetSaveNewPasswordBtn" type="button" class="w-full py-3 bg-emerald-500 hover:bg-emerald-600 active:scale-[0.98] text-white font-bold text-sm rounded-2xl shadow-lg shadow-emerald-500/30 transition-all cursor-pointer flex items-center justify-center gap-2">
+        <button id="resetSaveNewPasswordBtn" type="button" class="w-full py-3.5 bg-gradient-to-r from-[#A64D79] to-[#6A1E55] hover:opacity-95 active:scale-[0.98] text-white font-bold text-sm rounded-2xl shadow-lg shadow-pink-900/20 transition-all cursor-pointer flex items-center justify-center gap-2">
           <span>Şifreyi Güncelle & Giriş Yap</span>
           <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
         </button>
@@ -1241,14 +1220,14 @@
 
       <!-- STEP 4: Success Screen -->
       <div id="resetStepSuccess" class="space-y-4 text-center py-4 hidden">
-        <div class="w-16 h-16 mx-auto rounded-3xl bg-emerald-100 text-emerald-600 flex items-center justify-center text-3xl shadow-lg shadow-emerald-500/20">
+        <div class="w-16 h-16 mx-auto rounded-3xl bg-[#A64D79]/15 text-[#A64D79] flex items-center justify-center text-3xl shadow-lg shadow-pink-900/20 font-black">
           ✓
         </div>
         <div>
           <h3 class="text-xl font-bold text-gray-900">Şifreniz Başarıyla Değiştirildi!</h3>
           <p class="text-xs text-gray-500 mt-1">Artık yeni şifrenizle tüm cihazlardan güvenle oturum açabilirsiniz.</p>
         </div>
-        <button id="resetFinishBtn" type="button" class="w-full py-3 bg-[#F2603A] hover:bg-blue-600 active:scale-[0.98] text-white font-bold text-sm rounded-2xl shadow-lg shadow-blue-500/30 transition-all cursor-pointer">
+        <button id="resetFinishBtn" type="button" class="w-full py-3.5 bg-gradient-to-r from-[#A64D79] to-[#6A1E55] hover:opacity-95 active:scale-[0.98] text-white font-bold text-sm rounded-2xl shadow-lg shadow-pink-900/20 transition-all cursor-pointer">
           Hemen Giriş Yap
         </button>
       </div>
@@ -1605,18 +1584,10 @@
             <span data-i18n="logout">Oturumu Kapat</span>
           </button>
 
-          <!-- Tehlikeli Bölge / Hesabı Kalıcı Olarak Sil (Item 21) -->
-          <div class="mt-4 pt-3 border-t border-red-500/20 space-y-2">
-            <div class="flex items-center justify-between">
-              <span class="text-[11px] font-bold text-red-400 uppercase tracking-wider flex items-center gap-1.5">
-                <svg class="w-3.5 h-3.5 text-red-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
-                Tehlikeli Bölge
-              </span>
-            </div>
-            <p class="text-[10px] text-gray-400">Hesabınızı sildiğinizde profiliniz, arkadaş listeniz ve tüm kişisel verileriniz sunucudan kalıcı olarak silinir. Bu işlem geri alınamaz.</p>
-            <button id="openDeleteAccountModalBtn" type="button" class="w-full py-2.5 rounded-xl bg-red-600/15 hover:bg-red-600/25 border border-red-500/40 text-xs font-bold text-red-400 hover:text-red-300 transition-all cursor-pointer flex items-center justify-center gap-1.5">
-              <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>
-              <span>Hesabı Kalıcı Olarak Sil</span>
+          <!-- Hesabı Sil (Clean & Minimalist) -->
+          <div class="mt-4 pt-3 border-t border-white/5 flex items-center justify-center">
+            <button id="openDeleteAccountModalBtn" type="button" class="text-xs font-medium text-gray-500 hover:text-rose-400 transition-all cursor-pointer flex items-center gap-1.5 py-1">
+              <span>Hesabımı Sil</span>
             </button>
           </div>
         </div>
@@ -1785,32 +1756,32 @@
     <button id="openPlatformAccountsFromSettingsBtn" class="hidden"></button>
   </div>
 
-  <!-- Delete Account Confirmation Modal (Item 21) -->
+  <!-- Delete Account Confirmation Modal -->
   <div id="deleteAccountModal" class="fixed inset-0 bg-black/85 backdrop-blur-md z-[100] hidden items-center justify-center p-4">
-    <div class="bg-[#14080F] border border-red-500/30 rounded-3xl p-6 sm:p-7 max-w-sm w-full shadow-2xl relative space-y-4">
+    <div class="bg-[#14080F] border border-white/10 rounded-3xl p-6 sm:p-7 max-w-sm w-full shadow-2xl relative space-y-4">
       <div class="flex items-center gap-3">
-        <div class="w-10 h-10 rounded-2xl bg-red-500/20 border border-red-500/30 flex items-center justify-center text-red-400 shrink-0">
-          <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+        <div class="w-10 h-10 rounded-2xl bg-white/5 border border-white/10 flex items-center justify-center text-rose-400 shrink-0">
+          <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
         </div>
         <div>
-          <h3 class="text-sm font-bold text-white">Hesabı Kalıcı Olarak Sil</h3>
-          <span class="text-[11px] text-red-400 font-semibold">Bu işlem kesinlikle geri alınamaz!</span>
+          <h3 class="text-sm font-bold text-white">Hesabımı Sil</h3>
+          <span class="text-[11px] text-gray-400">Bu işlem geri alınamaz.</span>
         </div>
       </div>
-      <p class="text-xs text-gray-300 leading-relaxed">
-        Hesabınızı sildiğinizde kullanıcı adınız boşa çıkar, tüm profil verileriniz ve kayıtlarınız sunucudan kalıcı olarak kaldırılır.
+      <p class="text-xs text-gray-400 leading-relaxed">
+        Hesabınızı sildiğinizde profil verileriniz ve kayıtlarınız kalıcı olarak kaldırılır.
       </p>
       <div class="space-y-1.5" id="deleteAccountPasswordWrapper">
         <label class="block text-[11px] font-medium text-gray-300">Güvenlik için mevcut şifrenizi girin:</label>
-        <input type="password" id="deleteAccountPasswordInput" placeholder="Mevcut şifreniz" class="w-full bg-black/60 border border-red-500/30 rounded-xl px-3 py-2 text-xs text-white placeholder-gray-500 focus:outline-none focus:border-red-500">
+        <input type="password" id="deleteAccountPasswordInput" placeholder="Mevcut şifreniz" class="w-full bg-black/60 border border-white/15 rounded-xl px-3 py-2 text-xs text-white placeholder-gray-500 focus:outline-none focus:border-[#A64D79]">
       </div>
       <div id="deleteAccountErrorAlert" class="hidden text-[11px] p-2 rounded-xl bg-red-500/20 text-red-300 border border-red-500/30 font-medium"></div>
       <div class="grid grid-cols-2 gap-2 pt-2">
         <button type="button" id="cancelDeleteAccountBtn" class="py-2.5 rounded-xl bg-white/10 hover:bg-white/15 text-xs font-semibold text-gray-300 transition-all cursor-pointer">
           Vazgeç
         </button>
-        <button type="button" id="confirmDeleteAccountBtn" class="py-2.5 rounded-xl bg-red-600 hover:bg-red-700 text-xs font-bold text-white shadow-lg shadow-red-600/30 transition-all cursor-pointer flex items-center justify-center gap-1.5">
-          <span>Evet, Hesabımı Sil</span>
+        <button type="button" id="confirmDeleteAccountBtn" class="py-2.5 rounded-xl bg-gradient-to-r from-red-600 to-rose-700 hover:opacity-90 text-xs font-bold text-white shadow-lg transition-all cursor-pointer flex items-center justify-center gap-1.5">
+          <span>Hesabımı Sil</span>
         </button>
       </div>
     </div>

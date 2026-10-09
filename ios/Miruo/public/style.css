@@ -347,3 +347,29 @@ input, textarea {
   box-shadow: 0 0 0 3px rgba(166, 77, 121, 0.15);
 }
 
+/* Auth Modal 100% Opaque Fullscreen Protection */
+#authModal {
+  position: fixed !important;
+  top: 0 !important;
+  left: 0 !important;
+  right: 0 !important;
+  bottom: 0 !important;
+  width: 100vw !important;
+  height: 100vh !important;
+  min-height: 100vh !important;
+  background-color: #0B0910 !important;
+  z-index: 99999 !important;
+  padding-top: max(16px, env(safe-area-inset-top));
+}
+
+.owl3d {
+  transition: transform 0.45s cubic-bezier(0.25, 1, 0.5, 1) !important;
+  will-change: transform;
+  transform-style: preserve-3d;
+}
+
+.owl3d .pup {
+  transition: transform 0.4s cubic-bezier(0.25, 1, 0.5, 1) !important;
+  will-change: transform;
+}
+
