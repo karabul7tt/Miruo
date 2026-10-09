@@ -1,0 +1,40 @@
+{
+  "version": 2,
+  "cleanUrls": true,
+  "routes": [
+    {
+      "src": "/download/mac",
+      "dest": "/downloads/Miruo-macOS-Installer.dmg",
+      "headers": {
+        "Content-Disposition": "attachment; filename=\"Miruo-macOS-Installer.dmg\"",
+        "Content-Type": "application/x-apple-diskimage"
+      }
+    },
+    {
+      "src": "/download/windows",
+      "dest": "/downloads/Miruo-Windows-Setup.exe",
+      "headers": {
+        "Content-Disposition": "attachment; filename=\"Miruo-Windows-Setup.exe\"",
+        "Content-Type": "application/vnd.microsoft.portable-executable"
+      }
+    },
+    {
+      "src": "/download/ios",
+      "status": 302,
+      "headers": {
+        "Location": "https://apps.apple.com/app/miruo/id6738928411"
+      }
+    },
+    {
+      "src": "/download/android",
+      "status": 302,
+      "headers": {
+        "Location": "https://play.google.com/store/apps/details?id=com.miruo.app"
+      }
+    },
+    {
+      "src": "/(.*)",
+      "dest": "/$1"
+    }
+  ]
+}

@@ -1,0 +1,349 @@
+/* Koltuk Custom Styles & Animations */
+
+/* Video mirroring for webcam */
+.mirror {
+  transform: scaleX(-1);
+}
+
+/* Custom Scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: rgba(0, 0, 0, 0.2);
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.15);
+  border-radius: 9999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.3);
+}
+
+/* Tab Active State */
+.media-tab-btn.active {
+  background-color: rgba(166, 77, 121, 0.2);
+  color: #A64D79;
+  border: 1px solid rgba(166, 77, 121, 0.5);
+}
+
+/* Touch Ripple / Heart Burst Keyframes */
+@keyframes touchHeartRise {
+  0% {
+    transform: translate(-50%, -50%) scale(0.2);
+    opacity: 1;
+  }
+  50% {
+    transform: translate(-50%, -80px) scale(1.4);
+    opacity: 0.9;
+  }
+  100% {
+    transform: translate(-50%, -150px) scale(1);
+    opacity: 0;
+  }
+}
+
+@keyframes touchRingRipple {
+  0% {
+    transform: translate(-50%, -50%) scale(0.1);
+    opacity: 1;
+  }
+  50% {
+    transform: translate(-50%, -50%) scale(3.5);
+    opacity: 0;
+  }
+}
+
+.touch-heart {
+  position: absolute;
+  pointer-events: none;
+  font-size: 28px;
+  animation: touchHeartRise 1.4s cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
+  z-index: 9999;
+  filter: drop-shadow(0 0 12px rgba(166, 77, 121, 0.8));
+}
+
+.touch-ring {
+  position: absolute;
+  pointer-events: none;
+  width: 60px;
+  height: 60px;
+  border: 2px solid rgba(166, 77, 121, 0.8);
+  border-radius: 50%;
+  animation: touchRingRipple 1.2s cubic-bezier(0.1, 0.7, 0.1, 1) forwards;
+  z-index: 9998;
+}
+
+/* Floating Emoji Reaction Animation */
+@keyframes floatUpReaction {
+  0% {
+    transform: translateY(0) scale(0.5);
+    opacity: 1;
+  }
+  70% {
+    transform: translateY(-200px) scale(1.3);
+    opacity: 0.8;
+  }
+  100% {
+    transform: translateY(-300px) scale(1);
+    opacity: 0;
+  }
+}
+
+.floating-reaction {
+  position: fixed;
+  pointer-events: none;
+  font-size: 36px;
+  z-index: 9999;
+  animation: floatUpReaction 2.2s ease-out forwards;
+}
+
+/* Dragging PIP state */
+.pip-dragging {
+  opacity: 0.85;
+  cursor: grabbing !important;
+  transition: none !important;
+}
+
+/* Modern Clean Modal Backdrop */
+.modern-modal-bg {
+  background: radial-gradient(circle at 50% 10%, rgba(59, 28, 50, 0.85) 0%, rgba(26, 26, 29, 0.98) 70%, #000000 100%);
+}
+
+/* Media Card Hover Effect */
+.media-card-item {
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.media-card-item:hover {
+  transform: translateY(-2px);
+  border-color: rgba(166, 77, 121, 0.5);
+  box-shadow: 0 8px 24px -4px rgba(106, 30, 85, 0.35);
+}
+.media-card-item:active {
+  transform: scale(0.98);
+}
+
+/* Custom Scrubber Thumb */
+#seekSlider {
+  accent-color: #A64D79;
+}
+#seekSlider::-webkit-slider-thumb {
+  background: #A64D79;
+  box-shadow: 0 0 10px rgba(166, 77, 121, 0.8);
+}
+
+/* ========================================================
+   FULLSCREEN STAGE & RAVE-STYLE FLOATING PiP WEBCAM
+   ======================================================== */
+#stageContainer:fullscreen,
+#stageContainer:-webkit-full-screen {
+  width: 100vw !important;
+  height: 100vh !important;
+  max-width: 100vw !important;
+  max-height: 100vh !important;
+  border-radius: 0 !important;
+  border: none !important;
+  background-color: #000000 !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  overflow: hidden !important;
+  aspect-ratio: auto !important;
+}
+
+#ytPlayerContainer {
+  position: relative !important;
+  width: 100% !important;
+  height: 100% !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  overflow: hidden !important;
+}
+
+#ytPlayerContainer iframe,
+#miruoYtIframe {
+  position: absolute !important;
+  inset: 0 !important;
+  width: 100% !important;
+  height: 100% !important;
+  max-width: 100% !important;
+  max-height: 100% !important;
+  border: 0 !important;
+}
+
+#stageContainer:fullscreen #ytPlayerContainer,
+#stageContainer:-webkit-full-screen #ytPlayerContainer,
+#stageContainer:fullscreen #nativeVideoPlayer,
+#stageContainer:-webkit-full-screen #nativeVideoPlayer,
+#stageContainer:fullscreen #remoteScreenPlayer,
+#stageContainer:-webkit-full-screen #remoteScreenPlayer {
+  width: 100vw !important;
+  height: 100vh !important;
+  max-width: 100vw !important;
+  max-height: 100vh !important;
+  object-fit: contain !important;
+  position: absolute !important;
+  inset: 0 !important;
+}
+
+#stageContainer:fullscreen #ytPlayerContainer iframe,
+#stageContainer:-webkit-full-screen #ytPlayerContainer iframe,
+#stageContainer:fullscreen #miruoYtIframe,
+#stageContainer:-webkit-full-screen #miruoYtIframe {
+  width: 100vw !important;
+  height: 100vh !important;
+  max-width: 100vw !important;
+  max-height: 100vh !important;
+  position: absolute !important;
+  inset: 0 !important;
+}
+
+#stageContainer:fullscreen #partnerPipCard,
+#stageContainer:-webkit-full-screen #partnerPipCard,
+#stageContainer:fullscreen #selfPipCard,
+#stageContainer:-webkit-full-screen #selfPipCard {
+  z-index: 99999 !important;
+  box-shadow: 0 20px 40px rgba(0,0,0,0.8), 0 0 20px rgba(242, 96, 58, 0.25) !important;
+}
+
+/* PiP Corner Positioning Options */
+.pip-pos-bottom-right {
+  bottom: 24px !important;
+  right: 24px !important;
+  top: auto !important;
+  left: auto !important;
+}
+
+.pip-pos-bottom-left {
+  bottom: 24px !important;
+  left: 24px !important;
+  top: auto !important;
+  right: auto !important;
+}
+
+.pip-pos-top-right {
+  top: 24px !important;
+  right: 24px !important;
+  bottom: auto !important;
+  left: auto !important;
+}
+
+.pip-pos-top-left {
+  top: 24px !important;
+  left: 24px !important;
+  bottom: auto !important;
+  right: auto !important;
+}
+
+.pip-size-large {
+  width: 260px !important;
+}
+
+.pip-hidden-fullscreen {
+  display: none !important;
+}
+
+/* Rave YouTube Card Styles */
+.rave-yt-card {
+  transition: all 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.rave-yt-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 10px 25px -5px rgba(239, 68, 68, 0.2);
+}
+.rave-yt-card:active {
+  transform: scale(0.97);
+}
+
+/* Hide scrollbar for clean horizontal tab pills */
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+/* Ensure hidden elements are strictly non-interactable and hidden */
+.hidden {
+  display: none !important;
+  pointer-events: none !important;
+}
+
+/* Button & Touch fixes for iOS WKWebView */
+button, a, input, select, textarea, [role="button"], .cursor-pointer, .platform-choice, .rave-yt-card, .capsule-room-card {
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+  cursor: pointer;
+}
+
+input, textarea {
+  user-select: text !important;
+  -webkit-user-select: text !important;
+}
+
+/* YouTube Live Format: Responsive split layout in landscape orientation */
+@media (orientation: landscape) and (max-height: 600px) {
+  #roomMainSplitLayout {
+    flex-direction: row !important;
+  }
+  #roomChatSidebar {
+    width: 300px !important;
+    min-height: 240px !important;
+    max-height: calc(100vh - 48px) !important;
+  }
+  #chatMessagesContainer {
+    height: auto !important;
+    flex: 1 1 auto !important;
+  }
+}
+
+/* ========================================================
+   MIRUO 3D ANIMATED OWL MASCOT & EYE TRACKING
+   ======================================================== */
+.owlbox {
+  perspective: 600px;
+}
+.owl3d {
+  transition: transform 0.2s cubic-bezier(0.25, 1, 0.5, 1);
+  transform-style: preserve-3d;
+  will-change: transform;
+}
+.owl3d .pup {
+  transition: transform 0.15s cubic-bezier(0.2, 0.9, 0.4, 1);
+  will-change: transform;
+}
+.owl-blink {
+  animation: owlBlinkAnim 0.18s ease-in-out;
+}
+@keyframes owlBlinkAnim {
+  0% { transform: scaleY(1); }
+  50% { transform: scaleY(0.08); }
+  100% { transform: scaleY(1); }
+}
+
+/* ========================================================
+   FULLSCREEN / ROOM CONTROLS AUTO-HIDE (Clean Cinema View)
+   ======================================================== */
+.fs-control-fade {
+  transition: opacity 0.35s cubic-bezier(0.16, 1, 0.3, 1), transform 0.35s cubic-bezier(0.16, 1, 0.3, 1), visibility 0.35s ease;
+}
+.fs-controls-hidden {
+  opacity: 0 !important;
+  pointer-events: none !important;
+  cursor: none !important;
+}
+
+/* Auth card custom styling */
+.auth-input-container {
+  background-color: #F3F4F6;
+  transition: all 0.2s ease;
+}
+.auth-input-container:focus-within {
+  background-color: #FFFFFF;
+  border-color: #A64D79 !important;
+  box-shadow: 0 0 0 3px rgba(166, 77, 121, 0.15);
+}
+

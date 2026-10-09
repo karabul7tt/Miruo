@@ -1,0 +1,26 @@
+# Build and DerivedData outputs
+build/
+DerivedData/
+ios/build/
+*.build/
+*.dSYM/
+*.pbxuser
+!default.pbxuser
+*.mode1v3
+!default.mode1v3
+*.mode2v3
+!default.mode2v3
+*.perspectivev3
+!default.perspectivev3
+xcuserdata/
+
+# Scratch and temp files
+scratch/
+test_crop.png
+
+# Node and OS
+node_modules/
+.DS_Store
+*.log
+.env
+.env.local
