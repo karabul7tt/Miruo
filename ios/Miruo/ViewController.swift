@@ -251,6 +251,14 @@ class ViewController: UIViewController, WKNavigationDelegate, WKUIDelegate, WKSc
         if let lang = testLang {
             queryParts.append("lang=\(lang)")
         }
+        let testAffinity = ProcessInfo.processInfo.environment["MIRUO_AFFINITY"]
+        if let affinity = testAffinity {
+            queryParts.append("affinity=\(affinity)")
+        }
+        let testPublicUser = ProcessInfo.processInfo.environment["MIRUO_PUBLIC_USER"]
+        if let publicUser = testPublicUser {
+            queryParts.append("public_user=\(publicUser)")
+        }
         let query = !queryParts.isEmpty ? "?" + queryParts.joined(separator: "&") : ""
         if let server = localServer, server.isRunning {
             let url = URL(string: "http://127.0.0.1:\(server.port)/index.html\(query)")!
@@ -629,6 +637,17 @@ class ViewController: UIViewController, WKNavigationDelegate, WKUIDelegate, WKSc
                 if (typeof unfreezeBackgroundAfterModal === 'function') unfreezeBackgroundAfterModal();
                 if (typeof openCreateRoomModal === 'function') openCreateRoomModal();
                 else document.getElementById('navCreateRoomBtn')?.click();
+            }, 600);
+            """
+            webView.evaluateJavaScript(js, completionHandler: nil)
+        }
+        if let _ = ProcessInfo.processInfo.environment["OPEN_PROFILE"] {
+            let js = """
+            setTimeout(() => {
+                document.getElementById('authModal')?.classList.add('hidden');
+                if (typeof unfreezeBackgroundAfterModal === 'function') unfreezeBackgroundAfterModal();
+                if (typeof switchToProfileTab === 'function') switchToProfileTab();
+                else document.getElementById('mobileNavProfileBtn')?.click();
             }, 600);
             """
             webView.evaluateJavaScript(js, completionHandler: nil)

@@ -4767,12 +4767,12 @@ function handleDjPermissionGranted(toUser) {
   showToast('Tebrikler! Oda yöneticisi size video açma yetkisi verdi.');
 }
 
-// Default seed friends (With unique usernames and activity timestamps)
+// Default seed friends (With unique usernames, activity timestamps and watch minutes)
 const DEFAULT_FRIENDS = [
-  { id: 'f1', name: 'Selin Yılmaz', username: 'selin', status: 'online', statusText: 'Çevrimiçi', avatar: 'S', lastActive: Date.now() - 30000 },
-  { id: 'f2', name: 'Can Demir', username: 'can', status: 'in_room', statusText: 'Film Odasında', avatar: 'C', lastActive: Date.now() - 120000 },
-  { id: 'f3', name: 'Merve Kaya', username: 'merve', status: 'idle', statusText: '15 dk önce aktifti', avatar: 'M', lastActive: Date.now() - 900000 },
-  { id: 'f4', name: 'Emre Yıldız', username: 'emre', status: 'offline', statusText: '2 saat önce aktifti', avatar: 'E', lastActive: Date.now() - 7200000 }
+  { id: 'f1', name: 'Selin Yılmaz', username: 'selin', status: 'online', statusText: 'Çevrimiçi', avatar: 'S', lastActive: Date.now() - 30000, watchMinutes: 216 },
+  { id: 'f2', name: 'Can Demir', username: 'can', status: 'in_room', statusText: 'Film Odasında', avatar: 'C', lastActive: Date.now() - 120000, watchMinutes: 195 },
+  { id: 'f3', name: 'Merve Kaya', username: 'merve', status: 'idle', statusText: '15 dk önce aktifti', avatar: 'M', lastActive: Date.now() - 900000, watchMinutes: 84 },
+  { id: 'f4', name: 'Emre Yıldız', username: 'emre', status: 'offline', statusText: '2 saat önce aktifti', avatar: 'E', lastActive: Date.now() - 7200000, watchMinutes: 42 }
 ];
 
 function loadFriends() {
@@ -4780,6 +4780,9 @@ function loadFriends() {
   if (saved) {
     try {
       state.friends = JSON.parse(saved);
+      if (!Array.isArray(state.friends) || state.friends.length === 0) {
+        state.friends = DEFAULT_FRIENDS;
+      }
     } catch (e) {
       state.friends = DEFAULT_FRIENDS;
     }
@@ -4788,11 +4791,15 @@ function loadFriends() {
     localStorage.setItem('miruo_friends', JSON.stringify(state.friends));
   }
 
-  // Ensure no old cached emoji remnants exist
+  // Ensure no old cached emoji remnants exist & seed shared watch times
   state.friends.forEach(f => {
     if (f.name) f.name = f.name.replace(/[^\w\sçÇğĞıİöÖşŞüÜ-]/g, '').trim();
     if (f.username) f.username = f.username.replace(/[^\w-]/g, '').trim();
     if (f.statusText) f.statusText = f.statusText.replace(/[^\w\sçÇğĞıİöÖşŞüÜ-]/g, '').trim();
+    const cleanU = (f.username || f.name).toLowerCase().replace(/^@/, '');
+    if (typeof getSharedWatchMinutes === 'function' && getSharedWatchMinutes(cleanU) === 0 && DEFAULT_SHARED_WATCH_TIME && DEFAULT_SHARED_WATCH_TIME[cleanU]) {
+      setSharedWatchMinutes(cleanU, DEFAULT_SHARED_WATCH_TIME[cleanU]);
+    }
   });
   localStorage.setItem('miruo_friends', JSON.stringify(state.friends));
 
@@ -4995,7 +5002,7 @@ function renderFriendsTab(filterText = '') {
     const cleanAvatarChar = (fr.avatar || cleanName.charAt(0) || 'A').toUpperCase();
 
     card.innerHTML = `
-      <div class="flex items-center gap-3 min-w-0">
+      <div class="flex items-center gap-3 min-w-0 friend-card-profile-trigger cursor-pointer flex-1 hover:opacity-90 transition-opacity">
         <div class="relative shrink-0">
           ${fr.avatarUrl ? 
             `<img src="${fr.avatarUrl}" class="w-10 h-10 rounded-full object-cover border border-white/20" alt="Avatar">` :
@@ -5015,12 +5022,30 @@ function renderFriendsTab(filterText = '') {
       </div>
       
       <div class="flex items-center gap-1.5 shrink-0">
+        <button class="view-friend-profile-btn px-2.5 py-1.5 rounded-xl bg-white/5 hover:bg-rose-500/20 text-gray-300 hover:text-rose-300 border border-white/10 transition-all cursor-pointer flex items-center gap-1 text-xs" title="Profili ve İlişki Ağını Gör">
+          <svg class="w-3.5 h-3.5 text-rose-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+          <span>Profil</span>
+        </button>
         <button class="invite-friend-tab-btn px-3 py-1.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-xs font-medium text-gray-200 hover:text-white transition-all cursor-pointer flex items-center gap-1" data-name="${cleanName}">
           <svg class="w-3.5 h-3.5 text-rose-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 3h6v6m0-6L10 14"/></svg>
           <span>${dict.invite_btn_short || 'Invite'}</span>
         </button>
       </div>
     `;
+
+    const profileTrigger = card.querySelector('.friend-card-profile-trigger');
+    if (profileTrigger) {
+      addInstantTap(profileTrigger, () => {
+        openPublicUserProfile(cleanUsername);
+      });
+    }
+
+    const viewProfBtn = card.querySelector('.view-friend-profile-btn');
+    if (viewProfBtn) {
+      addInstantTap(viewProfBtn, () => {
+        openPublicUserProfile(cleanUsername);
+      });
+    }
 
     addInstantTap(card.querySelector('.invite-friend-tab-btn'), () => {
       const inviteUrl = `${window.location.origin}/?room=${encodeURIComponent(state.roomId)}`;
@@ -5442,7 +5467,693 @@ function renderProfileTab() {
   if (emailSubEl) {
     emailSubEl.textContent = savedUser.email || savedUser.phone || `${cleanUsername.replace(/^@/, '').toLowerCase()}@miruo.app`;
   }
+
+  // Render Mobile Legends Style Affinity Constellation Tree
+  if (typeof renderAffinityTree === 'function') {
+    renderAffinityTree();
+  }
 }
+
+// ==========================================
+// 5.8.5 MOBILE LEGENDS STYLE AFFINITY / PARTNERLİK SİSTEMİ
+// ==========================================
+
+const AFFINITY_CATEGORIES = {
+  partner: { key: 'partner', name: 'Partner', icon: '❤️', color: 'rose', glowClass: 'affinity-glow-partner', max: 1 },
+  bro: { key: 'bro', name: 'Kanka', icon: '🤝', color: 'cyan', glowClass: 'affinity-glow-bro', max: 2 },
+  bestie: { key: 'bestie', name: 'Yakın Arkadaş', icon: '✨', color: 'purple', glowClass: 'affinity-glow-bestie', max: 2 },
+  confidant: { key: 'confidant', name: 'Sırdaş', icon: '🗝️', color: 'amber', glowClass: 'affinity-glow-confidant', max: 2 }
+};
+
+// 7 Symmetrical Orbit Slots with coordinates (percentage 0-100 relative to constellation canvas)
+const AFFINITY_SLOTS = [
+  { key: 'partner_1', category: 'partner', label: 'Partner', icon: '❤️', x: 50, y: 14 },
+  { key: 'bro_1', category: 'bro', label: 'Kanka 1', icon: '🤝', x: 18, y: 30 },
+  { key: 'bro_2', category: 'bro', label: 'Kanka 2', icon: '🤝', x: 18, y: 70 },
+  { key: 'bestie_1', category: 'bestie', label: 'Yakın Arkadaş 1', icon: '✨', x: 82, y: 30 },
+  { key: 'bestie_2', category: 'bestie', label: 'Yakın Arkadaş 2', icon: '✨', x: 82, y: 70 },
+  { key: 'confidant_1', category: 'confidant', label: 'Sırdaş 1', icon: '🗝️', x: 35, y: 86 },
+  { key: 'confidant_2', category: 'confidant', label: 'Sırdaş 2', icon: '🗝️', x: 65, y: 86 }
+];
+
+// Default Shared Watch Times (in minutes) for friends:
+// 3 hours = 180 minutes.
+const DEFAULT_SHARED_WATCH_TIME = {
+  selin: 216,  // 3.6 hours -> ELIGIBLE (>= 180 min)
+  can: 195,    // 3.25 hours -> ELIGIBLE (>= 180 min)
+  merve: 84,   // 1.4 hours -> LOCKED (< 180 min, needs 1.6 hrs)
+  emre: 42     // 0.7 hours -> LOCKED (< 180 min, needs 2.3 hrs)
+};
+
+function getSharedWatchMinutes(username) {
+  if (!username) return 0;
+  const clean = username.toLowerCase().replace(/^@/, '').trim();
+  let saved = {};
+  try {
+    saved = JSON.parse(localStorage.getItem('miruo_shared_watch_time') || '{}');
+  } catch (e) {
+    saved = {};
+  }
+  if (saved[clean] !== undefined) return Number(saved[clean]) || 0;
+  if (DEFAULT_SHARED_WATCH_TIME[clean] !== undefined) {
+    saved[clean] = DEFAULT_SHARED_WATCH_TIME[clean];
+    localStorage.setItem('miruo_shared_watch_time', JSON.stringify(saved));
+    return saved[clean];
+  }
+  return 0;
+}
+
+function setSharedWatchMinutes(username, minutes) {
+  if (!username) return;
+  const clean = username.toLowerCase().replace(/^@/, '').trim();
+  let saved = {};
+  try {
+    saved = JSON.parse(localStorage.getItem('miruo_shared_watch_time') || '{}');
+  } catch (e) {
+    saved = {};
+  }
+  saved[clean] = Math.max(0, Number(minutes) || 0);
+  localStorage.setItem('miruo_shared_watch_time', JSON.stringify(saved));
+}
+
+function addSharedWatchMinutes(username, addedMinutes) {
+  const current = getSharedWatchMinutes(username);
+  setSharedWatchMinutes(username, current + addedMinutes);
+}
+
+// User's own affinity tree:
+// Starts 100% empty with '+' as requested by the user:
+// "ordan en başta boş olucak içinde + olucak hepsi 3 saat beraber izleme yaptığınız kişiler o artı tusuna basınca görünecek ve oraya eklenebılecek"
+function getUserAffinityTree() {
+  const saved = localStorage.getItem('miruo_user_affinity');
+  if (saved) {
+    try {
+      return JSON.parse(saved);
+    } catch (e) {}
+  }
+  const initial = {
+    partner_1: null,
+    bro_1: null,
+    bro_2: null,
+    bestie_1: null,
+    bestie_2: null,
+    confidant_1: null,
+    confidant_2: null
+  };
+  localStorage.setItem('miruo_user_affinity', JSON.stringify(initial));
+  return initial;
+}
+
+function saveUserAffinityTree(tree) {
+  localStorage.setItem('miruo_user_affinity', JSON.stringify(tree));
+}
+
+// Get mock or stored affinity tree for other users (public view)
+function getMockAffinityTreeForUser(targetUsername) {
+  const clean = (targetUsername || '').toLowerCase().replace(/^@/, '').trim();
+  const currentTree = getUserAffinityTree();
+  const savedUser = JSON.parse(localStorage.getItem('miruo_user') || '{}');
+  const myName = savedUser.fullName || savedUser.name || state.username || 'Mehmet Karabulut';
+  const myUsername = (savedUser.username || state.username || 'mehmetkarabul7tt').replace(/^@/, '');
+
+  // Check if I added this user as my partner
+  let isPartnerWithMe = false;
+  if (currentTree.partner_1 && currentTree.partner_1.username && currentTree.partner_1.username.toLowerCase().replace(/^@/, '') === clean) {
+    isPartnerWithMe = true;
+  }
+
+  const tree = {
+    partner_1: isPartnerWithMe ? { username: myUsername, name: myName, category: 'partner' } : null,
+    bro_1: clean === 'can' ? { username: 'emre', name: 'Emre Yıldız', category: 'bro' } : { username: 'can', name: 'Can Demir', category: 'bro' },
+    bro_2: null,
+    bestie_1: clean === 'merve' ? { username: 'selin', name: 'Selin Yılmaz', category: 'bestie' } : { username: 'merve', name: 'Merve Kaya', category: 'bestie' },
+    bestie_2: null,
+    confidant_1: null,
+    confidant_2: null
+  };
+
+  return tree;
+}
+
+// Render Affinity Constellation Tree (Works for both own profile and public user profile)
+function renderAffinityTree(containerId = 'affinityConstellationContainer', svgId = 'affinityBranchesSvg', nodesLayerId = 'affinityNodesLayer', isOwnProfile = true, targetUser = null) {
+  const container = document.getElementById(containerId);
+  const svg = document.getElementById(svgId);
+  const layer = document.getElementById(nodesLayerId);
+  if (!container || !svg || !layer) return;
+
+  const currentTree = isOwnProfile ? getUserAffinityTree() : (targetUser && targetUser.affinityTree ? targetUser.affinityTree : getMockAffinityTreeForUser(targetUser ? targetUser.username : 'other'));
+
+  // Center User Data
+  const savedUser = JSON.parse(localStorage.getItem('miruo_user') || '{}');
+  const centerName = isOwnProfile 
+    ? (savedUser.fullName || savedUser.name || state.username || 'Mehmet') 
+    : (targetUser ? (targetUser.name || targetUser.fullName || targetUser.username) : 'Kullanıcı');
+  const centerAvatar = isOwnProfile
+    ? (savedUser.avatarUrl || state.avatarUrl || '')
+    : (targetUser ? targetUser.avatarUrl : '');
+  const centerInitial = (centerName.charAt(0) || 'M').toUpperCase();
+
+  // Clear SVG & Nodes Layer
+  svg.innerHTML = `
+    <defs>
+      <linearGradient id="gradRose" x1="0%" y1="0%" x2="100%" y2="100%">
+        <stop offset="0%" stop-color="#f43f5e" stop-opacity="0.95"/>
+        <stop offset="100%" stop-color="#fb7185" stop-opacity="0.5"/>
+      </linearGradient>
+      <linearGradient id="gradCyan" x1="0%" y1="0%" x2="100%" y2="100%">
+        <stop offset="0%" stop-color="#06b6d4" stop-opacity="0.95"/>
+        <stop offset="100%" stop-color="#38bdf8" stop-opacity="0.5"/>
+      </linearGradient>
+      <linearGradient id="gradPurple" x1="0%" y1="0%" x2="100%" y2="100%">
+        <stop offset="0%" stop-color="#a855f7" stop-opacity="0.95"/>
+        <stop offset="100%" stop-color="#c084fc" stop-opacity="0.5"/>
+      </linearGradient>
+      <linearGradient id="gradAmber" x1="0%" y1="0%" x2="100%" y2="100%">
+        <stop offset="0%" stop-color="#f59e0b" stop-opacity="0.95"/>
+        <stop offset="100%" stop-color="#fbbf24" stop-opacity="0.5"/>
+      </linearGradient>
+      <filter id="glowEffect" x="-20%" y="-20%" width="140%" height="140%">
+        <feGaussianBlur stdDeviation="1.5" result="blur" />
+        <feComposite in="SourceGraphic" in2="blur" operator="over" />
+      </filter>
+    </defs>
+  `;
+  layer.innerHTML = '';
+
+  // Draw Center User Node
+  const centerDiv = document.createElement('div');
+  centerDiv.className = 'absolute flex flex-col items-center justify-center select-none pointer-events-auto';
+  centerDiv.style.left = '50%';
+  centerDiv.style.top = '50%';
+  centerDiv.style.transform = 'translate(-50%, -50%)';
+  centerDiv.innerHTML = `
+    <div class="relative w-15 h-15 sm:w-16 sm:h-16 flex items-center justify-center">
+      <div class="affinity-center-halo absolute inset-0 rounded-full border-2 border-rose-500/70 shadow-[0_0_22px_rgba(244,63,94,0.45)]"></div>
+      <div class="w-13 h-13 sm:w-14 sm:h-14 rounded-full overflow-hidden bg-gradient-to-tr from-rose-600 via-pink-600 to-[#A64D79] border-2 border-white/80 shadow-2xl flex items-center justify-center text-white font-black text-xl">
+        ${centerAvatar ? `<img src="${centerAvatar}" class="w-full h-full object-cover">` : centerInitial}
+      </div>
+    </div>
+    <span class="mt-1 px-2.5 py-0.5 rounded-full bg-black/80 border border-white/20 text-[9px] font-extrabold text-white shadow-lg">
+      ${isOwnProfile ? 'Sen' : escapeHtml(centerName.split(' ')[0])}
+    </span>
+  `;
+  layer.appendChild(centerDiv);
+
+  // Counters for Legend
+  let countPartner = 0, countBro = 0, countBestie = 0, countConfidant = 0;
+
+  // Render each slot and connecting branch
+  AFFINITY_SLOTS.forEach(slot => {
+    const assigned = currentTree[slot.key];
+    const cat = AFFINITY_CATEGORIES[slot.category];
+
+    // Branch SVG Line from (50, 50) to (slot.x, slot.y)
+    const branch = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+    branch.setAttribute('x1', '50');
+    branch.setAttribute('y1', '50');
+    branch.setAttribute('x2', slot.x.toString());
+    branch.setAttribute('y2', slot.y.toString());
+
+    if (assigned) {
+      // Active glowing branch
+      let gradId = 'gradRose';
+      if (slot.category === 'bro') gradId = 'gradCyan';
+      else if (slot.category === 'bestie') gradId = 'gradPurple';
+      else if (slot.category === 'confidant') gradId = 'gradAmber';
+
+      branch.setAttribute('stroke', `url(#${gradId})`);
+      branch.setAttribute('stroke-width', '2.5');
+      branch.setAttribute('stroke-linecap', 'round');
+      branch.setAttribute('filter', 'url(#glowEffect)');
+      branch.setAttribute('class', 'affinity-branch-active');
+
+      if (slot.category === 'partner') countPartner++;
+      else if (slot.category === 'bro') countBro++;
+      else if (slot.category === 'bestie') countBestie++;
+      else if (slot.category === 'confidant') countConfidant++;
+    } else {
+      // Empty inactive dashed branch
+      branch.setAttribute('stroke', 'rgba(255, 255, 255, 0.2)');
+      branch.setAttribute('stroke-width', '1.5');
+      branch.setAttribute('stroke-dasharray', '2.5 2.5');
+    }
+    svg.appendChild(branch);
+
+    // Slot Node DOM element
+    const nodeEl = document.createElement('div');
+    nodeEl.className = 'absolute flex flex-col items-center select-none cursor-pointer';
+    nodeEl.style.left = `${slot.x}%`;
+    nodeEl.style.top = `${slot.y}%`;
+    nodeEl.style.transform = 'translate(-50%, -50%)';
+
+    if (assigned) {
+      // FILLED SLOT
+      const friendMinutes = getSharedWatchMinutes(assigned.username);
+      const friendHours = (friendMinutes / 60).toFixed(1);
+      const initial = (assigned.name || assigned.username || 'A').charAt(0).toUpperCase();
+
+      nodeEl.innerHTML = `
+        <div class="relative w-11 h-11 sm:w-12 sm:h-12 rounded-full overflow-hidden ${cat.glowClass} flex items-center justify-center text-white font-bold text-xs bg-gradient-to-tr from-gray-900 to-[#1b152b] shadow-xl">
+          ${assigned.avatarUrl ? `<img src="${assigned.avatarUrl}" class="w-full h-full object-cover">` : initial}
+          <span class="absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full border border-black bg-emerald-400"></span>
+        </div>
+        <div class="mt-1 flex flex-col items-center">
+          <span class="text-[9px] font-extrabold text-white truncate max-w-[65px] px-1.5 py-0.2 bg-black/70 rounded backdrop-blur-xs leading-tight">${escapeHtml(assigned.name ? assigned.name.split(' ')[0] : assigned.username)}</span>
+          <span class="text-[8px] font-bold text-emerald-300 leading-tight">⏱️ ${friendHours}s</span>
+        </div>
+      `;
+
+      addInstantTap(nodeEl, (e) => {
+        e.stopPropagation();
+        if (isOwnProfile) {
+          openAffinitySlotDetail(slot.key, assigned);
+        } else {
+          openPublicUserProfile(assigned.username);
+        }
+      });
+
+    } else {
+      // EMPTY SLOT
+      if (isOwnProfile) {
+        nodeEl.innerHTML = `
+          <button type="button" class="w-11 h-11 sm:w-12 sm:h-12 rounded-full affinity-slot-empty flex items-center justify-center text-rose-400 hover:text-white transition-all cursor-pointer shadow-lg active:scale-95 group" title="${slot.label} Ekle">
+            <svg class="w-5 h-5 text-rose-400/90 group-hover:scale-125 transition-transform" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+          </button>
+          <div class="mt-1 flex items-center gap-0.5 px-1.5 py-0.5 rounded-full bg-black/70 border border-white/10 text-[8px] font-bold text-gray-300">
+            <span>${slot.icon}</span>
+            <span>${cat.name}</span>
+          </div>
+        `;
+        addInstantTap(nodeEl, (e) => {
+          e.stopPropagation();
+          openAffinityPicker(slot.key, slot.category, slot.label);
+        });
+      } else {
+        // Public viewing mode for empty slot
+        nodeEl.innerHTML = `
+          <div class="w-10 h-10 rounded-full border border-white/15 bg-black/40 flex items-center justify-center text-gray-600">
+            <svg class="w-4 h-4 text-gray-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/></svg>
+          </div>
+          <span class="mt-1 text-[8px] font-semibold text-gray-500">${slot.icon} Boş</span>
+        `;
+      }
+    }
+
+    layer.appendChild(nodeEl);
+  });
+
+  // Update Counters in Legend
+  if (isOwnProfile) {
+    const cp = document.getElementById('affinityCountPartner');
+    const cb = document.getElementById('affinityCountBro');
+    const cbe = document.getElementById('affinityCountBestie');
+    const cc = document.getElementById('affinityCountConfidant');
+    if (cp) cp.textContent = `${countPartner}/1`;
+    if (cb) cb.textContent = `${countBro}/2`;
+    if (cbe) cbe.textContent = `${countBestie}/2`;
+    if (cc) cc.textContent = `${countConfidant}/2`;
+  }
+}
+
+// Global reference for active picker target
+let currentPickerSlotKey = null;
+
+function openAffinityPicker(slotKey, categoryKey, slotTitle) {
+  currentPickerSlotKey = slotKey;
+  const modal = document.getElementById('affinityPickerModal');
+  const titleEl = document.getElementById('affinityPickerTitle');
+  const iconEl = document.getElementById('affinityPickerCategoryIcon');
+  const listContainer = document.getElementById('affinityPickerListContainer');
+  if (!modal || !listContainer) return;
+
+  const cat = AFFINITY_CATEGORIES[categoryKey] || AFFINITY_CATEGORIES.partner;
+  if (titleEl) titleEl.textContent = `${slotTitle || cat.name} Seç`;
+  if (iconEl) iconEl.textContent = cat.icon;
+
+  modal.classList.remove('hidden');
+  modal.classList.add('flex');
+
+  renderAffinityPickerList();
+}
+
+function closeAffinityPicker() {
+  const modal = document.getElementById('affinityPickerModal');
+  if (modal) {
+    modal.classList.add('hidden');
+    modal.classList.remove('flex');
+  }
+}
+
+function renderAffinityPickerList() {
+  const listContainer = document.getElementById('affinityPickerListContainer');
+  const quickSimBtns = document.getElementById('affinityQuickSimBtns');
+  if (!listContainer) return;
+
+  listContainer.innerHTML = '';
+  if (quickSimBtns) quickSimBtns.innerHTML = '';
+
+  if (!state.friends || state.friends.length === 0) {
+    if (typeof loadFriends === 'function') loadFriends();
+  }
+  const friends = (state && state.friends && state.friends.length > 0) ? state.friends : DEFAULT_FRIENDS;
+  const currentTree = getUserAffinityTree();
+
+  // Find who is already bound to other slots
+  const alreadyBoundUsernames = new Set();
+  Object.entries(currentTree).forEach(([k, val]) => {
+    if (val && val.username && k !== currentPickerSlotKey) {
+      alreadyBoundUsernames.add(val.username.toLowerCase().replace(/^@/, ''));
+    }
+  });
+
+  // Split into Eligible (>= 180 min) and Locked (< 180 min)
+  const eligible = [];
+  const locked = [];
+
+  friends.forEach(fr => {
+    const cleanUsername = (fr.username || fr.name || '').toLowerCase().replace(/^@/, '');
+    if (alreadyBoundUsernames.has(cleanUsername)) return; // already bound elsewhere
+
+    const watchMins = getSharedWatchMinutes(cleanUsername);
+    const watchHours = (watchMins / 60).toFixed(1);
+
+    if (watchMins >= 180) {
+      eligible.push({ ...fr, cleanUsername, watchMins, watchHours });
+    } else {
+      locked.push({ ...fr, cleanUsername, watchMins, watchHours });
+    }
+
+    // Populate quick simulation button for testing
+    if (quickSimBtns) {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'px-2 py-1 rounded-lg bg-white/10 hover:bg-white/20 active:scale-95 text-white text-[10px] font-semibold transition-all cursor-pointer';
+      btn.textContent = `+30dk ${fr.name.split(' ')[0]}`;
+      btn.addEventListener('click', () => {
+        addSharedWatchMinutes(cleanUsername, 30);
+        showToast(`${fr.name} ile +30 dk izlendi!`);
+        renderAffinityPickerList();
+        renderAffinityTree();
+      });
+      quickSimBtns.appendChild(btn);
+    }
+  });
+
+  // 1. ELIGIBLE LIST
+  if (eligible.length > 0) {
+    const header = document.createElement('div');
+    header.className = 'text-[11px] font-extrabold text-emerald-400 flex items-center gap-1.5 pt-1';
+    header.innerHTML = `<span>✨</span><span>Uygun Arkadaşlar (${eligible.length})</span>`;
+    listContainer.appendChild(header);
+
+    eligible.forEach(fr => {
+      const card = document.createElement('div');
+      card.className = 'p-3 rounded-2xl bg-white/5 border border-emerald-500/30 flex items-center justify-between gap-3 shadow-md hover:border-emerald-500/50 transition-all';
+      card.innerHTML = `
+        <div class="flex items-center gap-3 min-w-0">
+          <div class="w-10 h-10 rounded-full bg-gradient-to-tr from-rose-500 to-indigo-600 flex items-center justify-center text-xs font-bold text-white shrink-0 shadow-sm border border-white/20">
+            ${(fr.avatar || fr.name.charAt(0) || 'A').toUpperCase()}
+          </div>
+          <div class="truncate">
+            <span class="text-xs font-bold text-white block truncate">${escapeHtml(fr.name)}</span>
+            <span class="text-[10px] text-emerald-400 font-semibold flex items-center gap-1">
+              <span>⏱️ ${fr.watchHours} saat izlendi</span>
+              <span class="text-emerald-500">✓ Kriter sağlandı</span>
+            </span>
+          </div>
+        </div>
+        <button type="button" class="bind-affinity-btn px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-rose-600 via-pink-600 to-[#A64D79] hover:opacity-95 active:scale-95 text-white text-xs font-extrabold shadow-md transition-all cursor-pointer shrink-0">
+          Bağ Kur
+        </button>
+      `;
+
+      addInstantTap(card.querySelector('.bind-affinity-btn'), () => {
+        bindFriendToSlot(currentPickerSlotKey, fr);
+      });
+
+      listContainer.appendChild(card);
+    });
+  }
+
+  // 2. LOCKED LIST
+  if (locked.length > 0) {
+    const header = document.createElement('div');
+    header.className = 'text-[11px] font-extrabold text-gray-400 flex items-center gap-1.5 pt-2';
+    header.innerHTML = `<span>🔒</span><span>Kilitli Arkadaşlar (En Az 3 Saat Gerekir)</span>`;
+    listContainer.appendChild(header);
+
+    locked.forEach(fr => {
+      const neededHours = Math.max(0, 3.0 - (fr.watchMins / 60)).toFixed(1);
+      const percent = Math.min(100, Math.round((fr.watchMins / 180) * 100));
+
+      const card = document.createElement('div');
+      card.className = 'p-3 rounded-2xl bg-white/[0.03] border border-white/10 flex flex-col gap-2 shadow-sm cursor-pointer hover:border-white/20 transition-all';
+      card.innerHTML = `
+        <div class="flex items-center justify-between gap-2">
+          <div class="flex items-center gap-2.5 min-w-0">
+            <div class="w-9 h-9 rounded-full bg-white/10 flex items-center justify-center text-xs font-bold text-gray-400 shrink-0">
+              ${(fr.avatar || fr.name.charAt(0) || 'A').toUpperCase()}
+            </div>
+            <div class="truncate">
+              <span class="text-xs font-bold text-gray-300 block truncate">${escapeHtml(fr.name)}</span>
+              <span class="text-[10px] text-gray-400">@${escapeHtml(fr.cleanUsername)}</span>
+            </div>
+          </div>
+          <span class="px-2.5 py-1 rounded-xl bg-white/5 border border-white/10 text-gray-400 text-[10px] font-bold flex items-center gap-1">
+            <span>🔒</span>
+            <span>Kilitli</span>
+          </span>
+        </div>
+
+        <!-- Progress Bar -->
+        <div class="space-y-1">
+          <div class="flex items-center justify-between text-[9px] text-gray-400">
+            <span>İzleme: ${fr.watchHours} / 3.0 saat</span>
+            <span class="text-rose-300">${neededHours} saat daha izle</span>
+          </div>
+          <div class="w-full bg-white/10 h-1.5 rounded-full overflow-hidden">
+            <div class="bg-gradient-to-r from-rose-500 to-purple-500 h-full rounded-full transition-all duration-300" style="width: ${percent}%;"></div>
+          </div>
+        </div>
+      `;
+
+      card.addEventListener('click', () => {
+        showToast(`"${fr.name}" ile bağ kurabilmek için birlikte ${neededHours} saat daha video izlemelisiniz!`);
+      });
+
+      listContainer.appendChild(card);
+    });
+  }
+
+  if (eligible.length === 0 && locked.length === 0) {
+    listContainer.innerHTML = `
+      <div class="p-6 text-center bg-white/5 border border-white/10 rounded-2xl">
+        <p class="text-xs text-gray-400">Henüz eklenebilecek arkadaş bulunamadı.</p>
+        <p class="text-[10px] text-gray-500 mt-1">Arkadaşlar sekmesinden arkadaş ekleyebilir ve birlikte video izleyebilirsiniz.</p>
+      </div>
+    `;
+  }
+}
+
+function bindFriendToSlot(slotKey, friend) {
+  if (!slotKey || !friend) return;
+  const currentTree = getUserAffinityTree();
+  const slotDef = AFFINITY_SLOTS.find(s => s.key === slotKey);
+  const cat = slotDef ? AFFINITY_CATEGORIES[slotDef.category] : AFFINITY_CATEGORIES.partner;
+
+  currentTree[slotKey] = {
+    username: friend.cleanUsername || friend.username,
+    name: friend.name,
+    avatarUrl: friend.avatarUrl || '',
+    category: slotDef ? slotDef.category : 'partner',
+    boundAt: Date.now()
+  };
+
+  saveUserAffinityTree(currentTree);
+  closeAffinityPicker();
+  renderAffinityTree();
+
+  showToast(`🎉 ${friend.name} ile "${cat.name}" bağı kuruldu!`);
+}
+
+// Slot Detail Modal
+let currentDetailSlotKey = null;
+
+function openAffinitySlotDetail(slotKey, assigned) {
+  currentDetailSlotKey = slotKey;
+  const modal = document.getElementById('affinitySlotDetailModal');
+  const catPill = document.getElementById('affinityDetailCategoryPill');
+  const avatarEl = document.getElementById('affinityDetailAvatar');
+  const nameEl = document.getElementById('affinityDetailName');
+  const userEl = document.getElementById('affinityDetailUsername');
+  const watchEl = document.getElementById('affinityDetailWatchTime');
+  if (!modal || !assigned) return;
+
+  const slotDef = AFFINITY_SLOTS.find(s => s.key === slotKey);
+  const cat = slotDef ? AFFINITY_CATEGORIES[slotDef.category] : AFFINITY_CATEGORIES.partner;
+
+  if (catPill) {
+    catPill.textContent = `${cat.icon} ${cat.name}`;
+    catPill.className = `px-2.5 py-1 rounded-full text-xs font-bold ${cat.color === 'rose' ? 'bg-rose-500/20 text-rose-300 border-rose-500/30' : (cat.color === 'cyan' ? 'bg-cyan-500/20 text-cyan-300 border-cyan-500/30' : (cat.color === 'purple' ? 'bg-purple-500/20 text-purple-300 border-purple-500/30' : 'bg-amber-500/20 text-amber-300 border-amber-500/30'))} border flex items-center gap-1`;
+  }
+
+  if (avatarEl) {
+    if (assigned.avatarUrl) {
+      avatarEl.innerHTML = `<img src="${assigned.avatarUrl}" class="w-full h-full object-cover">`;
+    } else {
+      avatarEl.textContent = (assigned.name || assigned.username || 'A').charAt(0).toUpperCase();
+    }
+  }
+
+  if (nameEl) nameEl.textContent = assigned.name;
+  if (userEl) userEl.textContent = `@${assigned.username}`;
+
+  const watchMins = getSharedWatchMinutes(assigned.username);
+  if (watchEl) watchEl.textContent = `⏱️ ${(watchMins / 60).toFixed(1)} saat (${watchMins} dk)`;
+
+  modal.classList.remove('hidden');
+  modal.classList.add('flex');
+}
+
+function closeAffinitySlotDetail() {
+  const modal = document.getElementById('affinitySlotDetailModal');
+  if (modal) {
+    modal.classList.add('hidden');
+    modal.classList.remove('flex');
+  }
+}
+
+// Public User Profile Modal (Viewing other users' profiles + their MLBB Affinity Tree)
+function openPublicUserProfile(usernameOrName) {
+  if (!usernameOrName) return;
+  const clean = usernameOrName.toLowerCase().replace(/^@/, '').trim();
+
+  // If clicking oneself, navigate to own Profile tab
+  const savedUser = JSON.parse(localStorage.getItem('miruo_user') || '{}');
+  const myUsername = (savedUser.username || state.username || '').toLowerCase().replace(/^@/, '');
+  if (clean === myUsername || clean === 'sen') {
+    closeAffinitySlotDetail();
+    closeRoomParticipantsModal();
+    switchTab('profile');
+    return;
+  }
+
+  // Find friend or create target user object
+  let targetUser = (state.friends || []).find(f => 
+    (f.username && f.username.toLowerCase().replace(/^@/, '') === clean) ||
+    (f.name && f.name.toLowerCase().replace(/^@/, '') === clean)
+  );
+
+  if (!targetUser) {
+    targetUser = {
+      username: clean,
+      name: clean.charAt(0).toUpperCase() + clean.slice(1),
+      status: 'online',
+      statusText: 'Çevrimiçi',
+      avatar: clean.charAt(0).toUpperCase()
+    };
+  }
+
+  const modal = document.getElementById('userPublicProfileModal');
+  const topUserEl = document.getElementById('publicProfileTopUsername');
+  const nameEl = document.getElementById('publicProfileFullName');
+  const userEl = document.getElementById('publicProfileUsername');
+  const avatarEl = document.getElementById('publicProfileAvatar');
+  const dotEl = document.getElementById('publicProfileOnlineDot');
+  const statusEl = document.getElementById('publicProfileStatusText');
+  const relBadgeEl = document.getElementById('publicProfileRelationWithMeBadge');
+  const watchHoursEl = document.getElementById('publicProfileWatchHours');
+  const subTitleEl = document.getElementById('publicAffinitySubtitle');
+
+  if (!modal) return;
+
+  const currentTree = getUserAffinityTree();
+  let relationWithMe = null;
+  Object.values(currentTree).forEach(val => {
+    if (val && val.username && val.username.toLowerCase().replace(/^@/, '') === clean) {
+      relationWithMe = val.category;
+    }
+  });
+
+  if (topUserEl) topUserEl.textContent = `@${clean}`;
+  if (nameEl) nameEl.textContent = targetUser.name;
+  if (userEl) userEl.textContent = `@${clean}`;
+  if (subTitleEl) subTitleEl.textContent = `${targetUser.name.split(' ')[0]} kullanıcısının kurduğu bağlar`;
+
+  if (avatarEl) {
+    if (targetUser.avatarUrl) {
+      avatarEl.innerHTML = `<img src="${targetUser.avatarUrl}" class="w-full h-full object-cover">`;
+    } else {
+      avatarEl.textContent = (targetUser.avatar || targetUser.name.charAt(0) || 'A').toUpperCase();
+    }
+  }
+
+  const isOnline = targetUser.status === 'online' || targetUser.status === 'in_room';
+  if (dotEl) dotEl.className = `absolute bottom-0 right-0 w-4 h-4 rounded-full border-2 border-[#0C0E17] ${isOnline ? 'bg-emerald-400' : 'bg-gray-500'}`;
+  if (statusEl) {
+    statusEl.textContent = targetUser.statusText || (isOnline ? 'Çevrimiçi' : 'Çevrimdışı');
+    statusEl.className = `text-[10px] font-bold ${isOnline ? 'text-emerald-400 bg-emerald-500/15 border-emerald-500/30' : 'text-gray-400 bg-white/5 border-white/10'} border px-2.5 py-0.5 rounded-full`;
+  }
+
+  if (relBadgeEl) {
+    if (relationWithMe) {
+      const cat = AFFINITY_CATEGORIES[relationWithMe] || AFFINITY_CATEGORIES.partner;
+      relBadgeEl.textContent = `${cat.icon} Senin ${cat.name}in`;
+      relBadgeEl.classList.remove('hidden');
+    } else {
+      relBadgeEl.classList.add('hidden');
+    }
+  }
+
+  const watchMins = getSharedWatchMinutes(clean);
+  if (watchHoursEl) watchHoursEl.textContent = `⏱️ ${(watchMins / 60).toFixed(1)}s`;
+
+  // Render THEIR Mobile Legends Affinity Constellation
+  renderAffinityTree('publicAffinityContainer', 'publicAffinityBranchesSvg', 'publicAffinityNodesLayer', false, targetUser);
+
+  modal.classList.remove('hidden');
+  modal.classList.add('flex');
+}
+
+function closePublicUserProfile() {
+  const modal = document.getElementById('userPublicProfileModal');
+  if (modal) {
+    modal.classList.add('hidden');
+    modal.classList.remove('flex');
+  }
+}
+
+function openAffinityRuleModal() {
+  const m = document.getElementById('affinityRuleModal');
+  if (m) {
+    m.classList.remove('hidden');
+    m.classList.add('flex');
+  }
+}
+
+function closeAffinityRuleModal() {
+  const m = document.getElementById('affinityRuleModal');
+  if (m) {
+    m.classList.add('hidden');
+    m.classList.remove('flex');
+  }
+}
+
+// Expose affinity functions globally
+window.renderAffinityTree = renderAffinityTree;
+window.openAffinityPicker = openAffinityPicker;
+window.closeAffinityPicker = closeAffinityPicker;
+window.openAffinitySlotDetail = openAffinitySlotDetail;
+window.closeAffinitySlotDetail = closeAffinitySlotDetail;
+window.openPublicUserProfile = openPublicUserProfile;
+window.closePublicUserProfile = closePublicUserProfile;
+window.openAffinityRuleModal = openAffinityRuleModal;
+window.closeAffinityRuleModal = closeAffinityRuleModal;
+window.bindFriendToSlot = bindFriendToSlot;
+window.getUserAffinityTree = getUserAffinityTree;
+window.saveUserAffinityTree = saveUserAffinityTree;
+
 
 
 // ==========================================
@@ -5788,7 +6499,7 @@ function renderParticipantsList() {
     }
 
     card.innerHTML = `
-      <div class="flex items-center gap-2.5 min-w-0 flex-1">
+      <div class="flex items-center gap-2.5 min-w-0 flex-1 participant-profile-trigger cursor-pointer hover:opacity-85 transition-opacity" title="Kullanıcı Profilini ve İlişki Ağını Gör">
         ${avatarHtml}
         <div class="truncate">
           <div class="flex items-center gap-1.5 flex-wrap">
@@ -5809,6 +6520,18 @@ function renderParticipantsList() {
         ${actionsHtml}
       </div>
     `;
+
+    const pTrigger = card.querySelector('.participant-profile-trigger');
+    if (pTrigger) {
+      addInstantTap(pTrigger, () => {
+        if (!m.isSelf) {
+          openPublicUserProfile(m.username);
+        } else {
+          switchTab('profile');
+          closeRoomParticipantsModal();
+        }
+      });
+    }
 
     const addFrBtn = card.querySelector('.add-friend-from-participant-btn');
     if (addFrBtn) {
@@ -5878,7 +6601,7 @@ function renderChatMessage(sender, text, isSelf, timeStr, imageUrl = null, avata
   const avUrl = isSelf ? (state.avatarUrl || avatarUrl) : avatarUrl;
   const initial = (sender || 'M').charAt(0).toUpperCase();
   const avatarHtml = `
-    <div class="w-6 h-6 rounded-full ${isSelf ? 'bg-gradient-to-tr from-rose-500 to-indigo-600' : 'bg-gradient-to-tr from-cyan-500 to-blue-600'} flex items-center justify-center text-[10px] font-bold text-white shrink-0 shadow-sm mt-0.5 overflow-hidden border border-white/10">
+    <div class="chat-sender-profile-trigger w-6 h-6 rounded-full ${isSelf ? 'bg-gradient-to-tr from-rose-500 to-indigo-600' : 'bg-gradient-to-tr from-cyan-500 to-blue-600'} flex items-center justify-center text-[10px] font-bold text-white shrink-0 shadow-sm mt-0.5 overflow-hidden border border-white/10 cursor-pointer hover:scale-110 transition-transform" title="${escapeHtml(sender)} profilini gör">
       ${avUrl ? `<img src="${avUrl}" class="w-full h-full object-cover" alt="PP">` : initial}
     </div>
   `;
@@ -5894,7 +6617,7 @@ function renderChatMessage(sender, text, isSelf, timeStr, imageUrl = null, avata
     ${avatarHtml}
     <div class="flex-1 min-w-0 ${isSelf ? 'text-right' : 'text-left'}">
       <div class="flex items-center gap-1.5 mb-1 px-1 text-[10px] text-gray-400 ${isSelf ? 'justify-end' : 'justify-start'}">
-        <span class="font-semibold ${isSelf ? 'text-rose-300' : 'text-indigo-300'}">${escapeHtml(sender)}</span>
+        <span class="chat-sender-profile-trigger font-semibold cursor-pointer hover:underline ${isSelf ? 'text-rose-300' : 'text-indigo-300'}">${escapeHtml(sender)}</span>
         <span>•</span>
         <span>${time}</span>
       </div>
@@ -5903,12 +6626,24 @@ function renderChatMessage(sender, text, isSelf, timeStr, imageUrl = null, avata
     </div>
   `;
 
+  msgEl.querySelectorAll('.chat-sender-profile-trigger').forEach(el => {
+    addInstantTap(el, () => {
+      openPublicUserProfile(sender);
+    });
+  });
+
   dom.chatMessagesContainer.appendChild(msgEl);
   dom.chatMessagesContainer.scrollTop = dom.chatMessagesContainer.scrollHeight;
 
   const fsChatMessagesContainer = document.getElementById('fsChatMessagesContainer');
   if (fsChatMessagesContainer) {
-    fsChatMessagesContainer.appendChild(msgEl.cloneNode(true));
+    const fsClone = msgEl.cloneNode(true);
+    fsClone.querySelectorAll('.chat-sender-profile-trigger').forEach(el => {
+      addInstantTap(el, () => {
+        openPublicUserProfile(sender);
+      });
+    });
+    fsChatMessagesContainer.appendChild(fsClone);
     fsChatMessagesContainer.scrollTop = fsChatMessagesContainer.scrollHeight;
   }
 
@@ -6286,6 +7021,34 @@ function loadUserSession() {
       setChatVisibility(false);
     }, 400);
   }
+
+  // Handle Affinity Demo or Bound Partner
+  const affinityParam = urlParams.get('affinity');
+  if (affinityParam === 'demo' || affinityParam === 'partner' || affinityParam === 'bound') {
+    const tree = getUserAffinityTree();
+    tree.partner_1 = {
+      username: 'selin',
+      name: 'Selin Yılmaz',
+      avatarUrl: '',
+      category: 'partner',
+      boundAt: Date.now()
+    };
+    saveUserAffinityTree(tree);
+    if (typeof renderAffinityTree === 'function') {
+      setTimeout(() => { renderAffinityTree(); }, 300);
+    }
+  }
+
+  // Handle Public Profile view parameter
+  const publicUserParam = urlParams.get('public_user') || urlParams.get('public_profile');
+  if (publicUserParam) {
+    setTimeout(() => {
+      if (typeof openPublicUserProfile === 'function') {
+        openPublicUserProfile(publicUserParam);
+      }
+    }, 500);
+  }
+
   return true;
 }
 
@@ -11068,6 +11831,158 @@ function initStageAutoHideEvents() {
   document.addEventListener('fullscreenchange', () => {
     resetControlsHideTimer();
   });
+
+  // Initialize Mobile Legends Affinity Events & Listeners
+  if (typeof initAffinityEvents === 'function') {
+    initAffinityEvents();
+  }
+}
+
+function initAffinityEvents() {
+  const closeAffinityPickerBtn = document.getElementById('closeAffinityPickerBtn');
+  if (closeAffinityPickerBtn) {
+    addInstantTap(closeAffinityPickerBtn, (e) => {
+      e.stopPropagation();
+      closeAffinityPicker();
+    });
+  }
+
+  const closeAffinitySlotDetailBtn = document.getElementById('closeAffinitySlotDetailBtn');
+  if (closeAffinitySlotDetailBtn) {
+    addInstantTap(closeAffinitySlotDetailBtn, (e) => {
+      e.stopPropagation();
+      closeAffinitySlotDetail();
+    });
+  }
+
+  const closePublicProfileBtn = document.getElementById('closePublicProfileBtn');
+  if (closePublicProfileBtn) {
+    addInstantTap(closePublicProfileBtn, (e) => {
+      e.stopPropagation();
+      closePublicProfile();
+    });
+  }
+
+  const affinityInfoBtn = document.getElementById('affinityInfoBtn');
+  if (affinityInfoBtn) {
+    addInstantTap(affinityInfoBtn, (e) => {
+      e.stopPropagation();
+      openAffinityRuleModal();
+    });
+  }
+
+  const closeAffinityRuleBtn = document.getElementById('closeAffinityRuleBtn');
+  if (closeAffinityRuleBtn) {
+    addInstantTap(closeAffinityRuleBtn, (e) => {
+      e.stopPropagation();
+      closeAffinityRuleModal();
+    });
+  }
+
+  const confirmAffinityRuleBtn = document.getElementById('confirmAffinityRuleBtn');
+  if (confirmAffinityRuleBtn) {
+    addInstantTap(confirmAffinityRuleBtn, (e) => {
+      e.stopPropagation();
+      closeAffinityRuleModal();
+    });
+  }
+
+  // Detail Modal Actions
+  const affinityDetailViewProfileBtn = document.getElementById('affinityDetailViewProfileBtn');
+  if (affinityDetailViewProfileBtn) {
+    addInstantTap(affinityDetailViewProfileBtn, (e) => {
+      e.stopPropagation();
+      const currentTree = getUserAffinityTree();
+      if (currentDetailSlotKey && currentTree[currentDetailSlotKey]) {
+        const uName = currentTree[currentDetailSlotKey].username;
+        closeAffinitySlotDetail();
+        openPublicUserProfile(uName);
+      }
+    });
+  }
+
+  const affinityDetailInviteBtn = document.getElementById('affinityDetailInviteBtn');
+  if (affinityDetailInviteBtn) {
+    addInstantTap(affinityDetailInviteBtn, (e) => {
+      e.stopPropagation();
+      const currentTree = getUserAffinityTree();
+      if (currentDetailSlotKey && currentTree[currentDetailSlotKey]) {
+        const targetFriendName = currentTree[currentDetailSlotKey].name;
+        const inviteUrl = `${window.location.origin}/?room=${encodeURIComponent(state.roomId)}`;
+        navigator.clipboard.writeText(inviteUrl).then(() => {
+          showToast(`${targetFriendName} için izleme davet linki kopyalandı!`);
+        });
+      }
+    });
+  }
+
+  const affinityDetailUnbindBtn = document.getElementById('affinityDetailUnbindBtn');
+  if (affinityDetailUnbindBtn) {
+    addInstantTap(affinityDetailUnbindBtn, (e) => {
+      e.stopPropagation();
+      if (!currentDetailSlotKey) return;
+      const currentTree = getUserAffinityTree();
+      const item = currentTree[currentDetailSlotKey];
+      if (item) {
+        if (confirm(`"${item.name}" ile olan bağı kaldırmak istediğinize emin misiniz? Slot boşalacaktır.`)) {
+          currentTree[currentDetailSlotKey] = null;
+          saveUserAffinityTree(currentTree);
+          closeAffinitySlotDetail();
+          renderAffinityTree();
+          showToast('Bağ kaldırıldı. Slot artık boş (+).');
+        }
+      }
+    });
+  }
+
+  // Public Profile Modal Actions
+  const publicProfileInviteBtn = document.getElementById('publicProfileInviteBtn');
+  if (publicProfileInviteBtn) {
+    addInstantTap(publicProfileInviteBtn, (e) => {
+      e.stopPropagation();
+      const inviteUrl = `${window.location.origin}/?room=${encodeURIComponent(state.roomId)}`;
+      navigator.clipboard.writeText(inviteUrl).then(() => {
+        showToast('Oda davet linki kopyalandı!');
+      });
+    });
+  }
+
+  const publicProfileFriendToggleBtn = document.getElementById('publicProfileFriendToggleBtn');
+  if (publicProfileFriendToggleBtn) {
+    addInstantTap(publicProfileFriendToggleBtn, (e) => {
+      e.stopPropagation();
+      showToast('Arkadaşlık durumu aktif.');
+    });
+  }
+
+  // Backdrop clicks
+  ['affinityPickerModal', 'affinitySlotDetailModal', 'affinityRuleModal'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) {
+      el.addEventListener('click', (e) => {
+        if (e.target === el) {
+          el.classList.add('hidden');
+          el.classList.remove('flex');
+        }
+      });
+    }
+  });
+
+  // Real-time Shared Watch-Time Incrementer during playback
+  setInterval(() => {
+    if (state.currentRoom && state.isPlaying) {
+      const currentPartKeys = Object.keys(state.participants || {});
+      currentPartKeys.forEach(pKey => {
+        const p = state.participants[pKey];
+        if (p && p.username && !p.isSelf) {
+          addSharedWatchMinutes(p.username, 0.5); // Add 30 seconds of shared watch time
+        }
+      });
+      if (state.peerId && state.hostName && state.hostName !== 'Sen') {
+        addSharedWatchMinutes(state.hostName, 0.5);
+      }
+    }
+  }, 30000);
 }
 
 // Expose public API for deep linking & external control
@@ -11088,6 +12003,7 @@ window.closeRoomParticipantsModal = closeRoomParticipantsModal;
 window.kickParticipant = kickParticipant;
 window.setParticipantRole = setParticipantRole;
 window.toggleCam = toggleCam;
+window.initAffinityEvents = initAffinityEvents;
 
 // Start
 document.addEventListener('DOMContentLoaded', initEvents);
