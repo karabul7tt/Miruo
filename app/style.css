@@ -245,6 +245,29 @@
   display: none !important;
 }
 
+/* Fullscreen Live Chat Overlay (Classic YouTube Live Format) */
+#stageContainer:fullscreen #fsChatOverlay,
+#stageContainer:-webkit-full-screen #fsChatOverlay {
+  z-index: 99998 !important;
+  max-height: calc(100vh - 80px) !important;
+}
+
+#stageContainer:fullscreen #openFsChatFloatingBtn,
+#stageContainer:-webkit-full-screen #openFsChatFloatingBtn {
+  z-index: 99998 !important;
+}
+
+/* Audio-Only Mode / Hidden Video Display */
+.video-display-hidden {
+  opacity: 0 !important;
+  pointer-events: none !important;
+  visibility: hidden !important;
+}
+
+#audioOnlyPlaceholder {
+  transition: opacity 0.25s ease;
+}
+
 /* Rave YouTube Card Styles */
 .rave-yt-card {
   transition: all 0.22s cubic-bezier(0.16, 1, 0.3, 1);

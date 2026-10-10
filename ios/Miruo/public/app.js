@@ -660,7 +660,19 @@ const I18N = {
     mic_toggle_title: 'Mikrofon Aç/Kapat',
     cam_toggle_title: 'Kamera Aç/Kapat (Görüntülü Konuşma)',
     chat_toggle_title: 'Sohbeti Aç / Gizle',
-    online_count_badge: 'Çevrimiçi'
+    online_count_badge: 'Çevrimiçi',
+    leave_room_btn: 'Ayrıl',
+    leave_room_title: 'Odadan Ayrıl',
+    toast_left_room: 'Odadan ayrıldınız 👋',
+    fs_show_chat: 'Tam ekranda canlı sohbet görünsün',
+    toggle_video_display: 'Video görüntüsünü göster',
+    audio_only_mode: 'Yalnızca Ses Modu (Video Gizlendi)',
+    show_video_btn: 'Videoyu Göster',
+    hide_video_btn: 'Videoyu Gizle',
+    toast_video_shown: 'Video görüntüsü açıldı 🎬',
+    toast_video_hidden: 'Video görüntüsü gizlendi, yalnızca ses çalıyor 🔊',
+    toast_chat_closed: 'Sohbet gizlendi. Yazısız izliyorsunuz 🎬',
+    toast_chat_opened: 'Canlı Sohbet açıldı 💬'
   },
   en: {
     app_title: 'Miruo — Watch & See Together',
@@ -993,7 +1005,19 @@ const I18N = {
     mic_toggle_title: 'Toggle Microphone',
     cam_toggle_title: 'Toggle Camera (Video Call)',
     chat_toggle_title: 'Toggle Chat',
-    online_count_badge: 'Online'
+    online_count_badge: 'Online',
+    leave_room_btn: 'Leave',
+    leave_room_title: 'Leave Room',
+    toast_left_room: 'You left the room 👋',
+    fs_show_chat: 'Show live chat in fullscreen',
+    toggle_video_display: 'Show video display',
+    audio_only_mode: 'Audio Only Mode (Video Hidden)',
+    show_video_btn: 'Show Video',
+    hide_video_btn: 'Hide Video',
+    toast_video_shown: 'Video display turned on 🎬',
+    toast_video_hidden: 'Video display hidden, playing audio only 🔊',
+    toast_chat_closed: 'Chat hidden. Watching without chat 🎬',
+    toast_chat_opened: 'Live Chat opened 💬'
   },
   de: {
     app_title: 'Miruo — Zusammen Sehen & Schauen',
@@ -1326,7 +1350,19 @@ const I18N = {
     mic_toggle_title: 'Mikrofon umschalten',
     cam_toggle_title: 'Kamera umschalten (Videoanruf)',
     chat_toggle_title: 'Chat ein-/ausblenden',
-    online_count_badge: 'Online'
+    online_count_badge: 'Online',
+    leave_room_btn: 'Verlassen',
+    leave_room_title: 'Raum verlassen',
+    toast_left_room: 'Du hast den Raum verlassen 👋',
+    fs_show_chat: 'Live-Chat im Vollbild anzeigen',
+    toggle_video_display: 'Videoanzeige einblenden',
+    audio_only_mode: 'Nur-Audio-Modus (Video ausgeblendet)',
+    show_video_btn: 'Video einblenden',
+    hide_video_btn: 'Video ausblenden',
+    toast_video_shown: 'Videoanzeige aktiviert 🎬',
+    toast_video_hidden: 'Videoanzeige ausgeblendet, nur Audio läuft 🔊',
+    toast_chat_closed: 'Chat ausgeblendet. Ohne Chat ansehen 🎬',
+    toast_chat_opened: 'Live-Chat geöffnet 💬'
   }
 };
 
@@ -1633,6 +1669,20 @@ const dom = {
   openChatFloatingBtn: document.getElementById('openChatFloatingBtn'),
   toggleChatToolbarBtn: document.getElementById('toggleChatToolbarBtn'),
   chatToolbarBtnText: document.getElementById('chatToolbarBtnText'),
+  fsChatOverlay: document.getElementById('fsChatOverlay'),
+  closeFsChatBtn: document.getElementById('closeFsChatBtn'),
+  openFsChatFloatingBtn: document.getElementById('openFsChatFloatingBtn'),
+  fsChatMessagesContainer: document.getElementById('fsChatMessagesContainer'),
+  fsChatForm: document.getElementById('fsChatForm'),
+  fsChatInput: document.getElementById('fsChatInput'),
+  audioOnlyPlaceholder: document.getElementById('audioOnlyPlaceholder'),
+  audioOnlyTrackTitle: document.getElementById('audioOnlyTrackTitle'),
+  showVideoQuickBtn: document.getElementById('showVideoQuickBtn'),
+  toggleVideoDisplayBtn: document.getElementById('toggleVideoDisplayBtn'),
+  videoDisplayIcon: document.getElementById('videoDisplayIcon'),
+  fsShowChatCheckbox: document.getElementById('fsShowChatCheckbox'),
+  videoDisplayToggleCheckbox: document.getElementById('videoDisplayToggleCheckbox'),
+  roomChangeVideoBottomBtn: document.getElementById('roomChangeVideoBottomBtn'),
 
   // Media Controls
   mainPlayPauseBtn: document.getElementById('mainPlayPauseBtn'),
@@ -2942,6 +2992,136 @@ function updateFullscreenUI() {
 
   // Apply PiP in fullscreen visibility rules
   applyPipFullscreenSettings(isFs);
+
+  // Apply Fullscreen Live Chat overlay rules (Classic YouTube format)
+  applyFsChatFullscreenSettings(isFs);
+}
+
+// Fullscreen Live Chat (Classic YouTube Live Format)
+let fsChatSettings = {
+  showInFullscreen: true,
+  isFsChatOpen: true
+};
+
+function loadFsChatSettings() {
+  try {
+    const saved = localStorage.getItem('miruo_fs_show_chat');
+    if (saved !== null) {
+      fsChatSettings.showInFullscreen = JSON.parse(saved);
+    }
+  } catch (e) {}
+  const cb = document.getElementById('fsShowChatCheckbox');
+  if (cb) cb.checked = fsChatSettings.showInFullscreen;
+}
+
+function saveFsChatSettings() {
+  localStorage.setItem('miruo_fs_show_chat', JSON.stringify(fsChatSettings.showInFullscreen));
+  const isFs = !!(document.fullscreenElement || document.webkitFullscreenElement);
+  applyFsChatFullscreenSettings(isFs);
+}
+
+function applyFsChatFullscreenSettings(isFullscreen) {
+  const overlay = document.getElementById('fsChatOverlay');
+  const floatBtn = document.getElementById('openFsChatFloatingBtn');
+  if (isFullscreen && fsChatSettings.showInFullscreen) {
+    if (overlay) overlay.classList.toggle('hidden', !fsChatSettings.isFsChatOpen);
+    if (floatBtn) floatBtn.classList.toggle('hidden', fsChatSettings.isFsChatOpen);
+  } else {
+    if (overlay) overlay.classList.add('hidden');
+    if (floatBtn) floatBtn.classList.add('hidden');
+  }
+}
+
+function setFsChatVisibility(open) {
+  fsChatSettings.isFsChatOpen = open;
+  const isFs = !!(document.fullscreenElement || document.webkitFullscreenElement);
+  applyFsChatFullscreenSettings(isFs);
+}
+
+// Video Display / Audio-Only Mode Manager
+let videoDisplaySettings = {
+  showVideo: true
+};
+
+function loadVideoDisplaySettings() {
+  try {
+    const saved = localStorage.getItem('miruo_show_video_display');
+    if (saved !== null) {
+      videoDisplaySettings.showVideo = JSON.parse(saved);
+    }
+  } catch (e) {}
+  applyVideoDisplay();
+}
+
+function setVideoDisplay(show) {
+  videoDisplaySettings.showVideo = !!show;
+  localStorage.setItem('miruo_show_video_display', JSON.stringify(videoDisplaySettings.showVideo));
+  applyVideoDisplay();
+  const dict = I18N[currentLang] || I18N.tr;
+  showToast(videoDisplaySettings.showVideo ? (dict.toast_video_shown || 'Video görüntüsü açıldı 🎬') : (dict.toast_video_hidden || 'Video görüntüsü gizlendi, yalnızca ses çalıyor 🔊'));
+}
+
+function applyVideoDisplay() {
+  const show = videoDisplaySettings.showVideo;
+  const ytCont = dom.ytPlayerContainer;
+  const nativeVid = dom.nativeVideoPlayer;
+  const webFrame = dom.webPlayerFrame;
+  const remoteScreen = dom.remoteScreenPlayer;
+  const audioOnlyEl = document.getElementById('audioOnlyPlaceholder');
+  const toggleCb = document.getElementById('videoDisplayToggleCheckbox');
+  const overlayVideoBtn = document.getElementById('toggleVideoDisplayBtn');
+  const videoIcon = document.getElementById('videoDisplayIcon');
+
+  if (ytCont) ytCont.classList.toggle('video-display-hidden', !show);
+  if (nativeVid) nativeVid.classList.toggle('video-display-hidden', !show);
+  if (webFrame) webFrame.classList.toggle('video-display-hidden', !show);
+  if (remoteScreen) remoteScreen.classList.toggle('video-display-hidden', !show);
+
+  if (audioOnlyEl) {
+    audioOnlyEl.classList.toggle('hidden', show);
+    if (!show) {
+      const playingTitle = dom.nowPlayingTitle ? dom.nowPlayingTitle.textContent : '';
+      const trackTitleEl = document.getElementById('audioOnlyTrackTitle');
+      if (trackTitleEl && playingTitle) trackTitleEl.textContent = playingTitle;
+    }
+  }
+
+  if (toggleCb) toggleCb.checked = show;
+  if (overlayVideoBtn) {
+    overlayVideoBtn.classList.toggle('text-rose-400', !show);
+  }
+  if (videoIcon) {
+    videoIcon.innerHTML = show
+      ? '<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8z"/><circle cx="12" cy="12" r="3"/>'
+      : '<path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/>';
+  }
+}
+
+// Leave Room Gracefully
+function leaveRoom() {
+  if (state.player && typeof state.player.pauseVideo === 'function') {
+    try { state.player.pauseVideo(); } catch (e) {}
+  }
+  if (dom.nativeVideoPlayer) {
+    try { dom.nativeVideoPlayer.pause(); } catch (e) {}
+  }
+  if (state.isScreenSharing) {
+    stopScreenSharing();
+  }
+  if (state.isCamOn) {
+    toggleCam();
+  }
+  if (state.isMicOn) {
+    toggleMic();
+  }
+  if (document.fullscreenElement || document.webkitFullscreenElement) {
+    if (document.exitFullscreen) document.exitFullscreen().catch(() => {});
+    else if (document.webkitExitFullscreen) document.webkitExitFullscreen();
+  }
+  state.isInRoom = false;
+  switchToExplore();
+  const dict = I18N[currentLang] || I18N.tr;
+  showToast(dict.toast_left_room || 'Odadan ayrıldınız 👋');
 }
 
 // Rave-Style PiP Webcam Positioning Settings
@@ -4991,6 +5171,12 @@ function renderChatMessage(sender, text, isSelf, timeStr, imageUrl = null, avata
 
   dom.chatMessagesContainer.appendChild(msgEl);
   dom.chatMessagesContainer.scrollTop = dom.chatMessagesContainer.scrollHeight;
+
+  const fsChatMessagesContainer = document.getElementById('fsChatMessagesContainer');
+  if (fsChatMessagesContainer) {
+    fsChatMessagesContainer.appendChild(msgEl.cloneNode(true));
+    fsChatMessagesContainer.scrollTop = fsChatMessagesContainer.scrollHeight;
+  }
 
   // If chat panel is currently closed, illuminate the unread badge on the chat button
   if (!isSelf && dom.roomChatPanel && dom.roomChatPanel.classList.contains('hidden')) {
@@ -8364,7 +8550,7 @@ function initEvents() {
   if (navLogo) navLogo.addEventListener('click', switchToExplore);
 
   if (dom.backToLobbyBtn) {
-    dom.backToLobbyBtn.addEventListener('click', switchToExplore);
+    dom.backToLobbyBtn.addEventListener('click', leaveRoom);
   }
 
   if (dom.quickEnterPrivateRoomBtn) {
@@ -8503,7 +8689,7 @@ function initEvents() {
   if (dom.backToLobbyBtn) {
     addInstantTap(dom.backToLobbyBtn, (e) => {
       e.stopPropagation();
-      switchToExplore();
+      leaveRoom();
     });
   }
 
@@ -8654,19 +8840,16 @@ function initEvents() {
     });
   }
 
-  // Stage Search / Quick Video Changer (Opens authenticated YouTube account session!)
+  // Stage Search / Quick Video Changer (Opens in-app video chooser and YouTube explorer)
   const openVideoChooser = () => {
-    // In iOS app, directly launch native YouTube browser with persistent logged-in cookies
-    if (window.webkit && window.webkit.messageHandlers && (window.webkit.messageHandlers.openPlatform || window.webkit.messageHandlers.openYouTube)) {
-      handleYouTubeLaunch();
-      return;
-    }
     openRaveYoutubeModal();
   };
   window.openVideoChooser = openVideoChooser;
   if (dom.roomTopSearchBtn) addInstantTap(dom.roomTopSearchBtn, openVideoChooser);
   const roomQuickSearch = document.getElementById('roomQuickSearchBtn');
   if (roomQuickSearch) addInstantTap(roomQuickSearch, openVideoChooser);
+  const roomChangeVideoBottom = document.getElementById('roomChangeVideoBottomBtn');
+  if (roomChangeVideoBottom) addInstantTap(roomChangeVideoBottom, openVideoChooser);
 
   // Queue Modal & Suggestions UI Bindings
   const openRoomQueueModal = () => {
@@ -9232,18 +9415,80 @@ function generateUniqueRoomCode(isPrivate = false) {
   if (dom.closeChatSidebarBtn) {
     dom.closeChatSidebarBtn.addEventListener('click', () => {
       setChatVisibility(false);
-      showToast('Sohbet gizlendi. Yazısız izliyorsunuz 🎬');
+      const dict = I18N[currentLang] || I18N.tr;
+      showToast(dict.toast_chat_closed || 'Sohbet gizlendi. Yazısız izliyorsunuz 🎬');
     });
   }
   if (dom.openChatFloatingBtn) {
     dom.openChatFloatingBtn.addEventListener('click', () => {
       setChatVisibility(true);
-      showToast('Canlı Sohbet açıldı 💬');
+      const dict = I18N[currentLang] || I18N.tr;
+      showToast(dict.toast_chat_opened || 'Canlı Sohbet açıldı 💬');
     });
   }
   if (dom.toggleChatToolbarBtn) {
     dom.toggleChatToolbarBtn.addEventListener('click', () => {
       setChatVisibility(!state.isChatVisible);
+    });
+  }
+
+  // Fullscreen Live Chat (Classic YouTube Format)
+  if (dom.closeFsChatBtn) {
+    dom.closeFsChatBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      setFsChatVisibility(false);
+      const dict = I18N[currentLang] || I18N.tr;
+      showToast(dict.toast_chat_closed || 'Sohbet gizlendi. Yazısız izliyorsunuz 🎬');
+    });
+  }
+  if (dom.openFsChatFloatingBtn) {
+    dom.openFsChatFloatingBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      setFsChatVisibility(true);
+      const dict = I18N[currentLang] || I18N.tr;
+      showToast(dict.toast_chat_opened || 'Canlı Sohbet açıldı 💬');
+    });
+  }
+  if (dom.fsChatForm && dom.fsChatInput) {
+    dom.fsChatForm.addEventListener('submit', (e) => {
+      e.preventDefault();
+      const val = dom.fsChatInput.value.trim();
+      if (!val) return;
+      sendChatMessage(val);
+      dom.fsChatInput.value = '';
+    });
+  }
+
+  // Video Display / Audio-Only Handlers
+  if (dom.toggleVideoDisplayBtn) {
+    dom.toggleVideoDisplayBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      setVideoDisplay(!videoDisplaySettings.showVideo);
+    });
+  }
+  if (dom.showVideoQuickBtn) {
+    dom.showVideoQuickBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      setVideoDisplay(true);
+    });
+  }
+  if (dom.videoDisplayToggleCheckbox) {
+    dom.videoDisplayToggleCheckbox.addEventListener('change', (e) => {
+      setVideoDisplay(e.target.checked);
+    });
+  }
+  if (dom.fsShowChatCheckbox) {
+    dom.fsShowChatCheckbox.addEventListener('change', (e) => {
+      fsChatSettings.showInFullscreen = e.target.checked;
+      saveFsChatSettings();
+    });
+  }
+
+  // Select Video Bottom Toolbar Button
+  if (dom.roomChangeVideoBottomBtn) {
+    addInstantTap(dom.roomChangeVideoBottomBtn, (e) => {
+      e.stopPropagation();
+      openVideoChooser();
     });
   }
 
@@ -9367,6 +9612,8 @@ function generateUniqueRoomCode(isPrivate = false) {
 
   // Initial user session and explore feed bootstrap
   loadPipSettings();
+  loadFsChatSettings();
+  loadVideoDisplaySettings();
   loadPlatformAccounts();
   loadUserSession();
   initAuthOwlMascot();
