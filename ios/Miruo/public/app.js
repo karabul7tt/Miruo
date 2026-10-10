@@ -556,6 +556,8 @@ const I18N = {
     privacy_private: 'Özel (Davetli)',
     share_btn: 'Paylaş',
     select_video_btn: 'Video Seç',
+    platform_chooser_title: 'Video ve Platform Seç',
+    platform_chooser_sub: 'İzlemek istediğiniz platformu seçin veya doğrudan bağlantı yapıştırın',
     live_chat_title: 'Canlı Sohbet',
     top_chat: 'En Popüler',
     chat_expand: 'Büyüt',
@@ -569,7 +571,7 @@ const I18N = {
     close_btn: 'Kapat',
     leave_room_btn: 'Odadan Ayrıl',
     video_placeholder_title: 'Video Yükleniyor veya Seçilmedi',
-    video_placeholder_desc: 'Üstteki arama ikonuna veya platform kartına basarak dilediğiniz YouTube videosunu başlatın.',
+    video_placeholder_desc: '"Video Seç" butonuna basarak dilediğiniz videoyu veya platformu başlatın.',
     miruo_player: 'Miruo Oynatıcı',
     video_title_default: 'Video Başlığı',
     video_subtitle_default: "YouTube'da Miruo",
@@ -901,6 +903,8 @@ const I18N = {
     privacy_private: 'Private (Invite only)',
     share_btn: 'Share',
     select_video_btn: 'Select Video',
+    platform_chooser_title: 'Select Video & Platform',
+    platform_chooser_sub: 'Choose a streaming platform or paste a direct video link',
     live_chat_title: 'Live Chat',
     top_chat: 'Top Chat',
     chat_expand: 'Expand',
@@ -914,7 +918,7 @@ const I18N = {
     close_btn: 'Close',
     leave_room_btn: 'Leave Room',
     video_placeholder_title: 'Video Loading or None Selected',
-    video_placeholder_desc: 'Tap the search icon above or select a platform to start any video.',
+    video_placeholder_desc: 'Tap "Select Video" to choose any video or platform.',
     miruo_player: 'Miruo Player',
     video_title_default: 'Video Title',
     video_subtitle_default: 'Miruo on YouTube',
@@ -1246,6 +1250,8 @@ const I18N = {
     privacy_private: 'Privat (Nur Einladung)',
     share_btn: 'Teilen',
     select_video_btn: 'Video wählen',
+    platform_chooser_title: 'Video & Plattform wählen',
+    platform_chooser_sub: 'Wählen Sie eine Plattform oder fügen Sie einen Direktlink ein',
     live_chat_title: 'Live-Chat',
     top_chat: 'Top-Chat',
     chat_expand: 'Vergrößern',
@@ -1259,7 +1265,7 @@ const I18N = {
     close_btn: 'Schließen',
     leave_room_btn: 'Raum verlassen',
     video_placeholder_title: 'Video wird geladen oder nicht gewählt',
-    video_placeholder_desc: 'Tippen Sie oben auf das Suchsymbol oder wählen Sie eine Plattform, um ein Video zu starten.',
+    video_placeholder_desc: 'Tippen Sie auf "Video wählen", um ein Video oder eine Plattform zu starten.',
     miruo_player: 'Miruo Player',
     video_title_default: 'Videotitel',
     video_subtitle_default: 'Miruo auf YouTube',
@@ -1822,6 +1828,14 @@ const dom = {
   strengthText: document.getElementById('strengthText'),
   resetSaveNewPasswordBtn: document.getElementById('resetSaveNewPasswordBtn'),
   resetFinishBtn: document.getElementById('resetFinishBtn'),
+
+  // Room Platform & Video Chooser Modal
+  roomPlatformChooserModal: document.getElementById('roomPlatformChooserModal'),
+  closePlatformChooserModalBtn: document.getElementById('closePlatformChooserModalBtn'),
+  chooserOpenRealYouTubeBtn: document.getElementById('chooserOpenRealYouTubeBtn'),
+  chooserDirectLinkInput: document.getElementById('chooserDirectLinkInput'),
+  chooserPlayDirectLinkBtn: document.getElementById('chooserPlayDirectLinkBtn'),
+  chooserScreenShareBtn: document.getElementById('chooserScreenShareBtn'),
 
   // Rave YouTube Modal & Mobile Browser Bridge
   raveYoutubeModal: document.getElementById('raveYoutubeModal'),
@@ -3357,7 +3371,7 @@ function applySleepMode(enabled, isLocal = true) {
   }
 }
 
-// Draggable PIP Functionality (Camera freely draggable anywhere over video stage)
+// Draggable PIP Functionality (Camera freely draggable & flingable anywhere over video stage)
 function makeDraggable(el) {
   if (!el) return;
   let isDown = false;
@@ -3365,18 +3379,18 @@ function makeDraggable(el) {
   let startY = 0;
   let startElX = 0;
   let startElY = 0;
+  let moveHistory = [];
 
   function onPointerDown(clientX, clientY) {
     isDown = true;
+    el.style.transition = 'none';
     const parent = el.offsetParent || el.parentElement || document.body;
     const parentRect = parent.getBoundingClientRect();
     const elRect = el.getBoundingClientRect();
 
-    // Calculate current position relative to parent
     startElX = elRect.left - parentRect.left;
     startElY = elRect.top - parentRect.top;
 
-    // Remove CSS right/bottom constraints and lock position in px
     el.style.right = 'auto';
     el.style.bottom = 'auto';
     el.style.left = startElX + 'px';
@@ -3384,12 +3398,19 @@ function makeDraggable(el) {
 
     startX = clientX;
     startY = clientY;
+    moveHistory = [{ x: clientX, y: clientY, t: performance.now() }];
     el.classList.add('pip-dragging');
   }
 
   function onPointerMove(clientX, clientY, e) {
     if (!isDown) return;
     if (e && e.cancelable) e.preventDefault();
+
+    const now = performance.now();
+    moveHistory.push({ x: clientX, y: clientY, t: now });
+    while (moveHistory.length > 1 && now - moveHistory[0].t > 120) {
+      moveHistory.shift();
+    }
 
     const parent = el.offsetParent || el.parentElement || document.body;
     const parentRect = parent.getBoundingClientRect();
@@ -3400,12 +3421,11 @@ function makeDraggable(el) {
     let newX = startElX + deltaX;
     let newY = startElY + deltaY;
 
-    // Bounds checking inside parent
-    const maxW = parentRect.width - el.offsetWidth - 6;
-    const maxH = parentRect.height - el.offsetHeight - 6;
+    const maxW = parentRect.width - el.offsetWidth - 8;
+    const maxH = parentRect.height - el.offsetHeight - 8;
 
-    newX = Math.max(6, Math.min(newX, Math.max(6, maxW)));
-    newY = Math.max(6, Math.min(newY, Math.max(6, maxH)));
+    newX = Math.max(8, Math.min(newX, Math.max(8, maxW)));
+    newY = Math.max(8, Math.min(newY, Math.max(8, maxH)));
 
     el.style.left = newX + 'px';
     el.style.top = newY + 'px';
@@ -3415,6 +3435,48 @@ function makeDraggable(el) {
     if (!isDown) return;
     isDown = false;
     el.classList.remove('pip-dragging');
+
+    const parent = el.offsetParent || el.parentElement || document.body;
+    const parentRect = parent.getBoundingClientRect();
+    const currentLeft = parseFloat(el.style.left) || 0;
+    const currentTop = parseFloat(el.style.top) || 0;
+    const w = el.offsetWidth;
+    const h = el.offsetHeight;
+    const pad = 12;
+    const maxW = parentRect.width - w - pad;
+    const maxH = parentRect.height - h - pad;
+
+    let vx = 0;
+    let vy = 0;
+    if (moveHistory.length >= 2) {
+      const first = moveHistory[0];
+      const last = moveHistory[moveHistory.length - 1];
+      const dt = Math.max(10, last.t - first.t);
+      vx = (last.x - first.x) / dt;
+      vy = (last.y - first.y) / dt;
+    }
+
+    const projectedX = currentLeft + vx * 220;
+    const projectedY = currentTop + vy * 220;
+
+    let targetX = pad;
+    if (vx > 0.3) {
+      targetX = maxW;
+    } else if (vx < -0.3) {
+      targetX = pad;
+    } else {
+      targetX = (projectedX + w / 2 > parentRect.width / 2) ? maxW : pad;
+    }
+
+    let targetY = Math.max(pad, Math.min(projectedY, maxH));
+
+    el.style.transition = 'left 0.42s cubic-bezier(0.18, 0.89, 0.32, 1.28), top 0.42s cubic-bezier(0.18, 0.89, 0.32, 1.28)';
+    el.style.left = targetX + 'px';
+    el.style.top = targetY + 'px';
+
+    setTimeout(() => {
+      if (!isDown) el.style.transition = 'none';
+    }, 450);
   }
 
   el.addEventListener('mousedown', (e) => {
@@ -3432,7 +3494,6 @@ function makeDraggable(el) {
     onPointerUp();
   });
 
-  // Touch support for mobile devices
   el.addEventListener('touchstart', (e) => {
     if (e.target && e.target.closest('button')) return;
     if (e.touches.length === 1) {
@@ -3452,7 +3513,6 @@ function makeDraggable(el) {
   document.addEventListener('touchend', () => {
     onPointerUp();
   });
-
   document.addEventListener('touchcancel', () => {
     onPointerUp();
   });
@@ -7374,11 +7434,12 @@ function initEvents() {
   let raveYtDebounceTimer = null;
 
   const PLATFORM_CONFIGS = {
-    youtube: { title: 'YouTube', url: 'https://m.youtube.com/feed/trending' },
+    youtube: { title: 'YouTube', url: 'https://m.youtube.com' },
     netflix: { title: 'Netflix', url: 'https://www.netflix.com' },
     prime: { title: 'Prime Video', url: 'https://www.primevideo.com' },
     disney: { title: 'Disney+', url: 'https://www.disneyplus.com' },
     twitch: { title: 'Twitch', url: 'https://m.twitch.tv' },
+    kick: { title: 'Kick', url: 'https://kick.com' },
     live: { title: 'Canlı Yayın', url: 'https://m.youtube.com/live' },
     playlist: { title: 'Playlist', url: 'https://music.youtube.com' },
     drive: { title: 'Google Drive', url: 'https://drive.google.com' },
@@ -7429,6 +7490,8 @@ function initEvents() {
   function openRealYouTubeInterface() {
     launchPlatform('youtube');
   }
+  window.openRealYouTubeInterface = openRealYouTubeInterface;
+  window.launchPlatform = launchPlatform;
 
   function openRaveYoutubeModal() {
     if (!dom.raveYoutubeModal) return;
@@ -7456,6 +7519,7 @@ function initEvents() {
 
   function closeRaveYoutubeModal() {
     if (dom.raveYoutubeModal) dom.raveYoutubeModal.classList.add('hidden');
+    if (dom.roomPlatformChooserModal) dom.roomPlatformChooserModal.classList.add('hidden');
     if (dom.raveVideoActionSheet) dom.raveVideoActionSheet.classList.add('hidden');
     if (state.roomId) {
       sendP2PData('host_browsing', { isBrowsing: false });
@@ -9367,16 +9431,74 @@ function initEvents() {
     });
   }
 
-  // Stage Search / Quick Video Changer (Opens in-app video chooser and YouTube explorer)
+  // Stage Video / Platform Chooser Modal (All Platforms + Normal YouTube Screen + Direct Link)
   const openVideoChooser = () => {
-    openRaveYoutubeModal();
+    if (dom.roomPlatformChooserModal) dom.roomPlatformChooserModal.classList.remove('hidden');
+    else if (dom.raveYoutubeModal) dom.raveYoutubeModal.classList.remove('hidden');
   };
   window.openVideoChooser = openVideoChooser;
-  if (dom.roomTopSearchBtn) addInstantTap(dom.roomTopSearchBtn, openVideoChooser);
-  const roomQuickSearch = document.getElementById('roomQuickSearchBtn');
-  if (roomQuickSearch) addInstantTap(roomQuickSearch, openVideoChooser);
-  const roomChangeVideoBottom = document.getElementById('roomChangeVideoBottomBtn');
-  if (roomChangeVideoBottom) addInstantTap(roomChangeVideoBottom, openVideoChooser);
+
+  const closePlatformChooser = () => {
+    if (dom.roomPlatformChooserModal) dom.roomPlatformChooserModal.classList.add('hidden');
+    if (dom.raveYoutubeModal) dom.raveYoutubeModal.classList.add('hidden');
+  };
+  window.closePlatformChooser = closePlatformChooser;
+
+  if (dom.closePlatformChooserModalBtn) {
+    addInstantTap(dom.closePlatformChooserModalBtn, closePlatformChooser);
+  }
+
+  // Sole room video selection button (Bottom toolbar)
+  if (dom.roomChangeVideoBottomBtn) {
+    addInstantTap(dom.roomChangeVideoBottomBtn, openVideoChooser);
+  }
+
+  // Hero: Normal YouTube Ekranı
+  if (dom.chooserOpenRealYouTubeBtn) {
+    addInstantTap(dom.chooserOpenRealYouTubeBtn, () => {
+      closePlatformChooser();
+      launchPlatform('youtube');
+    });
+  }
+
+  // Direct Link Play
+  if (dom.chooserPlayDirectLinkBtn && dom.chooserDirectLinkInput) {
+    const handleDirectPlay = () => {
+      const url = (dom.chooserDirectLinkInput.value || '').trim();
+      if (!url) {
+        showToast('Lütfen geçerli bir video linki girin');
+        return;
+      }
+      closePlatformChooser();
+      selectAndPlayYoutubeVideo(url, 'Doğrudan Video Yayını');
+      dom.chooserDirectLinkInput.value = '';
+    };
+    addInstantTap(dom.chooserPlayDirectLinkBtn, handleDirectPlay);
+    dom.chooserDirectLinkInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        handleDirectPlay();
+      }
+    });
+  }
+
+  // Platform Cards in Chooser
+  document.querySelectorAll('.chooser-platform-card').forEach(card => {
+    addInstantTap(card, () => {
+      const provider = card.dataset.provider;
+      if (!provider) return;
+      closePlatformChooser();
+      launchPlatform(provider);
+    });
+  });
+
+  // Screen Share Card in Chooser
+  if (dom.chooserScreenShareBtn) {
+    addInstantTap(dom.chooserScreenShareBtn, () => {
+      closePlatformChooser();
+      startScreenShare();
+    });
+  }
 
   // Queue Modal & Suggestions UI Bindings
   const openRoomQueueModal = () => {

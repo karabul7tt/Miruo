@@ -291,8 +291,9 @@ class ViewController: UIViewController, WKNavigationDelegate, WKUIDelegate, WKSc
         stack.translatesAutoresizingMaskIntoConstraints = false
         
         let iconLabel = UILabel()
-        iconLabel.text = "✨"
-        iconLabel.font = UIFont.systemFont(ofSize: 42)
+        iconLabel.text = "MIRUO"
+        iconLabel.textColor = UIColor.systemPink
+        iconLabel.font = UIFont.systemFont(ofSize: 22, weight: .black)
         
         let titleLabel = UILabel()
         titleLabel.text = currentAppLang == "en" ? "Reloading Miruo" : (currentAppLang == "de" ? "Miruo wird neu geladen" : "Miruo Yeniden Yükleniyor")
@@ -307,7 +308,7 @@ class ViewController: UIViewController, WKNavigationDelegate, WKUIDelegate, WKSc
         descLabel.numberOfLines = 0
         
         let retryBtn = UIButton(type: .system)
-        retryBtn.setTitle(currentAppLang == "en" ? "🔄 Try Again" : (currentAppLang == "de" ? "🔄 Erneut versuchen" : "🔄 Tekrar Dene"), for: .normal)
+        retryBtn.setTitle(currentAppLang == "en" ? "Try Again" : (currentAppLang == "de" ? "Erneut versuchen" : "Tekrar Dene"), for: .normal)
         retryBtn.backgroundColor = .systemPink
         retryBtn.setTitleColor(.white, for: .normal)
         retryBtn.titleLabel?.font = UIFont.systemFont(ofSize: 14, weight: .bold)
@@ -344,7 +345,7 @@ class ViewController: UIViewController, WKNavigationDelegate, WKUIDelegate, WKSc
     
     @objc private func promptChangeServerUrl() {
         let current = UserDefaults.standard.string(forKey: "miruo_url") ?? "http://192.168.1.20:3000"
-        let alertTitle = currentAppLang == "en" ? "🌐 Miruo Server Configuration" : (currentAppLang == "de" ? "🌐 Miruo Servereinstellung" : "🌐 Miruo Sunucu Ayarı")
+        let alertTitle = currentAppLang == "en" ? "Miruo Server Configuration" : (currentAppLang == "de" ? "Miruo Servereinstellung" : "Miruo Sunucu Ayarı")
         let alertMsg = currentAppLang == "en" ? "Enter your computer's IP address (Must be on the same Wi-Fi network):" : (currentAppLang == "de" ? "Geben Sie die IP-Adresse Ihres Computers ein (Muss im selben WLAN sein):" : "Bilgisayarınızın IP adresini girin (Aynı Wi-Fi ağında olmalıdır):")
         let alert = UIAlertController(
             title: alertTitle,
@@ -559,7 +560,7 @@ class ViewController: UIViewController, WKNavigationDelegate, WKUIDelegate, WKSc
             webView.evaluateJavaScript(js, completionHandler: nil)
         }
         if let _ = ProcessInfo.processInfo.environment["OPEN_VIDEO_CHOOSER"] {
-            let js = "setTimeout(() => { document.getElementById('roomQuickSearchBtn')?.click(); }, 1200);"
+            let js = "setTimeout(() => { if (typeof openVideoChooser === 'function') { openVideoChooser(); } else { document.getElementById('roomChangeVideoBottomBtn')?.click(); } }, 1200);"
             webView.evaluateJavaScript(js, completionHandler: nil)
         }
         if let _ = ProcessInfo.processInfo.environment["OPEN_QUEUE"] {
@@ -719,8 +720,14 @@ class PlatformBrowserViewController: UIViewController, WKNavigationDelegate, WKU
             searchBar.placeholder = currentLang == "en" ? "Search YouTube..." : (currentLang == "de" ? "Auf YouTube suchen..." : "YouTube'da ara...")
         } else if provider == "twitch" {
             searchBar.placeholder = currentLang == "en" ? "Search Twitch..." : (currentLang == "de" ? "Auf Twitch suchen..." : "Twitch'te yayın ara...")
+        } else if provider == "kick" {
+            searchBar.placeholder = currentLang == "en" ? "Search Kick..." : (currentLang == "de" ? "Auf Kick suchen..." : "Kick'te yayın ara...")
         } else if provider == "netflix" {
             searchBar.placeholder = currentLang == "en" ? "Search Netflix..." : (currentLang == "de" ? "Auf Netflix suchen..." : "Netflix'te ara...")
+        } else if provider == "prime" {
+            searchBar.placeholder = currentLang == "en" ? "Search Prime Video..." : (currentLang == "de" ? "Auf Prime Video suchen..." : "Prime Video'da ara...")
+        } else if provider == "disney" {
+            searchBar.placeholder = currentLang == "en" ? "Search Disney+..." : (currentLang == "de" ? "Auf Disney+ suchen..." : "Disney+'ta ara...")
         } else {
             searchBar.placeholder = currentLang == "en" ? "Search or enter link..." : (currentLang == "de" ? "Suchen oder Link eingeben..." : "Ara veya link yaz...")
         }
@@ -907,7 +914,7 @@ class PlatformBrowserViewController: UIViewController, WKNavigationDelegate, WKU
         
         let syncBtn = UIButton(type: .system)
         syncBtn.translatesAutoresizingMaskIntoConstraints = false
-        let btnTitle = currentLang == "en" ? "▶ Stream Video to Room" : (currentLang == "de" ? "▶ Video in den Raum übertragen" : "▶ Bu Videoyu Odaya Aktar ve İzle")
+        let btnTitle = currentLang == "en" ? "Stream Video to Room" : (currentLang == "de" ? "Video in den Raum übertragen" : "Bu Videoyu Odaya Aktar ve İzle")
         syncBtn.setTitle(btnTitle, for: .normal)
         syncBtn.setTitleColor(.white, for: .normal)
         syncBtn.titleLabel?.font = UIFont.boldSystemFont(ofSize: 13)
@@ -957,8 +964,14 @@ class PlatformBrowserViewController: UIViewController, WKNavigationDelegate, WKU
                 targetStr = "https://m.youtube.com/results?search_query=\(encoded)"
             case "twitch":
                 targetStr = "https://m.twitch.tv/search?term=\(encoded)"
+            case "kick":
+                targetStr = "https://kick.com/search?q=\(encoded)"
             case "netflix":
                 targetStr = "https://www.netflix.com/search?q=\(encoded)"
+            case "prime":
+                targetStr = "https://www.primevideo.com/search/ref=atv_nb_sr?phrase=\(encoded)"
+            case "disney":
+                targetStr = "https://www.disneyplus.com/search?q=\(encoded)"
             default:
                 targetStr = "https://www.google.com/search?q=\(encoded)"
             }

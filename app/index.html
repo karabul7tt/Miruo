@@ -334,8 +334,8 @@
         <div class="flex items-center justify-between px-3.5 py-2 bg-[#0F0D0B] border border-white/10 rounded-2xl shadow-xl">
           <!-- Brand Logo & Active Room Members Pill -->
           <div class="flex items-center gap-2.5">
-            <div class="flex items-center gap-2 cursor-pointer" id="roomTopSearchBtn" title="Video Değiştir / Arama" data-i18n-title="room_change_video">
-              <div class="w-8 h-8 rounded-xl bg-gradient-to-tr from-rose-500 via-purple-600 to-indigo-600 p-0.5 flex items-center justify-center shadow-md active:scale-95 transition-transform">
+            <div class="flex items-center gap-2 select-none">
+              <div class="w-8 h-8 rounded-xl bg-gradient-to-tr from-rose-500 via-purple-600 to-indigo-600 p-0.5 flex items-center justify-center shadow-md">
                 <img src="logo.svg" alt="Miruo" class="w-full h-full rounded-[10px]">
               </div>
               <span class="font-extrabold text-sm tracking-tight text-white hidden sm:inline">MIRUO</span>
@@ -357,12 +357,6 @@
 
           <!-- Sleek Icon Actions -->
           <div class="flex items-center gap-1.5 shrink-0">
-            <!-- Video Değiştir / Öner -->
-            <button id="roomQuickSearchBtn" class="flex items-center gap-1.5 px-2 sm:px-3 py-1.5 rounded-full bg-white/10 hover:bg-white/15 active:scale-95 border border-white/10 text-xs text-white font-medium transition-all cursor-pointer shadow-sm shrink-0" title="Video Değiştir veya Öner" data-i18n-title="room_change_video">
-              <svg class="w-3.5 h-3.5 text-rose-400 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-              <span id="roomQuickSearchBtnText" class="text-xs font-medium hidden md:inline" data-i18n="room_change_video">Değiştir</span>
-            </button>
-            
             <!-- Kimler Katılabilir (Replaces Paylaş / Davet) -->
             <button id="roomAccessBtn" class="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-full bg-gradient-to-r from-cyan-500/20 to-indigo-600/20 hover:from-cyan-500/30 hover:to-indigo-600/30 border border-cyan-500/30 active:scale-95 text-cyan-300 hover:text-white text-xs font-semibold shadow-sm transition-all cursor-pointer shrink-0" title="Kimler Katılabilir" data-i18n-title="who_can_join">
               <svg class="w-3.5 h-3.5 text-cyan-400 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><circle cx="12" cy="11" r="3"/></svg>
@@ -417,7 +411,7 @@
             <svg class="w-7 h-7" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><path d="M8 21h8m-4-4v4"/><polygon points="10 8 16 11 10 14 10 8" fill="currentColor"/></svg>
           </div>
           <h3 class="text-sm font-bold text-gray-200" data-i18n="video_placeholder_title">Video Yükleniyor veya Seçilmedi</h3>
-          <p class="text-[11px] text-gray-400 mt-1 max-w-xs" data-i18n="video_placeholder_desc">Üstteki arama ikonuna veya platform kartına basarak dilediğiniz YouTube videosunu başlatın.</p>
+          <p class="text-[11px] text-gray-400 mt-1 max-w-xs" data-i18n="video_placeholder_desc">"Video Seç" butonuna basarak dilediğiniz videoyu veya platformu başlatın.</p>
         </div>
 
         <!-- Audio Only / Video Hidden Visualizer -->
@@ -486,51 +480,41 @@
           <span id="syncToastMsg">Senkronize Edildi</span>
         </div>
 
-        <!-- Floating Draggable Partner Webcam PIP -->
-        <div id="partnerPipCard" class="absolute top-4 right-4 w-36 sm:w-48 aspect-[4/3] rounded-2xl bg-[#0E111A]/95 border-2 border-white/20 hover:border-white/40 shadow-2xl overflow-hidden cursor-move select-none z-30 backdrop-blur-md hidden transition-shadow duration-200">
+        <!-- Floating Draggable Partner Webcam PIP (Circular Floating Bubble) -->
+        <div id="partnerPipCard" class="absolute top-4 right-4 w-28 h-28 sm:w-36 sm:h-36 rounded-full aspect-square bg-[#0E111A]/95 border-2 border-indigo-500/60 hover:border-indigo-400 shadow-2xl overflow-hidden cursor-grab active:cursor-grabbing select-none z-30 backdrop-blur-md hidden transition-shadow duration-200" style="touch-action: none;">
           <video id="partnerVideo" class="w-full h-full object-cover mirror" playsinline autoplay></video>
           <div id="partnerVideoPlaceholder" class="absolute inset-0 flex flex-col items-center justify-center bg-gradient-to-br from-[#1A1325] via-[#0E111A] to-[#121626] text-center p-2">
-            <div class="w-10 h-10 rounded-full bg-gradient-to-tr from-indigo-500 to-purple-600 border border-white/20 shadow-md flex items-center justify-center text-white font-bold text-xs mb-1">
+            <div class="w-12 h-12 rounded-full bg-gradient-to-tr from-indigo-500 to-purple-600 border border-white/20 shadow-md flex items-center justify-center text-white font-bold text-sm mb-1">
               <span id="partnerPipAvatarInitial">P</span>
             </div>
-            <span class="text-[9px] text-gray-300 font-medium">Partner</span>
-          </div>
-          <div class="absolute top-2 left-2 px-2 py-0.5 rounded-lg bg-black/70 backdrop-blur-sm text-[10px] font-bold text-gray-200 flex items-center gap-1.5 pointer-events-none">
-            <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
-            <span id="partnerPipName">Partner</span>
+            <span id="partnerPipName" class="text-[10px] text-gray-200 font-bold truncate max-w-[80px]">Partner</span>
           </div>
           <!-- Close / Hide Partner PIP Button -->
-          <button id="closePartnerPipBtn" type="button" class="absolute top-2 right-2 w-6 h-6 rounded-full bg-black/75 hover:bg-rose-600 active:scale-90 text-white flex items-center justify-center cursor-pointer z-40 transition-all border border-white/20 shadow-lg" title="Gizle">
+          <button id="closePartnerPipBtn" type="button" class="absolute top-1.5 right-1.5 w-6 h-6 rounded-full bg-black/80 hover:bg-rose-600 active:scale-90 text-white flex items-center justify-center cursor-pointer z-40 transition-all border border-white/20 shadow-lg" title="Gizle">
             <svg class="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
           </button>
         </div>
 
-        <!-- Floating Draggable Self Webcam PIP (Facecam with close X button & animated live placeholder) -->
-        <div id="selfPipCard" class="absolute top-4 right-4 sm:right-6 w-36 sm:w-48 aspect-[4/3] rounded-2xl bg-[#0E111A]/95 border-2 border-rose-500/50 hover:border-rose-500 shadow-2xl overflow-hidden cursor-move select-none z-30 backdrop-blur-md hidden transition-shadow duration-200">
+        <!-- Floating Draggable Self Webcam PIP (Circular Facecam Bubble with Spring Fling Physics) -->
+        <div id="selfPipCard" class="absolute top-4 right-4 sm:right-6 w-28 h-28 sm:w-36 sm:h-36 rounded-full aspect-square bg-[#0E111A]/95 border-2 border-rose-500/80 hover:border-rose-400 shadow-2xl overflow-hidden cursor-grab active:cursor-grabbing select-none z-30 backdrop-blur-md hidden transition-shadow duration-200" style="touch-action: none;">
           <video id="selfVideo" class="w-full h-full object-cover mirror" playsinline autoplay muted></video>
           
-          <!-- Modern Live Facecam Avatar Feed (Active when camera starts or in simulator/loading) -->
+          <!-- Modern Live Facecam Avatar Feed -->
           <div id="selfVideoPlaceholder" class="absolute inset-0 flex flex-col items-center justify-center bg-gradient-to-br from-[#201026] via-[#0E111A] to-[#151226] text-center p-2">
             <div class="relative mb-1">
-              <div class="w-10 h-10 rounded-full bg-gradient-to-tr from-rose-500 to-pink-600 border border-white/20 shadow-lg flex items-center justify-center text-white font-bold text-sm">
+              <div class="w-12 h-12 rounded-full bg-gradient-to-tr from-rose-500 to-pink-600 border border-white/20 shadow-lg flex items-center justify-center text-white font-bold text-sm">
                 <span id="selfPipAvatarInitial">M</span>
               </div>
               <span class="absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full bg-emerald-400 border-2 border-[#0E111A] animate-pulse"></span>
             </div>
             <div class="flex items-center gap-1">
               <span class="w-1.5 h-1.5 rounded-full bg-rose-500 animate-ping"></span>
-              <span class="text-[9px] font-semibold text-rose-300" data-i18n="live_cam_feed">Canlı Kamera Feed</span>
+              <span class="text-[9px] font-semibold text-rose-300" data-i18n="self_camera_badge">Sen (Kamera)</span>
             </div>
           </div>
 
-          <!-- Top Left: Sen (Kamera) Badge -->
-          <div class="absolute top-2 left-2 px-2 py-0.5 rounded-lg bg-black/70 backdrop-blur-sm text-[10px] font-bold text-rose-300 flex items-center gap-1.5 pointer-events-none">
-            <span class="w-1.5 h-1.5 rounded-full bg-rose-500 animate-pulse"></span>
-            <span data-i18n="self_camera_badge">Sen (Kamera)</span>
-          </div>
-
-          <!-- Top Right: Close Camera X Button (Direct one-tap camera off) -->
-          <button id="closeSelfPipBtn" type="button" class="absolute top-2 right-2 w-6 h-6 rounded-full bg-black/75 hover:bg-rose-600 active:scale-90 text-white flex items-center justify-center cursor-pointer z-40 transition-all border border-white/20 shadow-lg" title="Kamerayı Kapat" data-i18n-title="close_cam_title">
+          <!-- Close Camera X Button (Direct one-tap camera off) -->
+          <button id="closeSelfPipBtn" type="button" class="absolute top-1.5 right-1.5 w-6 h-6 rounded-full bg-black/80 hover:bg-rose-600 active:scale-90 text-white flex items-center justify-center cursor-pointer z-40 transition-all border border-white/20 shadow-lg" title="Kamerayı Kapat" data-i18n-title="close_cam_title">
             <svg class="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
           </button>
         </div>
@@ -1429,102 +1413,143 @@
     </div>
   </div>
 
-  <!-- IN-APP YOUTUBE BROWSER & PICKER MODAL -->
-  <div id="raveYoutubeModal" class="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/95 p-0 sm:p-4 hidden">
-    <div class="bg-[#0B0D14] border border-white/10 rounded-t-[32px] sm:rounded-3xl max-w-2xl w-full h-[88vh] sm:h-[82vh] shadow-2xl flex flex-col overflow-hidden">
+  <!-- ROOM PLATFORM & VIDEO CHOOSER MODAL (Unified Hub for YouTube, Netflix, Prime, Disney+, Twitch, Kick, Web & Links) -->
+  <div id="roomPlatformChooserModal" class="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/95 p-0 sm:p-4 hidden">
+    <div class="bg-[#0B0D14] border border-white/10 rounded-t-[32px] sm:rounded-3xl max-w-2xl w-full max-h-[90vh] sm:max-h-[85vh] shadow-2xl flex flex-col overflow-hidden">
       
       <!-- Modal Header -->
       <div class="px-5 py-4 border-b border-white/10 flex items-center justify-between bg-black/40">
         <div class="flex items-center gap-3">
-          <div class="w-9 h-9 rounded-2xl bg-red-600 flex items-center justify-center shadow-lg shadow-red-600/30">
-            <svg class="w-5 h-5 text-white fill-current" viewBox="0 0 24 24"><path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z"/></svg>
+          <div class="w-9 h-9 rounded-2xl bg-gradient-to-tr from-rose-500 via-purple-600 to-indigo-600 p-0.5 flex items-center justify-center shadow-lg">
+            <div class="w-full h-full bg-[#0B0D14] rounded-[14px] flex items-center justify-center">
+              <svg class="w-4 h-4 text-rose-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polygon points="10 8 16 12 10 16 10 8" fill="currentColor"/></svg>
+            </div>
           </div>
           <div>
             <h3 class="text-sm font-bold text-white flex items-center gap-2">
-              <span>YouTube</span>
+              <span data-i18n="platform_chooser_title">Video ve Platform Seç</span>
             </h3>
-            <span class="text-[10px] text-gray-400" data-i18n="yt_modal_sub">Video seçin ve odadakilerle birlikte izleyin.</span>
+            <span class="text-[10px] text-gray-400" data-i18n="platform_chooser_sub">İzlemek istediğiniz platformu seçin veya doğrudan bağlantı yapıştırın</span>
           </div>
         </div>
 
-        <div class="flex items-center gap-2">
-          <!-- In-App Web Browser Trigger (Loads m.youtube.com natively or in iframe) -->
-          <button id="openNativeYtBrowserBtn" class="px-3 py-1.5 rounded-xl bg-white/10 hover:bg-white/20 text-xs font-semibold text-white flex items-center gap-1.5 transition-all cursor-pointer" title="m.youtube.com'u açıp hesabına gir" data-i18n-title="yt_browse_title">
-            <svg class="w-3.5 h-3.5 text-red-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20M2 12h20"/></svg>
-            <span class="hidden sm:inline">m.youtube.com</span>
-            <span data-i18n="yt_browse_btn">Gezin ↗</span>
-          </button>
-          <button id="closeRaveYoutubeBtn" class="close-modal-btn w-9 h-9 rounded-full bg-white/10 hover:bg-white/20 active:scale-95 text-gray-200 hover:text-white flex items-center justify-center text-sm font-bold transition-all cursor-pointer select-none">✕</button>
-        </div>
+        <button id="closePlatformChooserModalBtn" class="close-modal-btn w-9 h-9 rounded-full bg-white/10 hover:bg-white/20 active:scale-95 text-gray-200 hover:text-white flex items-center justify-center text-sm font-bold transition-all cursor-pointer select-none">✕</button>
       </div>
 
-      <!-- Continuous Playback Status Notice (Shows that media is not paused) -->
-      <div id="raveCurrentlyPlayingBanner" class="hidden px-4 py-2 bg-gradient-to-r from-rose-500/15 via-purple-500/10 to-transparent border-b border-rose-500/20 flex items-center justify-between text-xs">
-        <div class="flex items-center gap-2 text-rose-300 font-medium truncate">
-          <span class="w-2 h-2 rounded-full bg-rose-500 animate-pulse shrink-0"></span>
-          <span class="truncate"><span data-i18n="yt_currently_playing_prefix">Şu an çalıyor:</span> <strong id="raveCurrentlyPlayingTitle" class="text-white">...</strong></span>
-        </div>
-        <span class="text-[10px] text-emerald-400 font-medium px-2 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/20 shrink-0" data-i18n="yt_background_playing">Arka Planda Kesintisiz Devam Ediyor</span>
-      </div>
+      <div class="p-4 sm:p-5 overflow-y-auto space-y-4 flex-1">
+        
+        <!-- Featured Hero: Normal YouTube Ekranı (Direct real YouTube browser with real search) -->
+        <button id="chooserOpenRealYouTubeBtn" type="button" class="w-full p-4 rounded-2xl bg-gradient-to-r from-red-600/20 via-rose-600/15 to-[#161224] hover:from-red-600/30 hover:via-rose-600/25 hover:to-[#201832] border border-red-500/40 hover:border-red-500 text-left transition-all active:scale-[0.99] cursor-pointer shadow-xl flex items-center justify-between group">
+          <div class="flex items-center gap-3.5">
+            <div class="w-12 h-12 rounded-2xl bg-red-600 flex items-center justify-center shadow-lg shadow-red-600/40 shrink-0 group-hover:scale-105 transition-transform">
+              <svg class="w-6 h-6 text-white fill-current" viewBox="0 0 24 24"><path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z"/></svg>
+            </div>
+            <div>
+              <div class="flex items-center gap-2">
+                <h4 class="text-sm font-extrabold text-white group-hover:text-red-300 transition-colors">Normal YouTube Ekranı</h4>
+                <span class="px-2 py-0.5 rounded-full bg-red-500/20 text-red-300 text-[10px] font-bold border border-red-500/30">Gerçek Arama</span>
+              </div>
+              <p class="text-xs text-gray-300 mt-0.5">YouTube'da dilediğiniz videoyu veya kanalı arayın, dokunun ve odaya aktarın.</p>
+            </div>
+          </div>
+          <div class="w-8 h-8 rounded-full bg-white/10 group-hover:bg-red-600 text-white flex items-center justify-center text-xs font-bold transition-all shrink-0 ml-3">
+            ↗
+          </div>
+        </button>
 
-      <!-- Search Bar -->
-      <div class="p-4 bg-black/20 border-b border-white/5 space-y-3">
-        <div class="relative flex items-center">
-          <svg class="w-4 h-4 text-gray-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
-          <input type="text" id="raveYtSearchInput" data-i18n-placeholder="yt_search_ph" placeholder="YouTube'da şarkı, klip, sanatçı, dizi veya kanal ara..." class="w-full bg-black/50 border border-white/10 rounded-2xl pl-10 pr-24 py-2.5 text-xs text-white placeholder-gray-500 focus:outline-none focus:border-red-500 transition-all font-medium">
-          <div class="absolute right-1.5 top-1/2 -translate-y-1/2 flex items-center gap-1">
-            <button id="clearRaveYtSearchBtn" class="hidden px-2 py-1 text-gray-400 hover:text-white text-xs">✕</button>
-            <button id="submitRaveYtSearchBtn" class="px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white rounded-xl text-xs font-bold transition-all shadow-md shadow-red-600/30 cursor-pointer" data-i18n="yt_search_btn">
-              Ara
+        <!-- Direct Video / Stream Link Input Bar -->
+        <div class="p-3.5 rounded-2xl bg-black/40 border border-white/10 space-y-2">
+          <label class="text-xs font-semibold text-gray-300 flex items-center gap-1.5">
+            <svg class="w-3.5 h-3.5 text-rose-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+            <span>Doğrudan Video veya Platform Linki Yapıştır</span>
+          </label>
+          <div class="flex items-center gap-2">
+            <input type="text" id="chooserDirectLinkInput" placeholder="YouTube, Twitch veya doğrudan video bağlantısı (URL)..." class="flex-1 bg-black/60 border border-white/15 rounded-xl px-3.5 py-2 text-xs text-white placeholder-gray-500 focus:outline-none focus:border-rose-500 transition-all font-medium">
+            <button id="chooserPlayDirectLinkBtn" type="button" class="px-4 py-2 bg-rose-600 hover:bg-rose-500 active:scale-95 text-white font-bold text-xs rounded-xl transition-all shadow-md shadow-rose-600/30 cursor-pointer shrink-0">
+              Oynat
             </button>
           </div>
         </div>
 
-        <!-- Quick Filter Pills -->
-        <div class="flex items-center gap-1.5 overflow-x-auto no-scrollbar text-xs">
-          <button class="rave-yt-tab active px-3 py-1 rounded-xl bg-red-600 text-white font-bold whitespace-nowrap transition-all cursor-pointer" data-tag="trending" data-i18n="tab_trending">Trendler</button>
-          <button class="rave-yt-tab px-3 py-1 rounded-xl bg-white/5 hover:bg-white/10 text-gray-300 whitespace-nowrap transition-all cursor-pointer" data-tag="music" data-i18n="tab_music">Popüler Müzik</button>
-          <button class="rave-yt-tab px-3 py-1 rounded-xl bg-white/5 hover:bg-white/10 text-gray-300 whitespace-nowrap transition-all cursor-pointer" data-tag="lofi" data-i18n="tab_lofi">24/7 Lo-Fi</button>
-          <button class="rave-yt-tab px-3 py-1 rounded-xl bg-white/5 hover:bg-white/10 text-gray-300 whitespace-nowrap transition-all cursor-pointer" data-tag="series" data-i18n="tab_series">Dizi & Fragman</button>
-          <button class="rave-yt-tab px-3 py-1 rounded-xl bg-white/5 hover:bg-white/10 text-gray-300 whitespace-nowrap transition-all cursor-pointer" data-tag="podcast" data-i18n="tab_podcast">Podcast & Sohbet</button>
-          <button class="rave-yt-tab px-3 py-1 rounded-xl bg-white/5 hover:bg-white/10 text-gray-300 whitespace-nowrap transition-all cursor-pointer" data-tag="gaming" data-i18n="tab_gaming">Oyun & Espor</button>
-        </div>
-      </div>
+        <!-- All Platforms Grid -->
+        <div class="space-y-2">
+          <span class="text-xs font-semibold text-gray-400 uppercase tracking-wider block">Tüm Platformlar</span>
+          <div class="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+            
+            <!-- YouTube Card -->
+            <button class="chooser-platform-card p-3 rounded-2xl bg-[#0E111A]/90 hover:bg-[#161B29] border border-white/10 hover:border-red-500/50 flex flex-col items-center justify-center gap-2 transition-all cursor-pointer group active:scale-95 shadow-md" data-provider="youtube">
+              <div class="w-10 h-10 rounded-xl bg-red-600 flex items-center justify-center shadow-md shadow-red-600/30 group-hover:scale-105 transition-transform">
+                <svg class="w-5 h-5 text-white fill-current" viewBox="0 0 24 24"><path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z"/></svg>
+              </div>
+              <span class="text-white font-bold text-xs">YouTube</span>
+            </button>
 
-      <!-- Video Feed & Search Results List -->
-      <div id="raveYtVideoGrid" class="flex-1 p-4 overflow-y-auto grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
-        <!-- Dynamically populated video cards -->
-      </div>
+            <!-- Netflix Card -->
+            <button class="chooser-platform-card p-3 rounded-2xl bg-[#0E111A]/90 hover:bg-[#161B29] border border-white/10 hover:border-red-600/50 flex flex-col items-center justify-center gap-2 transition-all cursor-pointer group active:scale-95 shadow-md" data-provider="netflix">
+              <div class="w-10 h-10 rounded-xl bg-black border border-red-600/40 flex items-center justify-center shadow-md group-hover:scale-105 transition-transform">
+                <span class="text-red-600 font-black text-xl tracking-tighter">N</span>
+              </div>
+              <span class="text-white font-bold text-xs">Netflix</span>
+            </button>
 
-      <!-- Video Selection Action Sheet (Hemen Oynat vs. Sıraya Ekle vs. Öner) -->
-      <div id="raveVideoActionSheet" class="hidden bg-[#101320] border-t border-white/15 p-3.5 shadow-2xl flex flex-col gap-2.5 z-30 transition-all">
-        <div class="flex items-center justify-between">
-          <div class="flex items-center gap-2.5 min-w-0">
-            <img id="raveActionThumb" src="" class="w-14 h-9 rounded-lg object-cover bg-black flex-shrink-0 border border-white/10" alt="Thumb">
-            <div class="min-w-0">
-              <h4 id="raveActionTitle" class="text-xs font-bold text-white truncate" data-i18n="video_title_default">Video Başlığı</h4>
-              <p id="raveActionChannel" class="text-[10px] text-gray-400 truncate">Kanal</p>
-            </div>
+            <!-- Prime Video Card -->
+            <button class="chooser-platform-card p-3 rounded-2xl bg-[#0E111A]/90 hover:bg-[#161B29] border border-white/10 hover:border-sky-500/50 flex flex-col items-center justify-center gap-2 transition-all cursor-pointer group active:scale-95 shadow-md" data-provider="prime">
+              <div class="w-10 h-10 rounded-xl bg-[#00A8E1]/20 border border-[#00A8E1]/40 flex items-center justify-center shadow-md group-hover:scale-105 transition-transform">
+                <span class="text-[#00A8E1] font-bold text-sm">prime</span>
+              </div>
+              <span class="text-white font-bold text-xs">Prime Video</span>
+            </button>
+
+            <!-- Disney+ Card -->
+            <button class="chooser-platform-card p-3 rounded-2xl bg-[#0E111A]/90 hover:bg-[#161B29] border border-white/10 hover:border-blue-500/50 flex flex-col items-center justify-center gap-2 transition-all cursor-pointer group active:scale-95 shadow-md" data-provider="disney">
+              <div class="w-10 h-10 rounded-xl bg-[#113CCF]/20 border border-[#113CCF]/40 flex items-center justify-center shadow-md group-hover:scale-105 transition-transform">
+                <span class="text-blue-400 font-black text-xs">Disney+</span>
+              </div>
+              <span class="text-white font-bold text-xs">Disney+</span>
+            </button>
+
+            <!-- Twitch Card -->
+            <button class="chooser-platform-card p-3 rounded-2xl bg-[#0E111A]/90 hover:bg-[#161B29] border border-white/10 hover:border-purple-500/50 flex flex-col items-center justify-center gap-2 transition-all cursor-pointer group active:scale-95 shadow-md" data-provider="twitch">
+              <div class="w-10 h-10 rounded-xl bg-[#9146FF]/20 border border-[#9146FF]/40 flex items-center justify-center shadow-md group-hover:scale-105 transition-transform">
+                <svg class="w-5 h-5 text-[#A970FF] fill-current" viewBox="0 0 24 24"><path d="M11.571 4.714h1.715v5.143H11.57zm4.715 0H18v5.143h-1.714zM6 0L1.714 4.286v15.428h5.143V24l4.286-4.286h3.428L22.286 12V0zm14.571 11.143l-3.428 3.428h-3.429l-3 3v-3H6.857V1.714h13.714Z"/></svg>
+              </div>
+              <span class="text-white font-bold text-xs">Twitch</span>
+            </button>
+
+            <!-- Kick Card -->
+            <button class="chooser-platform-card p-3 rounded-2xl bg-[#0E111A]/90 hover:bg-[#161B29] border border-white/10 hover:border-emerald-500/50 flex flex-col items-center justify-center gap-2 transition-all cursor-pointer group active:scale-95 shadow-md" data-provider="kick">
+              <div class="w-10 h-10 rounded-xl bg-[#53FC18]/15 border border-[#53FC18]/30 flex items-center justify-center shadow-md group-hover:scale-105 transition-transform">
+                <span class="text-[#53FC18] font-black text-sm">KICK</span>
+              </div>
+              <span class="text-white font-bold text-xs">Kick</span>
+            </button>
+
+            <!-- Web Browser Card -->
+            <button class="chooser-platform-card p-3 rounded-2xl bg-[#0E111A]/90 hover:bg-[#161B29] border border-white/10 hover:border-white/30 flex flex-col items-center justify-center gap-2 transition-all cursor-pointer group active:scale-95 shadow-md" data-provider="web">
+              <div class="w-10 h-10 rounded-xl bg-white/10 border border-white/20 flex items-center justify-center shadow-md group-hover:scale-105 transition-transform">
+                <svg class="w-5 h-5 text-gray-200" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
+              </div>
+              <span class="text-white font-bold text-xs">Web Tarayıcı</span>
+            </button>
+
+            <!-- Screen Share Card -->
+            <button id="chooserScreenShareBtn" type="button" class="p-3 rounded-2xl bg-[#0E111A]/90 hover:bg-[#161B29] border border-white/10 hover:border-cyan-500/50 flex flex-col items-center justify-center gap-2 transition-all cursor-pointer group active:scale-95 shadow-md">
+              <div class="w-10 h-10 rounded-xl bg-cyan-500/15 border border-cyan-500/30 flex items-center justify-center shadow-md group-hover:scale-105 transition-transform">
+                <svg class="w-5 h-5 text-cyan-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+              </div>
+              <span class="text-white font-bold text-xs">Ekran Paylaş</span>
+            </button>
+
           </div>
-          <button id="closeRaveActionSheetBtn" class="w-7 h-7 rounded-full bg-white/10 text-gray-300 hover:text-white flex items-center justify-center text-xs cursor-pointer">✕</button>
         </div>
-        <div class="grid grid-cols-2 gap-2 pt-0.5" id="raveActionButtonsContainer">
-          <button id="raveActionPlayNowBtn" class="py-2.5 px-3 rounded-xl bg-gradient-to-r from-rose-600 to-red-600 hover:from-rose-500 hover:to-red-500 active:scale-95 text-white font-bold text-xs flex items-center justify-center gap-1.5 shadow-md shadow-rose-600/30 transition-all cursor-pointer">
-            <svg class="w-3.5 h-3.5 fill-current" viewBox="0 0 24 24"><polygon points="5 3 19 12 5 21 5 3"/></svg>
-            <span data-i18n="action_play_now">Hemen Oynat</span>
-          </button>
-          <button id="raveActionQueueBtn" class="py-2.5 px-3 rounded-xl bg-white/10 hover:bg-white/15 active:scale-95 text-white font-semibold text-xs flex items-center justify-center gap-1.5 border border-white/10 transition-all cursor-pointer">
-            <svg class="w-3.5 h-3.5 text-purple-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-            <span data-i18n="action_add_queue">Sıraya Ekle</span>
-          </button>
-        </div>
+
       </div>
 
-      <!-- Bottom Sync Notice Bar -->
-      <div class="p-3 bg-black/40 border-t border-white/5 flex items-center justify-between text-xs">
+      <!-- Bottom Status Bar -->
+      <div class="px-5 py-3 bg-black/50 border-t border-white/10 flex items-center justify-between text-xs">
         <div class="flex items-center gap-2 text-gray-400">
-          <span class="w-2 h-2 rounded-full bg-red-500 animate-pulse"></span>
-          <span data-i18n="rave_footer_info">Odadakilerle senkronize izlemek için videoya dokunun</span>
+          <span class="w-2 h-2 rounded-full bg-rose-500 animate-pulse"></span>
+          <span>Seçilen video tüm katılımcılarla eşzamanlı izlenir</span>
         </div>
       </div>
 
@@ -1548,7 +1573,7 @@
       </div>
     </div>
     <div class="flex items-center gap-2 mt-0.5">
-      <button id="acceptSuggestionPlayNowBtn" class="flex-1 py-1.5 bg-rose-600 hover:bg-rose-500 active:scale-95 text-white rounded-xl text-xs font-bold transition-all shadow-md cursor-pointer">▶ <span data-i18n="action_play_now">Hemen Oynat</span></button>
+      <button id="acceptSuggestionPlayNowBtn" class="flex-1 py-1.5 bg-rose-600 hover:bg-rose-500 active:scale-95 text-white rounded-xl text-xs font-bold transition-all shadow-md cursor-pointer"><span data-i18n="action_play_now">Hemen Oynat</span></button>
       <button id="acceptSuggestionQueueBtn" class="flex-1 py-1.5 bg-white/10 hover:bg-white/20 active:scale-95 text-white rounded-xl text-xs font-medium transition-all cursor-pointer"><span data-i18n="action_add_queue">Sıraya Ekle</span></button>
     </div>
   </div>
