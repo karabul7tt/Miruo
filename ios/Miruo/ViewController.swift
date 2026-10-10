@@ -585,6 +585,14 @@ class ViewController: UIViewController, WKNavigationDelegate, WKUIDelegate, WKSc
             """
             webView.evaluateJavaScript(js, completionHandler: nil)
         }
+        if let _ = ProcessInfo.processInfo.environment["CLOSE_CHAT"] {
+            let js = "setTimeout(() => { if (typeof setChatVisibility === 'function') { setChatVisibility(false); } else { document.getElementById('closeChatSidebarBtn')?.click(); } }, 1200);"
+            webView.evaluateJavaScript(js, completionHandler: nil)
+        }
+        if let autoJs = ProcessInfo.processInfo.environment["AUTO_JS"] {
+            let js = "setTimeout(() => { \(autoJs) }, 1200);"
+            webView.evaluateJavaScript(js, completionHandler: nil)
+        }
         if let _ = ProcessInfo.processInfo.environment["OPEN_SETTINGS"] {
             let js = """
             setTimeout(() => {

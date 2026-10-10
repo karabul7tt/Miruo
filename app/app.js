@@ -673,7 +673,7 @@ const I18N = {
     hide_video_btn: 'Videoyu Gizle',
     toast_video_shown: 'Video görüntüsü açıldı',
     toast_video_hidden: 'Video görüntüsü gizlendi, yalnızca ses çalıyor',
-    toast_chat_closed: 'Sohbet gizlendi. Yazısız izliyorsunuz',
+    toast_chat_closed: 'Sohbet gizlendi, video tam ekrana geçti',
     toast_chat_opened: 'Canlı Sohbet açıldı'
   },
   en: {
@@ -1020,7 +1020,7 @@ const I18N = {
     hide_video_btn: 'Hide Video',
     toast_video_shown: 'Video display turned on',
     toast_video_hidden: 'Video display hidden, playing audio only',
-    toast_chat_closed: 'Chat hidden. Watching without chat',
+    toast_chat_closed: 'Chat hidden, video switched to fullscreen',
     toast_chat_opened: 'Live Chat opened'
   },
   de: {
@@ -1367,7 +1367,7 @@ const I18N = {
     hide_video_btn: 'Video ausblenden',
     toast_video_shown: 'Videoanzeige aktiviert',
     toast_video_hidden: 'Videoanzeige ausgeblendet, nur Audio läuft',
-    toast_chat_closed: 'Chat ausgeblendet. Ohne Chat ansehen',
+    toast_chat_closed: 'Chat ausgeblendet, Video im Vollbild',
     toast_chat_opened: 'Live-Chat geöffnet'
   }
 };
@@ -2994,26 +2994,93 @@ function stopScreenSharing() {
 // ==========================================
 
 // Fullscreen Stage Manager (With Rave Floating PiP Overlay Support)
+function isStageFullscreen() {
+  return !!(
+    document.fullscreenElement ||
+    document.webkitFullscreenElement ||
+    (dom.stageContainer && dom.stageContainer.classList.contains('is-fullscreen-pseudo'))
+  );
+}
+
+function enterStageFullscreenDimensions() {
+  if (!dom.stageContainer) return;
+
+  dom.stageContainer.classList.add('is-fullscreen-pseudo');
+  document.body.classList.add('stage-is-fullscreen');
+
+  const hasNativeFs = !!(document.fullscreenElement || document.webkitFullscreenElement);
+  if (!hasNativeFs) {
+    if (dom.stageContainer.requestFullscreen) {
+      dom.stageContainer.requestFullscreen().catch(() => {});
+    } else if (dom.stageContainer.webkitRequestFullscreen) {
+      try {
+        dom.stageContainer.webkitRequestFullscreen();
+      } catch (e) {}
+    }
+  }
+
+  // Floating restore chat buttons appear
+  if (dom.openFsChatFloatingBtn) {
+    dom.openFsChatFloatingBtn.classList.remove('hidden');
+  }
+  if (dom.openChatFloatingBtn) {
+    dom.openChatFloatingBtn.classList.remove('hidden');
+  }
+
+  updateFullscreenUI();
+}
+
+function exitStageFullscreenDimensions() {
+  if (!dom.stageContainer) return;
+
+  dom.stageContainer.classList.remove('is-fullscreen-pseudo');
+  document.body.classList.remove('stage-is-fullscreen');
+
+  if (document.fullscreenElement || document.webkitFullscreenElement) {
+    if (document.exitFullscreen) {
+      document.exitFullscreen().catch(() => {});
+    } else if (document.webkitExitFullscreen) {
+      try {
+        document.webkitExitFullscreen();
+      } catch (e) {}
+    }
+  }
+
+  if (state.isChatVisible) {
+    if (dom.openFsChatFloatingBtn) {
+      dom.openFsChatFloatingBtn.classList.add('hidden');
+    }
+    if (dom.openChatFloatingBtn) {
+      dom.openChatFloatingBtn.classList.add('hidden');
+    }
+  }
+
+  updateFullscreenUI();
+}
+
 function toggleFullscreen() {
   if (!dom.stageContainer) return;
-  const isFs = !!(document.fullscreenElement || document.webkitFullscreenElement);
-  if (!isFs) {
-    if (dom.stageContainer.requestFullscreen) {
-      dom.stageContainer.requestFullscreen().catch(err => console.warn('Fullscreen hatası:', err));
-    } else if (dom.stageContainer.webkitRequestFullscreen) {
-      dom.stageContainer.webkitRequestFullscreen();
-    }
+  if (isStageFullscreen()) {
+    exitStageFullscreenDimensions();
+    setChatVisibility(true);
   } else {
-    if (document.exitFullscreen) {
-      document.exitFullscreen();
-    } else if (document.webkitExitFullscreen) {
-      document.webkitExitFullscreen();
+    enterStageFullscreenDimensions();
+    if (dom.roomChatSidebar) {
+      dom.roomChatSidebar.classList.add('hidden');
+    }
+    state.isChatVisible = false;
+    if (dom.chatToolbarBtnText) {
+      const dictChat = I18N[currentLang] || I18N.tr;
+      dom.chatToolbarBtnText.textContent = dictChat.show_chat || 'Sohbeti Aç';
+    }
+    if (dom.toggleChatToolbarBtn) {
+      dom.toggleChatToolbarBtn.classList.remove('bg-rose-500/20', 'text-rose-300', 'border-rose-500/40');
     }
   }
 }
 
 function updateFullscreenUI() {
-  const isFs = !!(document.fullscreenElement || document.webkitFullscreenElement);
+  const isFs = isStageFullscreen();
   const enterSvg = `<path stroke-linecap="round" stroke-linejoin="round" d="M4 8V4m0 0h4M4 4l5 5m11-5h-4m4 0v4m0-4l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4"/>`;
   const exitSvg = `<path stroke-linecap="round" stroke-linejoin="round" d="M9 4v4H5M9 8L4 3m11 1v4h4m-4 0l5-5M9 20v-4H5m4 0l-5 5m11-1v-4h4m-4 0l5 5"/>`;
   
@@ -3030,7 +3097,7 @@ function updateFullscreenUI() {
 // Fullscreen Live Chat (Classic YouTube Live Format)
 let fsChatSettings = {
   showInFullscreen: true,
-  isFsChatOpen: true
+  isFsChatOpen: false
 };
 
 function loadFsChatSettings() {
@@ -3046,25 +3113,30 @@ function loadFsChatSettings() {
 
 function saveFsChatSettings() {
   localStorage.setItem('miruo_fs_show_chat', JSON.stringify(fsChatSettings.showInFullscreen));
-  const isFs = !!(document.fullscreenElement || document.webkitFullscreenElement);
+  const isFs = isStageFullscreen();
   applyFsChatFullscreenSettings(isFs);
 }
 
 function applyFsChatFullscreenSettings(isFullscreen) {
   const overlay = document.getElementById('fsChatOverlay');
   const floatBtn = document.getElementById('openFsChatFloatingBtn');
-  if (isFullscreen && fsChatSettings.showInFullscreen) {
-    if (overlay) overlay.classList.toggle('hidden', !fsChatSettings.isFsChatOpen);
-    if (floatBtn) floatBtn.classList.toggle('hidden', fsChatSettings.isFsChatOpen);
+  if (isFullscreen) {
+    if (!state.isChatVisible || !fsChatSettings.isFsChatOpen || !fsChatSettings.showInFullscreen) {
+      if (overlay) overlay.classList.add('hidden');
+      if (floatBtn) floatBtn.classList.remove('hidden');
+    } else {
+      if (overlay) overlay.classList.remove('hidden');
+      if (floatBtn) floatBtn.classList.add('hidden');
+    }
   } else {
     if (overlay) overlay.classList.add('hidden');
-    if (floatBtn) floatBtn.classList.add('hidden');
+    if (floatBtn) floatBtn.classList.toggle('hidden', state.isChatVisible);
   }
 }
 
 function setFsChatVisibility(open) {
   fsChatSettings.isFsChatOpen = open;
-  const isFs = !!(document.fullscreenElement || document.webkitFullscreenElement);
+  const isFs = isStageFullscreen();
   applyFsChatFullscreenSettings(isFs);
 }
 
@@ -3144,10 +3216,8 @@ function leaveRoom() {
   if (state.isMicOn) {
     toggleMic();
   }
-  if (document.fullscreenElement || document.webkitFullscreenElement) {
-    if (document.exitFullscreen) document.exitFullscreen().catch(() => {});
-    else if (document.webkitExitFullscreen) document.webkitExitFullscreen();
-  }
+  exitStageFullscreenDimensions();
+  state.isChatVisible = true;
   state.isInRoom = false;
   switchToExplore();
   const dict = I18N[currentLang] || I18N.tr;
@@ -3751,6 +3821,9 @@ function setChatVisibility(visible) {
   if (dom.openChatFloatingBtn) {
     dom.openChatFloatingBtn.classList.toggle('hidden', visible);
   }
+  if (dom.openFsChatFloatingBtn) {
+    dom.openFsChatFloatingBtn.classList.toggle('hidden', visible);
+  }
   if (dom.chatToolbarBtnText) {
     const dictChat = I18N[currentLang] || I18N.tr;
     dom.chatToolbarBtnText.textContent = visible ? (dictChat.chat_tab || 'Sohbet') : (dictChat.show_chat || 'Sohbeti Aç');
@@ -3759,6 +3832,14 @@ function setChatVisibility(visible) {
     dom.toggleChatToolbarBtn.classList.toggle('bg-rose-500/20', visible);
     dom.toggleChatToolbarBtn.classList.toggle('text-rose-300', visible);
     dom.toggleChatToolbarBtn.classList.toggle('border-rose-500/40', visible);
+  }
+
+  // When chat is closed: video expands to fullscreen dimensions!
+  // When chat is opened: video exits fullscreen dimensions and restores normal split layout.
+  if (visible) {
+    exitStageFullscreenDimensions();
+  } else {
+    enterStageFullscreenDimensions();
   }
 }
 
@@ -10064,7 +10145,7 @@ function generateUniqueRoomCode(isPrivate = false) {
     dom.closeChatSidebarBtn.addEventListener('click', () => {
       setChatVisibility(false);
       const dict = I18N[currentLang] || I18N.tr;
-      showToast(dict.toast_chat_closed || 'Sohbet gizlendi. Yazısız izliyorsunuz');
+      showToast(dict.toast_chat_closed || 'Sohbet gizlendi, video tam ekrana geçti');
     });
   }
   if (dom.openChatFloatingBtn) {
@@ -10086,13 +10167,13 @@ function generateUniqueRoomCode(isPrivate = false) {
       e.stopPropagation();
       setFsChatVisibility(false);
       const dict = I18N[currentLang] || I18N.tr;
-      showToast(dict.toast_chat_closed || 'Sohbet gizlendi. Yazısız izliyorsunuz');
+      showToast(dict.toast_chat_closed || 'Sohbet gizlendi, video tam ekrana geçti');
     });
   }
   if (dom.openFsChatFloatingBtn) {
     dom.openFsChatFloatingBtn.addEventListener('click', (e) => {
       e.stopPropagation();
-      setFsChatVisibility(true);
+      setChatVisibility(true);
       const dict = I18N[currentLang] || I18N.tr;
       showToast(dict.toast_chat_opened || 'Canlı Sohbet açıldı');
     });
@@ -10434,7 +10515,7 @@ function resetControlsHideTimer() {
 
   clearTimeout(controlsHideTimeout);
 
-  const isFs = !!(document.fullscreenElement || document.webkitFullscreenElement);
+  const isFs = isStageFullscreen();
   // Auto-hide when in room and in fullscreen or landscape or video actively playing
   if (isFs || state.isPlaying || window.innerWidth > window.innerHeight) {
     controlsHideTimeout = setTimeout(() => {
