@@ -1193,6 +1193,7 @@ nav .wrap {
 .social-icons-row {
   display: flex;
   align-items: center;
+  justify-content: center;
   gap: 16px;
 }
 
@@ -1805,12 +1806,14 @@ nav .wrap {
   text-decoration: underline;
 }
 
-/* Footer Language Select (Interactive Dropdown before İletişim) */
+/* Footer Language Select (Centered under social icons) */
 .footer-lang-container {
-  display: inline-flex;
+  display: flex;
   align-items: center;
+  justify-content: center;
   position: relative;
-  vertical-align: middle;
+  margin-top: 14px;
+  margin-bottom: 12px;
 }
 
 .footer-lang-select {
@@ -1857,6 +1860,15 @@ nav .wrap {
   font-size: 11.5px;
   color: rgba(255, 255, 255, 0.55);
   margin-top: 8px;
+  text-align: center;
+}
+
+.footer-rave .wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
 }
 
 /* ============================================================ */
