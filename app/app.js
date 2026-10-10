@@ -1643,6 +1643,7 @@ const dom = {
   // Stage, Fullscreen & Viewports
   stageContainer: document.getElementById('stageContainer'),
   stageFloatingFullscreenBtn: document.getElementById('stageFloatingFullscreenBtn'),
+  stageExitFullscreenFloatingBtn: document.getElementById('stageExitFullscreenFloatingBtn'),
   stageFullscreenIcon: document.getElementById('stageFullscreenIcon'),
   toggleFullscreenBtn: document.getElementById('toggleFullscreenBtn'),
   dockFullscreenIcon: document.getElementById('dockFullscreenIcon'),
@@ -1744,6 +1745,20 @@ const dom = {
   signUpPasswordConfirmField: document.getElementById('signUpPasswordConfirmField'),
   authPasswordConfirmInput: document.getElementById('authPasswordConfirmInput'),
   authRememberRow: document.getElementById('authRememberRow'),
+
+  // Email OTP Registration Verification
+  authEmailOtpField: document.getElementById('authEmailOtpField'),
+  emailOtpDigitsGroup: document.getElementById('emailOtpDigitsGroup'),
+  emailOtpBackBtn: document.getElementById('emailOtpBackBtn'),
+  emailOtpResendBtn: document.getElementById('emailOtpResendBtn'),
+  emailOtpTimerSpan: document.getElementById('emailOtpTimerSpan'),
+  emailOtpSentNotice: document.getElementById('emailOtpSentNotice'),
+
+  // Room Episodes Modal
+  roomEpisodesModal: document.getElementById('roomEpisodesModal'),
+  closeRoomEpisodesModalBtn: document.getElementById('closeRoomEpisodesModalBtn'),
+  roomEpisodesList: document.getElementById('roomEpisodesList'),
+  episodesOpenPlatformsBtn: document.getElementById('episodesOpenPlatformsBtn'),
 
   // Phone Login & Auth Method Switcher
   authMethodEmailBtn: document.getElementById('authMethodEmailBtn'),
@@ -3013,6 +3028,13 @@ function enterStageFullscreenDimensions() {
   if (!dom.stageContainer) return;
 
   dom.stageContainer.classList.add('is-fullscreen-pseudo');
+  dom.stageContainer.classList.remove('aspect-video');
+  dom.stageContainer.style.setProperty('height', '100vh', 'important');
+  dom.stageContainer.style.setProperty('width', '100vw', 'important');
+  dom.stageContainer.style.setProperty('position', 'fixed', 'important');
+  dom.stageContainer.style.setProperty('inset', '0', 'important');
+  dom.stageContainer.style.setProperty('z-index', '999990', 'important');
+  dom.stageContainer.style.setProperty('aspect-ratio', 'auto', 'important');
   document.body.classList.add('stage-is-fullscreen');
 
   const hasNativeFs = !!(document.fullscreenElement || document.webkitFullscreenElement);
@@ -3033,6 +3055,9 @@ function enterStageFullscreenDimensions() {
   if (dom.openChatFloatingBtn) {
     dom.openChatFloatingBtn.classList.remove('hidden');
   }
+  if (dom.stageExitFullscreenFloatingBtn) {
+    dom.stageExitFullscreenFloatingBtn.classList.remove('hidden');
+  }
 
   updateFullscreenUI();
 }
@@ -3041,6 +3066,13 @@ function exitStageFullscreenDimensions() {
   if (!dom.stageContainer) return;
 
   dom.stageContainer.classList.remove('is-fullscreen-pseudo');
+  dom.stageContainer.classList.add('aspect-video');
+  dom.stageContainer.style.removeProperty('height');
+  dom.stageContainer.style.removeProperty('width');
+  dom.stageContainer.style.removeProperty('position');
+  dom.stageContainer.style.removeProperty('inset');
+  dom.stageContainer.style.removeProperty('z-index');
+  dom.stageContainer.style.removeProperty('aspect-ratio');
   document.body.classList.remove('stage-is-fullscreen');
 
   if (document.fullscreenElement || document.webkitFullscreenElement) {
@@ -3051,6 +3083,10 @@ function exitStageFullscreenDimensions() {
         document.webkitExitFullscreen();
       } catch (e) {}
     }
+  }
+
+  if (dom.stageExitFullscreenFloatingBtn) {
+    dom.stageExitFullscreenFloatingBtn.classList.add('hidden');
   }
 
   if (state.isChatVisible) {
@@ -3093,6 +3129,9 @@ function updateFullscreenUI() {
   
   if (dom.stageFullscreenIcon) dom.stageFullscreenIcon.innerHTML = isFs ? exitSvg : enterSvg;
   if (dom.dockFullscreenIcon) dom.dockFullscreenIcon.innerHTML = isFs ? exitSvg : enterSvg;
+  if (dom.stageExitFullscreenFloatingBtn) {
+    dom.stageExitFullscreenFloatingBtn.classList.toggle('hidden', !isFs);
+  }
 
   // Apply PiP in fullscreen visibility rules
   applyPipFullscreenSettings(isFs);
@@ -3142,7 +3181,11 @@ function applyFsChatFullscreenSettings(isFullscreen) {
 }
 
 function setFsChatVisibility(open) {
-  fsChatSettings.isFsChatOpen = open;
+  fsChatSettings.isFsChatOpen = !!open;
+  if (open) {
+    fsChatSettings.showInFullscreen = true;
+  }
+  state.isChatVisible = !!open;
   const isFs = isStageFullscreen();
   applyFsChatFullscreenSettings(isFs);
 }
@@ -3512,7 +3555,7 @@ function applySleepMode(enabled, isLocal = true) {
   }
 }
 
-// Draggable PIP Functionality (Camera freely draggable & flingable anywhere over video stage)
+// Draggable PIP Functionality (Camera freely draggable & flingable anywhere over video stage with finger)
 function makeDraggable(el) {
   if (!el) return;
   let isDown = false;
@@ -3532,8 +3575,8 @@ function makeDraggable(el) {
     startElX = elRect.left - parentRect.left;
     startElY = elRect.top - parentRect.top;
 
-    el.style.right = 'auto';
-    el.style.bottom = 'auto';
+    el.style.setProperty('right', 'auto', 'important');
+    el.style.setProperty('bottom', 'auto', 'important');
     el.style.left = startElX + 'px';
     el.style.top = startElY + 'px';
 
@@ -3549,7 +3592,7 @@ function makeDraggable(el) {
 
     const now = performance.now();
     moveHistory.push({ x: clientX, y: clientY, t: now });
-    while (moveHistory.length > 1 && now - moveHistory[0].t > 120) {
+    while (moveHistory.length > 1 && now - moveHistory[0].t > 150) {
       moveHistory.shift();
     }
 
@@ -3584,8 +3627,8 @@ function makeDraggable(el) {
     const w = el.offsetWidth;
     const h = el.offsetHeight;
     const pad = 12;
-    const maxW = parentRect.width - w - pad;
-    const maxH = parentRect.height - h - pad;
+    const maxW = Math.max(pad, parentRect.width - w - pad);
+    const maxH = Math.max(pad, parentRect.height - h - pad);
 
     let vx = 0;
     let vy = 0;
@@ -3601,47 +3644,78 @@ function makeDraggable(el) {
     const projectedY = currentTop + vy * 220;
 
     let targetX = pad;
-    if (vx > 0.3) {
-      targetX = maxW;
-    } else if (vx < -0.3) {
-      targetX = pad;
+    // Fling left or right based on velocity or drag release position
+    if (vx > 0.18) {
+      targetX = maxW; // Thrown to the right
+    } else if (vx < -0.18) {
+      targetX = pad;  // Thrown to the left
     } else {
-      targetX = (projectedX + w / 2 > parentRect.width / 2) ? maxW : pad;
+      // Released without strong flick: snap to closest side
+      targetX = (currentLeft + w / 2 > parentRect.width / 2) ? maxW : pad;
     }
 
     let targetY = Math.max(pad, Math.min(projectedY, maxH));
 
-    el.style.transition = 'left 0.42s cubic-bezier(0.18, 0.89, 0.32, 1.28), top 0.42s cubic-bezier(0.18, 0.89, 0.32, 1.28)';
+    el.style.transition = 'left 0.38s cubic-bezier(0.18, 0.89, 0.32, 1.28), top 0.38s cubic-bezier(0.18, 0.89, 0.32, 1.28)';
+    el.style.setProperty('right', 'auto', 'important');
+    el.style.setProperty('bottom', 'auto', 'important');
     el.style.left = targetX + 'px';
     el.style.top = targetY + 'px';
 
     setTimeout(() => {
       if (!isDown) el.style.transition = 'none';
-    }, 450);
+    }, 400);
   }
 
-  el.addEventListener('mousedown', (e) => {
-    if (e.button !== 0) return;
+  // Pointer Events API (supports mouse, touch, Apple Pencil with pointer capture)
+  el.addEventListener('pointerdown', (e) => {
+    if (e.button && e.button !== 0) return;
     if (e.target && e.target.closest('button')) return;
+    if (el.setPointerCapture) {
+      try { el.setPointerCapture(e.pointerId); } catch (_) {}
+    }
     onPointerDown(e.clientX, e.clientY);
   });
 
-  document.addEventListener('mousemove', (e) => {
+  el.addEventListener('pointermove', (e) => {
+    if (!isDown) return;
+    onPointerMove(e.clientX, e.clientY, e);
+  });
+  window.addEventListener('pointermove', (e) => {
     if (!isDown) return;
     onPointerMove(e.clientX, e.clientY, e);
   });
 
-  document.addEventListener('mouseup', () => {
+  el.addEventListener('pointerup', (e) => {
+    if (!isDown) return;
+    if (el.releasePointerCapture) {
+      try { el.releasePointerCapture(e.pointerId); } catch (_) {}
+    }
+    onPointerUp();
+  });
+  window.addEventListener('pointerup', (e) => {
+    if (!isDown) return;
+    if (el.releasePointerCapture) {
+      try { el.releasePointerCapture(e.pointerId); } catch (_) {}
+    }
     onPointerUp();
   });
 
+  el.addEventListener('pointercancel', (e) => {
+    if (el.releasePointerCapture) {
+      try { el.releasePointerCapture(e.pointerId); } catch (_) {}
+    }
+    onPointerUp();
+  });
+
+  // Touch event fallback
   el.addEventListener('touchstart', (e) => {
     if (e.target && e.target.closest('button')) return;
     if (e.touches.length === 1) {
       const touch = e.touches[0];
       onPointerDown(touch.clientX, touch.clientY);
     }
-  }, { passive: true });
+  }, { passive: false });
 
   document.addEventListener('touchmove', (e) => {
     if (!isDown) return;
@@ -6096,8 +6170,13 @@ function loadUserSession() {
     }, 350);
   }
 
+  const customUsername = localStorage.getItem('miruo_custom_username');
+  if (customUsername && user) {
+    user.username = customUsername;
+    user.name = customUsername;
+  }
   state.userId = user.id || state.userId;
-  state.username = user.name || 'Kullanıcı';
+  state.username = (customUsername || (user && (user.username || user.name)) || 'Kullanıcı').replace(/^@/, '');
   state.roomId = (roomFromUrl || user.defaultRoom || 'ODA-77').toUpperCase();
   state.avatarUrl = user.avatarUrl || '';
   state.avatarBg = user.avatarBg || '';
@@ -6274,12 +6353,13 @@ function updateUserUI(user) {
   }
 
   // Update Username Display Everywhere
-  const cleanUsername = '@' + (user.username || user.name || displayName || 'kullanici').replace(/^@/, '');
+  const customUsername = localStorage.getItem('miruo_custom_username') || user.username || user.name || displayName || 'kullanici';
+  const cleanUsername = '@' + customUsername.replace(/^@/, '');
   if (dom.tabMyFriendCodeDisplay) dom.tabMyFriendCodeDisplay.textContent = cleanUsername;
   if (dom.myFriendCodeDisplay) dom.myFriendCodeDisplay.textContent = cleanUsername;
   if (dom.editProfileFullNameInput) dom.editProfileFullNameInput.value = user.fullName || user.name || '';
-  if (dom.editProfileUsernameInput) dom.editProfileUsernameInput.value = (user.username || '').replace(/^@/, '');
-  if (dom.editProfileNameInput) dom.editProfileNameInput.value = (user.username || user.name || displayName || '').replace(/^@/, '');
+  if (dom.editProfileUsernameInput) dom.editProfileUsernameInput.value = (user.username || customUsername).replace(/^@/, '');
+  if (dom.editProfileNameInput) dom.editProfileNameInput.value = (user.username || customUsername).replace(/^@/, '');
   if (dom.profileEmailDisplay) dom.profileEmailDisplay.textContent = user.email || 'user@miruo.app';
   if (dom.currentRoomDisplay) dom.currentRoomDisplay.textContent = state.roomId;
 }
@@ -7334,6 +7414,242 @@ function initEvents() {
     });
   }
 
+  // ==========================================
+  // EMAIL 6-DIGIT OTP VERIFICATION SYSTEM
+  // ==========================================
+  let emailOtpState = {
+    timer: null,
+    secondsLeft: 0,
+    pendingData: null
+  };
+
+  function startEmailOtpTimer() {
+    if (emailOtpState.timer) clearInterval(emailOtpState.timer);
+    emailOtpState.secondsLeft = 120;
+    if (dom.emailOtpResendBtn) dom.emailOtpResendBtn.disabled = true;
+    if (dom.emailOtpTimerSpan) dom.emailOtpTimerSpan.textContent = `(${emailOtpState.secondsLeft}s)`;
+
+    emailOtpState.timer = setInterval(() => {
+      emailOtpState.secondsLeft--;
+      if (emailOtpState.secondsLeft <= 0) {
+        clearInterval(emailOtpState.timer);
+        emailOtpState.timer = null;
+        if (dom.emailOtpResendBtn) dom.emailOtpResendBtn.disabled = false;
+        if (dom.emailOtpTimerSpan) dom.emailOtpTimerSpan.textContent = '';
+      } else {
+        if (dom.emailOtpTimerSpan) dom.emailOtpTimerSpan.textContent = `(${emailOtpState.secondsLeft}s)`;
+      }
+    }, 1000);
+  }
+
+  function handleSendEmailOtp(pendingReg) {
+    emailOtpState.pendingData = pendingReg;
+    const generatedCode = Math.floor(100000 + Math.random() * 900000).toString();
+    emailOtpState.pendingData.code = generatedCode;
+
+    if (dom.authEmailOtpField) dom.authEmailOtpField.classList.remove('hidden');
+    if (dom.authRememberRow) dom.authRememberRow.classList.add('hidden');
+    if (dom.signUpNameField) dom.signUpNameField.classList.add('hidden');
+    if (dom.signUpPasswordConfirmField) dom.signUpPasswordConfirmField.classList.add('hidden');
+    if (dom.signUpAvatarSection) dom.signUpAvatarSection.classList.add('hidden');
+
+    if (dom.emailOtpSentNotice) {
+      dom.emailOtpSentNotice.textContent = `${pendingReg.email} adresinize 6 haneli doğrulama kodu gönderildi.`;
+    }
+
+    startEmailOtpTimer();
+    showAuthAlert(`${pendingReg.email} adresine doğrulama kodu gönderildi! (Doğrulama Kodu: ${generatedCode})`, true);
+
+    if (dom.authSubmitBtn) {
+      dom.authSubmitBtn.disabled = false;
+      dom.authSubmitBtn.textContent = "Doğrula & Hesabı Oluştur";
+    }
+
+    const digitInputs = document.querySelectorAll('.email-digit-box');
+    if (digitInputs.length > 0) {
+      digitInputs.forEach(inp => inp.value = '');
+      setTimeout(() => digitInputs[0].focus(), 150);
+    }
+  }
+
+  async function handleVerifyEmailOtp() {
+    hideAuthAlert();
+    const digitInputs = Array.from(document.querySelectorAll('.email-digit-box'));
+    const enteredCode = digitInputs.map(d => d.value.trim()).join('');
+
+    if (enteredCode.length !== 6) {
+      showAuthAlert("Lütfen 6 haneli doğrulama kodunu eksiksiz girin.");
+      const firstEmpty = digitInputs.find(d => !d.value.trim());
+      if (firstEmpty) firstEmpty.focus();
+      return;
+    }
+
+    const pending = emailOtpState.pendingData;
+    if (!pending) {
+      showAuthAlert("Kayıt bilgileri zaman aşımına uğradı. Lütfen formu tekrar doldurun.");
+      resetEmailOtpUI();
+      return;
+    }
+
+    if (enteredCode !== pending.code) {
+      showAuthAlert("Girdiğiniz 6 haneli kod hatalı! Lütfen kontrol edip tekrar deneyin.");
+      return;
+    }
+
+    if (dom.authSubmitBtn) {
+      dom.authSubmitBtn.disabled = true;
+      dom.authSubmitBtn.textContent = "Hesap Oluşturuluyor...";
+    }
+
+    // Register user in Supabase
+    if (supabaseClient) {
+      try {
+        await supabaseClient.auth.signUp({
+          email: pending.email,
+          password: pending.password,
+          options: {
+            data: {
+              full_name: pending.fullName,
+              username: pending.username,
+              avatar_url: pending.avatarUrl || ''
+            }
+          }
+        });
+      } catch (e) {
+        console.warn('[Supabase email signUp info]:', e);
+      }
+    }
+
+    // Register user in server backend
+    try {
+      await fetch('/api/auth/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          fullName: pending.fullName,
+          username: pending.username,
+          email: pending.email,
+          password: pending.password,
+          avatarUrl: pending.avatarUrl
+        })
+      });
+    } catch (e) {}
+
+    // Save account to local registered users registry
+    try {
+      const regList = JSON.parse(localStorage.getItem('miruo_registered_users') || '[]');
+      const exists = regList.some(u => u.email.toLowerCase() === pending.email.toLowerCase());
+      if (!exists) {
+        regList.push({
+          email: pending.email.toLowerCase(),
+          username: pending.username,
+          fullName: pending.fullName,
+          password: pending.password
+        });
+        localStorage.setItem('miruo_registered_users', JSON.stringify(regList));
+      }
+    } catch (e) {}
+
+    const cleanUsername = pending.username.replace(/^@/, '');
+    const user = {
+      id: 'user_' + Math.random().toString(36).substring(2, 8),
+      name: pending.fullName || cleanUsername,
+      fullName: pending.fullName || cleanUsername,
+      username: cleanUsername,
+      email: pending.email,
+      avatarUrl: pending.avatarUrl || '',
+      avatarBg: selectedSignUpAvatarBg,
+      avatarChar: cleanUsername.charAt(0).toUpperCase()
+    };
+
+    localStorage.setItem('miruo_user', JSON.stringify(user));
+    localStorage.setItem('miruo_custom_username', cleanUsername);
+    state.userId = user.id;
+    state.username = cleanUsername;
+    state.avatarUrl = user.avatarUrl;
+    syncUserProfileToSupabase(user);
+
+    showAuthAlert("Hesabınız başarıyla doğrulandı ve oluşturuldu! Hoş geldiniz.", true);
+    setTimeout(() => {
+      updateUserUI(user);
+      if (dom.authModal) {
+        dom.authModal.classList.add('hidden');
+        unfreezeBackgroundAfterModal();
+      }
+      showToast(`Hoş geldin @${cleanUsername}! Hesabınız doğrulandı`);
+      resetEmailOtpUI();
+    }, 400);
+  }
+
+  function resetEmailOtpUI() {
+    if (dom.authEmailOtpField) dom.authEmailOtpField.classList.add('hidden');
+    if (dom.authRememberRow) dom.authRememberRow.classList.remove('hidden');
+    if (isSignUpMode) {
+      if (dom.signUpNameField) dom.signUpNameField.classList.remove('hidden');
+      if (dom.signUpPasswordConfirmField) dom.signUpPasswordConfirmField.classList.remove('hidden');
+      if (dom.signUpAvatarSection) dom.signUpAvatarSection.classList.remove('hidden');
+      if (dom.authSubmitBtn) dom.authSubmitBtn.textContent = "Kayıt Ol";
+    }
+    if (emailOtpState.timer) clearInterval(emailOtpState.timer);
+    emailOtpState.timer = null;
+    hideAuthAlert();
+  }
+
+  // Email OTP Digit Boxes event bindings
+  const emailDigitBoxes = Array.from(document.querySelectorAll('.email-digit-box'));
+  emailDigitBoxes.forEach((box, idx) => {
+    box.addEventListener('input', (e) => {
+      const val = e.target.value.replace(/[^0-9]/g, '');
+      box.value = val ? val.slice(-1) : '';
+      if (val && idx < emailDigitBoxes.length - 1) {
+        emailDigitBoxes[idx + 1].focus();
+      }
+      const fullCode = emailDigitBoxes.map(b => b.value.trim()).join('');
+      if (fullCode.length === 6) {
+        handleVerifyEmailOtp();
+      }
+    });
+
+    box.addEventListener('keydown', (e) => {
+      if (e.key === 'Backspace' && !box.value && idx > 0) {
+        emailDigitBoxes[idx - 1].focus();
+      } else if (e.key === 'Enter') {
+        handleVerifyEmailOtp();
+      }
+    });
+
+    box.addEventListener('paste', (e) => {
+      e.preventDefault();
+      const pasteData = (e.clipboardData || window.clipboardData).getData('text');
+      const cleanDigits = pasteData.replace(/[^0-9]/g, '').slice(0, 6);
+      if (cleanDigits) {
+        cleanDigits.split('').forEach((d, i) => {
+          if (emailDigitBoxes[i]) emailDigitBoxes[i].value = d;
+        });
+        const nextIdx = Math.min(cleanDigits.length, emailDigitBoxes.length - 1);
+        emailDigitBoxes[nextIdx].focus();
+        if (cleanDigits.length === 6) {
+          handleVerifyEmailOtp();
+        }
+      }
+    });
+  });
+
+  if (dom.emailOtpBackBtn) {
+    dom.emailOtpBackBtn.addEventListener('click', () => {
+      resetEmailOtpUI();
+      if (dom.authContactInput) dom.authContactInput.focus();
+    });
+  }
+
+  if (dom.emailOtpResendBtn) {
+    dom.emailOtpResendBtn.addEventListener('click', () => {
+      if (emailOtpState.secondsLeft <= 0 && emailOtpState.pendingData) {
+        handleSendEmailOtp(emailOtpState.pendingData);
+      }
+    });
+  }
+
   // Submit Sign In / Sign Up with Real Backend & Supabase-compatible Persistent Verification
   if (dom.authSubmitBtn) {
     dom.authSubmitBtn.addEventListener('click', async () => {
@@ -7348,12 +7664,21 @@ function initEvents() {
         }
         return;
       }
+
+      // Email Method
       const contactVal = (dom.authContactInput && dom.authContactInput.value.trim()) || '';
       const passwordVal = (dom.authPasswordInput && dom.authPasswordInput.value.trim()) || '';
       const nameVal = (dom.authNameInput && dom.authNameInput.value.trim()) || '';
 
       if (isSignUpMode) {
-        // Sign Up Validation: Ad, Soyad, E-posta, Şifre, Şifre Tekrar
+        // If email OTP field is active, verify code
+        const isEmailOtpActive = dom.authEmailOtpField && !dom.authEmailOtpField.classList.contains('hidden');
+        if (isEmailOtpActive) {
+          handleVerifyEmailOtp();
+          return;
+        }
+
+        // Validate initial registration form
         const firstNameVal = (dom.authFirstNameInput && dom.authFirstNameInput.value.trim()) || '';
         const lastNameVal = (dom.authLastNameInput && dom.authLastNameInput.value.trim()) || '';
         if (!firstNameVal) {
@@ -7366,8 +7691,8 @@ function initEvents() {
           if (dom.authLastNameInput) dom.authLastNameInput.focus();
           return;
         }
-        const nameVal = `${firstNameVal} ${lastNameVal}`.trim();
-        if (dom.authNameInput) dom.authNameInput.value = nameVal;
+        const fullName = `${firstNameVal} ${lastNameVal}`.trim();
+        if (dom.authNameInput) dom.authNameInput.value = fullName;
         if (!contactVal || !contactVal.includes('@')) {
           showAuthAlert("Lütfen geçerli bir e-posta adresi girin (Örn: adiniz@gmail.com).");
           if (dom.authContactInput) dom.authContactInput.focus();
@@ -7385,97 +7710,21 @@ function initEvents() {
           return;
         }
 
-        const prevBtnText = dom.authSubmitBtn.innerText;
-        dom.authSubmitBtn.innerText = "Kaydediliyor...";
-        dom.authSubmitBtn.disabled = true;
+        const cleanUsername = fullName.trim().replace(/^@/, '');
 
-        const cleanUsername = nameVal.trim().replace(/^@/, '');
-
-        // 1. Supabase Auth Integration: Real Sign Up to Supabase
-        if (supabaseClient) {
-          try {
-            const { data: supaData, error: supaErr } = await supabaseClient.auth.signUp({
-              email: contactVal,
-              password: passwordVal,
-              options: {
-                data: {
-                  full_name: cleanUsername,
-                  username: cleanUsername,
-                  avatar_bg: selectedSignUpAvatarBg,
-                  avatar_url: selectedSignUpAvatarData || ''
-                }
-              }
-            });
-            if (supaErr) {
-              console.warn('[Supabase Sign Up Error]:', supaErr);
-              if (supaErr.message.includes('already registered')) {
-                dom.authSubmitBtn.innerText = prevBtnText;
-                dom.authSubmitBtn.disabled = false;
-                showAuthAlert("Bu e-posta adresi Supabase'de zaten kayıtlı! Lütfen giriş yapın.");
-                return;
-              }
-            }
-          } catch (supaEx) {
-            console.warn('[Supabase Kayıt İstisnası]:', supaEx);
-          }
-        }
-
-        // 2. Server Auth: Unique Username & Email check
-        try {
-          const resp = await fetch('/api/auth/register', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ 
-              fullName: cleanUsername, 
-              username: cleanUsername, 
-              email: contactVal, 
-              password: passwordVal, 
-              avatarUrl: selectedSignUpAvatarData 
-            })
-          });
-          const data = await resp.json();
-          dom.authSubmitBtn.innerText = prevBtnText;
-          dom.authSubmitBtn.disabled = false;
-
-          if (!resp.ok || !data.success) {
-            showAuthAlert(data.message || "Kayıt işlemi başarısız oldu.");
-            return;
-          }
-
-          showAuthAlert("Hesabınız başarıyla oluşturuldu! Hoş geldiniz.", true);
-          const user = {
-            id: data.user.id,
-            name: data.user.fullName || data.user.username || cleanUsername,
-            fullName: data.user.fullName || data.user.username || cleanUsername,
-            username: cleanUsername,
-            email: data.user.email || contactVal,
-            avatarUrl: selectedSignUpAvatarData || data.user.avatarUrl || '',
-            avatarBg: selectedSignUpAvatarBg,
-            avatarChar: cleanUsername.charAt(0).toUpperCase()
-          };
-          localStorage.setItem('miruo_user', JSON.stringify(user));
-          state.userId = user.id;
-          state.username = user.name;
-          state.avatarUrl = user.avatarUrl;
-          syncUserProfileToSupabase(user);
-          setTimeout(() => {
-            updateUserUI(user);
-            if (dom.authModal) {
-              dom.authModal.classList.add('hidden');
-              unfreezeBackgroundAfterModal();
-            }
-            showToast(`Hoş geldin @${cleanUsername}! Kayıt başarılı`);
-          }, 350);
-        } catch (err) {
-          dom.authSubmitBtn.innerText = prevBtnText;
-          dom.authSubmitBtn.disabled = false;
-          showAuthAlert("Sunucu bağlantısı sağlanamadı: " + err.message);
-        }
+        // Dispatch 6-digit email confirmation OTP
+        handleSendEmailOtp({
+          fullName: fullName,
+          username: cleanUsername,
+          email: contactVal,
+          password: passwordVal,
+          avatarUrl: selectedSignUpAvatarData || ''
+        });
 
       } else {
-        // Sign In Validation: E-posta & Şifre
-        if (!contactVal) {
-          showAuthAlert("Lütfen e-posta adresinizi girin.");
+        // SIGN IN VALIDATION: STRICT CHECK - UNREGISTERED USERS ARE BLOCKED
+        if (!contactVal || !contactVal.includes('@')) {
+          showAuthAlert("Lütfen geçerli bir e-posta adresi girin.");
           if (dom.authContactInput) dom.authContactInput.focus();
           return;
         }
@@ -7489,77 +7738,107 @@ function initEvents() {
         dom.authSubmitBtn.innerText = "Giriş yapılıyor...";
         dom.authSubmitBtn.disabled = true;
 
-        // Supabase Auth Sign In check
-        if (supabaseClient && contactVal.includes('@')) {
-          try {
-            await supabaseClient.auth.signInWithPassword({
-              email: contactVal,
-              password: passwordVal
-            });
-          } catch (e) {}
-        }
+        // Check local registered accounts
+        const registeredUsers = JSON.parse(localStorage.getItem('miruo_registered_users') || '[]');
+        const localMatch = registeredUsers.find(u => u.email.toLowerCase() === contactVal.toLowerCase());
 
+        let loginSuccess = false;
+        let userData = null;
+
+        // 1. Check local backend
         try {
           const resp = await fetch('/api/auth/login', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ email: contactVal, emailOrUsername: contactVal, password: passwordVal })
           });
-          const data = await resp.json();
-          dom.authSubmitBtn.innerText = prevBtnText;
-          dom.authSubmitBtn.disabled = false;
+          if (resp.ok) {
+            const data = await resp.json();
+            if (data.success && data.user) {
+              loginSuccess = true;
+              userData = data.user;
+            }
+          }
+        } catch (e) {}
 
-          if (!resp.ok || !data.success) {
-            showAuthAlert(data.message || "Hatalı e-posta veya şifre.");
+        // 2. Check Supabase
+        if (!loginSuccess && supabaseClient) {
+          try {
+            const { data: supaAuth, error: supaErr } = await supabaseClient.auth.signInWithPassword({
+              email: contactVal,
+              password: passwordVal
+            });
+            if (!supaErr && supaAuth && supaAuth.user) {
+              loginSuccess = true;
+              userData = {
+                id: supaAuth.user.id,
+                email: supaAuth.user.email,
+                fullName: supaAuth.user.user_metadata?.full_name || supaAuth.user.user_metadata?.name,
+                username: supaAuth.user.user_metadata?.username,
+                avatarUrl: supaAuth.user.user_metadata?.avatar_url
+              };
+            }
+          } catch (e) {}
+        }
+
+        // 3. Check local registered user record
+        if (!loginSuccess && localMatch) {
+          if (localMatch.password === passwordVal) {
+            loginSuccess = true;
+            userData = {
+              id: localMatch.id || ('user_' + Math.random().toString(36).substring(2, 8)),
+              email: localMatch.email,
+              fullName: localMatch.fullName,
+              username: localMatch.username
+            };
+          } else {
+            dom.authSubmitBtn.innerText = prevBtnText;
+            dom.authSubmitBtn.disabled = false;
+            showAuthAlert("Girdiğiniz şifre hatalı! Lütfen kontrol edin.");
             return;
           }
+        }
 
-          showAuthAlert("Giriş başarılı! Hoş geldin.", true);
-          const user = {
-            id: data.user.id,
-            name: data.user.fullName || data.user.username || contactVal.split('@')[0],
-            fullName: data.user.fullName || data.user.username || contactVal.split('@')[0],
-            username: (data.user.username || data.user.fullName || contactVal.split('@')[0]).replace(/^@/, ''),
-            email: data.user.email || contactVal,
-            avatarUrl: data.user.avatarUrl || '',
-            avatarChar: (data.user.fullName || data.user.username || 'M').charAt(0).toUpperCase()
-          };
-          localStorage.setItem('miruo_user', JSON.stringify(user));
-          state.userId = user.id;
-          state.username = user.name;
-          state.avatarUrl = user.avatarUrl;
-          syncUserProfileToSupabase(user);
-          setTimeout(() => {
-            updateUserUI(user);
-            if (dom.authModal) {
-              dom.authModal.classList.add('hidden');
-              unfreezeBackgroundAfterModal();
-            }
-            showToast(`Giriş yapıldı, hoş geldin ${user.name}!`);
-          }, 350);
-        } catch (err) {
+        // STRICT BLOCK: If account does not exist anywhere, DO NOT log in!
+        if (!loginSuccess) {
           dom.authSubmitBtn.innerText = prevBtnText;
           dom.authSubmitBtn.disabled = false;
-          // Fallback
-          const displayName = contactVal.includes('@') ? contactVal.split('@')[0] : contactVal;
-          const user = {
-            id: 'user_' + Math.random().toString(36).substring(2, 8),
-            name: displayName,
-            fullName: displayName,
-            email: contactVal.includes('@') ? contactVal : `${displayName}@miruo.app`,
-            defaultRoom: 'ODA-' + Math.floor(1000 + Math.random() * 9000),
-            avatarChar: displayName.charAt(0).toUpperCase()
-          };
-          localStorage.setItem('miruo_user', JSON.stringify(user));
-          state.userId = user.id;
-          state.username = user.name;
-          syncUserProfileToSupabase(user);
+          showAuthAlert("Bu e-posta adresiyle kayıtlı bir hesap bulunamadı! Lütfen önce 'Kayıt Ol' sekmesinden hesap oluşturun.");
+          setTimeout(() => {
+            setAuthMode(true);
+            if (dom.authContactInput) dom.authContactInput.value = contactVal;
+          }, 1400);
+          return;
+        }
+
+        // Successfully authenticated
+        const finalUsername = (userData.username || userData.fullName || contactVal.split('@')[0]).replace(/^@/, '');
+        const user = {
+          id: userData.id,
+          name: userData.fullName || userData.username || contactVal.split('@')[0],
+          fullName: userData.fullName || userData.username || contactVal.split('@')[0],
+          username: finalUsername,
+          email: userData.email || contactVal,
+          avatarUrl: userData.avatarUrl || '',
+          avatarChar: (userData.fullName || finalUsername || 'M').charAt(0).toUpperCase()
+        };
+
+        localStorage.setItem('miruo_user', JSON.stringify(user));
+        localStorage.setItem('miruo_custom_username', finalUsername);
+        state.userId = user.id;
+        state.username = finalUsername;
+        state.avatarUrl = user.avatarUrl;
+        syncUserProfileToSupabase(user);
+
+        showAuthAlert("Giriş başarılı! Hoş geldin.", true);
+        setTimeout(() => {
           updateUserUI(user);
           if (dom.authModal) {
             dom.authModal.classList.add('hidden');
             unfreezeBackgroundAfterModal();
           }
-        }
+          showToast(`Giriş yapıldı, hoş geldin @${finalUsername}!`);
+        }, 350);
       }
     });
   }
@@ -7600,11 +7879,12 @@ function initEvents() {
       if (dom.authModal) dom.authModal.classList.add('hidden');
       unfreezeBackgroundAfterModal();
       if (!localStorage.getItem('miruo_user')) {
+        const customUsername = localStorage.getItem('miruo_custom_username');
         const guestUser = {
           id: state.userId || ('user_' + Math.random().toString(36).substring(2, 8)),
-          name: state.username || 'Misafir',
-          username: (state.username || 'misafir').toLowerCase(),
-          avatarChar: (state.username || 'M').charAt(0).toUpperCase()
+          name: customUsername || state.username || 'Misafir',
+          username: (customUsername || state.username || 'misafir').toLowerCase().replace(/^@/, ''),
+          avatarChar: (customUsername || state.username || 'M').charAt(0).toUpperCase()
         };
         localStorage.setItem('miruo_user', JSON.stringify(guestUser));
       }
@@ -8936,6 +9216,7 @@ function initEvents() {
       }
 
       localStorage.setItem('miruo_user', JSON.stringify(savedUser));
+      localStorage.setItem('miruo_custom_username', cleanUsername);
 
       // 1. Sync to backend users.json
       try {
@@ -9162,12 +9443,24 @@ function initEvents() {
     });
   }
 
-  // Fullscreen Handlers (Dock Button, Stage Floating Button, Double-Click, F Key)
-  if (dom.toggleFullscreenBtn) dom.toggleFullscreenBtn.addEventListener('click', toggleFullscreen);
-  if (dom.stageFloatingFullscreenBtn) {
-    dom.stageFloatingFullscreenBtn.addEventListener('click', (e) => {
-      e.stopPropagation();
+  // Fullscreen Handlers (Dock Button, Stage Floating Button, Exit Button, Double-Click, F Key)
+  if (dom.toggleFullscreenBtn) {
+    addInstantTap(dom.toggleFullscreenBtn, (e) => {
+      if (e && e.stopPropagation) e.stopPropagation();
       toggleFullscreen();
+    });
+  }
+  if (dom.stageFloatingFullscreenBtn) {
+    addInstantTap(dom.stageFloatingFullscreenBtn, (e) => {
+      if (e && e.stopPropagation) e.stopPropagation();
+      toggleFullscreen();
+    });
+  }
+  if (dom.stageExitFullscreenFloatingBtn) {
+    addInstantTap(dom.stageExitFullscreenFloatingBtn, (e) => {
+      if (e && e.stopPropagation) e.stopPropagation();
+      exitStageFullscreenDimensions();
+      setChatVisibility(true);
     });
   }
 
@@ -9621,14 +9914,107 @@ function initEvents() {
     });
   }
 
-  // Stage Video / Platform Chooser Modal (All Platforms + Normal YouTube Screen + Direct Link)
+  // ==========================================
+  // ROOM EPISODES & PLAYLIST SELECTOR ("Bölümler")
+  // ==========================================
+  function renderRoomEpisodesList() {
+    if (!dom.roomEpisodesList) return;
+
+    const activeRoom = (typeof DEFAULT_COMMUNITY_ROOMS !== 'undefined')
+      ? DEFAULT_COMMUNITY_ROOMS.find(r => r.id.toUpperCase() === state.roomId)
+      : null;
+
+    let episodes = [];
+    if (activeRoom) {
+      episodes.push({
+        episodeNum: 1,
+        title: activeRoom.mediaTitle || activeRoom.name,
+        videoId: activeRoom.videoId,
+        thumbnail: `https://i.ytimg.com/vi/${activeRoom.videoId}/hqdefault.jpg`,
+        duration: 'Canlı / HD'
+      });
+    }
+
+    if (state.roomQueue && state.roomQueue.length > 0) {
+      state.roomQueue.forEach((qItem) => {
+        if (!episodes.some(ep => ep.videoId === qItem.videoId)) {
+          episodes.push({
+            episodeNum: episodes.length + 1,
+            title: qItem.title || `Bölüm ${episodes.length + 1}`,
+            videoId: qItem.videoId,
+            thumbnail: qItem.thumbnail || `https://i.ytimg.com/vi/${qItem.videoId}/hqdefault.jpg`,
+            duration: qItem.duration || 'Video'
+          });
+        }
+      });
+    }
+
+    if (typeof DEFAULT_COMMUNITY_ROOMS !== 'undefined') {
+      DEFAULT_COMMUNITY_ROOMS.forEach((cr) => {
+        if (!episodes.some(ep => ep.videoId === cr.videoId)) {
+          episodes.push({
+            episodeNum: episodes.length + 1,
+            title: cr.name || cr.mediaTitle,
+            videoId: cr.videoId,
+            thumbnail: `https://i.ytimg.com/vi/${cr.videoId}/hqdefault.jpg`,
+            duration: '4K / HD'
+          });
+        }
+      });
+    }
+
+    dom.roomEpisodesList.innerHTML = episodes.map((ep, idx) => {
+      const isCurrent = idx === 0;
+      return `
+        <div class="episode-item flex items-center justify-between gap-3 p-3 rounded-2xl bg-white/5 hover:bg-white/10 active:scale-[0.98] border ${isCurrent ? 'border-rose-500/60 bg-rose-500/10' : 'border-white/5'} transition-all cursor-pointer group" data-video-id="${ep.videoId}" data-title="${ep.title}">
+          <div class="flex items-center gap-3 min-w-0">
+            <div class="relative w-16 h-11 rounded-xl overflow-hidden bg-black/50 shrink-0 border border-white/10">
+              <img src="${ep.thumbnail}" alt="Thumbnail" class="w-full h-full object-cover group-hover:scale-105 transition-transform" onerror="this.src='logo.png'">
+              ${isCurrent ? '<div class="absolute inset-0 bg-rose-600/40 flex items-center justify-center"><span class="w-2.5 h-2.5 rounded-full bg-white animate-ping"></span></div>' : ''}
+            </div>
+            <div class="min-w-0">
+              <div class="flex items-center gap-1.5">
+                <span class="text-[10px] font-black uppercase tracking-wider ${isCurrent ? 'text-rose-400' : 'text-gray-400'}">${ep.episodeNum}. Bölüm</span>
+                ${isCurrent ? '<span class="px-1.5 py-0.5 rounded-md bg-rose-500 text-white text-[9px] font-bold">Oynatılıyor</span>' : ''}
+              </div>
+              <h4 class="text-xs font-bold text-white truncate group-hover:text-rose-300 transition-colors">${ep.title}</h4>
+              <span class="text-[10px] text-gray-400">${ep.duration}</span>
+            </div>
+          </div>
+          <button type="button" class="w-8 h-8 rounded-xl ${isCurrent ? 'bg-rose-500 text-white' : 'bg-white/10 text-gray-300 group-hover:bg-rose-600 group-hover:text-white'} flex items-center justify-center shrink-0 transition-all shadow-md">
+            <svg class="w-3.5 h-3.5 fill-current ml-0.5" viewBox="0 0 24 24"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+          </button>
+        </div>
+      `;
+    }).join('');
+
+    dom.roomEpisodesList.querySelectorAll('.episode-item').forEach(card => {
+      addInstantTap(card, () => {
+        const videoId = card.getAttribute('data-video-id');
+        const title = card.getAttribute('data-title');
+        if (videoId) {
+          if (typeof playSelectedVideo === 'function') {
+            playSelectedVideo(videoId, title);
+          } else if (state.ytPlayer && state.ytPlayer.loadVideoById) {
+            state.ytPlayer.loadVideoById(videoId);
+          }
+          if (dom.roomEpisodesModal) dom.roomEpisodesModal.classList.add('hidden');
+          showToast(`Bölüm açıldı: ${title || videoId}`);
+        }
+      });
+    });
+  }
+
+  // Stage Video / Platform Chooser Modal (Episodes First, Advanced Hub via footer)
   const openVideoChooser = () => {
-    if (dom.roomPlatformChooserModal) dom.roomPlatformChooserModal.classList.remove('hidden');
-    else if (dom.raveYoutubeModal) dom.raveYoutubeModal.classList.remove('hidden');
+    renderRoomEpisodesList();
+    if (dom.roomEpisodesModal) dom.roomEpisodesModal.classList.remove('hidden');
+    else if (dom.roomPlatformChooserModal) dom.roomPlatformChooserModal.classList.remove('hidden');
   };
   window.openVideoChooser = openVideoChooser;
 
   const closePlatformChooser = () => {
+    if (dom.roomEpisodesModal) dom.roomEpisodesModal.classList.add('hidden');
     if (dom.roomPlatformChooserModal) dom.roomPlatformChooserModal.classList.add('hidden');
     if (dom.raveYoutubeModal) dom.raveYoutubeModal.classList.add('hidden');
   };
@@ -9636,6 +10022,19 @@ function initEvents() {
 
   if (dom.closePlatformChooserModalBtn) {
     addInstantTap(dom.closePlatformChooserModalBtn, closePlatformChooser);
+  }
+
+  if (dom.closeRoomEpisodesModalBtn) {
+    addInstantTap(dom.closeRoomEpisodesModalBtn, () => {
+      if (dom.roomEpisodesModal) dom.roomEpisodesModal.classList.add('hidden');
+    });
+  }
+
+  if (dom.episodesOpenPlatformsBtn) {
+    addInstantTap(dom.episodesOpenPlatformsBtn, () => {
+      if (dom.roomEpisodesModal) dom.roomEpisodesModal.classList.add('hidden');
+      if (dom.roomPlatformChooserModal) dom.roomPlatformChooserModal.classList.remove('hidden');
+    });
   }
 
   // Sole room video selection button (Bottom toolbar)
@@ -10251,38 +10650,41 @@ function generateUniqueRoomCode(isPrivate = false) {
 
   // Classic YouTube Live Format: Chat Sidebar Close & Reopen Handlers
   if (dom.closeChatSidebarBtn) {
-    dom.closeChatSidebarBtn.addEventListener('click', () => {
+    addInstantTap(dom.closeChatSidebarBtn, (e) => {
+      if (e && e.stopPropagation) e.stopPropagation();
       setChatVisibility(false);
       const dict = I18N[currentLang] || I18N.tr;
       showToast(dict.toast_chat_closed || 'Sohbet gizlendi, video tam ekrana geçti');
     });
   }
   if (dom.openChatFloatingBtn) {
-    dom.openChatFloatingBtn.addEventListener('click', () => {
+    addInstantTap(dom.openChatFloatingBtn, (e) => {
+      if (e && e.stopPropagation) e.stopPropagation();
       setChatVisibility(true);
       const dict = I18N[currentLang] || I18N.tr;
       showToast(dict.toast_chat_opened || 'Canlı Sohbet açıldı');
     });
   }
   if (dom.toggleChatToolbarBtn) {
-    dom.toggleChatToolbarBtn.addEventListener('click', () => {
+    addInstantTap(dom.toggleChatToolbarBtn, (e) => {
+      if (e && e.stopPropagation) e.stopPropagation();
       setChatVisibility(!state.isChatVisible);
     });
   }
 
   // Fullscreen Live Chat (Classic YouTube Format)
   if (dom.closeFsChatBtn) {
-    dom.closeFsChatBtn.addEventListener('click', (e) => {
-      e.stopPropagation();
+    addInstantTap(dom.closeFsChatBtn, (e) => {
+      if (e && e.stopPropagation) e.stopPropagation();
       setFsChatVisibility(false);
       const dict = I18N[currentLang] || I18N.tr;
       showToast(dict.toast_chat_closed || 'Sohbet gizlendi, video tam ekrana geçti');
     });
   }
   if (dom.openFsChatFloatingBtn) {
-    dom.openFsChatFloatingBtn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      setChatVisibility(true);
+    addInstantTap(dom.openFsChatFloatingBtn, (e) => {
+      if (e && e.stopPropagation) e.stopPropagation();
+      setFsChatVisibility(true);
       const dict = I18N[currentLang] || I18N.tr;
       showToast(dict.toast_chat_opened || 'Canlı Sohbet açıldı');
     });
