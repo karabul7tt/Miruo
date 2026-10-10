@@ -335,12 +335,12 @@ const I18N = {
     nav_settings: 'Ayarlar',
     nav_friends: 'Arkadaşlar',
     nav_profile: 'Profil',
-    nav_explore: 'Odalar',
+    nav_explore: 'Keşfet',
     hero_title: 'Birlikte İzle. Birlikte Gül. Senkronize.',
     hero_subtitle: 'YouTube, Netflix, Prime ve daha fazlasını arkadaşlarınla sıfır gecikmeyle, sesli ve görüntülü sohbet eşliğinde aynı anda izle.',
     create_room: 'Oda Kur',
     join_room: 'Hızlı Katıl',
-    live_rooms: 'Canlı Odalar',
+    live_rooms: 'Canlı Keşfet',
     search_rooms_ph: 'Oda veya arkadaş ara...',
     no_rooms_found: 'Aramanıza uygun oda bulunamadı.',
     watch_platforms: 'İzleme Platformları',
@@ -5457,6 +5457,15 @@ function renderProfileTab() {
     }
   }
 
+  const centerAvEl = document.getElementById('tabProfileCenterAvatar');
+  if (centerAvEl) {
+    if (savedUser.avatarUrl) {
+      centerAvEl.innerHTML = `<img src="${savedUser.avatarUrl}" class="w-full h-full object-cover">`;
+    } else {
+      centerAvEl.textContent = (fullName.charAt(0) || 'M').toUpperCase();
+    }
+  }
+
   const authProvider = savedUser.provider || (savedUser.phone ? 'phone' : (savedUser.isApple ? 'apple' : (savedUser.isGoogle ? 'google' : 'email')));
   if (providerTitleEl) {
     if (authProvider === 'apple') providerTitleEl.textContent = 'Apple ID ile Giriş Yapıldı';
@@ -5479,21 +5488,31 @@ function renderProfileTab() {
 // ==========================================
 
 const AFFINITY_CATEGORIES = {
-  partner: { key: 'partner', name: 'Partner', icon: '❤️', color: 'rose', glowClass: 'affinity-glow-partner', max: 1 },
-  bro: { key: 'bro', name: 'Kanka', icon: '🤝', color: 'cyan', glowClass: 'affinity-glow-bro', max: 2 },
-  bestie: { key: 'bestie', name: 'Yakın Arkadaş', icon: '✨', color: 'purple', glowClass: 'affinity-glow-bestie', max: 2 },
+  partner: { key: 'partner', name: 'Partner', icon: '👑', color: 'rose', glowClass: 'affinity-glow-partner', max: 1 },
+  bro: { key: 'bro', name: 'Kanka', icon: '🤝', color: 'cyan', glowClass: 'affinity-glow-bro', max: 3 },
+  bestie: { key: 'bestie', name: 'Yakın Arkadaş', icon: '✨', color: 'purple', glowClass: 'affinity-glow-bestie', max: 3 },
   confidant: { key: 'confidant', name: 'Sırdaş', icon: '🗝️', color: 'amber', glowClass: 'affinity-glow-confidant', max: 2 }
 };
 
-// 7 Symmetrical Orbit Slots with coordinates (percentage 0-100 relative to constellation canvas)
+// 9 Symmetrical Orbit Slots with coordinates (matching user's sketch diagram):
+// 1 Top (Partner), 3 Left (Kankalar), 3 Right (Yakın Arkadaşlar), 2 Bottom (Sırdaşlar)
 const AFFINITY_SLOTS = [
-  { key: 'partner_1', category: 'partner', label: 'Partner', icon: '❤️', x: 50, y: 14 },
-  { key: 'bro_1', category: 'bro', label: 'Kanka 1', icon: '🤝', x: 18, y: 30 },
-  { key: 'bro_2', category: 'bro', label: 'Kanka 2', icon: '🤝', x: 18, y: 70 },
-  { key: 'bestie_1', category: 'bestie', label: 'Yakın Arkadaş 1', icon: '✨', x: 82, y: 30 },
-  { key: 'bestie_2', category: 'bestie', label: 'Yakın Arkadaş 2', icon: '✨', x: 82, y: 70 },
-  { key: 'confidant_1', category: 'confidant', label: 'Sırdaş 1', icon: '🗝️', x: 35, y: 86 },
-  { key: 'confidant_2', category: 'confidant', label: 'Sırdaş 2', icon: '🗝️', x: 65, y: 86 }
+  // 1 Top (Partner)
+  { key: 'partner_1', category: 'partner', label: 'Partner', icon: '👑', x: 50, y: 9 },
+
+  // 3 Left (Kanka)
+  { key: 'bro_1', category: 'bro', label: 'Kanka 1', icon: '🤝', x: 15, y: 28 },
+  { key: 'bro_2', category: 'bro', label: 'Kanka 2', icon: '🤝', x: 11, y: 50 },
+  { key: 'bro_3', category: 'bro', label: 'Kanka 3', icon: '🤝', x: 16, y: 72 },
+
+  // 3 Right (Yakın Arkadaş)
+  { key: 'bestie_1', category: 'bestie', label: 'Yakın Arkadaş 1', icon: '✨', x: 85, y: 28 },
+  { key: 'bestie_2', category: 'bestie', label: 'Yakın Arkadaş 2', icon: '✨', x: 89, y: 50 },
+  { key: 'bestie_3', category: 'bestie', label: 'Yakın Arkadaş 3', icon: '✨', x: 84, y: 72 },
+
+  // 2 Bottom (Sırdaş)
+  { key: 'confidant_1', category: 'confidant', label: 'Sırdaş 1', icon: '🗝️', x: 34, y: 89 },
+  { key: 'confidant_2', category: 'confidant', label: 'Sırdaş 2', icon: '🗝️', x: 66, y: 89 }
 ];
 
 // Default Shared Watch Times (in minutes) for friends:
@@ -5543,7 +5562,6 @@ function addSharedWatchMinutes(username, addedMinutes) {
 
 // User's own affinity tree:
 // Starts 100% empty with '+' as requested by the user:
-// "ordan en başta boş olucak içinde + olucak hepsi 3 saat beraber izleme yaptığınız kişiler o artı tusuna basınca görünecek ve oraya eklenebılecek"
 function getUserAffinityTree() {
   const saved = localStorage.getItem('miruo_user_affinity');
   if (saved) {
@@ -5555,8 +5573,10 @@ function getUserAffinityTree() {
     partner_1: null,
     bro_1: null,
     bro_2: null,
+    bro_3: null,
     bestie_1: null,
     bestie_2: null,
+    bestie_3: null,
     confidant_1: null,
     confidant_2: null
   };
@@ -5586,8 +5606,10 @@ function getMockAffinityTreeForUser(targetUsername) {
     partner_1: isPartnerWithMe ? { username: myUsername, name: myName, category: 'partner' } : null,
     bro_1: clean === 'can' ? { username: 'emre', name: 'Emre Yıldız', category: 'bro' } : { username: 'can', name: 'Can Demir', category: 'bro' },
     bro_2: null,
+    bro_3: null,
     bestie_1: clean === 'merve' ? { username: 'selin', name: 'Selin Yılmaz', category: 'bestie' } : { username: 'merve', name: 'Merve Kaya', category: 'bestie' },
     bestie_2: null,
+    bestie_3: null,
     confidant_1: null,
     confidant_2: null
   };
@@ -5641,24 +5663,39 @@ function renderAffinityTree(containerId = 'affinityConstellationContainer', svgI
   `;
   layer.innerHTML = '';
 
-  // Draw Center User Node
+  // Draw Center User Node (BÜYÜK FOTOĞRAF ORTADA - ŞEMA BU)
   const centerDiv = document.createElement('div');
-  centerDiv.className = 'absolute flex flex-col items-center justify-center select-none pointer-events-auto';
+  centerDiv.className = 'absolute flex flex-col items-center justify-center select-none pointer-events-auto z-20';
   centerDiv.style.left = '50%';
   centerDiv.style.top = '50%';
   centerDiv.style.transform = 'translate(-50%, -50%)';
+
   centerDiv.innerHTML = `
-    <div class="relative w-15 h-15 sm:w-16 sm:h-16 flex items-center justify-center">
-      <div class="affinity-center-halo absolute inset-0 rounded-full border-2 border-rose-500/70 shadow-[0_0_22px_rgba(244,63,94,0.45)]"></div>
-      <div class="w-13 h-13 sm:w-14 sm:h-14 rounded-full overflow-hidden bg-gradient-to-tr from-rose-600 via-pink-600 to-[#A64D79] border-2 border-white/80 shadow-2xl flex items-center justify-center text-white font-black text-xl">
+    <div class="relative flex items-center justify-center cursor-pointer group" style="width: 86px; height: 86px;">
+      <div class="affinity-center-halo absolute -inset-2.5 rounded-full border-2 border-rose-500/70 shadow-[0_0_26px_rgba(244,63,94,0.5)]"></div>
+      <div id="${isOwnProfile ? 'tabProfileCenterAvatar' : 'publicCenterAvatar'}" class="w-full h-full rounded-full overflow-hidden bg-gradient-to-tr from-[#A64D79] to-[#6A1E55] border-2 border-rose-400/90 shadow-2xl flex items-center justify-center text-white font-black text-3xl">
         ${centerAvatar ? `<img src="${centerAvatar}" class="w-full h-full object-cover">` : centerInitial}
       </div>
+      ${isOwnProfile ? `
+      <button id="tabProfileCenterAvatarEditBtn" type="button" class="absolute -bottom-1 -right-1 w-7 h-7 rounded-full bg-rose-600 hover:bg-rose-500 border-2 border-[#080711] text-white flex items-center justify-center shadow-lg active:scale-90 transition-transform cursor-pointer" title="Fotoğrafı Değiştir">
+        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 13a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+      </button>` : ''}
     </div>
-    <span class="mt-1 px-2.5 py-0.5 rounded-full bg-black/80 border border-white/20 text-[9px] font-extrabold text-white shadow-lg">
+    <span class="mt-1 px-3 py-0.5 rounded-full bg-black/85 border border-white/20 text-[10px] font-black text-white shadow-lg tracking-wide">
       ${isOwnProfile ? 'Sen' : escapeHtml(centerName.split(' ')[0])}
     </span>
   `;
   layer.appendChild(centerDiv);
+
+  if (isOwnProfile) {
+    const editBtn = centerDiv.querySelector('#tabProfileCenterAvatarEditBtn');
+    if (editBtn) {
+      addInstantTap(editBtn, (e) => {
+        e.stopPropagation();
+        triggerPhotoPicker('avatar');
+      });
+    }
+  }
 
   // Counters for Legend
   let countPartner = 0, countBro = 0, countBestie = 0, countConfidant = 0;
@@ -5763,15 +5800,15 @@ function renderAffinityTree(containerId = 'affinityConstellationContainer', svgI
     layer.appendChild(nodeEl);
   });
 
-  // Update Counters in Legend
+  // Update Counters in Legend (NO HEARTS!)
   if (isOwnProfile) {
     const cp = document.getElementById('affinityCountPartner');
     const cb = document.getElementById('affinityCountBro');
     const cbe = document.getElementById('affinityCountBestie');
     const cc = document.getElementById('affinityCountConfidant');
     if (cp) cp.textContent = `${countPartner}/1`;
-    if (cb) cb.textContent = `${countBro}/2`;
-    if (cbe) cbe.textContent = `${countBestie}/2`;
+    if (cb) cb.textContent = `${countBro}/3`;
+    if (cbe) cbe.textContent = `${countBestie}/3`;
     if (cc) cc.textContent = `${countConfidant}/2`;
   }
 }
