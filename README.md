@@ -1,6 +1,9 @@
-# ✨ MIRUO — Birlikte Gör & İzle (Next-Gen Watch & Listen Platform)
+# ✨ MIRUO — Birlikte Canlı Video ve Dizi İzle (Next-Gen Watch Party Platform)
 
-**Miruo**, Rave'in ve piyasadaki watch-party araçlarının eksikliklerini (erişim engelleri, ses karmaşası, DRM siyah ekran, pil sömürüsü ve reklam senkronizasyonu kaybı) kökten çözmek için tasarlanmış yeni nesil eşzamanlı izleme ve dinleme platformudur.
+🌐 **Resmi Web Sitesi:** [https://www.miruo.com.tr](https://www.miruo.com.tr)  
+📱 **Platformlar:** iOS, Android, macOS, Windows, Web
+
+**Miruo**, sıfır gecikmeli YouTube, sinema ve video izleme partileri (Watch Party) için geliştirilmiş yeni nesil eşzamanlı birlikte izleme platformudur.
 
 > **İsim Hikayesi:** Japonca *"Miru" (見る)* yani "İzlemek/Görmek" ile *"Duo"* (İkili / Ayna Senkronu) kelimelerinin birleşiminden doğdu.
 
