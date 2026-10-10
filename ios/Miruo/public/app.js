@@ -3960,6 +3960,11 @@ function switchToExplore() {
     friendsTab.classList.add('hidden');
     friendsTab.classList.remove('flex');
   }
+  const profileTab = document.getElementById('profileTabSection');
+  if (profileTab) {
+    profileTab.classList.add('hidden');
+    profileTab.classList.remove('flex');
+  }
   if (dom.exploreLobbySection) {
     dom.exploreLobbySection.classList.remove('hidden');
     dom.exploreLobbySection.classList.add('flex');
@@ -4441,11 +4446,12 @@ function handleDjPermissionGranted(toUser) {
   showToast('Tebrikler! Oda yöneticisi size video açma yetkisi verdi.');
 }
 
-// Default seed friends (With unique usernames)
+// Default seed friends (With unique usernames and activity timestamps)
 const DEFAULT_FRIENDS = [
-  { id: 'f1', name: 'Selin Yılmaz', username: 'selin', status: 'online', statusText: 'Çevrimiçi', avatar: 'S' },
-  { id: 'f2', name: 'Can Demir', username: 'can', status: 'in_room', statusText: 'Film Odasında', avatar: 'C' },
-  { id: 'f3', name: 'Merve Kaya', username: 'merve', status: 'idle', statusText: 'Boşta', avatar: 'M' }
+  { id: 'f1', name: 'Selin Yılmaz', username: 'selin', status: 'online', statusText: 'Çevrimiçi', avatar: 'S', lastActive: Date.now() - 30000 },
+  { id: 'f2', name: 'Can Demir', username: 'can', status: 'in_room', statusText: 'Film Odasında', avatar: 'C', lastActive: Date.now() - 120000 },
+  { id: 'f3', name: 'Merve Kaya', username: 'merve', status: 'idle', statusText: '15 dk önce aktifti', avatar: 'M', lastActive: Date.now() - 900000 },
+  { id: 'f4', name: 'Emre Yıldız', username: 'emre', status: 'offline', statusText: '2 saat önce aktifti', avatar: 'E', lastActive: Date.now() - 7200000 }
 ];
 
 function loadFriends() {
@@ -4460,6 +4466,14 @@ function loadFriends() {
     state.friends = DEFAULT_FRIENDS;
     localStorage.setItem('miruo_friends', JSON.stringify(state.friends));
   }
+
+  // Ensure no old cached emoji remnants exist
+  state.friends.forEach(f => {
+    if (f.name) f.name = f.name.replace(/[^\w\sçÇğĞıİöÖşŞüÜ-]/g, '').trim();
+    if (f.username) f.username = f.username.replace(/[^\w-]/g, '').trim();
+    if (f.statusText) f.statusText = f.statusText.replace(/[^\w\sçÇğĞıİöÖşŞüÜ-]/g, '').trim();
+  });
+  localStorage.setItem('miruo_friends', JSON.stringify(state.friends));
 
   // Display user's unique username (@kullanici)
   const currentUsername = '@' + (state.username || 'kullanici').replace(/^@/, '');
@@ -4502,15 +4516,19 @@ function renderFriendsList(filterText = '') {
     else if (fr.status === 'idle') friendStatusLabel = dict.status_idle || 'Idle';
     else if (fr.status === 'offline') friendStatusLabel = dict.status_offline || 'Offline';
 
+    const cleanName = (fr.name || '').replace(/[^\w\sçÇğĞıİöÖşŞüÜ-]/g, '').trim() || 'Kullanici';
+    const cleanUsername = (fr.username || fr.name || '').replace(/^@/, '').replace(/[^\w-]/g, '').trim() || 'kullanici';
+    const cleanAvatarChar = (fr.avatar || cleanName.charAt(0) || 'A').toUpperCase();
+
     item.innerHTML = `
       <div class="flex items-center gap-2.5">
         <div class="w-8 h-8 rounded-full bg-gradient-to-tr from-rose-500 to-indigo-600 flex items-center justify-center text-xs font-bold text-white shadow-sm">
-          ${fr.avatar || fr.name.charAt(0)}
+          ${cleanAvatarChar}
         </div>
         <div>
           <div class="flex items-center gap-1.5">
-            <span class="text-xs font-semibold text-white block">${fr.name}</span>
-            <span class="text-[10px] font-bold text-rose-300">@${(fr.username || fr.name).replace(/^@/, '')}</span>
+            <span class="text-xs font-semibold text-white block">${cleanName}</span>
+            <span class="text-[10px] font-bold text-rose-300">@${cleanUsername}</span>
           </div>
           <span class="text-[10px] text-gray-400 flex items-center gap-1">
             <span class="w-1.5 h-1.5 rounded-full ${badgeColor}"></span>
@@ -4520,7 +4538,7 @@ function renderFriendsList(filterText = '') {
       </div>
 
       <div class="flex items-center gap-1.5">
-        <button class="invite-friend-btn px-2.5 py-1 bg-rose-500/15 hover:bg-rose-500/25 border border-rose-500/30 text-rose-300 rounded-lg text-[11px] font-semibold transition-all flex items-center gap-1 cursor-pointer" data-name="${fr.name}">
+        <button class="invite-friend-btn px-2.5 py-1 bg-rose-500/15 hover:bg-rose-500/25 border border-rose-500/30 text-rose-300 rounded-lg text-[11px] font-semibold transition-all flex items-center gap-1 cursor-pointer" data-name="${cleanName}">
           <svg class="w-3.5 h-3.5 text-rose-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 3h6v6m0-6L10 14"/></svg>
           <span>${dict.invite_friend || 'Invite'}</span>
         </button>
@@ -4530,7 +4548,7 @@ function renderFriendsList(filterText = '') {
     addInstantTap(item.querySelector('.invite-friend-btn'), () => {
       const inviteUrl = `${window.location.origin}/?room=${encodeURIComponent(state.roomId)}`;
       navigator.clipboard.writeText(inviteUrl).then(() => {
-        showToast(`${fr.name} için davet linki kopyalandı!`);
+        showToast(`${cleanName} için davet linki kopyalandı!`);
       });
     });
 
@@ -4606,11 +4624,23 @@ function renderFriendsTab(filterText = '') {
   if (myCodeModal) myCodeModal.textContent = currentUsername;
 
   const query = (filterText || '').toLowerCase().trim().replace(/^@/, '');
-  const listToRender = query 
+  let listToRender = query 
     ? state.friends.filter(f => (f.name && f.name.toLowerCase().includes(query)) || (f.username && f.username.toLowerCase().includes(query)))
-    : state.friends;
+    : [...state.friends];
 
-  const onlineFriends = state.friends.filter(f => f.status === 'online' || f.status === 'in_room');
+  // User requested: Active/online friends at top, sorted by last active
+  const isOnlineFn = f => f.status === 'online' || f.status === 'in_room';
+  listToRender.sort((a, b) => {
+    const aOn = isOnlineFn(a);
+    const bOn = isOnlineFn(b);
+    if (aOn && !bOn) return -1;
+    if (!aOn && bOn) return 1;
+    const timeA = a.lastActive || 0;
+    const timeB = b.lastActive || 0;
+    return timeB - timeA;
+  });
+
+  const onlineFriends = state.friends.filter(isOnlineFn);
   const onlineSuffix = dict.online_count_suffix || (currentLang === 'tr' ? 'Çevrimiçi' : 'Online');
   if (onlineCountDisplay) onlineCountDisplay.textContent = `• ${onlineFriends.length} ${onlineSuffix}`;
 
@@ -4639,19 +4669,23 @@ function renderFriendsTab(filterText = '') {
       friendStatusLabel = dict.status_online || 'Online';
     }
 
+    const cleanName = (fr.name || '').replace(/[^\w\sçÇğĞıİöÖşŞüÜ-]/g, '').trim() || 'Kullanici';
+    const cleanUsername = (fr.username || fr.name || '').replace(/^@/, '').replace(/[^\w-]/g, '').trim() || 'kullanici';
+    const cleanAvatarChar = (fr.avatar || cleanName.charAt(0) || 'A').toUpperCase();
+
     card.innerHTML = `
       <div class="flex items-center gap-3 min-w-0">
         <div class="relative shrink-0">
           ${fr.avatarUrl ? 
             `<img src="${fr.avatarUrl}" class="w-10 h-10 rounded-full object-cover border border-white/20" alt="Avatar">` :
-            `<div class="w-10 h-10 rounded-full bg-gradient-to-tr from-rose-500 to-indigo-600 flex items-center justify-center font-bold text-white text-xs shadow-sm">${(fr.avatar || fr.name.charAt(0) || 'A').toUpperCase()}</div>`
+            `<div class="w-10 h-10 rounded-full bg-gradient-to-tr from-rose-500 to-indigo-600 flex items-center justify-center font-bold text-white text-xs shadow-sm">${cleanAvatarChar}</div>`
           }
           <span class="absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full border-2 border-[#0C0E17] ${isOnline ? 'bg-emerald-400' : 'bg-gray-500'}"></span>
         </div>
         <div class="truncate">
           <div class="flex items-center gap-2">
-            <span class="text-xs font-bold text-white truncate">${fr.name}</span>
-            <span class="text-[10px] font-bold text-rose-300">@${(fr.username || fr.name).replace(/^@/, '')}</span>
+            <span class="text-xs font-bold text-white truncate">${cleanName}</span>
+            <span class="text-[10px] font-bold text-rose-300">@${cleanUsername}</span>
           </div>
           <span class="text-[10px] ${isOnline ? 'text-emerald-400' : 'text-gray-500'} block">
             ${friendStatusLabel}
@@ -4660,7 +4694,7 @@ function renderFriendsTab(filterText = '') {
       </div>
       
       <div class="flex items-center gap-1.5 shrink-0">
-        <button class="invite-friend-tab-btn px-3 py-1.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-xs font-medium text-gray-200 hover:text-white transition-all cursor-pointer flex items-center gap-1" data-name="${fr.name}">
+        <button class="invite-friend-tab-btn px-3 py-1.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-xs font-medium text-gray-200 hover:text-white transition-all cursor-pointer flex items-center gap-1" data-name="${cleanName}">
           <svg class="w-3.5 h-3.5 text-rose-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 3h6v6m0-6L10 14"/></svg>
           <span>${dict.invite_btn_short || 'Invite'}</span>
         </button>
@@ -4670,7 +4704,7 @@ function renderFriendsTab(filterText = '') {
     addInstantTap(card.querySelector('.invite-friend-tab-btn'), () => {
       const inviteUrl = `${window.location.origin}/?room=${encodeURIComponent(state.roomId)}`;
       navigator.clipboard.writeText(inviteUrl).then(() => {
-        showToast(`${fr.name} için davet linki kopyalandı!`);
+        showToast(`${cleanName} için davet linki kopyalandı!`);
       });
     });
 
@@ -4692,6 +4726,11 @@ function switchToFriendsTab() {
     dom.roomWorkspaceSection.classList.add('hidden');
     dom.roomWorkspaceSection.classList.remove('flex');
   }
+  const profileTab = document.getElementById('profileTabSection');
+  if (profileTab) {
+    profileTab.classList.add('hidden');
+    profileTab.classList.remove('flex');
+  }
   
   const friendsTab = document.getElementById('friendsTabSection');
   if (friendsTab) {
@@ -4705,9 +4744,87 @@ function switchToFriendsTab() {
   if (dom.mobileNavFriendsBtn) {
     dom.mobileNavFriendsBtn.className = 'flex flex-col items-center gap-1 text-white font-bold py-1 px-3 transition-all cursor-pointer';
   }
+  if (dom.mobileNavProfileBtn) {
+    dom.mobileNavProfileBtn.className = 'flex flex-col items-center gap-1 text-gray-400 hover:text-white py-1 px-3 transition-all cursor-pointer';
+  }
 
   loadFriends();
   renderFriendsTab();
+}
+
+function switchToProfileTab() {
+  if (dom.exploreLobbySection) {
+    dom.exploreLobbySection.classList.add('hidden');
+    dom.exploreLobbySection.classList.remove('flex');
+  }
+  if (dom.providerPickerSection) {
+    dom.providerPickerSection.classList.add('hidden');
+    dom.providerPickerSection.classList.remove('flex');
+  }
+  if (dom.roomWorkspaceSection) {
+    dom.roomWorkspaceSection.classList.add('hidden');
+    dom.roomWorkspaceSection.classList.remove('flex');
+  }
+  const friendsTab = document.getElementById('friendsTabSection');
+  if (friendsTab) {
+    friendsTab.classList.add('hidden');
+    friendsTab.classList.remove('flex');
+  }
+  
+  const profileTab = document.getElementById('profileTabSection');
+  if (profileTab) {
+    profileTab.classList.remove('hidden');
+    profileTab.classList.add('flex');
+  }
+
+  if (dom.mobileNavExploreBtn) {
+    dom.mobileNavExploreBtn.className = 'flex flex-col items-center gap-1 text-gray-400 hover:text-white py-1 px-3 transition-all cursor-pointer';
+  }
+  if (dom.mobileNavFriendsBtn) {
+    dom.mobileNavFriendsBtn.className = 'flex flex-col items-center gap-1 text-gray-400 hover:text-white py-1 px-3 transition-all cursor-pointer';
+  }
+  if (dom.mobileNavProfileBtn) {
+    dom.mobileNavProfileBtn.className = 'flex flex-col items-center gap-1 text-white font-bold py-1 px-3 transition-all cursor-pointer';
+  }
+
+  renderProfileTab();
+}
+
+function renderProfileTab() {
+  const savedUser = JSON.parse(localStorage.getItem('miruo_user') || '{}');
+  const fullName = savedUser.fullName || savedUser.name || state.username || 'Mehmet Karabulut';
+  const cleanUsername = '@' + (savedUser.username || state.username || 'mehmetkarabul7tt').replace(/^@/, '');
+
+  const nameEl = document.getElementById('tabProfileFullName');
+  const userEl = document.getElementById('tabProfileUsername');
+  const avatarEl = document.getElementById('tabProfileAvatar');
+  const friendsCountEl = document.getElementById('tabProfileFriendsCount');
+  const providerTitleEl = document.getElementById('tabProfileProviderTitle');
+  const emailSubEl = document.getElementById('tabProfileEmailSub');
+
+  if (nameEl) nameEl.textContent = fullName;
+  if (userEl) userEl.textContent = cleanUsername;
+  if (friendsCountEl) friendsCountEl.textContent = (state.friends || []).length;
+
+  if (avatarEl) {
+    if (savedUser.avatarUrl) {
+      avatarEl.innerHTML = `<img src="${savedUser.avatarUrl}" class="w-full h-full object-cover">`;
+    } else {
+      avatarEl.textContent = (fullName.charAt(0) || 'M').toUpperCase();
+      avatarEl.className = `w-24 h-24 rounded-full bg-gradient-to-tr ${savedUser.avatarBg || 'from-indigo-500 to-purple-600'} flex items-center justify-center text-3xl font-black text-white shadow-2xl overflow-hidden border-2 border-indigo-400/40 ring-4 ring-white/5`;
+    }
+  }
+
+  const authProvider = savedUser.provider || (savedUser.phone ? 'phone' : (savedUser.isApple ? 'apple' : (savedUser.isGoogle ? 'google' : 'email')));
+  if (providerTitleEl) {
+    if (authProvider === 'apple') providerTitleEl.textContent = 'Apple ID ile Giriş Yapıldı';
+    else if (authProvider === 'google') providerTitleEl.textContent = 'Google ile Giriş Yapıldı';
+    else if (authProvider === 'phone') providerTitleEl.textContent = 'Telefon Numarası ile Giriş';
+    else providerTitleEl.textContent = 'E-posta ile Kayıt Olundu';
+  }
+  if (emailSubEl) {
+    emailSubEl.textContent = savedUser.email || savedUser.phone || `${cleanUsername.replace(/^@/, '').toLowerCase()}@miruo.app`;
+  }
 }
 
 
@@ -5492,6 +5609,12 @@ function loadUserSession() {
     }, 600);
   } else if (urlParams.get('modal') === 'friends' || urlParams.get('view') === 'friends') {
     switchToFriendsTab();
+  } else if (urlParams.get('view') === 'profile' || urlParams.get('tab') === 'profile') {
+    switchToProfileTab();
+  } else if (urlParams.get('modal') === 'add_friend') {
+    switchToFriendsTab();
+    const addModal = document.getElementById('addFriendModal');
+    if (addModal) addModal.classList.remove('hidden');
   } else if (urlParams.get('modal') === 'login') {
     if (dom.authModal) dom.authModal.classList.remove('hidden');
     setAuthMode(false);
@@ -8914,9 +9037,8 @@ function initEvents() {
   }
 
   if (dom.mobileNavProfileBtn) {
-    addInstantTap(dom.mobileNavProfileBtn, (e) => {
-      e.stopPropagation();
-      openProfileEditModal();
+    addInstantTap(dom.mobileNavProfileBtn, () => {
+      switchToProfileTab();
     });
   }
 
