@@ -165,13 +165,16 @@
     </div> <!-- End 1.2 FRIENDS FULL TAB SECTION -->
 
     <!-- 1.3 DEDICATED PROFILE FULL TAB SECTION -->
-    <div id="profileTabSection" class="hidden flex-col gap-4 w-full" style="padding-bottom: max(88px, calc(env(safe-area-inset-bottom) + 72px));">
+    <div id="profileTabSection" class="hidden flex-col gap-5 w-full relative min-h-[82vh] overflow-hidden rounded-3xl" style="padding-bottom: max(88px, calc(env(safe-area-inset-bottom) + 72px));">
+      <!-- Celestial Starfield Canvas (Sliding shooting stars matching Miruo official website) -->
+      <canvas id="profileStarCanvas" class="pointer-events-none absolute inset-0 w-full h-full z-0"></canvas>
+
       <!-- Top Bar: App Title on left, Settings Gear on right -->
-      <div class="flex items-center justify-between pt-1 pb-1">
+      <div class="relative z-10 flex items-center justify-between pt-1 pb-1">
         <div class="flex items-center gap-1.5">
-          <span class="text-2xl font-black text-white tracking-tight">miruo<span class="text-indigo-400">.</span></span>
+          <span class="text-2xl font-black text-white tracking-tight">miruo<span class="text-rose-400">.</span></span>
         </div>
-        <button id="openSettingsFromProfileBtn" type="button" class="w-10 h-10 rounded-2xl bg-white/5 border border-white/10 hover:bg-white/10 active:scale-95 text-gray-200 hover:text-white flex items-center justify-center transition-all cursor-pointer shadow-sm" title="Ayarlar">
+        <button id="openSettingsFromProfileBtn" type="button" class="w-10 h-10 rounded-2xl bg-white/5 border border-white/10 hover:bg-rose-500/15 hover:border-rose-500/30 active:scale-95 text-gray-200 hover:text-rose-300 flex items-center justify-center transition-all cursor-pointer shadow-sm" title="Ayarlar">
           <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <circle cx="12" cy="12" r="3"/>
             <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/>
@@ -180,40 +183,24 @@
       </div>
 
       <!-- Main Profile Card (Centered Avatar, Display Name, Username & Edit Button) -->
-      <div class="bg-[#0C0E17] border border-white/10 rounded-3xl p-6 flex flex-col items-center justify-center text-center shadow-xl space-y-4">
+      <div class="relative z-10 bg-[#0C0E17]/85 backdrop-blur-xl border border-white/10 rounded-3xl p-7 flex flex-col items-center justify-center text-center shadow-2xl space-y-4">
         <div class="relative">
-          <div id="tabProfileAvatar" class="w-24 h-24 rounded-full bg-gradient-to-tr from-indigo-500 to-purple-600 flex items-center justify-center text-3xl font-black text-white shadow-2xl overflow-hidden border-2 border-indigo-400/40 ring-4 ring-white/5">
+          <div id="tabProfileAvatar" class="w-24 h-24 rounded-full bg-gradient-to-tr from-[#A64D79] to-[#6A1E55] flex items-center justify-center text-3xl font-black text-white shadow-2xl overflow-hidden border-2 border-rose-400/40 ring-4 ring-rose-500/10">
             M
           </div>
-          <button id="tabProfileAvatarEditBtn" type="button" class="absolute bottom-0 right-0 w-8 h-8 rounded-full bg-indigo-600 border-2 border-[#0C0E17] text-white flex items-center justify-center shadow-lg active:scale-90 transition-transform cursor-pointer" title="Fotoğrafı Değiştir">
+          <button id="tabProfileAvatarEditBtn" type="button" class="absolute bottom-0 right-0 w-8 h-8 rounded-full bg-rose-600 hover:bg-rose-500 border-2 border-[#0C0E17] text-white flex items-center justify-center shadow-lg active:scale-90 transition-transform cursor-pointer" title="Fotoğrafı Değiştir">
             <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 13a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
           </button>
         </div>
         <div>
           <h2 id="tabProfileFullName" class="text-xl font-extrabold text-white tracking-tight">Mehmet Karabulut</h2>
-          <p id="tabProfileUsername" class="text-xs font-semibold text-indigo-300/80 mt-0.5">@mehmetkarabul7tt</p>
+          <p id="tabProfileUsername" class="text-xs font-semibold text-rose-300 mt-0.5">@mehmetkarabul7tt</p>
         </div>
 
-        <!-- Primary Action Button: Large [ Düzenle ] button -->
-        <button id="tabProfileEditTriggerBtn" type="button" class="w-full max-w-xs py-3 bg-[#6C5CE7] hover:bg-[#5b4bc4] active:scale-98 text-white rounded-2xl text-xs font-extrabold transition-all shadow-lg shadow-indigo-600/25 flex items-center justify-center gap-2 cursor-pointer" data-i18n="edit_profile">
+        <!-- Primary Action Button: Large [ Düzenle ] button with Miruo Brand Rose Gradient -->
+        <button id="tabProfileEditTriggerBtn" type="button" class="w-full max-w-xs py-3 bg-gradient-to-r from-rose-600 via-pink-600 to-[#A64D79] hover:opacity-95 active:scale-98 text-white rounded-2xl text-xs font-extrabold transition-all shadow-lg shadow-rose-600/30 flex items-center justify-center gap-2 cursor-pointer" data-i18n="edit_profile">
           <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
           <span data-i18n="edit_profile">Düzenle</span>
-        </button>
-      </div>
-
-      <!-- Quick Preferences / Settings Row -->
-      <div class="space-y-2">
-        <button id="tabProfileOpenSettingsRowBtn" type="button" class="w-full p-4 rounded-2xl bg-[#0C0E17] border border-white/10 hover:border-white/20 flex items-center justify-between text-left transition-all cursor-pointer">
-          <div class="flex items-center gap-3">
-            <div class="w-9 h-9 rounded-xl bg-white/5 flex items-center justify-center text-gray-300">
-              <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
-            </div>
-            <div>
-              <span class="text-xs font-bold text-white block" data-i18n="settings_title">Ayarlar</span>
-              <span class="text-[10px] text-gray-400 block" data-i18n="settings_subtitle">Profil, Güvenlik & Tercihler</span>
-            </div>
-          </div>
-          <svg class="w-4 h-4 text-gray-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>
         </button>
       </div>
 
@@ -225,9 +212,12 @@
         <div id="tabProfileAccountBanner"></div>
         <span id="tabProfileProviderTitle"></span>
         <span id="tabProfileEmailSub"></span>
+        <span id="tabProfileProviderTitle"></span>
+        <span id="tabProfileEmailSub"></span>
         <button id="profileSegmentDetailsBtn" type="button"></button>
         <button id="profileSegmentFriendsBtn" type="button"></button>
         <button id="tabProfileSignOutBtn" type="button"></button>
+        <button id="tabProfileOpenSettingsRowBtn" type="button"></button>
       </div>
     </div> <!-- End 1.3 PROFILE FULL TAB SECTION -->
 
@@ -1579,7 +1569,93 @@
     </div>
   </div>
 
-  <!-- Fullscreen Unified Settings & Profile Hub Modal -->
+  <!-- Dedicated Profile Edit Modal (Opened exclusively via [Düzenle] button on Profile Screen) -->
+  <div id="dedicatedProfileEditModal" class="fixed inset-0 bg-[#0B0910] text-white z-[99999] hidden flex-col w-screen h-screen overflow-hidden" style="background-color: #0B0910 !important; position: fixed !important; top: 0 !important; left: 0 !important; right: 0 !important; bottom: 0 !important; width: 100vw !important; height: 100vh !important; z-index: 99999 !important; overscroll-behavior: none !important;">
+    <header class="w-full bg-[#0B0910] border-b border-white/10 shrink-0 z-30" style="background-color: #0B0910 !important; padding-top: max(16px, env(safe-area-inset-top));">
+      <div class="max-w-lg mx-auto px-4 sm:px-6 py-3.5 flex items-center justify-between">
+        <div class="flex items-center gap-2.5">
+          <div class="w-9 h-9 rounded-xl bg-gradient-to-tr from-[#A64D79] to-[#6A1E55] p-0.5 flex items-center justify-center shadow-md">
+            <svg class="w-4 h-4 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+          </div>
+          <div>
+            <h3 class="font-bold text-base text-white" data-i18n="edit_profile">Profili Düzenle</h3>
+            <span class="text-[11px] text-gray-400" data-i18n="edit_profile_sub">Profil fotoğrafı, ad ve kullanıcı adı</span>
+          </div>
+        </div>
+        <button id="closeDedicatedProfileEditBtn" type="button" class="close-modal-btn w-9 h-9 rounded-full bg-white/10 hover:bg-white/20 active:scale-95 text-gray-200 hover:text-white flex items-center justify-center text-sm font-bold transition-all cursor-pointer select-none">✕</button>
+      </div>
+    </header>
+
+    <main class="flex-1 w-full overflow-y-auto no-scrollbar" style="-webkit-overflow-scrolling: touch; padding-bottom: max(32px, env(safe-area-inset-bottom));">
+      <div class="max-w-lg mx-auto px-4 sm:px-6 py-5 space-y-4">
+        
+        <div class="bg-white/5 rounded-3xl border border-white/10 p-5 space-y-4 shadow-xl">
+          <!-- Avatar Preview & Actions -->
+          <div class="flex flex-col items-center gap-3">
+            <label for="avatarFileInput" class="relative group cursor-pointer block" id="avatarPreviewClickArea" title="Fotoğraf Yükle">
+              <div id="editAvatarPreview" class="w-24 h-24 rounded-full bg-gradient-to-tr from-[#A64D79] to-[#6A1E55] flex items-center justify-center text-3xl font-black text-white shadow-2xl overflow-hidden border-2 border-rose-400/40 ring-4 ring-rose-500/10 transition-all">
+                M
+              </div>
+              <div id="triggerAvatarUploadBtn" class="absolute inset-0 bg-black/60 rounded-full flex flex-col items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity text-white text-[11px] font-semibold gap-1 cursor-pointer">
+                <svg class="w-5 h-5 text-rose-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
+                <span data-i18n="select_photo">Fotoğraf Seç</span>
+              </div>
+            </label>
+            <input type="file" id="avatarFileInput" accept="image/*" class="sr-only" style="position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); border: 0;">
+
+            <!-- Upload / Remove Action Buttons -->
+            <div class="flex items-center gap-2">
+              <label for="avatarFileInput" id="triggerAvatarUploadBtn2" class="px-3.5 py-1.5 rounded-xl bg-white/10 hover:bg-white/20 text-white text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer">
+                <svg class="w-3.5 h-3.5 text-rose-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                <span data-i18n="upload_photo">Fotoğraf Yükle</span>
+              </label>
+              <button type="button" id="removeAvatarPhotoBtn" class="px-3 py-1.5 rounded-xl bg-red-500/10 hover:bg-red-500/20 text-red-300 text-xs font-semibold transition-all cursor-pointer" title="Fotoğrafı Kaldır">
+                ✕ <span data-i18n="remove_photo">Kaldır</span>
+              </button>
+            </div>
+            
+            <!-- Preset Avatar Options -->
+            <div class="w-full pt-1">
+              <span class="text-[10px] text-gray-400 block text-center mb-2" data-i18n="preset_avatars">veya renkli avatar seç:</span>
+              <div class="flex items-center justify-center gap-2.5" id="presetAvatarsContainer">
+                <button type="button" class="preset-avatar-btn w-9 h-9 rounded-full bg-gradient-to-tr from-rose-500 to-pink-600 border border-white/20 hover:scale-110 transition-transform text-xs font-bold text-white shadow-sm" data-bg="from-rose-500 to-pink-600">M</button>
+                <button type="button" class="preset-avatar-btn w-9 h-9 rounded-full bg-gradient-to-tr from-[#A64D79] to-[#6A1E55] border border-white/20 hover:scale-110 transition-transform text-xs font-bold text-white shadow-sm" data-bg="from-[#A64D79] to-[#6A1E55]">R</button>
+                <button type="button" class="preset-avatar-btn w-9 h-9 rounded-full bg-gradient-to-tr from-[#9B287B] to-[#4D194D] border border-white/20 hover:scale-110 transition-transform text-xs font-bold text-white shadow-sm" data-bg="from-[#9B287B] to-[#4D194D]">U</button>
+                <button type="button" class="preset-avatar-btn w-9 h-9 rounded-full bg-gradient-to-tr from-rose-600 to-amber-600 border border-white/20 hover:scale-110 transition-transform text-xs font-bold text-white shadow-sm" data-bg="from-rose-600 to-amber-600">O</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Ad Soyad & Kullanıcı Adı (İkisi Ayrı Alanlar) -->
+          <div class="space-y-3 pt-3 border-t border-white/5">
+            <div class="space-y-1">
+              <label class="block text-xs font-semibold text-gray-300" data-i18n="full_name">Ad Soyad</label>
+              <input type="text" id="editProfileFullNameInput" placeholder="Örn: Mehmet Karabulut" data-i18n-placeholder="full_name_ph" class="w-full bg-black/40 border border-white/10 rounded-xl px-3.5 py-2.5 text-xs text-white placeholder-gray-500 focus:outline-none focus:border-rose-500 font-medium">
+            </div>
+
+            <div class="space-y-1">
+              <label class="block text-xs font-semibold text-gray-300" data-i18n="username">Kullanıcı Adı</label>
+              <div class="flex items-center bg-black/40 border border-white/10 rounded-xl px-3 py-2.5 focus-within:border-rose-500 transition-colors">
+                <span class="text-rose-400 font-bold text-xs mr-1 select-none">@</span>
+                <input type="text" id="editProfileUsernameInput" placeholder="kullaniciadi" data-i18n-placeholder="username_ph" class="flex-1 bg-transparent text-xs text-white placeholder-gray-500 focus:outline-none font-medium">
+              </div>
+              <div id="editProfileUsernameStatus" class="hidden text-[11px] font-medium pt-0.5"></div>
+              <input type="hidden" id="editProfileNameInput">
+            </div>
+
+            <!-- Kaydet Butonu -->
+            <button id="saveProfileBtn" type="button" class="w-full py-3 bg-gradient-to-r from-rose-600 via-pink-600 to-[#A64D79] hover:opacity-95 text-white rounded-xl text-xs font-extrabold transition-all shadow-md shadow-rose-600/25 cursor-pointer flex items-center justify-center gap-1.5 mt-2" data-i18n="save_changes">
+              <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+              <span data-i18n="save_changes">Kaydet</span>
+            </button>
+          </div>
+        </div>
+
+      </div>
+    </main>
+  </div>
+
+  <!-- Fullscreen Settings Hub Modal (Pure Settings) -->
   <div id="profileEditModal" class="fixed inset-0 bg-[#0B0910] text-white z-[99999] hidden flex flex-col w-screen h-screen overflow-hidden" style="background-color: #0B0910 !important; position: fixed !important; top: 0 !important; left: 0 !important; right: 0 !important; bottom: 0 !important; width: 100vw !important; height: 100vh !important; z-index: 99999 !important; overscroll-behavior: none !important;">
     
     <!-- Top Modal Header: Strictly Fixed, Solid 100% #0B0910 Background, Never Budges -->
@@ -1594,7 +1670,7 @@
           </div>
           <div>
             <h3 class="font-bold text-base text-white" data-i18n="settings_title">Ayarlar</h3>
-            <span class="text-[11px] text-gray-400" data-i18n="settings_subtitle">Profil, Güvenlik & Tercihler</span>
+            <span class="text-[11px] text-gray-400" data-i18n="settings_subtitle">Güvenlik, Tercihler & Hesap</span>
           </div>
         </div>
         <button id="closeProfileEditBtn" type="button" class="close-modal-btn w-9 h-9 rounded-full bg-white/10 hover:bg-white/20 active:scale-95 text-gray-200 hover:text-white flex items-center justify-center text-sm font-bold transition-all cursor-pointer select-none">✕</button>
@@ -1614,73 +1690,6 @@
     <!-- Scrollable Main Body: Starts strictly below header -->
     <main id="profileEditModalScrollBody" class="flex-1 w-full overflow-y-auto no-scrollbar" style="-webkit-overflow-scrolling: touch; padding-bottom: max(32px, env(safe-area-inset-bottom));">
       <div class="max-w-lg mx-auto px-4 sm:px-6 py-4 space-y-4">
-        
-        <!-- 1. PROFİL KARTI -->
-        <div class="bg-white/5 rounded-2xl border border-white/10 p-4 space-y-4">
-          <span class="text-[10px] font-bold uppercase tracking-wider text-rose-300 block" data-i18n="profile_info_section">Profil Bilgileri</span>
-
-          <!-- Avatar Preview & Actions -->
-          <div class="flex flex-col items-center gap-3">
-            <label for="avatarFileInput" class="relative group cursor-pointer block" id="avatarPreviewClickArea" title="Fotoğraf Yükle">
-              <div id="editAvatarPreview" class="w-20 h-20 rounded-2xl bg-gradient-to-tr from-[#A64D79] to-[#6A1E55] flex items-center justify-center text-3xl font-bold text-white shadow-xl overflow-hidden border-2 border-white/20 ring-4 ring-white/5 transition-all">
-                M
-              </div>
-              <div id="triggerAvatarUploadBtn" class="absolute inset-0 bg-black/60 rounded-2xl flex flex-col items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity text-white text-[11px] font-semibold gap-1 cursor-pointer">
-                <svg class="w-5 h-5 text-pink-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
-                <span data-i18n="select_photo">Fotoğraf Seç</span>
-              </div>
-            </label>
-            <input type="file" id="avatarFileInput" accept="image/*" class="sr-only" style="position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); border: 0;">
-
-            <!-- Upload / Remove Action Buttons -->
-            <div class="flex items-center gap-2">
-              <label for="avatarFileInput" id="triggerAvatarUploadBtn2" class="px-3 py-1.5 rounded-xl bg-white/10 hover:bg-white/20 text-white text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer">
-                <svg class="w-3.5 h-3.5 text-pink-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-                <span data-i18n="upload_photo">Fotoğraf Yükle</span>
-              </label>
-              <button type="button" id="removeAvatarPhotoBtn" class="px-2.5 py-1.5 rounded-xl bg-red-500/10 hover:bg-red-500/20 text-red-300 text-xs font-semibold transition-all cursor-pointer" title="Fotoğrafı Kaldır">
-                ✕ <span data-i18n="remove_photo">Kaldır</span>
-              </button>
-            </div>
-            
-            <!-- Preset Avatar Options -->
-            <div class="w-full pt-1">
-              <span class="text-[10px] text-gray-400 block text-center mb-1.5" data-i18n="preset_avatars">veya renkli avatar seç:</span>
-              <div class="flex items-center justify-center gap-2" id="presetAvatarsContainer">
-                <button type="button" class="preset-avatar-btn w-8 h-8 rounded-full bg-gradient-to-tr from-rose-500 to-pink-600 border border-white/20 hover:scale-110 transition-transform text-[11px] font-bold text-white shadow-sm" data-bg="from-rose-500 to-pink-600">M</button>
-                <button type="button" class="preset-avatar-btn w-8 h-8 rounded-full bg-gradient-to-tr from-[#A64D79] to-[#6A1E55] border border-white/20 hover:scale-110 transition-transform text-[11px] font-bold text-white shadow-sm" data-bg="from-[#A64D79] to-[#6A1E55]">R</button>
-                <button type="button" class="preset-avatar-btn w-8 h-8 rounded-full bg-gradient-to-tr from-blue-500 to-cyan-500 border border-white/20 hover:scale-110 transition-transform text-[11px] font-bold text-white shadow-sm" data-bg="from-blue-500 to-cyan-500">U</button>
-                <button type="button" class="preset-avatar-btn w-8 h-8 rounded-full bg-gradient-to-tr from-emerald-500 to-teal-600 border border-white/20 hover:scale-110 transition-transform text-[11px] font-bold text-white shadow-sm" data-bg="from-emerald-500 to-teal-600">O</button>
-              </div>
-            </div>
-          </div>
-
-          <!-- Ad Soyad & Kullanıcı Adı (İkisi Ayrı Alanlar) -->
-          <div class="space-y-3 pt-3 border-t border-white/5">
-            <!-- Düz İsim (Ad Soyad) -->
-            <div class="space-y-1">
-              <label class="block text-xs font-semibold text-gray-300" data-i18n="full_name">Ad Soyad</label>
-              <input type="text" id="editProfileFullNameInput" placeholder="Örn: Mehmet Karabulut" data-i18n-placeholder="full_name_ph" class="w-full bg-black/40 border border-white/10 rounded-xl px-3.5 py-2.5 text-xs text-white placeholder-gray-500 focus:outline-none focus:border-[#A64D79] font-medium">
-            </div>
-
-            <!-- Kullanıcı Adı (@username) -->
-            <div class="space-y-1">
-              <label class="block text-xs font-semibold text-gray-300" data-i18n="username">Kullanıcı Adı</label>
-              <div class="flex items-center bg-black/40 border border-white/10 rounded-xl px-3 py-2.5 focus-within:border-[#A64D79] transition-colors">
-                <span class="text-rose-400 font-bold text-xs mr-1 select-none">@</span>
-                <input type="text" id="editProfileUsernameInput" placeholder="kullaniciadi" data-i18n-placeholder="username_ph" class="flex-1 bg-transparent text-xs text-white placeholder-gray-500 focus:outline-none font-medium">
-              </div>
-              <div id="editProfileUsernameStatus" class="hidden text-[11px] font-medium pt-0.5"></div>
-              <input type="hidden" id="editProfileNameInput">
-            </div>
-
-            <!-- Kaydet Butonu -->
-            <button id="saveProfileBtn" type="button" class="w-full py-2.5 bg-gradient-to-r from-[#A64D79] to-[#6A1E55] hover:opacity-95 text-white rounded-xl text-xs font-bold transition-all shadow-md cursor-pointer flex items-center justify-center gap-1.5" data-i18n="save_changes">
-              <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
-              <span data-i18n="save_changes">Kaydet</span>
-            </button>
-          </div>
-        </div>
 
         <!-- 3. HESAP & GÜVENLİK (ACCORDIONS) -->
         <div id="settingsSectionSecurity" class="space-y-2.5">
@@ -2143,7 +2152,7 @@
       <!-- User's Unique Username Bar -->
       <div class="bg-black/40 border border-white/10 rounded-2xl p-3 flex items-center justify-between gap-3">
         <div class="flex items-center gap-2.5">
-          <div class="w-8 h-8 rounded-xl bg-gradient-to-tr from-rose-500/20 to-indigo-600/20 border border-rose-500/30 flex items-center justify-center text-rose-400 font-bold text-xs shrink-0">
+          <div class="w-8 h-8 rounded-xl bg-gradient-to-tr from-rose-500/20 to-[#A64D79]/20 border border-rose-500/30 flex items-center justify-center text-rose-400 font-bold text-xs shrink-0">
             @
           </div>
           <div>
@@ -2162,7 +2171,7 @@
         <label class="block text-xs font-medium text-gray-300 mb-1.5" data-i18n="add_friend_by_name">İsimden Arkadaş Ekle (Kullanıcı Adı)</label>
         <div class="flex items-center gap-2">
           <input type="text" id="addFriendInput" data-i18n-placeholder="add_friend_ph" placeholder="Kullanıcı adı girin (örn: @selin veya can)" class="flex-1 bg-black/40 border border-white/10 rounded-xl px-3.5 py-2 text-xs text-white placeholder-gray-500 focus:outline-none focus:border-rose-500 transition-all font-medium">
-          <button id="submitAddFriendBtn" class="px-4 py-2 bg-gradient-to-r from-rose-500 to-indigo-600 hover:opacity-95 text-white font-bold text-xs rounded-xl shadow-md shadow-rose-500/20 transition-all whitespace-nowrap cursor-pointer" data-i18n="add_btn">
+          <button id="submitAddFriendBtn" class="px-4 py-2 bg-gradient-to-r from-rose-600 via-pink-600 to-[#A64D79] hover:opacity-95 text-white font-bold text-xs rounded-xl shadow-md shadow-rose-600/25 transition-all whitespace-nowrap cursor-pointer" data-i18n="add_btn">
             Ekle
           </button>
         </div>
@@ -2196,7 +2205,7 @@
       <!-- Modal Header -->
       <div class="flex items-center justify-between border-b border-white/5 pb-3">
         <div class="flex items-center gap-2.5">
-          <div class="w-8 h-8 rounded-xl bg-gradient-to-tr from-rose-500 to-indigo-600 flex items-center justify-center text-white shadow-md">
+          <div class="w-8 h-8 rounded-xl bg-gradient-to-tr from-[#A64D79] to-[#6A1E55] flex items-center justify-center text-white shadow-md">
             <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
           </div>
           <div>
@@ -2244,7 +2253,7 @@
     <div class="bg-[#0C0E17] border border-white/15 rounded-3xl max-w-sm w-full p-5 shadow-2xl space-y-4">
       <div class="flex items-center justify-between">
         <div class="flex items-center gap-2">
-          <div class="w-8 h-8 rounded-xl bg-gradient-to-tr from-rose-500 to-indigo-600 flex items-center justify-center text-white">
+          <div class="w-8 h-8 rounded-xl bg-gradient-to-tr from-[#A64D79] to-[#6A1E55] flex items-center justify-center text-white">
             <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
               <path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
               <circle cx="8.5" cy="7" r="4"/>
@@ -2266,7 +2275,7 @@
             <span class="text-rose-400 font-bold text-xs mr-1 select-none">@</span>
             <input type="text" id="addFriendModalInput" placeholder="kullaniciadi (örn: can)" class="flex-1 bg-transparent text-xs text-white placeholder-gray-500 focus:outline-none font-medium min-w-0">
           </div>
-          <button id="addFriendModalSubmitBtn" type="button" class="px-4 py-2.5 bg-gradient-to-r from-rose-500 to-indigo-600 hover:opacity-95 text-white font-bold text-xs rounded-xl shadow-md transition-all whitespace-nowrap cursor-pointer active:scale-95 shrink-0" data-i18n="add_btn">
+          <button id="addFriendModalSubmitBtn" type="button" class="px-4 py-2.5 bg-gradient-to-r from-rose-600 via-pink-600 to-[#A64D79] hover:opacity-95 text-white font-bold text-xs rounded-xl shadow-md shadow-rose-600/25 transition-all whitespace-nowrap cursor-pointer active:scale-95 shrink-0" data-i18n="add_btn">
             Ekle
           </button>
         </div>

@@ -1528,6 +1528,7 @@ const state = {
   username: 'Kullanıcı',
   peerId: null,
   activeMode: 'youtube', // 'youtube' | 'screenshare' | 'direct'
+  currentTab: 'explore', // 'explore' | 'friends' | 'profile'
   
   // Room Playback Queue & Browsing State
   roomQueue: [],
@@ -2051,6 +2052,8 @@ function freezeBackgroundForModal() {
   if (dom.mainHeader) dom.mainHeader.classList.add('hidden');
   if (dom.mobileBottomNav) dom.mobileBottomNav.classList.add('hidden');
   if (dom.friendsTabSection) dom.friendsTabSection.classList.add('hidden');
+  const profileTab = document.getElementById('profileTabSection');
+  if (profileTab) profileTab.classList.add('hidden');
 }
 
 function unfreezeBackgroundAfterModal() {
@@ -2058,10 +2061,23 @@ function unfreezeBackgroundAfterModal() {
   if (activeModalCount === 0) {
     document.body.classList.remove('modal-open-freeze');
     if (!state.isInRoom) {
-      if (state.currentTab === 'friends') {
+      const profileTab = document.getElementById('profileTabSection');
+      if (state.currentTab === 'profile') {
+        if (profileTab) {
+          profileTab.classList.remove('hidden');
+          profileTab.classList.add('flex');
+        }
+        if (dom.exploreLobbySection) dom.exploreLobbySection.classList.add('hidden');
+        if (dom.friendsTabSection) dom.friendsTabSection.classList.add('hidden');
+        if (typeof startProfileStarCanvas === 'function') startProfileStarCanvas();
+      } else if (state.currentTab === 'friends') {
         if (dom.friendsTabSection) dom.friendsTabSection.classList.remove('hidden');
+        if (dom.exploreLobbySection) dom.exploreLobbySection.classList.add('hidden');
+        if (profileTab) profileTab.classList.add('hidden');
       } else {
         if (dom.exploreLobbySection) dom.exploreLobbySection.classList.remove('hidden');
+        if (dom.friendsTabSection) dom.friendsTabSection.classList.add('hidden');
+        if (profileTab) profileTab.classList.add('hidden');
       }
       if (dom.mainHeader) dom.mainHeader.classList.remove('hidden');
       if (dom.mobileBottomNav) dom.mobileBottomNav.classList.remove('hidden');
@@ -3946,6 +3962,8 @@ function appendBotChatMessage(bot, message) {
 }
 
 function switchToExplore() {
+  state.currentTab = 'explore';
+  if (typeof stopProfileStarCanvas === 'function') stopProfileStarCanvas();
   stopBotsForActiveRoom();
   const mainWorkspace = document.querySelector('main');
   if (mainWorkspace) {
@@ -4713,7 +4731,301 @@ function renderFriendsTab(filterText = '') {
 }
 
 
+// ==========================================
+// CELESTIAL SHOOTING STARFIELD (PROFILE TAB)
+// Matches Miruo official website celestial sliding stars & starburst engine
+// ==========================================
+let profileStarAnimId = null;
+let profileStarInitialized = false;
+let profileStars = [];
+let profileShootingStars = [];
+let profileSparkParticles = [];
+let profileStarCanvasCtx = null;
+let profileStarWidth = 0;
+let profileStarHeight = 0;
+
+function initProfileStarCanvas() {
+  const canvas = document.getElementById('profileStarCanvas');
+  if (!canvas) return;
+  profileStarCanvasCtx = canvas.getContext('2d');
+
+  function resizeStarCanvas() {
+    const parent = canvas.parentElement || document.body;
+    const rect = parent.getBoundingClientRect();
+    profileStarWidth = rect.width || window.innerWidth;
+    profileStarHeight = Math.max(rect.height, window.innerHeight);
+    const dpr = window.devicePixelRatio || 1;
+    canvas.width = Math.floor(profileStarWidth * dpr);
+    canvas.height = Math.floor(profileStarHeight * dpr);
+    if (profileStarCanvasCtx) {
+      profileStarCanvasCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    }
+  }
+
+  resizeStarCanvas();
+  window.addEventListener('resize', () => {
+    if (state.currentTab === 'profile') resizeStarCanvas();
+  });
+
+  const starColors = ['#FFFFFF', '#FFE2F1', '#FF9CD1', '#E882B2', '#D8B4E2', '#A64D79'];
+  const totalStars = 90;
+  profileStars = [];
+  for (let i = 0; i < totalStars; i++) {
+    profileStars.push({
+      x: Math.random() * profileStarWidth,
+      y: Math.random() * profileStarHeight,
+      size: Math.random() * 1.6 + 0.5,
+      color: starColors[Math.floor(Math.random() * starColors.length)],
+      alpha: Math.random() * 0.7 + 0.3,
+      speed: Math.random() * 0.03 + 0.01,
+      phase: Math.random() * Math.PI * 2,
+      isCross: Math.random() < 0.12
+    });
+  }
+
+  profileShootingStars = [];
+  for (let i = 0; i < 2; i++) {
+    spawnProfileShootingStar(
+      Math.random() * profileStarWidth,
+      Math.random() * (profileStarHeight * 0.5)
+    );
+  }
+
+  // Interactive meteor shower on tap/click outside buttons
+  const profileSection = document.getElementById('profileTabSection');
+  if (profileSection) {
+    profileSection.addEventListener('click', (e) => {
+      if (e.target.closest('button') || e.target.closest('a') || e.target.closest('input')) return;
+      const rect = profileSection.getBoundingClientRect();
+      const clickX = e.clientX - rect.left;
+      const clickY = e.clientY - rect.top;
+      for (let i = 0; i < 3; i++) {
+        const offsetAngle = (Math.PI / 4) + (Math.random() - 0.5) * 0.6;
+        spawnProfileShootingStar(
+          clickX + (Math.random() - 0.5) * 40,
+          clickY + (Math.random() - 0.5) * 30,
+          offsetAngle
+        );
+      }
+    });
+  }
+
+  profileStarInitialized = true;
+}
+
+function spawnProfileShootingStar(customX, customY, customAngle) {
+  const angle = customAngle !== undefined ? customAngle : (Math.PI / 4) + (Math.random() - 0.5) * 0.35;
+  const speed = Math.random() * 8 + 14;
+  const length = Math.random() * 140 + 140;
+  const thickness = Math.random() * 1.6 + 1.2;
+
+  const startX = customX !== undefined ? customX : Math.random() * (profileStarWidth * 0.95) + (profileStarWidth * 0.05);
+  const startY = customY !== undefined ? customY : Math.random() * (profileStarHeight * 0.4);
+
+  profileShootingStars.push({
+    x: startX,
+    y: startY,
+    dx: -Math.cos(angle) * speed,
+    dy: Math.sin(angle) * speed,
+    length: length,
+    thickness: thickness,
+    alpha: 1.0,
+    fadeSpeed: Math.random() * 0.015 + 0.010
+  });
+}
+
+function drawProfileCrossStar(ctx, x, y, radius, alpha, color) {
+  ctx.save();
+  ctx.globalAlpha = alpha;
+  ctx.fillStyle = color;
+  ctx.beginPath();
+  ctx.moveTo(x, y - radius * 2.8);
+  ctx.quadraticCurveTo(x, y, x + radius * 2.8, y);
+  ctx.quadraticCurveTo(x, y, x, y + radius * 2.8);
+  ctx.quadraticCurveTo(x, y, x - radius * 2.8, y);
+  ctx.quadraticCurveTo(x, y, x, y - radius * 2.8);
+  ctx.fill();
+
+  ctx.fillStyle = '#FFFFFF';
+  ctx.beginPath();
+  ctx.arc(x, y, radius * 0.7, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+}
+
+function renderProfileStarframe() {
+  if (state.currentTab !== 'profile') {
+    profileStarAnimId = null;
+    return;
+  }
+  const canvas = document.getElementById('profileStarCanvas');
+  if (!canvas || !profileStarCanvasCtx) {
+    profileStarAnimId = null;
+    return;
+  }
+  const ctx = profileStarCanvasCtx;
+  const w = profileStarWidth || canvas.clientWidth || window.innerWidth;
+  const h = profileStarHeight || canvas.clientHeight || window.innerHeight;
+
+  ctx.clearRect(0, 0, w, h);
+
+  // 1. Static & Twinkling Stars
+  for (let i = 0; i < profileStars.length; i++) {
+    const s = profileStars[i];
+    s.phase += s.speed;
+    const currentAlpha = Math.max(0.15, Math.min(1.0, s.alpha + Math.sin(s.phase) * 0.4));
+
+    if (s.isCross && s.size > 1.1) {
+      drawProfileCrossStar(ctx, s.x, s.y, s.size * 1.4, currentAlpha, s.color);
+    } else {
+      ctx.save();
+      ctx.globalAlpha = currentAlpha;
+      ctx.fillStyle = s.color;
+      ctx.beginPath();
+      ctx.arc(s.x, s.y, s.size, 0, Math.PI * 2);
+      ctx.fill();
+
+      if (s.size > 1.3) {
+        ctx.fillStyle = '#FFB6DE';
+        ctx.globalAlpha = currentAlpha * 0.25;
+        ctx.beginPath();
+        ctx.arc(s.x, s.y, s.size * 2.5, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.restore();
+    }
+  }
+
+  // 2. Spawn and update meteors
+  if (profileShootingStars.length < 2) {
+    spawnProfileShootingStar();
+  }
+  if (profileShootingStars.length < 4 && Math.random() < 0.08) {
+    spawnProfileShootingStar();
+  }
+
+  // Spark trail particles
+  for (let i = profileSparkParticles.length - 1; i >= 0; i--) {
+    const sp = profileSparkParticles[i];
+    sp.x += sp.vx;
+    sp.y += sp.vy;
+    sp.alpha -= sp.fade;
+    if (sp.alpha <= 0) {
+      profileSparkParticles.splice(i, 1);
+      continue;
+    }
+    ctx.save();
+    ctx.globalAlpha = sp.alpha;
+    ctx.fillStyle = sp.color;
+    ctx.beginPath();
+    ctx.arc(sp.x, sp.y, sp.size, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
+
+  // Sliding Shooting Stars
+  for (let i = profileShootingStars.length - 1; i >= 0; i--) {
+    const ss = profileShootingStars[i];
+    ss.x += ss.dx;
+    ss.y += ss.dy;
+    ss.alpha -= ss.fadeSpeed;
+
+    if (ss.alpha <= 0 || ss.x < -200 || ss.y > h + 200) {
+      profileShootingStars.splice(i, 1);
+      continue;
+    }
+
+    if (Math.random() < 0.35) {
+      profileSparkParticles.push({
+        x: ss.x + (Math.random() - 0.5) * 4,
+        y: ss.y + (Math.random() - 0.5) * 4,
+        vx: ss.dx * 0.1 + (Math.random() - 0.5) * 1.2,
+        vy: ss.dy * 0.1 + (Math.random() - 0.5) * 1.2,
+        size: Math.random() * 1.4 + 0.6,
+        alpha: ss.alpha * 0.75,
+        fade: 0.045,
+        color: '#FFB6DE'
+      });
+    }
+
+    const headX = ss.x;
+    const headY = ss.y;
+    const norm = Math.sqrt(ss.dx * ss.dx + ss.dy * ss.dy) || 1;
+    const tailX = headX - (ss.dx / norm) * ss.length;
+    const tailY = headY - (ss.dy / norm) * ss.length;
+
+    ctx.save();
+    ctx.globalAlpha = Math.max(0, ss.alpha);
+
+    const grad = ctx.createLinearGradient(headX, headY, tailX, tailY);
+    grad.addColorStop(0, 'rgba(255, 255, 255, 1)');
+    grad.addColorStop(0.12, 'rgba(255, 192, 225, 0.95)');
+    grad.addColorStop(0.38, 'rgba(247, 107, 182, 0.85)');
+    grad.addColorStop(0.70, 'rgba(166, 77, 121, 0.45)');
+    grad.addColorStop(1, 'rgba(106, 30, 85, 0)');
+
+    ctx.strokeStyle = grad;
+    ctx.lineWidth = ss.thickness;
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.moveTo(headX, headY);
+    ctx.lineTo(tailX, tailY);
+    ctx.stroke();
+
+    // Glowing nucleus
+    ctx.fillStyle = '#FFFFFF';
+    ctx.beginPath();
+    ctx.arc(headX, headY, ss.thickness * 1.4, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Pink celestial aura
+    ctx.fillStyle = '#FF6EB4';
+    ctx.globalAlpha = Math.max(0, ss.alpha) * 0.6;
+    ctx.beginPath();
+    ctx.arc(headX, headY, ss.thickness * 3.8, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.restore();
+  }
+
+  profileStarAnimId = requestAnimationFrame(renderProfileStarframe);
+}
+
+function startProfileStarCanvas() {
+  if (!profileStarInitialized) {
+    initProfileStarCanvas();
+  } else {
+    const canvas = document.getElementById('profileStarCanvas');
+    if (canvas) {
+      const parent = canvas.parentElement || document.body;
+      const rect = parent.getBoundingClientRect();
+      if (rect.width > 0 && rect.height > 0) {
+        profileStarWidth = rect.width;
+        profileStarHeight = Math.max(rect.height, window.innerHeight);
+        const dpr = window.devicePixelRatio || 1;
+        canvas.width = Math.floor(profileStarWidth * dpr);
+        canvas.height = Math.floor(profileStarHeight * dpr);
+        if (profileStarCanvasCtx) {
+          profileStarCanvasCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        }
+      }
+    }
+  }
+  if (!profileStarAnimId) {
+    profileStarAnimId = requestAnimationFrame(renderProfileStarframe);
+  }
+}
+
+function stopProfileStarCanvas() {
+  if (profileStarAnimId) {
+    cancelAnimationFrame(profileStarAnimId);
+    profileStarAnimId = null;
+  }
+}
+
 function switchToFriendsTab() {
+  state.currentTab = 'friends';
+  stopProfileStarCanvas();
   if (dom.exploreLobbySection) {
     dom.exploreLobbySection.classList.add('hidden');
     dom.exploreLobbySection.classList.remove('flex');
@@ -4753,6 +5065,7 @@ function switchToFriendsTab() {
 }
 
 function switchToProfileTab() {
+  state.currentTab = 'profile';
   if (dom.exploreLobbySection) {
     dom.exploreLobbySection.classList.add('hidden');
     dom.exploreLobbySection.classList.remove('flex');
@@ -4788,6 +5101,7 @@ function switchToProfileTab() {
   }
 
   renderProfileTab();
+  startProfileStarCanvas();
 }
 
 function renderProfileTab() {
@@ -4811,7 +5125,7 @@ function renderProfileTab() {
       avatarEl.innerHTML = `<img src="${savedUser.avatarUrl}" class="w-full h-full object-cover">`;
     } else {
       avatarEl.textContent = (fullName.charAt(0) || 'M').toUpperCase();
-      avatarEl.className = `w-24 h-24 rounded-full bg-gradient-to-tr ${savedUser.avatarBg || 'from-indigo-500 to-purple-600'} flex items-center justify-center text-3xl font-black text-white shadow-2xl overflow-hidden border-2 border-indigo-400/40 ring-4 ring-white/5`;
+      avatarEl.className = `w-24 h-24 rounded-full bg-gradient-to-tr ${savedUser.avatarBg || 'from-rose-500 to-[#A64D79]'} flex items-center justify-center text-3xl font-black text-white shadow-2xl overflow-hidden border-2 border-rose-400/40 ring-4 ring-rose-500/10`;
     }
   }
 
@@ -5524,9 +5838,11 @@ function loadUserSession() {
     if (dom.authModal) dom.authModal.classList.add('hidden');
   }
 
-  if (urlParams.get('profile') || hash === 'settings' || hash === 'profile') {
-    const targetTab = urlParams.get('profile') || (hash === 'settings' ? 'settings' : 'profile');
+  if (urlParams.get('profile') || hash === 'settings' || urlParams.get('modal') === 'settings') {
+    const targetTab = urlParams.get('profile') || 'settings';
     setTimeout(() => { if (typeof openProfileEditModal === 'function') openProfileEditModal(targetTab); }, 350);
+  } else if (hash === 'profile_edit' || urlParams.get('modal') === 'profile_edit') {
+    setTimeout(() => { if (typeof openDedicatedProfileModal === 'function') openDedicatedProfileModal(); }, 350);
   } else if (urlParams.get('auth') === 'signup' || urlParams.get('modal') === 'signup' || hash === 'signup') {
     if (dom.authModal) {
       freezeBackgroundForModal();
@@ -5609,7 +5925,7 @@ function loadUserSession() {
     }, 600);
   } else if (urlParams.get('modal') === 'friends' || urlParams.get('view') === 'friends') {
     switchToFriendsTab();
-  } else if (urlParams.get('view') === 'profile' || urlParams.get('tab') === 'profile') {
+  } else if (urlParams.get('view') === 'profile' || urlParams.get('tab') === 'profile' || hash === 'profile' || hash === 'profile_edit' || hash === 'settings') {
     switchToProfileTab();
   } else if (urlParams.get('modal') === 'add_friend') {
     switchToFriendsTab();
@@ -7848,11 +8164,57 @@ function initEvents() {
     });
   }
 
+  // Dedicated Profile Edit Modal Functions
+  function openDedicatedProfileModal() {
+    const dedicatedModal = document.getElementById('dedicatedProfileEditModal');
+    if (!dedicatedModal) return;
+
+    const savedUser = JSON.parse(localStorage.getItem('miruo_user') || '{}');
+    const fullName = savedUser.fullName || savedUser.name || state.username || '';
+    const username = (savedUser.username || state.username || '').replace(/^@/, '');
+
+    if (dom.editProfileFullNameInput) dom.editProfileFullNameInput.value = fullName;
+    if (dom.editProfileUsernameInput) dom.editProfileUsernameInput.value = username;
+
+    if (dom.editAvatarPreview) {
+      if (savedUser.avatarUrl) {
+        dom.editAvatarPreview.innerHTML = `<img src="${savedUser.avatarUrl}" class="w-full h-full object-cover">`;
+      } else {
+        const nameChar = (fullName || username || 'M').charAt(0).toUpperCase();
+        dom.editAvatarPreview.innerHTML = nameChar;
+        dom.editAvatarPreview.className = `w-20 h-20 rounded-full bg-gradient-to-tr ${savedUser.avatarBg || 'from-rose-500 to-[#A64D79]'} flex items-center justify-center text-3xl font-bold text-white shadow-xl overflow-hidden border-2 border-rose-400/40 ring-4 ring-rose-500/10`;
+      }
+    }
+
+    freezeBackgroundForModal();
+    dedicatedModal.classList.remove('hidden');
+    dedicatedModal.classList.add('flex');
+  }
+
+  function closeDedicatedProfileModal() {
+    const dedicatedModal = document.getElementById('dedicatedProfileEditModal');
+    if (!dedicatedModal) return;
+    dedicatedModal.classList.add('hidden');
+    dedicatedModal.classList.remove('flex');
+    unfreezeBackgroundAfterModal();
+  }
+
+  window.openDedicatedProfileModal = openDedicatedProfileModal;
+  window.closeDedicatedProfileModal = closeDedicatedProfileModal;
+
+  const closeDedicatedProfileEditBtn = document.getElementById('closeDedicatedProfileEditBtn');
+  if (closeDedicatedProfileEditBtn) {
+    addInstantTap(closeDedicatedProfileEditBtn, (e) => {
+      e.stopPropagation();
+      closeDedicatedProfileModal();
+    });
+  }
+
   const tabProfileEditTriggerBtn = document.getElementById('tabProfileEditTriggerBtn');
   if (tabProfileEditTriggerBtn) {
     addInstantTap(tabProfileEditTriggerBtn, (e) => {
       e.stopPropagation();
-      openProfileEditModal('profile');
+      openDedicatedProfileModal();
     });
   }
 
@@ -7860,7 +8222,7 @@ function initEvents() {
   if (tabProfileAvatarEditBtn) {
     addInstantTap(tabProfileAvatarEditBtn, (e) => {
       e.stopPropagation();
-      openProfileEditModal('profile');
+      openDedicatedProfileModal();
     });
   }
 
@@ -8164,6 +8526,7 @@ function initEvents() {
         dom.editAvatarPreview.innerHTML = nameChar;
         dom.editAvatarPreview.className = `w-20 h-20 rounded-2xl bg-gradient-to-tr ${window.pendingAvatarBg} flex items-center justify-center text-3xl font-bold text-white shadow-xl overflow-hidden border-2 border-white/20 ring-4 ring-white/5`;
       }
+      renderProfileTab();
       showToast('Profil fotoğrafı kaldırıldı.');
     });
   }
@@ -8171,7 +8534,7 @@ function initEvents() {
   // Preset avatar buttons
   document.querySelectorAll('.preset-avatar-btn').forEach(btn => {
     btn.addEventListener('click', () => {
-      const bg = btn.dataset.bg || 'from-rose-500 to-indigo-600';
+      const bg = btn.dataset.bg || 'from-rose-500 to-[#A64D79]';
       window.pendingAvatarBg = bg;
       window.pendingAvatarUrl = '';
       const savedUser = JSON.parse(localStorage.getItem('miruo_user') || '{}');
@@ -8202,6 +8565,7 @@ function initEvents() {
         dom.editAvatarPreview.innerHTML = nameChar;
         dom.editAvatarPreview.className = `w-20 h-20 rounded-2xl bg-gradient-to-tr ${window.pendingAvatarBg} flex items-center justify-center text-3xl font-bold text-white shadow-xl overflow-hidden border-2 border-white/20 ring-4 ring-white/5`;
       }
+      renderProfileTab();
       showToast('Avatar rengi güncellendi');
     });
   });
@@ -8347,6 +8711,14 @@ function initEvents() {
       }
 
       showToast(dict.profile_updated || `Profil güncellendi (@${cleanUsername})`);
+
+      const dedicatedModal = document.getElementById('dedicatedProfileEditModal');
+      if (dedicatedModal && !dedicatedModal.classList.contains('hidden')) {
+        dedicatedModal.classList.add('hidden');
+        dedicatedModal.classList.remove('flex');
+        unfreezeBackgroundAfterModal();
+      }
+      renderProfileTab();
     });
   }
 
