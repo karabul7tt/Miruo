@@ -355,7 +355,7 @@ const I18N = {
     username_ph: 'kullaniciadi',
     default_room_code: 'Varsayılan / Ortak Oda Kodu',
     registered_email: 'Kayıtlı E-posta',
-    active_session: 'Aktif Oturum',
+    active_session: 'Giriş yapıldı',
     provider_apple: 'Apple ID ile Giriş Yapıldı',
     provider_apple_badge: 'Apple ile Doğrulandı',
     provider_google: 'Google ile Giriş Yapıldı',
@@ -363,9 +363,9 @@ const I18N = {
     provider_phone: 'Telefon Numarası ile Giriş',
     provider_phone_badge: 'SMS ile Doğrulandı',
     provider_email: 'E-posta ile Kayıt Olundu',
-    provider_email_badge: 'Aktif Oturum',
+    provider_email_badge: 'Giriş yapıldı',
     save_changes: 'Kaydet',
-    logout: 'Oturumu Kapat',
+    logout: 'Çıkış Yap',
     select_photo: 'Fotoğraf Seç',
     upload_photo: 'Fotoğraf Yükle',
     remove_photo: 'Kaldır',
@@ -700,7 +700,7 @@ const I18N = {
     username_ph: 'username',
     default_room_code: 'Default / Shared Room Code',
     registered_email: 'Registered Email',
-    active_session: 'Active Session',
+    active_session: 'Logged in',
     provider_apple: 'Signed in with Apple ID',
     provider_apple_badge: 'Verified with Apple',
     provider_google: 'Signed in with Google',
@@ -708,7 +708,7 @@ const I18N = {
     provider_phone: 'Signed in with Phone Number',
     provider_phone_badge: 'Verified with SMS',
     provider_email: 'Registered with Email',
-    provider_email_badge: 'Active Session',
+    provider_email_badge: 'Logged in',
     save_changes: 'Save',
     logout: 'Log Out',
     select_photo: 'Choose Photo',
@@ -1045,7 +1045,7 @@ const I18N = {
     username_ph: 'benutzername',
     default_room_code: 'Standard- / Raumcode',
     registered_email: 'Registrierte E-Mail',
-    active_session: 'Aktive Sitzung',
+    active_session: 'Angemeldet',
     provider_apple: 'Mit Apple ID angemeldet',
     provider_apple_badge: 'Mit Apple bestätigt',
     provider_google: 'Mit Google angemeldet',
@@ -1053,7 +1053,7 @@ const I18N = {
     provider_phone: 'Mit Telefonnummer angemeldet',
     provider_phone_badge: 'Mit SMS bestätigt',
     provider_email: 'Mit E-Mail registriert',
-    provider_email_badge: 'Aktive Sitzung',
+    provider_email_badge: 'Angemeldet',
     save_changes: 'Speichern',
     logout: 'Abmelden',
     select_photo: 'Foto wählen',
@@ -7720,7 +7720,7 @@ function initEvents() {
         dom.accountProviderIcon.innerHTML = '<span class="text-xs font-bold text-emerald-400">Mail</span>';
         dom.accountProviderName.textContent = dict.provider_email || 'E-posta ile Kayıt Olundu';
         if (dom.profileAuthBadge) {
-          dom.profileAuthBadge.textContent = dict.provider_email_badge || dict.active_session || 'Aktif Oturum';
+          dom.profileAuthBadge.textContent = dict.provider_email_badge || dict.active_session || 'Giriş yapıldı';
           dom.profileAuthBadge.className = 'px-2.5 py-1 rounded-full text-[10px] font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30';
         }
       }
@@ -7829,6 +7829,38 @@ function initEvents() {
       if (dom.privacyPolicyModal) dom.privacyPolicyModal.classList.add('hidden');
       if (dom.termsModal) dom.termsModal.classList.add('hidden');
       unfreezeBackgroundAfterModal();
+    });
+  }
+
+  const openSettingsFromProfileBtn = document.getElementById('openSettingsFromProfileBtn');
+  if (openSettingsFromProfileBtn) {
+    addInstantTap(openSettingsFromProfileBtn, (e) => {
+      e.stopPropagation();
+      openProfileEditModal('settings');
+    });
+  }
+
+  const tabProfileOpenSettingsRowBtn = document.getElementById('tabProfileOpenSettingsRowBtn');
+  if (tabProfileOpenSettingsRowBtn) {
+    addInstantTap(tabProfileOpenSettingsRowBtn, (e) => {
+      e.stopPropagation();
+      openProfileEditModal('settings');
+    });
+  }
+
+  const tabProfileEditTriggerBtn = document.getElementById('tabProfileEditTriggerBtn');
+  if (tabProfileEditTriggerBtn) {
+    addInstantTap(tabProfileEditTriggerBtn, (e) => {
+      e.stopPropagation();
+      openProfileEditModal('profile');
+    });
+  }
+
+  const tabProfileAvatarEditBtn = document.getElementById('tabProfileAvatarEditBtn');
+  if (tabProfileAvatarEditBtn) {
+    addInstantTap(tabProfileAvatarEditBtn, (e) => {
+      e.stopPropagation();
+      openProfileEditModal('profile');
     });
   }
 
