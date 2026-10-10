@@ -104,7 +104,7 @@
         <input type="text" id="raveLobbySearchInput" placeholder="Oda adı, oda kodu veya arkadaş ara..." data-i18n-placeholder="search_rooms_ph" class="w-full bg-[#0C0E17] border border-white/10 rounded-2xl pl-10 pr-4 py-3 text-xs text-white placeholder-gray-500 focus:outline-none focus:border-rose-500/80 transition-all font-medium shadow-lg">
       </div>
 
-      <!-- Section Title (🌐 Canlı & Açık Odalar) -->
+      <!-- Section Title (Canlı & Açık Odalar) -->
       <div class="flex items-center justify-between pt-1">
         <div class="flex items-center gap-2 text-xs font-bold text-gray-200">
           <svg class="w-4 h-4 text-gray-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15.3 15.3 0 014 10 15.3 15.3 0 01-4 10 15.3 15.3 0 01-4-10 15.3 15.3 0 014-10z"/></svg>
@@ -356,7 +356,7 @@
         <!-- Live Host Browsing Indicator Pill (Shows when someone is selecting a video) -->
         <div id="hostBrowsingNotice" class="hidden absolute top-4 left-1/2 -translate-x-1/2 z-30 px-3.5 py-1.5 rounded-full bg-[#0A0D14]/90 backdrop-blur-md border border-rose-500/50 text-white text-xs font-medium flex items-center gap-2 shadow-2xl pointer-events-none transition-all">
           <span class="w-2 h-2 rounded-full bg-rose-500 animate-ping shrink-0"></span>
-          <span id="hostBrowsingNoticeText" class="truncate max-w-[260px] sm:max-w-none">🎬 Oda sahibi yeni video seçiyor... (Mevcut video çalıyor)</span>
+          <span id="hostBrowsingNoticeText" class="truncate max-w-[260px] sm:max-w-none">Oda sahibi yeni video seçiyor... (Mevcut video çalıyor)</span>
         </div>
 
         <!-- YouTube Player Target Container -->
@@ -650,10 +650,10 @@
             <button type="button" class="sticker-chip text-lg p-1 hover:scale-125 transition-transform active:scale-95 cursor-pointer" data-sticker="🔥">🔥</button>
             <button type="button" class="sticker-chip text-lg p-1 hover:scale-125 transition-transform active:scale-95 cursor-pointer" data-sticker="❤️">❤️</button>
             <button type="button" class="sticker-chip text-lg p-1 hover:scale-125 transition-transform active:scale-95 cursor-pointer" data-sticker="😂">😂</button>
-            <button type="button" class="sticker-chip text-lg p-1 hover:scale-125 transition-transform active:scale-95 cursor-pointer" data-sticker="🎬">🎬</button>
+            
             <button type="button" class="sticker-chip text-lg p-1 hover:scale-125 transition-transform active:scale-95 cursor-pointer" data-sticker="👏">👏</button>
             <button type="button" class="sticker-chip text-lg p-1 hover:scale-125 transition-transform active:scale-95 cursor-pointer" data-sticker="🥳">🥳</button>
-            <button type="button" class="sticker-chip text-lg p-1 hover:scale-125 transition-transform active:scale-95 cursor-pointer" data-sticker="✨">✨</button>
+            
             <label for="chatImageFileInput" class="ml-auto text-[11px] font-bold text-rose-400 hover:text-rose-300 px-2.5 py-1 rounded-lg bg-rose-500/10 border border-rose-500/20 cursor-pointer whitespace-nowrap flex items-center gap-1.5">
               <svg class="w-3.5 h-3.5 text-rose-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
               <span data-i18n="chat_add_photo">Fotoğraf Ekle</span>
@@ -867,7 +867,7 @@
       <!-- Room Title Input -->
       <div>
         <label class="block text-xs font-medium text-gray-300 mb-1.5" data-i18n="room_title_label">Oda Başlığı</label>
-        <input type="text" id="newRoomTitleInput" data-i18n-placeholder="room_title_ph" placeholder="Örn: Gece Lo-Fi Sohbeti ☕ veya Sinema Gecesi" class="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-2.5 text-xs text-white focus:outline-none focus:border-rose-500 transition-all font-medium">
+        <input type="text" id="newRoomTitleInput" data-i18n-placeholder="room_title_ph" placeholder="Örn: Gece Lo-Fi Sohbeti veya Sinema Gecesi" class="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-2.5 text-xs text-white focus:outline-none focus:border-rose-500 transition-all font-medium">
       </div>
 
       <!-- Privacy Mode Selector -->
@@ -1015,7 +1015,7 @@
               M
             </div>
             <div class="absolute -bottom-0.5 -right-0.5 w-6 h-6 rounded-full bg-[#A64D79] border-2 border-white text-white flex items-center justify-center text-[10px] font-bold shadow-sm">
-              📷
+              <svg class="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 13a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
             </div>
           </label>
           <input type="file" id="signUpAvatarFileInput" accept="image/*" class="sr-only" style="position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); border: 0;">
@@ -1367,7 +1367,7 @@
           <input type="radio" name="roomAccessRule" value="public" checked class="mt-1 text-cyan-500 focus:ring-cyan-500 accent-cyan-500">
           <div>
             <div class="text-xs font-bold text-white flex items-center gap-1.5">
-              <span data-i18n="access_public_label">🌍 Herkese Açık</span>
+              <span data-i18n="access_public_label">Herkese Açık</span>
               <span class="text-[10px] px-1.5 py-0.2 bg-cyan-500/20 text-cyan-300 rounded-md font-semibold" data-i18n="recommended_badge">Önerilen</span>
             </div>
             <p class="text-[11px] text-gray-400 mt-0.5" data-i18n="access_public_desc">Oda bağlantısına veya koduna sahip herkes odaya doğrudan katılabilir.</p>
@@ -1377,7 +1377,7 @@
         <label id="accessOptionInviteOnly" class="flex items-start gap-3 p-3 rounded-2xl bg-white/5 border border-white/10 hover:border-white/20 cursor-pointer transition-all">
           <input type="radio" name="roomAccessRule" value="invite" class="mt-1 text-cyan-500 focus:ring-cyan-500 accent-cyan-500">
           <div>
-            <div class="text-xs font-bold text-white" data-i18n="access_invite_label">🔒 Sadece Davetliler</div>
+            <div class="text-xs font-bold text-white" data-i18n="access_invite_label">Sadece Davetliler</div>
             <p class="text-[11px] text-gray-400 mt-0.5" data-i18n="access_invite_desc">Yalnızca oda sahibinin davet ettiği ve onayladığı kişiler katılabilir.</p>
           </div>
         </label>
@@ -1426,7 +1426,7 @@
           <span class="w-2 h-2 rounded-full bg-rose-500 animate-pulse shrink-0"></span>
           <span class="truncate"><span data-i18n="yt_currently_playing_prefix">Şu an çalıyor:</span> <strong id="raveCurrentlyPlayingTitle" class="text-white">...</strong></span>
         </div>
-        <span class="text-[10px] text-emerald-400 font-medium px-2 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/20 shrink-0" data-i18n="yt_background_playing">Arka Planda Kesintisiz Devam Ediyor 🔊</span>
+        <span class="text-[10px] text-emerald-400 font-medium px-2 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/20 shrink-0" data-i18n="yt_background_playing">Arka Planda Kesintisiz Devam Ediyor</span>
       </div>
 
       <!-- Search Bar -->
@@ -1511,7 +1511,7 @@
     </div>
     <div class="flex items-center gap-2 mt-0.5">
       <button id="acceptSuggestionPlayNowBtn" class="flex-1 py-1.5 bg-rose-600 hover:bg-rose-500 active:scale-95 text-white rounded-xl text-xs font-bold transition-all shadow-md cursor-pointer">▶ <span data-i18n="action_play_now">Hemen Oynat</span></button>
-      <button id="acceptSuggestionQueueBtn" class="flex-1 py-1.5 bg-white/10 hover:bg-white/20 active:scale-95 text-white rounded-xl text-xs font-medium transition-all cursor-pointer">➕ <span data-i18n="action_add_queue">Sıraya Ekle</span></button>
+      <button id="acceptSuggestionQueueBtn" class="flex-1 py-1.5 bg-white/10 hover:bg-white/20 active:scale-95 text-white rounded-xl text-xs font-medium transition-all cursor-pointer"><span data-i18n="action_add_queue">Sıraya Ekle</span></button>
     </div>
   </div>
 
@@ -1526,7 +1526,7 @@
         <button id="closeQueueModalBtn" class="w-7 h-7 rounded-full bg-white/10 text-gray-300 hover:text-white flex items-center justify-center text-xs cursor-pointer">✕</button>
       </div>
       <div id="roomQueueList" class="p-4 flex-1 overflow-y-auto space-y-2">
-        <div class="py-8 text-center text-xs text-gray-400" data-i18n="queue_empty">No videos waiting in queue 🎵</div>
+        <div class="py-8 text-center text-xs text-gray-400" data-i18n="queue_empty">No videos waiting in queue</div>
       </div>
     </div>
   </div>
@@ -1642,7 +1642,7 @@
           <div class="p-3.5 rounded-2xl bg-white/5 border border-white/10 flex items-center justify-between">
             <div class="flex items-center gap-3">
               <div id="accountProviderIcon" class="w-8 h-8 rounded-xl bg-white/10 flex items-center justify-center text-base">
-                ✉️
+                <svg class="w-4 h-4 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"></path></svg>
               </div>
               <div>
                 <span id="accountProviderName" class="text-xs font-bold text-white block">E-posta ile Kayıt Olundu</span>
@@ -1650,7 +1650,7 @@
               </div>
             </div>
             <span id="profileAuthBadge" class="px-2.5 py-1 rounded-full text-[10px] font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30" data-i18n="active_session">
-              ✓ Aktif Oturum
+              Aktif Oturum
             </span>
           </div>
 

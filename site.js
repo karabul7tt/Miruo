@@ -269,7 +269,7 @@
       toast.className = 'toast-notice';
       document.body.appendChild(toast);
     }
-    toast.innerHTML = `<span class="toast-icon">✨</span><span>${message}</span>`;
+    toast.innerHTML = `<span>${message}</span>`;
     toast.classList.add('show');
     setTimeout(() => {
       toast.classList.remove('show');
@@ -438,7 +438,7 @@
 
       if (platform === 'android') {
         window.open('https://play.google.com/store/apps/details?id=com.miruo.app', '_blank');
-        showToast('Google Play Store açılıyor... 🚀');
+        showToast('Google Play Store açılıyor...');
         return;
       }
 
@@ -562,7 +562,7 @@
       contact_msg_label: "Mesajınızı girin",
       contact_msg_placeholder: "Lütfen sorunuzu veya endişenizi ayrıntılı olarak açıklayın...",
       contact_submit_btn: "Mesajı gönder",
-      contact_sent_btn: "Mesajınız Gönderildi ✓",
+      contact_sent_btn: "Mesajınız Gönderildi",
       contact_toast: "Mesajınız başarıyla iletildi! En kısa sürede dönüş yapacağız.",
       press_title: "Basın ve Medya Kiti",
       press_lead: "Miruo'nun doğuş hikâyesi, kurumsal kimliği ve vizyonu.",
@@ -664,7 +664,7 @@
       contact_msg_label: "Your Message",
       contact_msg_placeholder: "Please describe your inquiry or feedback in detail...",
       contact_submit_btn: "Send Message",
-      contact_sent_btn: "Message Sent ✓",
+      contact_sent_btn: "Message Sent",
       contact_toast: "Your message was sent successfully! We will get back to you shortly.",
       press_title: "Press & Media Kit",
       press_lead: "The story behind Miruo, our brand identity, and vision.",
@@ -766,7 +766,7 @@
       contact_msg_label: "Ihre Nachricht",
       contact_msg_placeholder: "Bitte beschreiben Sie Ihr Anliegen detailliert...",
       contact_submit_btn: "Nachricht senden",
-      contact_sent_btn: "Nachricht gesendet ✓",
+      contact_sent_btn: "Nachricht gesendet",
       contact_toast: "Ihre Nachricht wurde erfolgreich übermittelt!",
       press_title: "Presse- & Medienkit",
       press_lead: "Die Entstehungsgeschichte, Markenidentität und Vision von Miruo.",
@@ -868,7 +868,7 @@
       contact_msg_label: "Su Mensaje",
       contact_msg_placeholder: "Por favor describa su consulta en detalle...",
       contact_submit_btn: "Enviar Mensaje",
-      contact_sent_btn: "Mensaje Enviado ✓",
+      contact_sent_btn: "Mensaje Enviado",
       contact_toast: "¡Su mensaje se envió con éxito!",
       press_title: "Kit de Prensa y Medios",
       press_lead: "La historia detrás de Miruo, nuestra identidad de marca y recursos oficiales.",
@@ -970,7 +970,7 @@
       contact_msg_label: "Sua Mensagem",
       contact_msg_placeholder: "Descreva sua dúvida ou sugestão em detalhes...",
       contact_submit_btn: "Enviar mensagem",
-      contact_sent_btn: "Mensagem Enviada ✓",
+      contact_sent_btn: "Mensagem Enviada",
       contact_toast: "Sua mensagem foi enviada com sucesso!",
       press_title: "Kit de Imprensa e Mídia",
       press_lead: "A história de origem, identidade visual e ativos oficiais de imprensa do Miruo.",
@@ -1072,7 +1072,7 @@
       contact_msg_label: "Ваше сообщение",
       contact_msg_placeholder: "Опишите ваш вопрос или предложение подробно...",
       contact_submit_btn: "Отправить сообщение",
-      contact_sent_btn: "Сообщение отправлено ✓",
+      contact_sent_btn: "Сообщение отправлено",
       contact_toast: "Ваше сообщение успешно отправлено!",
       press_title: "Пресс-кит и медиа",
       press_lead: "История создания, фирменный стиль и официальные медиаматериалы Miruo.",

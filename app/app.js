@@ -309,10 +309,10 @@ window.handleNativeImagePicked = function(base64Data, target) {
     syncUserProfileToSupabase(savedUser);
 
     updateUserUI(savedUser);
-    showToast('✓ Profil fotoğrafı güncellendi ✨');
+    showToast('Profil fotoğrafı güncellendi');
   } else if (target === 'chat') {
     sendChatMessage('', base64Data);
-    showToast('📷 Fotoğraf sohbete yüklendi!');
+    showToast('Fotoğraf sohbete yüklendi!');
     const stickerPopover = document.getElementById('chatStickerPopover');
     if (stickerPopover) stickerPopover.classList.add('hidden');
   } else if (target === 'signup') {
@@ -321,7 +321,7 @@ window.handleNativeImagePicked = function(base64Data, target) {
     if (previewEl) {
       previewEl.innerHTML = `<img src="${base64Data}" class="w-full h-full object-cover rounded-full" alt="Avatar">`;
     }
-    showToast('Kayıt fotoğrafı seçildi ✨');
+    showToast('Kayıt fotoğrafı seçildi');
   }
 };
 
@@ -355,15 +355,15 @@ const I18N = {
     username_ph: 'kullaniciadi',
     default_room_code: 'Varsayılan / Ortak Oda Kodu',
     registered_email: 'Kayıtlı E-posta',
-    active_session: '✓ Aktif Oturum',
+    active_session: 'Aktif Oturum',
     provider_apple: 'Apple ID ile Giriş Yapıldı',
-    provider_apple_badge: '✓ Apple ile Doğrulandı',
+    provider_apple_badge: 'Apple ile Doğrulandı',
     provider_google: 'Google ile Giriş Yapıldı',
-    provider_google_badge: '✓ Google ile Doğrulandı',
+    provider_google_badge: 'Google ile Doğrulandı',
     provider_phone: 'Telefon Numarası ile Giriş',
-    provider_phone_badge: '✓ SMS ile Doğrulandı',
+    provider_phone_badge: 'SMS ile Doğrulandı',
     provider_email: 'E-posta ile Kayıt Olundu',
-    provider_email_badge: '✓ Aktif Oturum',
+    provider_email_badge: 'Aktif Oturum',
     save_changes: 'Kaydet',
     logout: 'Oturumu Kapat',
     select_photo: 'Fotoğraf Seç',
@@ -500,9 +500,9 @@ const I18N = {
     rave_subtitle: 'Video seçin ve odadakilerle birlikte izleyin.',
     rave_search_ph: 'YouTube\'da şarkı, klip, sanatçı, dizi veya kanal ara...',
     rave_search_btn: 'Ara',
-    rave_tab_trending: '🔥 Trendler',
-    rave_tab_music: '🎵 Popüler Müzik',
-    rave_tab_lofi: '☕ 24/7 Lo-Fi',
+    rave_tab_trending: 'Trendler',
+    rave_tab_music: 'Popüler Müzik',
+    rave_tab_lofi: '24/7 Lo-Fi',
     rave_footer_info: 'Odadakilerle senkronize izlemek için videoya dokunun',
     stage_waiting: 'İzlemek için bir video seçin veya bağlantı yapıştırın',
     chat_tab: 'Sohbet',
@@ -512,8 +512,8 @@ const I18N = {
     leave_room: 'Ayrıl',
     change_video: 'Video Değiştir',
     refresh_btn: 'Yenile',
-    invite_copied: 'Oda davet linki kopyalandı! 📋',
-    profile_updated: 'Profil ve tercihler güncellendi ✨',
+    invite_copied: 'Oda davet linki kopyalandı!',
+    profile_updated: 'Profil ve tercihler güncellendi',
     lang_changed: 'Uygulama dili Türkçe olarak ayarlandı',
     synced: 'Senkronize edildi',
     room_participants_title: 'Odadakiler',
@@ -561,7 +561,7 @@ const I18N = {
     chat_expand: 'Büyüt',
     chat_collapse: 'Küçült',
     chat_welcome: 'odasına hoş geldiniz!',
-    chat_bot_joined: 'odaya katıldı 👋',
+    chat_bot_joined: 'odaya katıldı',
     show_chat: 'Sohbeti Göster',
     chat_mention_label: 'Bahset:',
     chat_reaction_label: 'Tepki:',
@@ -590,7 +590,7 @@ const I18N = {
     role_member: 'İzleyici',
     kick_title: 'Odadan Çıkar',
     kick_btn: 'Çıkar',
-    friend_badge: '✓ Arkadaş',
+    friend_badge: 'Arkadaş',
     add_friend_title: 'Arkadaş Ekle',
     add_friend_btn_short: 'Ekle',
     mic_on_title: 'Mikrofon Açık',
@@ -601,20 +601,20 @@ const I18N = {
     av_mic_on_cam_off: 'Mikrofon Canlı • Kamera Kapalı',
     av_cam_on_mic_off: 'Kamera Canlı • Mikrofon Kapalı',
     av_mic_cam_off: 'Mikrofon & Kamera Kapalı',
-    toast_cam_opened: '📹 Canlı Kamera Açıldı (Sürüklenebilir)',
-    toast_cam_preview_opened: '📹 Canlı Kamera Önizleme Açıldı (Sürüklenebilir)',
+    toast_cam_opened: 'Canlı Kamera Açıldı (Sürüklenebilir)',
+    toast_cam_preview_opened: 'Canlı Kamera Önizleme Açıldı (Sürüklenebilir)',
     who_can_join_title: 'Kimler Katılabilir?',
     who_can_join_sub: 'Oda katılım ve erişim ayarlarını yönetin.',
     random_room_code_label: 'Rastgele Oda Kodu',
     access_permission_label: 'Katılım İzni',
-    access_public_label: '🌍 Herkese Açık',
+    access_public_label: 'Herkese Açık',
     recommended_badge: 'Önerilen',
     access_public_desc: 'Oda bağlantısına veya koduna sahip herkes odaya doğrudan katılabilir.',
-    access_invite_label: '🔒 Sadece Davetliler',
+    access_invite_label: 'Sadece Davetliler',
     access_invite_desc: 'Yalnızca oda sahibinin davet ettiği ve onayladığı kişiler katılabilir.',
     done_btn: 'Tamam',
     queue_title: 'Oynatma Sırası',
-    queue_empty: 'Sırada bekleyen video yok 🎵',
+    queue_empty: 'Sırada bekleyen video yok',
     share_room_title: 'Odayı Paylaş & Davet Et',
     share_room_sub: 'Arkadaşlarınla aynı anda senkronize izle',
     share_public_desc: 'Herkes keşfetten veya bağlantıyla katılabilir',
@@ -626,7 +626,7 @@ const I18N = {
     other_app_label: 'Diğer',
     room_privacy_toast: 'Oda Gizliliği',
     room_title_label: 'Oda Başlığı',
-    room_title_ph: 'Örn: Gece Lo-Fi Sohbeti ☕ veya Sinema Gecesi',
+    room_title_ph: 'Örn: Gece Lo-Fi Sohbeti veya Sinema Gecesi',
     privacy_type_label: 'Gizlilik Türü',
     private_room_label: 'Özel Oda',
     private_room_desc: 'Sadece davet ettiğin kişiler girebilir.',
@@ -640,7 +640,7 @@ const I18N = {
     yt_browse_btn: 'Gezin ↗',
     yt_browse_title: "m.youtube.com'u açıp hesabına gir",
     yt_currently_playing_prefix: 'Şu an çalıyor:',
-    yt_background_playing: 'Arka Planda Kesintisiz Devam Ediyor 🔊',
+    yt_background_playing: 'Arka Planda Kesintisiz Devam Ediyor',
     yt_search_ph: "YouTube'da şarkı, klip, sanatçı, dizi veya kanal ara...",
     yt_search_btn: 'Ara',
     tab_trending: 'Trendler',
@@ -663,16 +663,16 @@ const I18N = {
     online_count_badge: 'Çevrimiçi',
     leave_room_btn: 'Ayrıl',
     leave_room_title: 'Odadan Ayrıl',
-    toast_left_room: 'Odadan ayrıldınız 👋',
+    toast_left_room: 'Odadan ayrıldınız',
     fs_show_chat: 'Tam ekranda canlı sohbet görünsün',
     toggle_video_display: 'Video görüntüsünü göster',
     audio_only_mode: 'Yalnızca Ses Modu (Video Gizlendi)',
     show_video_btn: 'Videoyu Göster',
     hide_video_btn: 'Videoyu Gizle',
-    toast_video_shown: 'Video görüntüsü açıldı 🎬',
-    toast_video_hidden: 'Video görüntüsü gizlendi, yalnızca ses çalıyor 🔊',
-    toast_chat_closed: 'Sohbet gizlendi. Yazısız izliyorsunuz 🎬',
-    toast_chat_opened: 'Canlı Sohbet açıldı 💬'
+    toast_video_shown: 'Video görüntüsü açıldı',
+    toast_video_hidden: 'Video görüntüsü gizlendi, yalnızca ses çalıyor',
+    toast_chat_closed: 'Sohbet gizlendi. Yazısız izliyorsunuz',
+    toast_chat_opened: 'Canlı Sohbet açıldı'
   },
   en: {
     app_title: 'Miruo — Watch & See Together',
@@ -700,15 +700,15 @@ const I18N = {
     username_ph: 'username',
     default_room_code: 'Default / Shared Room Code',
     registered_email: 'Registered Email',
-    active_session: '✓ Active Session',
+    active_session: 'Active Session',
     provider_apple: 'Signed in with Apple ID',
-    provider_apple_badge: '✓ Verified with Apple',
+    provider_apple_badge: 'Verified with Apple',
     provider_google: 'Signed in with Google',
-    provider_google_badge: '✓ Verified with Google',
+    provider_google_badge: 'Verified with Google',
     provider_phone: 'Signed in with Phone Number',
-    provider_phone_badge: '✓ Verified with SMS',
+    provider_phone_badge: 'Verified with SMS',
     provider_email: 'Registered with Email',
-    provider_email_badge: '✓ Active Session',
+    provider_email_badge: 'Active Session',
     save_changes: 'Save',
     logout: 'Log Out',
     select_photo: 'Choose Photo',
@@ -845,9 +845,9 @@ const I18N = {
     rave_subtitle: 'Choose a video and watch together with the room.',
     rave_search_ph: 'Search songs, clips, artists or channels on YouTube...',
     rave_search_btn: 'Search',
-    rave_tab_trending: '🔥 Trending',
-    rave_tab_music: '🎵 Popular Music',
-    rave_tab_lofi: '☕ 24/7 Lo-Fi',
+    rave_tab_trending: 'Trending',
+    rave_tab_music: 'Popular Music',
+    rave_tab_lofi: '24/7 Lo-Fi',
     rave_footer_info: 'Tap any video to watch in sync with friends',
     stage_waiting: 'Select a video or paste a link to start watching',
     chat_tab: 'Chat',
@@ -857,8 +857,8 @@ const I18N = {
     leave_room: 'Leave',
     change_video: 'Change Video',
     refresh_btn: 'Refresh',
-    invite_copied: 'Room invite link copied! 📋',
-    profile_updated: 'Profile and preferences updated ✨',
+    invite_copied: 'Room invite link copied!',
+    profile_updated: 'Profile and preferences updated',
     lang_changed: 'Language set to English',
     synced: 'Synchronized',
     room_participants_title: 'Room Participants',
@@ -906,7 +906,7 @@ const I18N = {
     chat_expand: 'Expand',
     chat_collapse: 'Collapse',
     chat_welcome: 'room, welcome!',
-    chat_bot_joined: 'joined the room 👋',
+    chat_bot_joined: 'joined the room',
     show_chat: 'Show Chat',
     chat_mention_label: 'Mention:',
     chat_reaction_label: 'Reaction:',
@@ -935,7 +935,7 @@ const I18N = {
     role_member: 'Viewer',
     kick_title: 'Remove from Room',
     kick_btn: 'Remove',
-    friend_badge: '✓ Friend',
+    friend_badge: 'Friend',
     add_friend_title: 'Add Friend',
     add_friend_btn_short: 'Add',
     mic_on_title: 'Microphone On',
@@ -946,20 +946,20 @@ const I18N = {
     av_mic_on_cam_off: 'Mic Live • Camera Off',
     av_cam_on_mic_off: 'Camera Live • Mic Muted',
     av_mic_cam_off: 'Mic & Camera Off',
-    toast_cam_opened: '📹 Live Camera Started (Draggable)',
-    toast_cam_preview_opened: '📹 Live Camera Preview Started (Draggable)',
+    toast_cam_opened: 'Live Camera Started (Draggable)',
+    toast_cam_preview_opened: 'Live Camera Preview Started (Draggable)',
     who_can_join_title: 'Who Can Join?',
     who_can_join_sub: 'Manage room access and participant permissions.',
     random_room_code_label: 'Random Room Code',
     access_permission_label: 'Join Permission',
-    access_public_label: '🌍 Everyone (Public)',
+    access_public_label: 'Everyone (Public)',
     recommended_badge: 'Recommended',
     access_public_desc: 'Anyone with the room link or code can join directly.',
-    access_invite_label: '🔒 Invite Only',
+    access_invite_label: 'Invite Only',
     access_invite_desc: 'Only people invited and approved by the host can join.',
     done_btn: 'Done',
     queue_title: 'Playback Queue',
-    queue_empty: 'No videos waiting in queue 🎵',
+    queue_empty: 'No videos waiting in queue',
     share_room_title: 'Share Room & Invite',
     share_room_sub: 'Watch synchronously with your friends',
     share_public_desc: 'Anyone can join from explore or via link',
@@ -971,7 +971,7 @@ const I18N = {
     other_app_label: 'Other',
     room_privacy_toast: 'Room Privacy',
     room_title_label: 'Room Title',
-    room_title_ph: 'e.g. Late Night Lo-Fi ☕ or Movie Night',
+    room_title_ph: 'e.g. Late Night Lo-Fi or Movie Night',
     privacy_type_label: 'Privacy Type',
     private_room_label: 'Private Room',
     private_room_desc: 'Only invited friends can enter.',
@@ -985,7 +985,7 @@ const I18N = {
     yt_browse_btn: 'Browse ↗',
     yt_browse_title: 'Open m.youtube.com and sign in',
     yt_currently_playing_prefix: 'Now playing:',
-    yt_background_playing: 'Playing continuously in background 🔊',
+    yt_background_playing: 'Playing continuously in background',
     yt_search_ph: 'Search songs, clips, artists or channels on YouTube...',
     yt_search_btn: 'Search',
     tab_trending: 'Trending',
@@ -1008,16 +1008,16 @@ const I18N = {
     online_count_badge: 'Online',
     leave_room_btn: 'Leave',
     leave_room_title: 'Leave Room',
-    toast_left_room: 'You left the room 👋',
+    toast_left_room: 'You left the room',
     fs_show_chat: 'Show live chat in fullscreen',
     toggle_video_display: 'Show video display',
     audio_only_mode: 'Audio Only Mode (Video Hidden)',
     show_video_btn: 'Show Video',
     hide_video_btn: 'Hide Video',
-    toast_video_shown: 'Video display turned on 🎬',
-    toast_video_hidden: 'Video display hidden, playing audio only 🔊',
-    toast_chat_closed: 'Chat hidden. Watching without chat 🎬',
-    toast_chat_opened: 'Live Chat opened 💬'
+    toast_video_shown: 'Video display turned on',
+    toast_video_hidden: 'Video display hidden, playing audio only',
+    toast_chat_closed: 'Chat hidden. Watching without chat',
+    toast_chat_opened: 'Live Chat opened'
   },
   de: {
     app_title: 'Miruo — Zusammen Sehen & Schauen',
@@ -1045,15 +1045,15 @@ const I18N = {
     username_ph: 'benutzername',
     default_room_code: 'Standard- / Raumcode',
     registered_email: 'Registrierte E-Mail',
-    active_session: '✓ Aktive Sitzung',
+    active_session: 'Aktive Sitzung',
     provider_apple: 'Mit Apple ID angemeldet',
-    provider_apple_badge: '✓ Mit Apple bestätigt',
+    provider_apple_badge: 'Mit Apple bestätigt',
     provider_google: 'Mit Google angemeldet',
-    provider_google_badge: '✓ Mit Google bestätigt',
+    provider_google_badge: 'Mit Google bestätigt',
     provider_phone: 'Mit Telefonnummer angemeldet',
-    provider_phone_badge: '✓ Mit SMS bestätigt',
+    provider_phone_badge: 'Mit SMS bestätigt',
     provider_email: 'Mit E-Mail registriert',
-    provider_email_badge: '✓ Aktive Sitzung',
+    provider_email_badge: 'Aktive Sitzung',
     save_changes: 'Speichern',
     logout: 'Abmelden',
     select_photo: 'Foto wählen',
@@ -1190,9 +1190,9 @@ const I18N = {
     rave_subtitle: 'Video auswählen und gemeinsam im Raum ansehen.',
     rave_search_ph: 'Auf YouTube nach Videos, Musik oder Kanälen suchen...',
     rave_search_btn: 'Suchen',
-    rave_tab_trending: '🔥 Trends',
-    rave_tab_music: '🎵 Beliebte Musik',
-    rave_tab_lofi: '☕ 24/7 Lo-Fi',
+    rave_tab_trending: 'Trends',
+    rave_tab_music: 'Beliebte Musik',
+    rave_tab_lofi: '24/7 Lo-Fi',
     rave_footer_info: 'Tippen Sie auf ein Video, um es synchron anzusehen',
     stage_waiting: 'Wählen Sie ein Video oder fügen Sie einen Link ein',
     chat_tab: 'Chat',
@@ -1202,8 +1202,8 @@ const I18N = {
     leave_room: 'Verlassen',
     change_video: 'Video ändern',
     refresh_btn: 'Aktualisieren',
-    invite_copied: 'Raum-Einladungslink kopiert! 📋',
-    profile_updated: 'Profil und Einstellungen aktualisiert ✨',
+    invite_copied: 'Raum-Einladungslink kopiert!',
+    profile_updated: 'Profil und Einstellungen aktualisiert',
     lang_changed: 'Sprache auf Deutsch gesetzt',
     synced: 'Synchronisiert',
     room_participants_title: 'Teilnehmer',
@@ -1251,7 +1251,7 @@ const I18N = {
     chat_expand: 'Vergrößern',
     chat_collapse: 'Verkleinern',
     chat_welcome: 'Raum, willkommen!',
-    chat_bot_joined: 'ist dem Raum beigetreten 👋',
+    chat_bot_joined: 'ist dem Raum beigetreten',
     show_chat: 'Chat anzeigen',
     chat_mention_label: 'Erwähnen:',
     chat_reaction_label: 'Reaktion:',
@@ -1280,7 +1280,7 @@ const I18N = {
     role_member: 'Zuschauer',
     kick_title: 'Aus dem Raum entfernen',
     kick_btn: 'Entfernen',
-    friend_badge: '✓ Freund',
+    friend_badge: 'Freund',
     add_friend_title: 'Freund hinzufügen',
     add_friend_btn_short: 'Hinzufügen',
     mic_on_title: 'Mikrofon Ein',
@@ -1291,20 +1291,20 @@ const I18N = {
     av_mic_on_cam_off: 'Mikrofon Live • Kamera Aus',
     av_cam_on_mic_off: 'Kamera Live • Mikrofon Stumm',
     av_mic_cam_off: 'Mikrofon & Kamera Aus',
-    toast_cam_opened: '📹 Live-Kamera gestartet (Verschiebbar)',
-    toast_cam_preview_opened: '📹 Live-Kamera-Vorschau gestartet (Verschiebbar)',
+    toast_cam_opened: 'Live-Kamera gestartet (Verschiebbar)',
+    toast_cam_preview_opened: 'Live-Kamera-Vorschau gestartet (Verschiebbar)',
     who_can_join_title: 'Wer kann beitreten?',
     who_can_join_sub: 'Raumzugriff und Berechtigungen verwalten.',
     random_room_code_label: 'Zufälliger Raumcode',
     access_permission_label: 'Beitrittserlaubnis',
-    access_public_label: '🌍 Öffentlich (Alle)',
+    access_public_label: 'Öffentlich (Alle)',
     recommended_badge: 'Empfohlen',
     access_public_desc: 'Jeder mit dem Raumlink oder Code kann direkt beitreten.',
-    access_invite_label: '🔒 Nur mit Einladung',
+    access_invite_label: 'Nur mit Einladung',
     access_invite_desc: 'Nur vom Leiter eingeladene und bestätigte Personen können beitreten.',
     done_btn: 'Fertig',
     queue_title: 'Wiedergabeschlange',
-    queue_empty: 'Keine Videos in der Warteschlange 🎵',
+    queue_empty: 'Keine Videos in der Warteschlange',
     share_room_title: 'Raum teilen & einladen',
     share_room_sub: 'Gemeinsam mit Freunden synchron schauen',
     share_public_desc: 'Jeder kann über Entdecken oder Link beitreten',
@@ -1316,7 +1316,7 @@ const I18N = {
     other_app_label: 'Andere',
     room_privacy_toast: 'Raum-Privatsphäre',
     room_title_label: 'Raumtitel',
-    room_title_ph: 'z.B. Late Night Lo-Fi ☕ oder Filmabend',
+    room_title_ph: 'z.B. Late Night Lo-Fi oder Filmabend',
     privacy_type_label: 'Privatsphäre-Typ',
     private_room_label: 'Privater Raum',
     private_room_desc: 'Nur eingeladene Personen können beitreten.',
@@ -1330,7 +1330,7 @@ const I18N = {
     yt_browse_btn: 'Durchsuchen ↗',
     yt_browse_title: 'm.youtube.com öffnen und anmelden',
     yt_currently_playing_prefix: 'Läuft gerade:',
-    yt_background_playing: 'Läuft ununterbrochen im Hintergrund weiter 🔊',
+    yt_background_playing: 'Läuft ununterbrochen im Hintergrund weiter',
     yt_search_ph: 'Auf YouTube nach Videos, Musik oder Kanälen suchen...',
     yt_search_btn: 'Suchen',
     tab_trending: 'Trends',
@@ -1353,16 +1353,16 @@ const I18N = {
     online_count_badge: 'Online',
     leave_room_btn: 'Verlassen',
     leave_room_title: 'Raum verlassen',
-    toast_left_room: 'Du hast den Raum verlassen 👋',
+    toast_left_room: 'Du hast den Raum verlassen',
     fs_show_chat: 'Live-Chat im Vollbild anzeigen',
     toggle_video_display: 'Videoanzeige einblenden',
     audio_only_mode: 'Nur-Audio-Modus (Video ausgeblendet)',
     show_video_btn: 'Video einblenden',
     hide_video_btn: 'Video ausblenden',
-    toast_video_shown: 'Videoanzeige aktiviert 🎬',
-    toast_video_hidden: 'Videoanzeige ausgeblendet, nur Audio läuft 🔊',
-    toast_chat_closed: 'Chat ausgeblendet. Ohne Chat ansehen 🎬',
-    toast_chat_opened: 'Live-Chat geöffnet 💬'
+    toast_video_shown: 'Videoanzeige aktiviert',
+    toast_video_hidden: 'Videoanzeige ausgeblendet, nur Audio läuft',
+    toast_chat_closed: 'Chat ausgeblendet. Ohne Chat ansehen',
+    toast_chat_opened: 'Live-Chat geöffnet'
   }
 };
 
@@ -2084,7 +2084,7 @@ let ws = null;
 
 function connectSignaling() {
   if (window.location.protocol === 'file:' || !window.location.host) {
-    console.log('📱 Miruo Bağımsız Cihaz Modunda Çalışıyor (IP bağlantısı aranmıyor)');
+    console.log('Miruo Bağımsız Cihaz Modunda Çalışıyor');
     return;
   }
   const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
@@ -2094,7 +2094,7 @@ function connectSignaling() {
     ws = new WebSocket(wsUrl);
 
     ws.onopen = () => {
-      console.log('✅ Sinyal sunucusuna bağlanıldı.');
+      console.log('Sinyal sunucusuna bağlanıldı.');
     };
 
     ws.onmessage = (event) => {
@@ -2161,7 +2161,7 @@ function handleSignalMessage(msg) {
     case 'peer-joined':
       state.peerId = msg.userId;
       updatePeerStatus(true);
-      showToast('Partner odaya katıldı ❤️');
+      showToast('Partner odaya katıldı');
       initiateWebRTC(true);
       break;
 
@@ -2221,7 +2221,7 @@ function handleSignalMessage(msg) {
 
     case 'platform-switch':
       switchRoomPlatform(msg.platform);
-      showToast(`Partner platformu değiştirdi: ${msg.platform} 🔄`);
+      showToast(`Partner platformu değiştirdi: ${msg.platform}`);
       break;
 
     case 'kick-user':
@@ -2254,7 +2254,7 @@ function updatePeerStatus(connected) {
   if (!dom.peerStatusBadge) return;
   if (connected) {
     dom.peerStatusBadge.className = 'flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs bg-emerald-500/10 text-emerald-300 border border-emerald-500/20';
-    dom.peerStatusBadge.innerHTML = '<span class="w-2 h-2 rounded-full bg-emerald-400"></span><span>Bağlandı ❤️</span>';
+    dom.peerStatusBadge.innerHTML = '<span class="w-2 h-2 rounded-full bg-emerald-400"></span><span>Bağlandı</span>';
   } else {
     dom.peerStatusBadge.className = 'flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs bg-amber-500/10 text-amber-300 border border-amber-500/20';
     dom.peerStatusBadge.innerHTML = '<span class="w-2 h-2 rounded-full bg-amber-400 animate-ping"></span><span>Partner Bekleniyor...</span>';
@@ -2371,7 +2371,7 @@ function handleRtcCandidate(candidate) {
 }
 
 function setupDataChannelEvents(channel) {
-  channel.onopen = () => console.log('⚡ P2P DataChannel Açıldı! (Sıfır Gecikme Senkron)');
+  channel.onopen = () => console.log('P2P DataChannel Açıldı! (Sıfır Gecikme Senkron)');
   channel.onmessage = (e) => {
     try {
       const data = JSON.parse(e.data);
@@ -2386,7 +2386,7 @@ function setupDataChannelEvents(channel) {
       if (data.type === 'media_status') updateRemoteParticipantStatus(data.userId, data.username, data.isMicOn, data.isCamOn);
       if (data.type === 'platform_switch') {
         switchRoomPlatform(data.platform);
-        showToast(`Partner platformu değiştirdi: ${data.platform} 🔄`);
+        showToast(`Partner platformu değiştirdi: ${data.platform}`);
       }
       if (data.type === 'kick_user') handleRemoteUserKicked(data.targetUserId, data.targetUsername);
       if (data.type === 'role_update') handleRemoteRoleUpdate(data.targetUserId, data.newRole, data.targetUsername);
@@ -2520,7 +2520,7 @@ function restoreAudioDucking() {
 // YouTube IFrame API Initialization
 window.onYouTubeIframeAPIReady = function() {
   state.ytReady = true;
-  console.log('🎬 YouTube API Hazır.');
+  console.log('YouTube API Hazır.');
 };
 
 function loadYoutubeVideo(urlOrId) {
@@ -2592,7 +2592,7 @@ function loadYoutubeVideo(urlOrId) {
   sendP2PData('sync', { action: 'load_yt', videoId, sentAt: Date.now() });
   startPlaybackTracking();
   startSyncHeartbeat();
-  showToast('🎬 Video başlatıldı');
+  showToast('Video başlatıldı');
 }
 
 function fallbackToDirectYtEmbed(videoId) {
@@ -2619,7 +2619,7 @@ function loadTwitchStream(channelOrUrl, title) {
     const parentHost = window.location.hostname || 'localhost';
     dom.webPlayerFrame.src = `https://player.twitch.tv/?channel=${channel}&parent=${parentHost}&parent=localhost&parent=127.0.0.1&autoplay=true&muted=false`;
   }
-  showToast(`🟣 Twitch: ${channel} yayını açıldı!`);
+  showToast(`Twitch: ${channel} yayını açıldı!`);
 }
 
 function loadDirectVideo(url, title) {
@@ -2635,7 +2635,7 @@ function loadDirectVideo(url, title) {
   dom.nativeVideoPlayer.classList.remove('hidden');
   dom.nativeVideoPlayer.src = url;
   dom.nativeVideoPlayer.play().catch(e => console.log('Autoplay deferred:', e));
-  showToast(`🎬 Video başlatıldı!`);
+  showToast('Video başlatıldı!');
 }
 
 function loadWebStream(url, title, provider = 'Web') {
@@ -2651,7 +2651,7 @@ function loadWebStream(url, title, provider = 'Web') {
     dom.webPlayerFrame.classList.remove('hidden');
     dom.webPlayerFrame.src = url;
   }
-  showToast(`🌐 ${provider} içeriği odaya aktarıldı!`);
+  showToast(`${provider} içeriği odaya aktarıldı!`);
 }
 
 function extractYouTubeId(url) {
@@ -2697,7 +2697,7 @@ function handleRemoteSync(payload) {
     if (state.currentVideoId !== payload.videoId) {
       loadYoutubeVideo(payload.videoId);
     }
-    showToast('Partner videoyu başlattı 🎬');
+    showToast('Partner videoyu başlattı');
   }
 
   if (payload.action === 'play') {
@@ -2733,7 +2733,7 @@ function handleRemoteSync(payload) {
     }
     state.isPlaying = false;
     updatePlayPauseUI(false);
-    showToast('Durduruldu ⏸');
+    showToast('Durduruldu');
   }
 
   if (payload.action === 'seek') {
@@ -2747,7 +2747,7 @@ function handleRemoteSync(payload) {
     if (dom.seekSlider && state.duration > 0) {
       dom.seekSlider.value = (targetTime / state.duration) * 100;
     }
-    showToast('Sarıldı ⏩');
+    showToast('Sarıldı');
   }
 
   if (payload.action === 'heartbeat') {
@@ -3058,7 +3058,7 @@ function setVideoDisplay(show) {
   localStorage.setItem('miruo_show_video_display', JSON.stringify(videoDisplaySettings.showVideo));
   applyVideoDisplay();
   const dict = I18N[currentLang] || I18N.tr;
-  showToast(videoDisplaySettings.showVideo ? (dict.toast_video_shown || 'Video görüntüsü açıldı 🎬') : (dict.toast_video_hidden || 'Video görüntüsü gizlendi, yalnızca ses çalıyor 🔊'));
+  showToast(videoDisplaySettings.showVideo ? (dict.toast_video_shown || 'Video görüntüsü açıldı') : (dict.toast_video_hidden || 'Video görüntüsü gizlendi, yalnızca ses çalıyor'));
 }
 
 function applyVideoDisplay() {
@@ -3121,7 +3121,7 @@ function leaveRoom() {
   state.isInRoom = false;
   switchToExplore();
   const dict = I18N[currentLang] || I18N.tr;
-  showToast(dict.toast_left_room || 'Odadan ayrıldınız 👋');
+  showToast(dict.toast_left_room || 'Odadan ayrıldınız');
 }
 
 // Rave-Style PiP Webcam Positioning Settings
@@ -3143,7 +3143,7 @@ function loadPipSettings() {
 function savePipSettings() {
   localStorage.setItem('miruo_pip_settings', JSON.stringify(pipSettings));
   applyPipPositioning();
-  showToast('Kamera yerleşimi güncellendi 📹');
+  showToast('Kamera yerleşimi güncellendi');
 }
 
 function applyPipPositioning() {
@@ -3212,7 +3212,7 @@ function switchRoomPlatform(platform) {
     if (state.ytPlayer && typeof state.ytPlayer.pauseVideo === 'function') {
       try { state.ytPlayer.pauseVideo(); } catch (e) {}
     }
-    showToast(`${platform} moduna geçildi! Sekmeyi sesle paylaşarak birlikte izleyin 🎬`);
+    showToast(`${platform} moduna geçildi! Sekmeyi sesle paylaşarak birlikte izleyin`);
   } else if (p === 'spotify') {
     state.activeMode = 'youtube';
     if (dom.tabSpotify) dom.tabSpotify.classList.add('active');
@@ -3223,7 +3223,7 @@ function switchRoomPlatform(platform) {
         dom.youtubeUrlInput.focus();
       }
     }
-    showToast('Spotify / Ortak Müzik moduna geçildi 🎵');
+    showToast('Spotify / Ortak Müzik moduna geçildi');
   } else if (p === 'screenshare') {
     state.activeMode = 'screenshare';
     if (dom.tabScreenShare) dom.tabScreenShare.classList.add('active');
@@ -3295,7 +3295,7 @@ function renderTouchEffect(normX, normY, isLocal = true) {
   // Floating Heart
   const heart = document.createElement('div');
   heart.className = 'touch-heart';
-  heart.textContent = '❤️';
+  heart.textContent = '♡';
   heart.style.left = `${screenX}px`;
   heart.style.top = `${screenY}px`;
   dom.touchLayer.appendChild(heart);
@@ -3329,7 +3329,7 @@ function applySleepMode(enabled, isLocal = true) {
     dom.sleepOverlay.style.opacity = '1';
     dom.sleepOverlay.style.pointerEvents = 'auto';
     dom.ambientGlow.style.opacity = '0.05';
-    showToast('İyi uykular... 🌙');
+    showToast('İyi uykular...');
   } else {
     dom.sleepOverlay.style.opacity = '0';
     dom.sleepOverlay.style.pointerEvents = 'none';
@@ -3525,13 +3525,13 @@ async function toggleMic() {
       const audioTrack = state.localStream.getAudioTracks()[0];
       if (audioTrack) audioTrack.enabled = true;
     }
-    showToast('🎙️ Mikrofon Açık (Canlı)');
+    showToast('Mikrofon Açık (Canlı)');
   } else {
     if (state.localStream) {
       const audioTrack = state.localStream.getAudioTracks()[0];
       if (audioTrack) audioTrack.enabled = false;
     }
-    showToast('🔇 Mikrofon Kapatıldı');
+    showToast('Mikrofon Kapatıldı');
   }
 
   updateAVToolbarUI();
@@ -3558,7 +3558,7 @@ async function toggleCam() {
     broadcastMyMediaStatus();
     renderParticipantsList();
     renderVideoGrid();
-    showToast('📷 Kamera Kapatıldı');
+    showToast('Kamera Kapatıldı');
     return;
   }
 
@@ -3644,7 +3644,7 @@ async function toggleCam() {
       renderParticipantsList();
       renderVideoGrid();
       const dictCam = I18N[currentLang] || I18N.tr;
-      showToast(dictCam.toast_cam_opened || '📹 Canlı Kamera Açıldı (Sürüklenebilir)');
+      showToast(dictCam.toast_cam_opened || 'Canlı Kamera Açıldı (Sürüklenebilir)');
     } else {
       throw new Error('Video track not available');
     }
@@ -3662,7 +3662,7 @@ async function toggleCam() {
     renderParticipantsList();
     renderVideoGrid();
     const dictCam2 = I18N[currentLang] || I18N.tr;
-    showToast(dictCam2.toast_cam_preview_opened || '📹 Canlı Kamera Önizleme Açıldı (Sürüklenebilir)');
+    showToast(dictCam2.toast_cam_preview_opened || 'Canlı Kamera Önizleme Açıldı (Sürüklenebilir)');
   }
 }
 
@@ -3734,7 +3734,7 @@ function renderVideoGrid() {
   selfBadge.className = 'absolute bottom-1.5 left-1.5 right-1.5 px-2 py-0.5 rounded-lg bg-black/60 backdrop-blur-md border border-white/10 flex items-center justify-between text-[10px] text-white';
   selfBadge.innerHTML = `
     <span class="truncate font-semibold">${state.username || dictGrid.you_badge || 'Sen'} (${dictGrid.you_badge || 'Sen'})</span>
-    <span class="${state.isMicOn ? 'text-emerald-400' : 'text-red-400'}">${state.isMicOn ? '🎙️' : '🔇'}</span>
+    <span class="${state.isMicOn ? 'text-emerald-400' : 'text-red-400'}">${state.isMicOn ? 'Açık' : 'Kapalı'}</span>
   `;
   selfTile.appendChild(selfBadge);
   dom.roomVideoGrid.appendChild(selfTile);
@@ -3786,7 +3786,7 @@ function renderVideoGrid() {
     badge.className = 'absolute bottom-1.5 left-1.5 right-1.5 px-2 py-0.5 rounded-lg bg-black/60 backdrop-blur-md border border-white/10 flex items-center justify-between text-[10px] text-white';
     badge.innerHTML = `
       <span class="truncate font-semibold">${m.username}</span>
-      <span class="${m.isMicOn ? 'text-emerald-400' : 'text-red-400'}">${m.isMicOn ? '🎙️' : '🔇'}</span>
+      <span class="${m.isMicOn ? 'text-emerald-400' : 'text-red-400'}">${m.isMicOn ? 'Açık' : 'Kapalı'}</span>
     `;
     tile.appendChild(badge);
     dom.roomVideoGrid.appendChild(tile);
@@ -3809,51 +3809,51 @@ const SIMULATED_BOT_PROFILES = [
 
 const BOT_CHAT_MESSAGES_I18N = {
   tr: [
-    "bu parça bağımlılık yaptı yaa 🔥",
-    "selam herkese, ses gayet net geliyor 👋",
+    "bu parça bağımlılık yaptı yaa",
+    "selam herkese, ses gayet net geliyor",
     "efsane seçim elinize sağlık",
     "klibi ilk defa izliyorum çok iyiymiş",
     "sesi bir tık daha açabilir misiniz?",
-    "sırada hangi şarkı var acaba? 🎧",
-    "kalp bıraktım ❤️",
-    "bunu listeme kaydettim hemen 👍",
+    "sırada hangi şarkı var acaba?",
+    "kalp bıraktım",
+    "bunu listeme kaydettim hemen",
     "gece moduna çok yakıştı bu parça",
-    "herkese keyifli dinlemeler ✨",
-    "sonraki benden olsun mu? 🎶",
+    "herkese keyifli dinlemeler",
+    "sonraki benden olsun mu?",
     "harika senkronize oldu çok iyi",
-    "ritim mükemmel 🔥🔥",
+    "ritim mükemmel",
     "arkadaşları da çağırdım geliyorlar"
   ],
   en: [
-    "this track is so addictive 🔥",
-    "hey everyone, audio is super clear 👋",
+    "this track is so addictive",
+    "hey everyone, audio is super clear",
     "amazing pick, loving this vibe!",
     "watching this clip for the first time, it's so good",
     "could you turn up the volume a bit?",
-    "what song is coming up next? 🎧",
-    "dropped a heart ❤️",
-    "saved this to my playlist right away 👍",
+    "what song is coming up next?",
+    "dropped a heart",
+    "saved this to my playlist right away",
     "this track fits late night vibes perfectly",
-    "enjoy the stream everyone ✨",
-    "can I pick the next one? 🎶",
+    "enjoy the stream everyone",
+    "can I pick the next one?",
     "synced up perfectly, love it",
-    "the rhythm is incredible 🔥🔥",
+    "the rhythm is incredible",
     "just invited my friends, they're joining"
   ],
   de: [
-    "dieser Track macht echt süchtig 🔥",
-    "hallo zusammen, Ton ist super klar 👋",
+    "dieser Track macht echt süchtig",
+    "hallo zusammen, Ton ist super klar",
     "mega Auswahl, gefällt mir sehr!",
     "schaue diesen Clip zum ersten Mal, richtig gut",
     "könnt ihr die Lautstärke etwas aufdrehen?",
-    "welches Lied kommt als Nächstes? 🎧",
-    "Herz dagelassen ❤️",
-    "direkt in meiner Playlist gespeichert 👍",
+    "welches Lied kommt als Nächstes?",
+    "Herz dagelassen",
+    "direkt in meiner Playlist gespeichert",
     "perfekt für den Abendmodus",
-    "viel Spaß beim Zuschauen allen ✨",
-    "darf ich das nächste aussuchen? 🎶",
+    "viel Spaß beim Zuschauen allen",
+    "darf ich das nächste aussuchen?",
     "perfekt synchronisiert, klasse",
-    "der Beat ist der Wahnsinn 🔥🔥",
+    "der Beat ist der Wahnsinn",
     "habe Freunde eingeladen, sie kommen gleich"
   ]
 };
@@ -3893,7 +3893,7 @@ function startBotsForActiveRoom() {
 
     // 40% chance to drop floating reaction
     if (Math.random() > 0.55) {
-      const reactions = ['❤️', '🔥', '👏', '✨', '🎉'];
+      const reactions = ['+1', 'harika', 'birlikteyiz'];
       const em = reactions[Math.floor(Math.random() * reactions.length)];
       spawnFloatingReaction(em, false);
     }
@@ -3910,7 +3910,7 @@ function stopBotsForActiveRoom() {
 function appendBotJoinMessage(botName, botColor) {
   if (!dom.chatMessagesContainer) return;
   const dict = I18N[currentLang] || I18N.tr;
-  const joinText = dict.chat_bot_joined || 'odaya katıldı 👋';
+  const joinText = dict.chat_bot_joined || 'odaya katıldı';
   const msgEl = document.createElement('div');
   msgEl.className = 'flex items-center gap-2 text-gray-400 text-[11px] py-1';
   msgEl.innerHTML = `
@@ -4191,10 +4191,10 @@ function renderStackedAvatars(avatars) {
 const DEFAULT_COMMUNITY_ROOMS = [
   {
     id: 'O-SES-TURKIYE',
-    name: 'O Ses Türkiye — En İyi Performanslar 🎤',
+    name: 'O Ses Türkiye — En İyi Performanslar',
     category: 'YouTube',
     host: 'MiruoTR',
-    mediaTitle: 'O Ses Türkiye — En İyi Performanslar 🎤',
+    mediaTitle: 'O Ses Türkiye — En İyi Performanslar',
     videoId: '4NRXx6U8ABQ',
     viewers: 10,
     avatars: [
@@ -4341,7 +4341,7 @@ function renderRoomList(roomsToRender) {
       if (r.videoId) {
         setTimeout(() => { loadYoutubeVideo(r.videoId); }, 300);
       }
-      showToast(`${r.name} odasına katıldınız! ✨`);
+      showToast(`${r.name} odasına katıldınız!`);
     };
 
     addInstantTap(card, enterRoom);
@@ -4422,7 +4422,7 @@ function handleRemotePermissionChange(newMode, hostName) {
   state.controlMode = newMode;
   if (hostName) state.hostName = hostName;
   updatePermissionUI();
-  showToast(newMode === 'everyone' ? 'Oda Yöneticisi video açma iznini herkese verdi! 🔓' : 'Oda Yöneticisi kontrolleri kilitledi (Sadece Yönetici) 🔒');
+  showToast(newMode === 'everyone' ? 'Oda Yöneticisi video açma iznini herkese verdi!' : 'Oda Yöneticisi kontrolleri kilitledi (Sadece Yönetici)');
 }
 
 function handleDjPermissionRequested(fromUser) {
@@ -4432,13 +4432,13 @@ function handleDjPermissionRequested(fromUser) {
     dom.hostPermissionRequestToast.classList.remove('hidden');
     dom.hostPermissionRequestToast.classList.add('flex');
   }
-  showToast(`${fromUser || 'Misafir'} video açma yetkisi istedi! ✋`);
+  showToast(`${fromUser || 'Misafir'} video açma yetkisi istedi!`);
 }
 
 function handleDjPermissionGranted(toUser) {
   state.hasDjPermission = true;
   updatePermissionUI();
-  showToast('🎉 Tebrikler! Oda yöneticisi size video açma yetkisi verdi.');
+  showToast('Tebrikler! Oda yöneticisi size video açma yetkisi verdi.');
 }
 
 // Default seed friends (With unique usernames)
@@ -4530,7 +4530,7 @@ function renderFriendsList(filterText = '') {
     addInstantTap(item.querySelector('.invite-friend-btn'), () => {
       const inviteUrl = `${window.location.origin}/?room=${encodeURIComponent(state.roomId)}`;
       navigator.clipboard.writeText(inviteUrl).then(() => {
-        showToast(`${fr.name} için davet linki kopyalandı! 📋`);
+        showToast(`${fr.name} için davet linki kopyalandı!`);
       });
     });
 
@@ -4546,13 +4546,13 @@ async function addFriend(nameOrUsername) {
   const currentMyUsername = (state.username || '').replace(/^@/, '').trim();
 
   if (cleanUsername.toLowerCase() === currentMyUsername.toLowerCase()) {
-    showToast('⚠️ Kendini arkadaş olarak ekleyemezsin!');
+    showToast('Kendini arkadaş olarak ekleyemezsin!');
     return;
   }
 
   const already = state.friends.find(f => (f.username || f.name).toLowerCase().replace(/^@/, '') === cleanUsername.toLowerCase());
   if (already) {
-    showToast(`ℹ️ @${cleanUsername} zaten arkadaş listenizde!`);
+    showToast(`@${cleanUsername} zaten arkadaş listenizde!`);
     return;
   }
 
@@ -4589,7 +4589,7 @@ async function addFriend(nameOrUsername) {
   renderFriendsTab(dom.tabFriendSearchInput ? dom.tabFriendSearchInput.value : '');
   if (dom.addFriendInput) dom.addFriendInput.value = '';
   if (dom.tabAddFriendInput) dom.tabAddFriendInput.value = '';
-  showToast(`@${cleanUsername} arkadaşlarına eklendi! 🎉`);
+  showToast(`@${cleanUsername} arkadaşlarına eklendi!`);
 }
 
 function renderFriendsTab(filterText = '') {
@@ -4670,7 +4670,7 @@ function renderFriendsTab(filterText = '') {
     addInstantTap(card.querySelector('.invite-friend-tab-btn'), () => {
       const inviteUrl = `${window.location.origin}/?room=${encodeURIComponent(state.roomId)}`;
       navigator.clipboard.writeText(inviteUrl).then(() => {
-        showToast(`${fr.name} için davet linki kopyalandı! 📋`);
+        showToast(`${fr.name} için davet linki kopyalandı!`);
       });
     });
 
@@ -4808,8 +4808,8 @@ function kickParticipant(userId, username) {
     activeRoomBots = activeRoomBots.filter(b => ('bot_' + b.name) !== userId && b.name !== username);
     renderParticipantsList();
     renderVideoGrid();
-    showToast(`🚫 ${username} odadan atıldı.`);
-    renderChatMessage('Sistem 🛡️', `🚫 ${username} oda sahibi tarafından odadan çıkarıldı.`, false, null);
+    showToast(`${username} odadan atıldı.`);
+    renderChatMessage('Sistem', `${username} oda sahibi tarafından odadan çıkarıldı.`, false, null);
     return;
   }
 
@@ -5181,7 +5181,7 @@ function renderChatMessage(sender, text, isSelf, timeStr, imageUrl = null, avata
   // If chat panel is currently closed, illuminate the unread badge on the chat button
   if (!isSelf && dom.roomChatPanel && dom.roomChatPanel.classList.contains('hidden')) {
     if (dom.chatUnreadDot) dom.chatUnreadDot.classList.remove('hidden');
-    showToast(`💬 ${sender}: ${text ? (text.length > 25 ? text.substring(0, 25) + '...' : text) : '📷 Görsel gönderdi'}`);
+    showToast(`${sender}: ${text ? (text.length > 25 ? text.substring(0, 25) + '...' : text) : 'Görsel gönderdi'}`);
   }
 }
 
@@ -5216,7 +5216,7 @@ async function searchAndRenderMedia(query = '', category = 'all') {
     if (items.length === 0) {
       dom.mediaPickerGrid.innerHTML = `
         <div class="col-span-full py-8 text-center text-xs text-gray-400">
-          <p>Sonuç bulunamadı 🔍</p>
+          <p>Sonuç bulunamadı</p>
           <span class="text-[10px] text-gray-500 mt-1 block">Farklı bir arama terimi deneyin veya kategori seçin.</span>
         </div>
       `;
@@ -5249,7 +5249,7 @@ async function searchAndRenderMedia(query = '', category = 'all') {
         const title = card.dataset.title;
         if (vid) {
           loadYoutubeVideo(vid);
-          showToast(`🎬 "${title}" başlatıldı!`);
+          showToast(`"${title}" başlatıldı!`);
         }
       });
     });
@@ -5799,7 +5799,7 @@ function initEvents() {
       dom.authModal.classList.add('hidden');
       unfreezeBackgroundAfterModal();
     }
-    showToast(`Hoş geldin, ${displayName} ✨`);
+    showToast(`Hoş geldin, ${displayName}`);
 
     // 3. Supabase background sync (non-blocking)
     if (supabaseClient && supabaseClient.auth) {
@@ -5887,7 +5887,7 @@ function initEvents() {
         dom.authModal.classList.add('hidden');
         unfreezeBackgroundAfterModal();
       }
-      showToast(`Hoş geldin, ${displayName} ✨`);
+      showToast(`Hoş geldin, ${displayName}`);
       syncUserProfileToSupabase(verifiedUser);
     } catch (e) {
       console.error('[Miruo] handleNativeOAuthResponse error:', e);
@@ -6156,10 +6156,10 @@ function initEvents() {
       dom.resetSendCodeBtn.innerHTML = '<span>6 Haneli Kodu Gönder</span> <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12h14"/><path d="M12 5l7 7-7 7"/></svg>';
     }
 
-    showToast(`📩 6 Haneli Kurtarma Kodu: [ ${generatedCode} ] iletildi!`);
+    showToast(`6 Haneli Kurtarma Kodu: [ ${generatedCode} ] iletildi!`);
     setResetStep(2);
     startResetTimer();
-    showResetAlert(2, `ℹ️ Test / Hızlı Kod: ${generatedCode} (Kutulara yapıştırabilir veya yazabilirsiniz)`, true);
+    showResetAlert(2, `Test / Hızlı Kod: ${generatedCode} (Kutulara yapıştırabilir veya yazabilirsiniz)`, true);
   }
 
   if (dom.resetSendCodeBtn) {
@@ -6264,7 +6264,7 @@ function initEvents() {
     }
 
     if (isValid) {
-      showToast('✓ Kod başarıyla doğrulandı! Yeni şifrenizi belirleyin.');
+      showToast('Kod başarıyla doğrulandı! Yeni şifrenizi belirleyin.');
       setResetStep(3);
     } else {
       showResetAlert(2, 'Hatalı kod girdiniz. Lütfen e-postanızı veya test kodunu kontrol edin.');
@@ -6305,7 +6305,7 @@ function initEvents() {
       if (dom.strengthBar3) dom.strengthBar3.className = `h-1 rounded-full transition-all ${score >= 3 ? 'bg-emerald-600' : 'bg-gray-200'}`;
 
       if (dom.strengthText) {
-        dom.strengthText.textContent = score === 0 ? 'Şifre gücü (En az 6 karakter)' : score === 1 ? 'Şifre gücü: Temel' : score === 2 ? 'Şifre gücü: İyi' : 'Şifre gücü: Çok Güçlü 🔥';
+        dom.strengthText.textContent = score === 0 ? 'Şifre gücü (En az 6 karakter)' : score === 1 ? 'Şifre gücü: Temel' : score === 2 ? 'Şifre gücü: İyi' : 'Şifre gücü: Çok Güçlü';
         dom.strengthText.className = `text-[10px] block mt-1 ${score >= 2 ? 'text-emerald-600 font-semibold' : 'text-gray-400'}`;
       }
     });
@@ -6377,7 +6377,7 @@ function initEvents() {
       dom.resetSaveNewPasswordBtn.innerHTML = '<span>Şifreyi Güncelle & Giriş Yap</span>';
     }
 
-    showToast('🎉 Şifreniz başarıyla güncellendi!');
+    showToast('Şifreniz başarıyla güncellendi!');
     setResetStep(4);
   }
 
@@ -6403,7 +6403,7 @@ function initEvents() {
           dom.authPasswordInput.focus();
         }
         dom.authModal.classList.remove('hidden');
-        showToast('Yeni şifrenizle giriş yapabilirsiniz ✨');
+        showToast('Yeni şifrenizle giriş yapabilirsiniz');
       }
     });
   }
@@ -6488,7 +6488,7 @@ function initEvents() {
       startPhoneOtpTimer();
 
       const hint = data.code ? ` (Test Kodu: ${data.code})` : '';
-      showAuthAlert(`✓ ${fullPhone} numarasına 6 haneli onay kodu iletildi!${hint}`, true);
+      showAuthAlert(`${fullPhone} numarasına 6 haneli onay kodu iletildi!${hint}`, true);
 
       const digitInputs = document.querySelectorAll('.phone-digit-box');
       if (digitInputs.length > 0) {
@@ -6552,7 +6552,7 @@ function initEvents() {
         return;
       }
 
-      showAuthAlert("✓ Telefon doğrulaması başarılı! Hoş geldin.", true);
+      showAuthAlert("Telefon doğrulaması başarılı! Hoş geldin.", true);
 
       const user = {
         id: data.user.id,
@@ -6563,7 +6563,7 @@ function initEvents() {
         email: data.user.email || `${phoneOtpState.phone.replace(/[^0-9]/g, '')}@miruo.app`,
         provider: 'phone',
         avatarUrl: data.user.avatarUrl || '',
-        avatarChar: '📱'
+        avatarChar: 'M'
       };
 
       localStorage.setItem('miruo_user', JSON.stringify(user));
@@ -6575,7 +6575,7 @@ function initEvents() {
       setTimeout(() => {
         updateUserUI(user);
         if (dom.authModal) dom.authModal.classList.add('hidden');
-        showToast(`Hoş geldin! Telefonla giriş yapıldı 📱✨`);
+        showToast(`Hoş geldin! Telefonla giriş yapıldı`);
       }, 350);
     } catch (err) {
       if (dom.authSubmitBtn) {
@@ -6759,7 +6759,7 @@ function initEvents() {
             return;
           }
 
-          showAuthAlert("✓ Hesabınız başarıyla oluşturuldu! Hoş geldiniz.", true);
+          showAuthAlert("Hesabınız başarıyla oluşturuldu! Hoş geldiniz.", true);
           const user = {
             id: data.user.id,
             name: data.user.fullName || data.user.username || cleanUsername,
@@ -6781,7 +6781,7 @@ function initEvents() {
               dom.authModal.classList.add('hidden');
               unfreezeBackgroundAfterModal();
             }
-            showToast(`Hoş geldin @${cleanUsername}! Kayıt başarılı ✨`);
+            showToast(`Hoş geldin @${cleanUsername}! Kayıt başarılı`);
           }, 350);
         } catch (err) {
           dom.authSubmitBtn.innerText = prevBtnText;
@@ -6831,7 +6831,7 @@ function initEvents() {
             return;
           }
 
-          showAuthAlert("✓ Giriş başarılı! Hoş geldin.", true);
+          showAuthAlert("Giriş başarılı! Hoş geldin.", true);
           const user = {
             id: data.user.id,
             name: data.user.fullName || data.user.username || contactVal.split('@')[0],
@@ -6852,7 +6852,7 @@ function initEvents() {
               dom.authModal.classList.add('hidden');
               unfreezeBackgroundAfterModal();
             }
-            showToast(`Giriş yapıldı, hoş geldin ${user.name}! ✨`);
+            showToast(`Giriş yapıldı, hoş geldin ${user.name}!`);
           }, 350);
         } catch (err) {
           dom.authSubmitBtn.innerText = prevBtnText;
@@ -6979,7 +6979,7 @@ function initEvents() {
     // For other platforms on web: open and join room
     const title = `${config.title} Odası`;
     createAndJoinRoom(title, false, config.title);
-    showToast(`${config.title} odası açıldı! 🎬`);
+    showToast(`${config.title} odası açıldı!`);
   }
 
   // YouTube Direct Interface Launch
@@ -7157,7 +7157,7 @@ function initEvents() {
     }
 
     if (items.length === 0) {
-      const noVideosFound = isEn ? 'No videos found 🔍' : (isDe ? 'Keine Videos gefunden 🔍' : 'Aradığınız video bulunamadı 🔍');
+      const noVideosFound = isEn ? 'No videos found' : (isDe ? 'Keine Videos gefunden' : 'Aradığınız video bulunamadı');
       const trySearchText = isEn ? 'Try a different search or browse m.youtube.com.' : (isDe ? 'Versuchen Sie eine andere Suche oder durchsuchen Sie m.youtube.com.' : 'Farklı bir arama yapın veya m.youtube.com\'da gezinin.');
       dom.raveYtVideoGrid.innerHTML = `
         <div class="col-span-full py-10 text-center text-xs text-gray-400">
@@ -7218,10 +7218,10 @@ function initEvents() {
       dom.hostBrowsingNotice.classList.remove('hidden');
       if (dom.hostBrowsingNoticeText) {
         const browsingNotice = isEn
-          ? `🎬 ${user || 'Host'} is choosing a new video... (Current video playing)`
+          ? `${user || 'Host'} is choosing a new video... (Current video playing)`
           : (isDe
-            ? `🎬 ${user || 'Host'} sucht ein neues Video... (Aktuelles Video läuft)`
-            : `🎬 ${user || 'Oda sahibi'} yeni video arıyor... (Mevcut video çalıyor)`);
+            ? `${user || 'Host'} sucht ein neues Video... (Aktuelles Video läuft)`
+            : `${user || 'Oda sahibi'} yeni video arıyor... (Mevcut video çalıyor)`);
         dom.hostBrowsingNoticeText.textContent = browsingNotice;
       }
     } else {
@@ -7250,8 +7250,8 @@ function initEvents() {
 
   function handleRemoteVideoChanged(user, title, videoId) {
     if (title) {
-      showToast(`🎬 ${user || 'Partner'} yeni bir video başlattı: ${title}`);
-      renderChatMessage('SİSTEM', `🎬 ${user || 'Partner'} yeni video başlattı: ${title}`, false);
+      showToast(`${user || 'Partner'} yeni bir video başlattı: ${title}`);
+      renderChatMessage('SİSTEM', `${user || 'Partner'} yeni video başlattı: ${title}`, false);
     }
   }
 
@@ -7270,7 +7270,7 @@ function initEvents() {
     if (dom.roomQueueList) {
       const dictQueue = I18N[currentLang] || I18N.tr;
       if (!state.roomQueue || state.roomQueue.length === 0) {
-        const emptyMsg = dictQueue.queue_empty || (currentLang === 'tr' ? 'Sırada bekleyen video yok 🎵' : 'No videos waiting in queue 🎵');
+        const emptyMsg = dictQueue.queue_empty || (currentLang === 'tr' ? 'Sırada bekleyen video yok' : 'No videos waiting in queue');
         dom.roomQueueList.innerHTML = `<div class="py-8 text-center text-xs text-gray-400" data-i18n="queue_empty">${emptyMsg}</div>`;
       } else {
         const canManage = state.isHost || state.userRole === 'owner' || state.userRole === 'admin' || state.userRole === 'dj' || state.controlMode === 'everyone' || state.hasDjPermission;
@@ -7339,12 +7339,12 @@ function initEvents() {
       sendP2PData('queue_update', { queue: state.roomQueue });
       sendSignal({ type: 'queue-update', queue: state.roomQueue });
       selectAndPlayYoutubeVideo(nextItem.id, nextItem.title);
-      const ann = `🎬 Sıradaki video başlatıldı: "${nextItem.title}"`;
+      const ann = `Sıradaki video başlatıldı: "${nextItem.title}"`;
       showToast(ann);
       renderChatMessage('SİSTEM', ann, true);
       sendP2PData('chat', { sender: 'SİSTEM', text: ann, time: getNowTimeString() });
     } else {
-      showToast('Sırada video yok. Yeni video seçin 🎬');
+      showToast('Sırada video yok. Yeni video seçin');
       openVideoChooser();
     }
   }
@@ -7357,8 +7357,8 @@ function initEvents() {
     if (cleanYtId) {
       if (state.roomId && dom.roomWorkspaceSection && !dom.roomWorkspaceSection.classList.contains('hidden')) {
         loadYoutubeVideo(cleanYtId);
-        showToast(`🎬 "${title}" odada başlatıldı!`);
-        const ann = `🎬 ${state.username} yeni video başlattı: ${title}`;
+        showToast(`"${title}" odada başlatıldı!`);
+        const ann = `${state.username} yeni video başlattı: ${title}`;
         sendP2PData('video_changed', { user: state.username, title, videoId: cleanYtId });
         sendSignal({ type: 'video-changed', user: state.username, title, videoId: cleanYtId });
         renderChatMessage('SİSTEM', ann, true);
@@ -7366,7 +7366,7 @@ function initEvents() {
       } else {
         const roomTitle = title ? `${title.substring(0, 24)} Partisi` : 'YouTube Partisi';
         createAndJoinRoom(roomTitle, false, 'YouTube', cleanYtId);
-        showToast(`🎬 "${title}" ile oda başlatıldı!`);
+        showToast(`"${title}" ile oda başlatıldı!`);
       }
     } else {
       const platformName = provider || 'Web';
@@ -7573,31 +7573,31 @@ function initEvents() {
     const authProvider = savedUser.provider || (savedUser.phone ? 'phone' : (savedUser.isApple ? 'apple' : (savedUser.isGoogle ? 'google' : 'email')));
     if (dom.accountProviderIcon && dom.accountProviderName) {
       if (authProvider === 'apple' || savedUser.isApple) {
-        dom.accountProviderIcon.innerHTML = '🍎';
+        dom.accountProviderIcon.innerHTML = '<span class="text-xs font-bold text-white">Apple</span>';
         dom.accountProviderName.textContent = dict.provider_apple || 'Apple ID ile Giriş Yapıldı';
         if (dom.profileAuthBadge) {
-          dom.profileAuthBadge.textContent = dict.provider_apple_badge || '✓ Apple ile Doğrulandı';
+          dom.profileAuthBadge.textContent = dict.provider_apple_badge || 'Apple ile Doğrulandı';
           dom.profileAuthBadge.className = 'px-2.5 py-1 rounded-full text-[10px] font-bold bg-white/10 text-white border border-white/20';
         }
       } else if (authProvider === 'google' || savedUser.isGoogle) {
-        dom.accountProviderIcon.innerHTML = '🌐';
+        dom.accountProviderIcon.innerHTML = '<span class="text-xs font-bold text-blue-400">Google</span>';
         dom.accountProviderName.textContent = dict.provider_google || 'Google ile Giriş Yapıldı';
         if (dom.profileAuthBadge) {
-          dom.profileAuthBadge.textContent = dict.provider_google_badge || '✓ Google ile Doğrulandı';
+          dom.profileAuthBadge.textContent = dict.provider_google_badge || 'Google ile Doğrulandı';
           dom.profileAuthBadge.className = 'px-2.5 py-1 rounded-full text-[10px] font-bold bg-blue-500/15 text-blue-400 border border-blue-500/30';
         }
       } else if (authProvider === 'phone' || savedUser.phone) {
-        dom.accountProviderIcon.innerHTML = '📱';
+        dom.accountProviderIcon.innerHTML = '<span class="text-xs font-bold text-amber-400">SMS</span>';
         dom.accountProviderName.textContent = dict.provider_phone || 'Telefon Numarası ile Giriş';
         if (dom.profileAuthBadge) {
-          dom.profileAuthBadge.textContent = dict.provider_phone_badge || '✓ SMS ile Doğrulandı';
+          dom.profileAuthBadge.textContent = dict.provider_phone_badge || 'SMS ile Doğrulandı';
           dom.profileAuthBadge.className = 'px-2.5 py-1 rounded-full text-[10px] font-bold bg-amber-500/15 text-amber-400 border border-amber-500/30';
         }
       } else {
-        dom.accountProviderIcon.innerHTML = '✉️';
+        dom.accountProviderIcon.innerHTML = '<span class="text-xs font-bold text-emerald-400">Mail</span>';
         dom.accountProviderName.textContent = dict.provider_email || 'E-posta ile Kayıt Olundu';
         if (dom.profileAuthBadge) {
-          dom.profileAuthBadge.textContent = dict.provider_email_badge || dict.active_session || '✓ Aktif Oturum';
+          dom.profileAuthBadge.textContent = dict.provider_email_badge || dict.active_session || 'Aktif Oturum';
           dom.profileAuthBadge.className = 'px-2.5 py-1 rounded-full text-[10px] font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30';
         }
       }
@@ -7749,7 +7749,7 @@ function initEvents() {
       sound: dom.notifSoundToggle ? dom.notifSoundToggle.checked : true
     };
     localStorage.setItem('miruo_notifications', JSON.stringify(s));
-    showToast('Bildirim tercihleri güncellendi ✨');
+    showToast('Bildirim tercihleri güncellendi');
   }
 
   if (dom.notifPushToggle) dom.notifPushToggle.addEventListener('change', saveNotifSettings);
@@ -7770,7 +7770,7 @@ function initEvents() {
       const cleanUser = (state.username || 'Benim').replace(/^@/, '');
       const roomTitle = `${cleanUser} Canlı Odası`;
       createAndJoinRoom(roomTitle, !isPublic, 'YouTube');
-      showToast('Kişisel odan başlatıldı! 🚀');
+      showToast('Kişisel odan başlatıldı!');
     });
   }
 
@@ -7831,7 +7831,7 @@ function initEvents() {
           savedUser.email = newEmail;
           localStorage.setItem('miruo_user', JSON.stringify(savedUser));
           if (dom.profileEmailDisplay) dom.profileEmailDisplay.textContent = newEmail;
-          showChangeEmailAlert('✓ Doğrulama bağlantısı yeni e-postanıza gönderildi! Lütfen onaylayın.', true);
+          showChangeEmailAlert('Doğrulama bağlantısı yeni e-postanıza gönderildi! Lütfen onaylayın.', true);
           if (dom.changeEmailNewInput) dom.changeEmailNewInput.value = '';
         } else {
           showChangeEmailAlert(data.message || 'E-posta güncellenemedi.', false);
@@ -7888,7 +7888,7 @@ function initEvents() {
         dom.changePasswordSubmitBtn.textContent = 'Şifreyi Güncelle';
 
         if (data.success) {
-          showChangePassAlert('✓ Şifreniz başarıyla güncellendi!', true);
+          showChangePassAlert('Şifreniz başarıyla güncellendi!', true);
           if (dom.changePassCurrentInput) dom.changePassCurrentInput.value = '';
           if (dom.changePassNewInput) dom.changePassNewInput.value = '';
           if (dom.changePassConfirmInput) dom.changePassConfirmInput.value = '';
@@ -7970,7 +7970,7 @@ function initEvents() {
         syncUserProfileToSupabase(savedUser);
 
         updateUserUI(savedUser);
-        showToast('✓ Profil fotoğrafı güncellendi ✨');
+        showToast('Profil fotoğrafı güncellendi');
       };
       reader.readAsDataURL(file);
     });
@@ -8047,7 +8047,7 @@ function initEvents() {
         dom.editAvatarPreview.innerHTML = nameChar;
         dom.editAvatarPreview.className = `w-20 h-20 rounded-2xl bg-gradient-to-tr ${window.pendingAvatarBg} flex items-center justify-center text-3xl font-bold text-white shadow-xl overflow-hidden border-2 border-white/20 ring-4 ring-white/5`;
       }
-      showToast('Avatar rengi güncellendi ✨');
+      showToast('Avatar rengi güncellendi');
     });
   });
 
@@ -8065,7 +8065,7 @@ function initEvents() {
 
       if (!rawUsername) {
         if (statusEl) {
-          statusEl.textContent = '⚠️ Kullanıcı adı boş bırakılamaz.';
+          statusEl.textContent = 'Kullanıcı adı boş bırakılamaz.';
           statusEl.className = 'text-[11px] font-semibold text-rose-400 pt-0.5 block';
         }
         if (dom.editProfileUsernameInput) dom.editProfileUsernameInput.focus();
@@ -8076,7 +8076,7 @@ function initEvents() {
       const cleanUsername = rawUsername.toLowerCase().replace(/[^a-z0-9_.]/g, '');
       if (cleanUsername.length < 3) {
         if (statusEl) {
-          statusEl.textContent = '⚠️ Kullanıcı adı en az 3 karakter olmalıdır.';
+          statusEl.textContent = 'Kullanıcı adı en az 3 karakter olmalıdır.';
           statusEl.className = 'text-[11px] font-semibold text-rose-400 pt-0.5 block';
         }
         if (dom.editProfileUsernameInput) dom.editProfileUsernameInput.focus();
@@ -8102,7 +8102,7 @@ function initEvents() {
               dom.saveProfileBtn.disabled = false;
               dom.saveProfileBtn.innerHTML = prevBtnHtml;
               if (statusEl) {
-                statusEl.textContent = `⚠️ "@${cleanUsername}" kullanıcı adı zaten alınmış. Lütfen başka bir kullanıcı adı seçin.`;
+                statusEl.textContent = `"@${cleanUsername}" kullanıcı adı zaten alınmış. Lütfen başka bir kullanıcı adı seçin.`;
                 statusEl.className = 'text-[11px] font-semibold text-rose-400 pt-0.5 block';
               }
               if (dom.editProfileUsernameInput) dom.editProfileUsernameInput.focus();
@@ -8125,7 +8125,7 @@ function initEvents() {
                 dom.saveProfileBtn.disabled = false;
                 dom.saveProfileBtn.innerHTML = prevBtnHtml;
                 if (statusEl) {
-                  statusEl.textContent = `⚠️ "@${cleanUsername}" kullanıcı adı zaten alınmış. Lütfen başka bir kullanıcı adı seçin.`;
+                  statusEl.textContent = `"@${cleanUsername}" kullanıcı adı zaten alınmış. Lütfen başka bir kullanıcı adı seçin.`;
                   statusEl.className = 'text-[11px] font-semibold text-rose-400 pt-0.5 block';
                 }
                 if (dom.editProfileUsernameInput) dom.editProfileUsernameInput.focus();
@@ -8187,11 +8187,11 @@ function initEvents() {
       if (dom.editProfileUsernameInput) dom.editProfileUsernameInput.value = cleanUsername;
 
       if (statusEl) {
-        statusEl.textContent = `✓ Kullanıcı adı @${cleanUsername} olarak kaydedildi!`;
+        statusEl.textContent = `Kullanıcı adı @${cleanUsername} olarak kaydedildi!`;
         statusEl.className = 'text-[11px] font-semibold text-emerald-400 pt-0.5 block';
       }
 
-      showToast(dict.profile_updated || `Profil güncellendi ✨ (@${cleanUsername})`);
+      showToast(dict.profile_updated || `Profil güncellendi (@${cleanUsername})`);
     });
   }
 
@@ -8316,10 +8316,10 @@ function initEvents() {
       const dict = I18N[currentLang] || I18N.tr;
       if (selectedRule === 'invite') {
         state.isPrivate = true;
-        showToast(currentLang === 'en' ? 'Room Privacy: Invite Only 🔒' : (currentLang === 'de' ? 'Raum-Privatsphäre: Nur mit Einladung 🔒' : 'Oda Gizliliği: Sadece Davetliler 🔒'));
+        showToast(currentLang === 'en' ? 'Room Privacy: Invite Only' : (currentLang === 'de' ? 'Raum-Privatsphäre: Nur mit Einladung' : 'Oda Gizliliği: Sadece Davetliler'));
       } else {
         state.isPrivate = false;
-        showToast(currentLang === 'en' ? 'Room Privacy: Everyone (Public) 🌍' : (currentLang === 'de' ? 'Raum-Privatsphäre: Öffentlich 🌍' : 'Oda Gizliliği: Herkese Açık 🌍'));
+        showToast(currentLang === 'en' ? 'Room Privacy: Everyone (Public)' : (currentLang === 'de' ? 'Raum-Privatsphäre: Öffentlich' : 'Oda Gizliliği: Herkese Açık'));
       }
       if (dom.roomAccessModal) dom.roomAccessModal.classList.add('hidden');
     });
@@ -8329,8 +8329,8 @@ function initEvents() {
       const url = getMiruoRoomUrl(state.roomId);
       const dict = I18N[currentLang] || I18N.tr;
       navigator.clipboard?.writeText(url).then(() => {
-        showToast(dict.invite_copied || 'Oda linki kopyalandı! 📋');
-        dom.copyRoomAccessLinkBtn.textContent = currentLang === 'en' ? 'Copied! ✓' : (currentLang === 'de' ? 'Kopiert! ✓' : 'Kopyalandı! ✓');
+        showToast(dict.invite_copied || 'Oda linki kopyalandı!');
+        dom.copyRoomAccessLinkBtn.textContent = currentLang === 'en' ? 'Copied!' : (currentLang === 'de' ? 'Kopiert!' : 'Kopyalandı!');
         setTimeout(() => {
           if (dom.copyRoomAccessLinkBtn) dom.copyRoomAccessLinkBtn.textContent = dict.copy_btn || 'Kopyala';
         }, 2000);
@@ -8376,7 +8376,7 @@ function initEvents() {
         dom.nativeVideoPlayer.classList.remove('hidden');
         if (dom.ytPlayerContainer) dom.ytPlayerContainer.classList.add('hidden');
         if (dom.emptyStatePlaceholder) dom.emptyStatePlaceholder.classList.add('hidden');
-        showToast(`Yerel video yüklendi: ${file.name} 🎬`);
+        showToast(`Yerel video yüklendi: ${file.name}`);
       }
     });
   }
@@ -8560,7 +8560,7 @@ function initEvents() {
       if (dom.currentRoomDisplay) dom.currentRoomDisplay.textContent = state.roomId;
       switchToMyRoom();
       connectSignaling();
-      showToast(`${state.roomId} odanıza girdiniz ✨`);
+      showToast(`${state.roomId} odanıza girdiniz`);
     });
   }
 
@@ -8585,7 +8585,7 @@ function initEvents() {
 
     if (dom.newRoomTitleInput) {
       dom.newRoomTitleInput.value = '';
-      dom.newRoomTitleInput.placeholder = `Örn: ${selectedPlatform} Partisi 🎉 veya Gece Sohbeti`;
+      dom.newRoomTitleInput.placeholder = `Örn: ${selectedPlatform} Partisi veya Gece Sohbeti`;
     }
 
     if (dom.createRoomModal) {
@@ -8792,7 +8792,7 @@ function initEvents() {
     if (navigator.clipboard && navigator.clipboard.writeText) {
       navigator.clipboard.writeText(inviteUrl);
     }
-    showToast(`Miruo oda linki kopyalandı! 📋\n${inviteUrl}`);
+    showToast(`Miruo oda linki kopyalandı!\n${inviteUrl}`);
   };
   if (dom.copyRaveInviteBtn) dom.copyRaveInviteBtn.addEventListener('click', handleCopyInvite);
   const copyBtn = document.getElementById('copyRaveInviteBtn');
@@ -8803,14 +8803,14 @@ function initEvents() {
     btn.addEventListener('click', () => {
       const channel = btn.dataset.channel;
       const inviteUrl = getMiruoRoomUrl(state.roomId);
-      const shareText = `Miruo'da benimle birlikte video izle! 🍿🎬\nOda Kodu: ${(state.roomId || 'ODA-77').toUpperCase()}\n${inviteUrl}`;
+      const shareText = `Miruo'da benimle birlikte video izle!\nOda Kodu: ${(state.roomId || 'ODA-77').toUpperCase()}\n${inviteUrl}`;
 
       if (channel === 'whatsapp') {
         window.open(`https://wa.me/?text=${encodeURIComponent(shareText)}`, '_blank');
       } else if (channel === 'messages') {
         window.location.href = `sms:?&body=${encodeURIComponent(shareText)}`;
       } else if (channel === 'telegram') {
-        window.open(`https://t.me/share/url?url=${encodeURIComponent(inviteUrl)}&text=${encodeURIComponent(`Miruo ile birlikte izle! 🍿🎬 (Oda: ${(state.roomId || 'ODA-77').toUpperCase()})`)}`, '_blank');
+        window.open(`https://t.me/share/url?url=${encodeURIComponent(inviteUrl)}&text=${encodeURIComponent(`Miruo ile birlikte izle! (Oda: ${(state.roomId || 'ODA-77').toUpperCase()})`)}`, '_blank');
       } else if (channel === 'system') {
         if (navigator.share) {
           navigator.share({
@@ -8828,10 +8828,10 @@ function initEvents() {
   // Now Playing Heart & Next Buttons
   if (dom.nowPlayingHeartBtn) {
     dom.nowPlayingHeartBtn.addEventListener('click', () => {
-      const isLiked = dom.nowPlayingHeartBtn.textContent === '❤️';
-      dom.nowPlayingHeartBtn.textContent = isLiked ? '♡' : '❤️';
+      const isLiked = dom.nowPlayingHeartBtn.textContent === '♥';
+      dom.nowPlayingHeartBtn.textContent = isLiked ? '♡' : '♥';
       dom.nowPlayingHeartBtn.className = isLiked ? 'hover:text-rose-500 text-lg transition-colors cursor-pointer text-gray-300' : 'text-rose-500 text-lg transition-colors cursor-pointer';
-      showToast(isLiked ? 'Beğeni kaldırıldı' : 'Video beğenildi! ❤️');
+      showToast(isLiked ? 'Beğeni kaldırıldı' : 'Video beğenildi!');
     });
   }
   if (dom.nowPlayingNextBtn) {
@@ -8881,7 +8881,7 @@ function initEvents() {
     addInstantTap(dom.acceptSuggestionPlayNowBtn, () => {
       if (pendingSuggestion) {
         selectAndPlayYoutubeVideo(pendingSuggestion.videoId, pendingSuggestion.title);
-        showToast(`🎬 ${pendingSuggestion.fromUser}'ın önerdiği video başlatıldı!`);
+        showToast(`${pendingSuggestion.fromUser}'ın önerdiği video başlatıldı!`);
       }
       if (dom.hostSuggestionBanner) dom.hostSuggestionBanner.classList.add('hidden');
     });
@@ -8895,7 +8895,7 @@ function initEvents() {
           thumb: pendingSuggestion.thumb,
           addedBy: pendingSuggestion.fromUser
         });
-        showToast(`➕ ${pendingSuggestion.fromUser}'ın önerisi sıraya eklendi!`);
+        showToast(`${pendingSuggestion.fromUser}'ın önerisi sıraya eklendi!`);
       }
       if (dom.hostSuggestionBanner) dom.hostSuggestionBanner.classList.add('hidden');
     });
@@ -8980,7 +8980,7 @@ function initEvents() {
       if (dom.youtubeUrlInput) dom.youtubeUrlInput.focus();
     } else if (p.includes('netflix') || p.includes('prime') || p.includes('ekran') || p.includes('screen')) {
       switchActiveTab('screenshare');
-      showToast(`${platform} için sekme yayını hazır! 📺`);
+      showToast(`${platform} için sekme yayını hazır!`);
     } else if (p.includes('spotify') || p.includes('music')) {
       switchActiveTab('youtube');
       if (dom.youtubeUrlInput) {
@@ -9035,7 +9035,7 @@ function generateUniqueRoomCode(isPrivate = false) {
         switchToMyRoom();
         connectSignaling();
         applyPlatformToActiveRoom(selectedPlatform);
-        showToast(`${title} odası oluşturuldu! 🚀`);
+        showToast(`${title} odası oluşturuldu!`);
       })
       .catch(err => {
         console.error(err);
@@ -9045,7 +9045,7 @@ function generateUniqueRoomCode(isPrivate = false) {
         switchToMyRoom();
         connectSignaling();
         applyPlatformToActiveRoom(selectedPlatform);
-        showToast(`${title} odası oluşturuldu! 🚀`);
+        showToast(`${title} odası oluşturuldu!`);
       });
     });
   }
@@ -9063,7 +9063,7 @@ function generateUniqueRoomCode(isPrivate = false) {
       state.controlMode = state.controlMode === 'host_only' ? 'everyone' : 'host_only';
       updatePermissionUI();
       sendP2PData('perm_change', { mode: state.controlMode, hostName: state.username });
-      showToast(state.controlMode === 'everyone' ? 'Video açma izni herkese verildi 🔓' : 'Video açma sadece yöneticiye kilitlendi 🔒');
+      showToast(state.controlMode === 'everyone' ? 'Video açma izni herkese verildi' : 'Video açma sadece yöneticiye kilitlendi');
     });
   }
 
@@ -9071,7 +9071,7 @@ function generateUniqueRoomCode(isPrivate = false) {
   if (dom.requestDjPermissionBtn) {
     dom.requestDjPermissionBtn.addEventListener('click', () => {
       sendP2PData('request_dj', { fromUser: state.username });
-      showToast('Oda yöneticisine video açma isteği gönderildi ✋');
+      showToast('Oda yöneticisine video açma isteği gönderildi');
     });
   }
 
@@ -9083,7 +9083,7 @@ function generateUniqueRoomCode(isPrivate = false) {
         dom.hostPermissionRequestToast.classList.add('hidden');
         dom.hostPermissionRequestToast.classList.remove('flex');
       }
-      showToast('Video açma yetkisi verildi! 🎶');
+      showToast('Video açma yetkisi verildi!');
     });
   }
 
@@ -9109,7 +9109,7 @@ function generateUniqueRoomCode(isPrivate = false) {
     addInstantTap(dom.tabCopyMyFriendCodeBtn, () => {
       const code = (dom.tabMyFriendCodeDisplay && dom.tabMyFriendCodeDisplay.textContent) || state.friendCode;
       navigator.clipboard.writeText(code).then(() => {
-        showToast('Arkadaş kodun kopyalandı! 📋');
+        showToast('Arkadaş kodun kopyalandı!');
       });
     });
   }
@@ -9141,7 +9141,7 @@ function generateUniqueRoomCode(isPrivate = false) {
   if (dom.copyMyFriendCodeBtn) {
     addInstantTap(dom.copyMyFriendCodeBtn, () => {
       navigator.clipboard.writeText(state.friendCode).then(() => {
-        showToast('Arkadaş kodun panoya kopyalandı! 📋');
+        showToast('Arkadaş kodun panoya kopyalandı!');
       });
     });
   }
@@ -9210,7 +9210,7 @@ function generateUniqueRoomCode(isPrivate = false) {
     dom.copyInviteFromParticipantsBtn.addEventListener('click', () => {
       const inviteUrl = `${window.location.origin}/?room=${encodeURIComponent(state.roomId)}`;
       navigator.clipboard.writeText(inviteUrl).then(() => {
-        showToast('Oda davet linki kopyalandı! 📋');
+        showToast('Oda davet linki kopyalandı!');
       });
     });
   }
@@ -9299,7 +9299,7 @@ function generateUniqueRoomCode(isPrivate = false) {
     });
   }
 
-  // Sticker Chips (🍿, 🔥, ❤️, 😂, etc.)
+  // Sticker Chips
   document.querySelectorAll('.sticker-chip').forEach(chip => {
     chip.addEventListener('click', (e) => {
       e.stopPropagation();
@@ -9318,7 +9318,7 @@ function generateUniqueRoomCode(isPrivate = false) {
         reader.onload = (evt) => {
           const dataUrl = evt.target.result;
           sendChatMessage('', dataUrl);
-          showToast('📷 Görsel sohbete yüklendi!');
+          showToast('Görsel sohbete yüklendi!');
           if (chatStickerPopover) chatStickerPopover.classList.add('hidden');
         };
         reader.readAsDataURL(file);
@@ -9326,7 +9326,7 @@ function generateUniqueRoomCode(isPrivate = false) {
     });
   }
 
-  // Room Invite Button in Chat Bar (👥+)
+  // Room Invite Button in Chat Bar
   const roomInviteBtn2 = document.getElementById('roomInviteBtn2');
   if (roomInviteBtn2) {
     roomInviteBtn2.addEventListener('click', (e) => {
@@ -9335,7 +9335,7 @@ function generateUniqueRoomCode(isPrivate = false) {
     });
   }
 
-  // Room Share Link Button in Chat Bar (🔗)
+  // Room Share Link Button in Chat Bar
   const roomShareLinkBtn = document.getElementById('roomShareLinkBtn');
   if (roomShareLinkBtn) {
     roomShareLinkBtn.addEventListener('click', (e) => {
@@ -9416,14 +9416,14 @@ function generateUniqueRoomCode(isPrivate = false) {
     dom.closeChatSidebarBtn.addEventListener('click', () => {
       setChatVisibility(false);
       const dict = I18N[currentLang] || I18N.tr;
-      showToast(dict.toast_chat_closed || 'Sohbet gizlendi. Yazısız izliyorsunuz 🎬');
+      showToast(dict.toast_chat_closed || 'Sohbet gizlendi. Yazısız izliyorsunuz');
     });
   }
   if (dom.openChatFloatingBtn) {
     dom.openChatFloatingBtn.addEventListener('click', () => {
       setChatVisibility(true);
       const dict = I18N[currentLang] || I18N.tr;
-      showToast(dict.toast_chat_opened || 'Canlı Sohbet açıldı 💬');
+      showToast(dict.toast_chat_opened || 'Canlı Sohbet açıldı');
     });
   }
   if (dom.toggleChatToolbarBtn) {
@@ -9438,7 +9438,7 @@ function generateUniqueRoomCode(isPrivate = false) {
       e.stopPropagation();
       setFsChatVisibility(false);
       const dict = I18N[currentLang] || I18N.tr;
-      showToast(dict.toast_chat_closed || 'Sohbet gizlendi. Yazısız izliyorsunuz 🎬');
+      showToast(dict.toast_chat_closed || 'Sohbet gizlendi. Yazısız izliyorsunuz');
     });
   }
   if (dom.openFsChatFloatingBtn) {
@@ -9446,7 +9446,7 @@ function generateUniqueRoomCode(isPrivate = false) {
       e.stopPropagation();
       setFsChatVisibility(true);
       const dict = I18N[currentLang] || I18N.tr;
-      showToast(dict.toast_chat_opened || 'Canlı Sohbet açıldı 💬');
+      showToast(dict.toast_chat_opened || 'Canlı Sohbet açıldı');
     });
   }
   if (dom.fsChatForm && dom.fsChatInput) {
@@ -9570,7 +9570,7 @@ function generateUniqueRoomCode(isPrivate = false) {
         if (dom.currentRoomDisplay) dom.currentRoomDisplay.textContent = finalRoomId;
         switchToMyRoom();
         connectSignaling();
-        showToast(`🎉 ${finalRoomId} odasına bağlanıldı!`);
+        showToast(`${finalRoomId} odasına bağlanıldı!`);
         dom.raveLobbySearchInput.value = '';
         return;
       }
