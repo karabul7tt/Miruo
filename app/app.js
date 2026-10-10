@@ -2113,6 +2113,10 @@ function addInstantTap(el, handler) {
 let ws = null;
 
 function connectSignaling() {
+  if (ws) {
+    try { ws.close(); } catch (e) {}
+    ws = null;
+  }
   if (window.location.protocol === 'file:' || !window.location.host) {
     console.log('Miruo Bağımsız Cihaz Modunda Çalışıyor');
     return;
@@ -2579,12 +2583,12 @@ function loadYoutubeVideo(urlOrId) {
   }
 
   // Direct responsive embed iframe that plays 100% reliably in WKWebView
-  // controls=0: completely eliminates YouTube's red scrubber bar, controls, and branding so only Miruo controls show!
-  // Uses youtube.com (not nocookie) to allow shared session cookies with logged in YouTube accounts!
-  const originParam = (window.location.origin && window.location.origin !== 'null') ? `&origin=${encodeURIComponent(window.location.origin)}` : '';
+  // Only append origin if it is http/https (WKWebView file:// origin causes YouTube Error 150/153)
+  const isHttpOrigin = window.location.origin && (window.location.origin.startsWith('http://') || window.location.origin.startsWith('https://'));
+  const originParam = isHttpOrigin ? `&origin=${encodeURIComponent(window.location.origin)}` : '';
   dom.ytPlayerContainer.innerHTML = `
     <iframe id="miruoYtIframe" 
-            src="https://www.youtube.com/embed/${videoId}?autoplay=1&playsinline=1&enablejsapi=1&controls=0&disablekb=1&fs=0&rel=0&modestbranding=1&iv_load_policy=3${originParam}" 
+            src="https://www.youtube.com/embed/${videoId}?autoplay=1&playsinline=1&enablejsapi=1&controls=1&disablekb=1&fs=0&rel=0&modestbranding=1&iv_load_policy=3${originParam}" 
             allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" 
             allowfullscreen 
             class="w-full h-full border-0 pointer-events-auto">
@@ -2618,8 +2622,11 @@ function loadYoutubeVideo(urlOrId) {
       if (dom.nowPlayingTitle) dom.nowPlayingTitle.textContent = vTitle;
     }).catch(() => {});
 
-  // Send video change to peer with timestamp for zero-latency sync
-  sendP2PData('sync', { action: 'load_yt', videoId, sentAt: Date.now() });
+  // Send video change to peer with timestamp for zero-latency sync (guard against loopback)
+  if (!state.isRemoteAction) {
+    sendP2PData('sync', { action: 'load_yt', videoId, sentAt: Date.now() });
+  }
+  state.isRemoteAction = false;
   startPlaybackTracking();
   startSyncHeartbeat();
   showToast('Video başlatıldı');
@@ -2746,7 +2753,7 @@ function handleRemoteSync(payload) {
     }
     state.isPlaying = true;
     updatePlayPauseUI(true);
-    showToast('Oynatılıyor ▶');
+    showToast('Oynatılıyor');
   }
 
   if (payload.action === 'pause') {
@@ -3201,12 +3208,45 @@ function applyVideoDisplay() {
 
 // Leave Room Gracefully
 function leaveRoom() {
-  if (state.player && typeof state.player.pauseVideo === 'function') {
-    try { state.player.pauseVideo(); } catch (e) {}
+  if (syncHeartbeatInterval) {
+    clearInterval(syncHeartbeatInterval);
+    syncHeartbeatInterval = null;
+  }
+  if (trackingInterval) {
+    clearInterval(trackingInterval);
+    trackingInterval = null;
+  }
+
+  // Clear YouTube player / iframe immediately
+  const ytFrame = document.getElementById('miruoYtIframe');
+  if (ytFrame) {
+    try { ytFrame.src = 'about:blank'; } catch (e) {}
+    ytFrame.remove();
+  }
+  if (dom.ytPlayerContainer) {
+    dom.ytPlayerContainer.innerHTML = '';
+    dom.ytPlayerContainer.classList.add('hidden');
+  }
+  if (dom.emptyStatePlaceholder) {
+    dom.emptyStatePlaceholder.classList.remove('hidden');
+  }
+
+  if (state.player && typeof state.player.stopVideo === 'function') {
+    try { state.player.stopVideo(); } catch (e) {}
   }
   if (dom.nativeVideoPlayer) {
-    try { dom.nativeVideoPlayer.pause(); } catch (e) {}
+    try {
+      dom.nativeVideoPlayer.pause();
+      dom.nativeVideoPlayer.src = '';
+      dom.nativeVideoPlayer.load();
+    } catch (e) {}
+    dom.nativeVideoPlayer.classList.add('hidden');
   }
+  if (dom.webPlayerFrame) {
+    try { dom.webPlayerFrame.src = 'about:blank'; } catch (e) {}
+    dom.webPlayerFrame.classList.add('hidden');
+  }
+
   if (state.isScreenSharing) {
     stopScreenSharing();
   }
@@ -3216,9 +3256,40 @@ function leaveRoom() {
   if (state.isMicOn) {
     toggleMic();
   }
+
+  // Close WebRTC DataChannel & PC
+  try {
+    if (state.dataChannel) {
+      state.dataChannel.close();
+      state.dataChannel = null;
+    }
+    if (state.pc) {
+      state.pc.close();
+      state.pc = null;
+    }
+  } catch (e) {}
+
+  // Close WebSocket if open
+  try {
+    if (ws) {
+      ws.close();
+      ws = null;
+    }
+  } catch (e) {}
+
+  // Stop bots for this room
+  stopBotsForActiveRoom();
+
   exitStageFullscreenDimensions();
+  document.body.classList.remove('in-room-mode');
+
+  state.currentVideoId = null;
+  state.isPlaying = false;
+  state.isRemoteAction = false;
   state.isChatVisible = true;
   state.isInRoom = false;
+  setChatVisibility(true);
+
   switchToExplore();
   const dict = I18N[currentLang] || I18N.tr;
   showToast(dict.toast_left_room || 'Odadan ayrıldınız');
@@ -3834,13 +3905,23 @@ function setChatVisibility(visible) {
     dom.toggleChatToolbarBtn.classList.toggle('border-rose-500/40', visible);
   }
 
-  // When chat is closed: video expands to fullscreen dimensions!
-  // When chat is opened: video exits fullscreen dimensions and restores normal split layout.
-  if (visible) {
-    exitStageFullscreenDimensions();
-  } else {
-    enterStageFullscreenDimensions();
+  // Toggle chat-is-closed on workspace, layout and stage so CSS smoothly adapts video dimensions
+  if (dom.roomWorkspaceSection) {
+    dom.roomWorkspaceSection.classList.toggle('chat-is-closed', !visible);
   }
+  if (dom.roomMainSplitLayout) {
+    dom.roomMainSplitLayout.classList.toggle('chat-is-closed', !visible);
+  }
+  if (dom.stageContainer) {
+    dom.stageContainer.classList.toggle('stage-chat-closed', !visible);
+  }
+
+  if (isStageFullscreen()) {
+    if (dom.fsChatOverlay) {
+      dom.fsChatOverlay.classList.toggle('hidden', !visible);
+    }
+  }
+  updateFullscreenUI();
 }
 
 function updateCamButtonUI(isOn) {
@@ -4104,6 +4185,7 @@ function appendBotChatMessage(bot, message) {
 
 function switchToExplore() {
   state.currentTab = 'explore';
+  document.body.classList.remove('in-room-mode');
   if (typeof stopProfileStarCanvas === 'function') stopProfileStarCanvas();
   stopBotsForActiveRoom();
   const mainWorkspace = document.querySelector('main');
@@ -4152,6 +4234,7 @@ function switchToExplore() {
 }
 
 function switchToProviderPicker() {
+  document.body.classList.remove('in-room-mode');
   stopBotsForActiveRoom();
   const mainWorkspace = document.querySelector('main');
   if (mainWorkspace) {
@@ -4175,6 +4258,9 @@ function switchToProviderPicker() {
 }
 
 function switchToMyRoom() {
+  // Add in-room-mode class for full-height responsive layout
+  document.body.classList.add('in-room-mode');
+  state.isInRoom = true;
   // Hide explore header, provider picker and bottom nav when inside a room!
   const mainWorkspace = document.querySelector('main');
   if (mainWorkspace) {
@@ -4461,7 +4547,9 @@ function renderRoomList(roomsToRender) {
       <div class="relative w-28 sm:w-36 aspect-video rounded-2xl overflow-hidden bg-black shrink-0 border border-white/10 shadow-md pointer-events-none">
         <img src="${escapeHtml(thumbUrl)}" class="w-full h-full object-cover group-hover:scale-105 transition-transform" alt="Thumbnail" loading="lazy">
         <div class="absolute inset-0 bg-black/25 flex items-center justify-center">
-          <div class="w-7 h-7 rounded-full bg-black/60 backdrop-blur-sm border border-white/30 text-white flex items-center justify-center text-xs pl-0.5">▶</div>
+          <div class="w-7 h-7 rounded-full bg-black/60 backdrop-blur-sm border border-white/30 text-white flex items-center justify-center">
+            <svg class="w-3 h-3 text-white fill-current ml-0.5" viewBox="0 0 24 24"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+          </div>
         </div>
       </div>
 
@@ -5801,7 +5889,9 @@ async function searchAndRenderMedia(query = '', category = 'all') {
           <img src="${escapeHtml(video.thumb)}" class="w-full h-full object-cover group-hover:scale-105 transition-transform" alt="Cover" loading="lazy">
           <span class="absolute bottom-1 right-1 px-1.5 py-0.5 rounded text-[9px] font-bold bg-black/80 text-white font-mono">${escapeHtml(video.duration)}</span>
           <div class="absolute inset-0 bg-rose-600/20 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-            <div class="w-7 h-7 rounded-full bg-rose-600 text-white flex items-center justify-center shadow-lg text-xs">▶</div>
+            <div class="w-7 h-7 rounded-full bg-rose-600 text-white flex items-center justify-center shadow-lg">
+              <svg class="w-3 h-3 text-white fill-current ml-0.5" viewBox="0 0 24 24"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+            </div>
           </div>
         </div>
         <div class="flex flex-col px-0.5 pb-0.5">
@@ -6094,6 +6184,12 @@ function loadUserSession() {
   } else if (roomFromUrl) {
     switchToMyRoom();
     connectSignaling();
+    if (typeof DEFAULT_COMMUNITY_ROOMS !== 'undefined') {
+      const matched = DEFAULT_COMMUNITY_ROOMS.find(r => r.id.toUpperCase() === state.roomId);
+      if (matched && matched.videoId) {
+        setTimeout(() => { loadYoutubeVideo(matched.videoId); }, 350);
+      }
+    }
   } else {
     switchToExplore();
   }
@@ -6103,6 +6199,13 @@ function loadUserSession() {
     setTimeout(() => {
       if (!state.isCamOn) toggleCam();
     }, 450);
+  }
+
+  // Auto hide chat if requested (test or deep link)
+  if (urlParams.get('chat') === '0' || hash.includes('chat=0')) {
+    setTimeout(() => {
+      setChatVisibility(false);
+    }, 400);
   }
   return true;
 }
@@ -7759,7 +7862,9 @@ function initEvents() {
           <img src="${escapeHtml(video.thumb)}" class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" alt="Thumbnail" loading="lazy">
           <span class="absolute bottom-1.5 right-1.5 px-1.5 py-0.5 rounded-md text-[10px] font-bold bg-black/80 text-white font-mono backdrop-blur-sm">${escapeHtml(video.duration)}</span>
           <div class="absolute inset-0 bg-red-600/25 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center backdrop-blur-[1px]">
-            <div class="w-10 h-10 rounded-full bg-red-600 text-white flex items-center justify-center shadow-xl shadow-red-600/40 text-sm font-bold pl-0.5">▶</div>
+            <div class="w-10 h-10 rounded-full bg-red-600 text-white flex items-center justify-center shadow-xl shadow-red-600/40">
+              <svg class="w-4 h-4 text-white fill-current ml-0.5" viewBox="0 0 24 24"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+            </div>
           </div>
         </div>
         <div class="flex flex-col flex-1 justify-between px-0.5">
@@ -7876,8 +7981,12 @@ function initEvents() {
             </div>
             ${canManage ? `
               <div class="flex items-center gap-1.5 shrink-0">
-                <button class="queue-play-now-btn px-2 py-1 bg-rose-600 hover:bg-rose-500 text-white rounded-lg text-xs font-bold transition-all cursor-pointer" data-idx="${idx}" title="${playTitle}">▶</button>
-                <button class="queue-remove-btn px-2 py-1 bg-white/10 hover:bg-white/20 text-gray-300 rounded-lg text-xs transition-all cursor-pointer" data-idx="${idx}" title="${removeTitle}">✕</button>
+                <button class="queue-play-now-btn p-1.5 bg-rose-600 hover:bg-rose-500 text-white rounded-lg transition-all cursor-pointer flex items-center justify-center" data-idx="${idx}" title="${playTitle}">
+                  <svg class="w-3 h-3 text-white fill-current" viewBox="0 0 24 24"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+                </button>
+                <button class="queue-remove-btn p-1.5 bg-white/10 hover:bg-white/20 text-gray-300 rounded-lg transition-all cursor-pointer flex items-center justify-center" data-idx="${idx}" title="${removeTitle}">
+                  <svg class="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                </button>
               </div>
             ` : ''}
           </div>
@@ -10565,6 +10674,12 @@ window.loadRoomFromDeepLink = function(roomId) {
   state.roomId = roomId.toUpperCase();
   switchToMyRoom();
   connectSignaling();
+  if (typeof DEFAULT_COMMUNITY_ROOMS !== 'undefined') {
+    const matched = DEFAULT_COMMUNITY_ROOMS.find(r => r.id.toUpperCase() === state.roomId);
+    if (matched && matched.videoId) {
+      setTimeout(() => { loadYoutubeVideo(matched.videoId); }, 350);
+    }
+  }
 };
 window.openRoomParticipantsModal = openRoomParticipantsModal;
 window.closeRoomParticipantsModal = closeRoomParticipantsModal;

@@ -226,6 +226,7 @@ class ViewController: UIViewController, WKNavigationDelegate, WKUIDelegate, WKSc
         let testModal = ProcessInfo.processInfo.environment["MIRUO_MODAL"]
         let testProfile = ProcessInfo.processInfo.environment["MIRUO_PROFILE"]
         let testAuth = ProcessInfo.processInfo.environment["MIRUO_AUTH"]
+        let testChat = ProcessInfo.processInfo.environment["MIRUO_CHAT"]
         var queryParts: [String] = []
         if let room = testRoom {
             queryParts.append("room=\(room)&cam=1")
@@ -238,6 +239,9 @@ class ViewController: UIViewController, WKNavigationDelegate, WKUIDelegate, WKSc
         }
         if let auth = testAuth {
             queryParts.append("auth=\(auth)")
+        }
+        if let chat = testChat {
+            queryParts.append("chat=\(chat)")
         }
         let testView = ProcessInfo.processInfo.environment["MIRUO_VIEW"]
         if let view = testView {
