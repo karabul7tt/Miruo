@@ -525,7 +525,142 @@ const I18N = {
     kick_user_label: 'Çıkar',
     role_admin_label: 'Yönetici',
     role_dj_label: 'Video Açabilir',
-    role_member_label: 'İzleyici'
+    role_member_label: 'İzleyici',
+    online_count_suffix: 'Çevrimiçi',
+    status_online: 'Çevrimiçi',
+    status_offline: 'Çevrimdışı',
+    status_in_room: 'Şu an odada',
+    status_idle: 'Boşta',
+    invite_friend: 'Odaya Çağır',
+    invite_btn_short: 'Çağır',
+    friends_title: 'Arkadaşlar',
+    friends_subtitle: 'Birlikte izleyeceğin arkadaşlarını yönet',
+    your_username_label: 'Senin Kullanıcı Adın',
+    copy_btn: 'Kopyala',
+    add_friend_by_name: 'İsimden Arkadaş Ekle',
+    add_friend_ph: 'Kullanıcı adı girin (örn: @selin veya can)',
+    add_btn: 'Ekle',
+    search_friends_ph: 'Kayıtlı arkadaşlarında ara...',
+    no_friends_empty: 'Henüz arkadaş eklemedin.',
+    no_friends_sub: 'Arkadaşının kullanıcı adını (@kullanici) yukarıdan girerek hemen ekleyebilirsin.',
+    provider_search_ph: 'video, dizi veya film ara...',
+    room_queue_label: 'Sıra:',
+    room_queue_title: 'Oynatma Sırası',
+    room_change_video: 'Değiştir',
+    who_can_join: 'Kimler Katılabilir',
+    who_can_join_short: 'Katılım',
+    now_playing_prefix: 'Şimdi',
+    now_playing_suffix: 'oynatılıyor',
+    privacy_public: 'Açık Oda',
+    privacy_friends: 'Arkadaşlar',
+    privacy_private: 'Özel (Davetli)',
+    share_btn: 'Paylaş',
+    select_video_btn: 'Video Seç',
+    live_chat_title: 'Canlı Sohbet',
+    top_chat: 'En Popüler',
+    chat_expand: 'Büyüt',
+    chat_collapse: 'Küçült',
+    chat_welcome: 'odasına hoş geldiniz!',
+    chat_bot_joined: 'odaya katıldı 👋',
+    show_chat: 'Sohbeti Göster',
+    chat_mention_label: 'Bahset:',
+    chat_reaction_label: 'Tepki:',
+    chat_add_photo: 'Fotoğraf Ekle',
+    close_btn: 'Kapat',
+    leave_room_btn: 'Odadan Ayrıl',
+    video_placeholder_title: 'Video Yükleniyor veya Seçilmedi',
+    video_placeholder_desc: 'Üstteki arama ikonuna veya platform kartına basarak dilediğiniz YouTube videosunu başlatın.',
+    miruo_player: 'Miruo Oynatıcı',
+    video_title_default: 'Video Başlığı',
+    video_subtitle_default: "YouTube'da Miruo",
+    fullscreen_title: 'Tam Ekran',
+    live_cam_feed: 'Canlı Kamera Feed',
+    self_camera_badge: 'Sen (Kamera)',
+    close_cam_title: 'Kamerayı Kapat',
+    cam_off_label: 'Kamera Kapalı',
+    cam_live_label: 'Canlı',
+    you_badge: 'Sen',
+    simulated_badge: 'Simüle',
+    your_device: 'Senin Cihazın',
+    room_participant: 'Oda Katılımcısı',
+    live_connection: 'Canlı Bağlantı',
+    role_owner: 'Oda Sahibi',
+    role_admin: 'Yönetici',
+    role_video_control: 'Video Açabilir',
+    role_member: 'İzleyici',
+    kick_title: 'Odadan Çıkar',
+    kick_btn: 'Çıkar',
+    friend_badge: '✓ Arkadaş',
+    add_friend_title: 'Arkadaş Ekle',
+    add_friend_btn_short: 'Ekle',
+    mic_on_title: 'Mikrofon Açık',
+    mic_off_title: 'Mikrofon Kapalı',
+    cam_on_title: 'Kamera Açık',
+    cam_off_title: 'Kamera Kapalı',
+    av_mic_cam_on: 'Mikrofon & Kamera Açık (Canlı)',
+    av_mic_on_cam_off: 'Mikrofon Canlı • Kamera Kapalı',
+    av_cam_on_mic_off: 'Kamera Canlı • Mikrofon Kapalı',
+    av_mic_cam_off: 'Mikrofon & Kamera Kapalı',
+    toast_cam_opened: '📹 Canlı Kamera Açıldı (Sürüklenebilir)',
+    toast_cam_preview_opened: '📹 Canlı Kamera Önizleme Açıldı (Sürüklenebilir)',
+    who_can_join_title: 'Kimler Katılabilir?',
+    who_can_join_sub: 'Oda katılım ve erişim ayarlarını yönetin.',
+    random_room_code_label: 'Rastgele Oda Kodu',
+    access_permission_label: 'Katılım İzni',
+    access_public_label: '🌍 Herkese Açık',
+    recommended_badge: 'Önerilen',
+    access_public_desc: 'Oda bağlantısına veya koduna sahip herkes odaya doğrudan katılabilir.',
+    access_invite_label: '🔒 Sadece Davetliler',
+    access_invite_desc: 'Yalnızca oda sahibinin davet ettiği ve onayladığı kişiler katılabilir.',
+    done_btn: 'Tamam',
+    queue_title: 'Oynatma Sırası',
+    queue_empty: 'Sırada bekleyen video yok 🎵',
+    share_room_title: 'Odayı Paylaş & Davet Et',
+    share_room_sub: 'Arkadaşlarınla aynı anda senkronize izle',
+    share_public_desc: 'Herkes keşfetten veya bağlantıyla katılabilir',
+    share_friends_desc: 'Yalnızca takip ettiğin kişiler katılabilir',
+    share_invite_desc: 'Özel oda, sadece davet linkiyle girilebilir',
+    invite_link_label: 'Davet Linki',
+    share_with_app_label: 'Uygulama ile Paylaş',
+    messages_app_label: 'Mesajlar',
+    other_app_label: 'Diğer',
+    room_privacy_toast: 'Oda Gizliliği',
+    room_title_label: 'Oda Başlığı',
+    room_title_ph: 'Örn: Gece Lo-Fi Sohbeti ☕ veya Sinema Gecesi',
+    privacy_type_label: 'Gizlilik Türü',
+    private_room_label: 'Özel Oda',
+    private_room_desc: 'Sadece davet ettiğin kişiler girebilir.',
+    public_room_label: 'Herkese Açık',
+    public_room_desc: 'Miruo Keşfet akışında listelenir.',
+    platform_select_label: 'İzleme / Dinleme Platformu',
+    screen_share_label: 'Ekran',
+    submit_create_room_btn: 'Odayı Başlat & Katıl',
+    yt_modal_title: 'YouTube',
+    yt_modal_sub: 'Video seçin ve odadakilerle birlikte izleyin.',
+    yt_browse_btn: 'Gezin ↗',
+    yt_browse_title: "m.youtube.com'u açıp hesabına gir",
+    yt_currently_playing_prefix: 'Şu an çalıyor:',
+    yt_background_playing: 'Arka Planda Kesintisiz Devam Ediyor 🔊',
+    yt_search_ph: "YouTube'da şarkı, klip, sanatçı, dizi veya kanal ara...",
+    yt_search_btn: 'Ara',
+    tab_trending: 'Trendler',
+    tab_music: 'Popüler Müzik',
+    tab_lofi: '24/7 Lo-Fi',
+    tab_series: 'Dizi & Fragman',
+    tab_podcast: 'Podcast & Sohbet',
+    tab_gaming: 'Oyun & Espor',
+    action_play_now: 'Hemen Oynat',
+    action_add_queue: 'Sıraya Ekle',
+    suggestion_title: 'Video Önerisi',
+    suggested_by_suffix: 'önerdi',
+    friends_modal_title: 'Arkadaşlar & Ortak İzleme',
+    saved_friends_header: 'Kayıtlı Arkadaşlar',
+    online_label: 'Çevrimiçi',
+    host_label: 'Kurucu',
+    mic_toggle_title: 'Mikrofon Aç/Kapat',
+    cam_toggle_title: 'Kamera Aç/Kapat (Görüntülü Konuşma)',
+    chat_toggle_title: 'Sohbeti Aç / Gizle',
+    online_count_badge: 'Çevrimiçi'
   },
   en: {
     app_title: 'Miruo — Watch & See Together',
@@ -723,7 +858,142 @@ const I18N = {
     kick_user_label: 'Kick',
     role_admin_label: 'Admin',
     role_dj_label: 'Video Control',
-    role_member_label: 'Viewer'
+    role_member_label: 'Viewer',
+    online_count_suffix: 'Online',
+    status_online: 'Online',
+    status_offline: 'Offline',
+    status_in_room: 'In room',
+    status_idle: 'Idle',
+    invite_friend: 'Invite to Room',
+    invite_btn_short: 'Invite',
+    friends_title: 'Friends',
+    friends_subtitle: 'Manage friends to watch together',
+    your_username_label: 'Your Username',
+    copy_btn: 'Copy',
+    add_friend_by_name: 'Add Friend by Username',
+    add_friend_ph: 'Enter username (e.g. @selin or john)',
+    add_btn: 'Add',
+    search_friends_ph: 'Search friends...',
+    no_friends_empty: 'No friends added yet.',
+    no_friends_sub: 'Enter your friend\'s username (@username) above to add them right away.',
+    provider_search_ph: 'search video, show or movie...',
+    room_queue_label: 'Queue:',
+    room_queue_title: 'Playback Queue',
+    room_change_video: 'Change',
+    who_can_join: 'Who Can Join',
+    who_can_join_short: 'Access',
+    now_playing_prefix: 'Now',
+    now_playing_suffix: 'playing',
+    privacy_public: 'Public Room',
+    privacy_friends: 'Friends',
+    privacy_private: 'Private (Invite only)',
+    share_btn: 'Share',
+    select_video_btn: 'Select Video',
+    live_chat_title: 'Live Chat',
+    top_chat: 'Top Chat',
+    chat_expand: 'Expand',
+    chat_collapse: 'Collapse',
+    chat_welcome: 'room, welcome!',
+    chat_bot_joined: 'joined the room 👋',
+    show_chat: 'Show Chat',
+    chat_mention_label: 'Mention:',
+    chat_reaction_label: 'Reaction:',
+    chat_add_photo: 'Add Photo',
+    close_btn: 'Close',
+    leave_room_btn: 'Leave Room',
+    video_placeholder_title: 'Video Loading or None Selected',
+    video_placeholder_desc: 'Tap the search icon above or select a platform to start any video.',
+    miruo_player: 'Miruo Player',
+    video_title_default: 'Video Title',
+    video_subtitle_default: 'Miruo on YouTube',
+    fullscreen_title: 'Fullscreen',
+    live_cam_feed: 'Live Camera Feed',
+    self_camera_badge: 'You (Camera)',
+    close_cam_title: 'Turn Off Camera',
+    cam_off_label: 'Camera Off',
+    cam_live_label: 'Live',
+    you_badge: 'You',
+    simulated_badge: 'Simulated',
+    your_device: 'Your Device',
+    room_participant: 'Room Participant',
+    live_connection: 'Live Connection',
+    role_owner: 'Room Host',
+    role_admin: 'Admin',
+    role_video_control: 'Can Play Video',
+    role_member: 'Viewer',
+    kick_title: 'Remove from Room',
+    kick_btn: 'Remove',
+    friend_badge: '✓ Friend',
+    add_friend_title: 'Add Friend',
+    add_friend_btn_short: 'Add',
+    mic_on_title: 'Microphone On',
+    mic_off_title: 'Microphone Muted',
+    cam_on_title: 'Camera On',
+    cam_off_title: 'Camera Off',
+    av_mic_cam_on: 'Mic & Camera On (Live)',
+    av_mic_on_cam_off: 'Mic Live • Camera Off',
+    av_cam_on_mic_off: 'Camera Live • Mic Muted',
+    av_mic_cam_off: 'Mic & Camera Off',
+    toast_cam_opened: '📹 Live Camera Started (Draggable)',
+    toast_cam_preview_opened: '📹 Live Camera Preview Started (Draggable)',
+    who_can_join_title: 'Who Can Join?',
+    who_can_join_sub: 'Manage room access and participant permissions.',
+    random_room_code_label: 'Random Room Code',
+    access_permission_label: 'Join Permission',
+    access_public_label: '🌍 Everyone (Public)',
+    recommended_badge: 'Recommended',
+    access_public_desc: 'Anyone with the room link or code can join directly.',
+    access_invite_label: '🔒 Invite Only',
+    access_invite_desc: 'Only people invited and approved by the host can join.',
+    done_btn: 'Done',
+    queue_title: 'Playback Queue',
+    queue_empty: 'No videos waiting in queue 🎵',
+    share_room_title: 'Share Room & Invite',
+    share_room_sub: 'Watch synchronously with your friends',
+    share_public_desc: 'Anyone can join from explore or via link',
+    share_friends_desc: 'Only people you follow can join',
+    share_invite_desc: 'Private room, access only via invite link',
+    invite_link_label: 'Invite Link',
+    share_with_app_label: 'Share with App',
+    messages_app_label: 'Messages',
+    other_app_label: 'Other',
+    room_privacy_toast: 'Room Privacy',
+    room_title_label: 'Room Title',
+    room_title_ph: 'e.g. Late Night Lo-Fi ☕ or Movie Night',
+    privacy_type_label: 'Privacy Type',
+    private_room_label: 'Private Room',
+    private_room_desc: 'Only invited friends can enter.',
+    public_room_label: 'Public Room',
+    public_room_desc: 'Listed in the Miruo Explore feed.',
+    platform_select_label: 'Watching Platform',
+    screen_share_label: 'Screen',
+    submit_create_room_btn: 'Start & Join Room',
+    yt_modal_title: 'YouTube',
+    yt_modal_sub: 'Select a video and watch together with the room.',
+    yt_browse_btn: 'Browse ↗',
+    yt_browse_title: 'Open m.youtube.com and sign in',
+    yt_currently_playing_prefix: 'Now playing:',
+    yt_background_playing: 'Playing continuously in background 🔊',
+    yt_search_ph: 'Search songs, clips, artists or channels on YouTube...',
+    yt_search_btn: 'Search',
+    tab_trending: 'Trending',
+    tab_music: 'Popular Music',
+    tab_lofi: '24/7 Lo-Fi',
+    tab_series: 'Shows & Trailers',
+    tab_podcast: 'Podcasts & Talk',
+    tab_gaming: 'Gaming & Esports',
+    action_play_now: 'Play Now',
+    action_add_queue: 'Add to Queue',
+    suggestion_title: 'Video Suggestion',
+    suggested_by_suffix: 'suggested',
+    friends_modal_title: 'Friends & Co-Watching',
+    saved_friends_header: 'Saved Friends',
+    online_label: 'Online',
+    host_label: 'Host',
+    mic_toggle_title: 'Toggle Microphone',
+    cam_toggle_title: 'Toggle Camera (Video Call)',
+    chat_toggle_title: 'Toggle Chat',
+    online_count_badge: 'Online'
   },
   de: {
     app_title: 'Miruo — Zusammen Sehen & Schauen',
@@ -921,11 +1191,147 @@ const I18N = {
     kick_user_label: 'Entfernen',
     role_admin_label: 'Moderator',
     role_dj_label: 'Video-Erlaubnis',
-    role_member_label: 'Zuschauer'
+    role_member_label: 'Zuschauer',
+    online_count_suffix: 'Online',
+    status_online: 'Online',
+    status_offline: 'Offline',
+    status_in_room: 'Im Raum',
+    status_idle: 'Untätig',
+    invite_friend: 'In Raum einladen',
+    invite_btn_short: 'Einladen',
+    friends_title: 'Freunde',
+    friends_subtitle: 'Freunde zum gemeinsamen Schauen verwalten',
+    your_username_label: 'Dein Benutzername',
+    copy_btn: 'Kopieren',
+    add_friend_by_name: 'Freund per Benutzername hinzufügen',
+    add_friend_ph: 'Benutzername eingeben (z.B. @selin oder max)',
+    add_btn: 'Hinzufügen',
+    search_friends_ph: 'Freunde durchsuchen...',
+    no_friends_empty: 'Noch keine Freunde hinzugefügt.',
+    no_friends_sub: 'Gib oben den Benutzernamen (@benutzername) deines Freundes ein.',
+    provider_search_ph: 'Video, Serie oder Film suchen...',
+    room_queue_label: 'Warteschlange:',
+    room_queue_title: 'Wiedergabewarteschlange',
+    room_change_video: 'Ändern',
+    who_can_join: 'Wer kann beitreten',
+    who_can_join_short: 'Zugriff',
+    now_playing_prefix: 'Jetzt läuft',
+    now_playing_suffix: '',
+    privacy_public: 'Öffentlicher Raum',
+    privacy_friends: 'Freunde',
+    privacy_private: 'Privat (Nur Einladung)',
+    share_btn: 'Teilen',
+    select_video_btn: 'Video wählen',
+    live_chat_title: 'Live-Chat',
+    top_chat: 'Top-Chat',
+    chat_expand: 'Vergrößern',
+    chat_collapse: 'Verkleinern',
+    chat_welcome: 'Raum, willkommen!',
+    chat_bot_joined: 'ist dem Raum beigetreten 👋',
+    show_chat: 'Chat anzeigen',
+    chat_mention_label: 'Erwähnen:',
+    chat_reaction_label: 'Reaktion:',
+    chat_add_photo: 'Foto hinzufügen',
+    close_btn: 'Schließen',
+    leave_room_btn: 'Raum verlassen',
+    video_placeholder_title: 'Video wird geladen oder nicht gewählt',
+    video_placeholder_desc: 'Tippen Sie oben auf das Suchsymbol oder wählen Sie eine Plattform, um ein Video zu starten.',
+    miruo_player: 'Miruo Player',
+    video_title_default: 'Videotitel',
+    video_subtitle_default: 'Miruo auf YouTube',
+    fullscreen_title: 'Vollbild',
+    live_cam_feed: 'Live-Kamera-Feed',
+    self_camera_badge: 'Du (Kamera)',
+    close_cam_title: 'Kamera ausschalten',
+    cam_off_label: 'Kamera Aus',
+    cam_live_label: 'Live',
+    you_badge: 'Du',
+    simulated_badge: 'Simuliert',
+    your_device: 'Dein Gerät',
+    room_participant: 'Raumteilnehmer',
+    live_connection: 'Live-Verbindung',
+    role_owner: 'Raumleiter',
+    role_admin: 'Administrator',
+    role_video_control: 'Kann Video abspielen',
+    role_member: 'Zuschauer',
+    kick_title: 'Aus dem Raum entfernen',
+    kick_btn: 'Entfernen',
+    friend_badge: '✓ Freund',
+    add_friend_title: 'Freund hinzufügen',
+    add_friend_btn_short: 'Hinzufügen',
+    mic_on_title: 'Mikrofon Ein',
+    mic_off_title: 'Mikrofon Stumm',
+    cam_on_title: 'Kamera Ein',
+    cam_off_title: 'Kamera Aus',
+    av_mic_cam_on: 'Mikrofon & Kamera Ein (Live)',
+    av_mic_on_cam_off: 'Mikrofon Live • Kamera Aus',
+    av_cam_on_mic_off: 'Kamera Live • Mikrofon Stumm',
+    av_mic_cam_off: 'Mikrofon & Kamera Aus',
+    toast_cam_opened: '📹 Live-Kamera gestartet (Verschiebbar)',
+    toast_cam_preview_opened: '📹 Live-Kamera-Vorschau gestartet (Verschiebbar)',
+    who_can_join_title: 'Wer kann beitreten?',
+    who_can_join_sub: 'Raumzugriff und Berechtigungen verwalten.',
+    random_room_code_label: 'Zufälliger Raumcode',
+    access_permission_label: 'Beitrittserlaubnis',
+    access_public_label: '🌍 Öffentlich (Alle)',
+    recommended_badge: 'Empfohlen',
+    access_public_desc: 'Jeder mit dem Raumlink oder Code kann direkt beitreten.',
+    access_invite_label: '🔒 Nur mit Einladung',
+    access_invite_desc: 'Nur vom Leiter eingeladene und bestätigte Personen können beitreten.',
+    done_btn: 'Fertig',
+    queue_title: 'Wiedergabeschlange',
+    queue_empty: 'Keine Videos in der Warteschlange 🎵',
+    share_room_title: 'Raum teilen & einladen',
+    share_room_sub: 'Gemeinsam mit Freunden synchron schauen',
+    share_public_desc: 'Jeder kann über Entdecken oder Link beitreten',
+    share_friends_desc: 'Nur Personen, denen du folgst, können beitreten',
+    share_invite_desc: 'Privater Raum, Zutritt nur per Einladungslink',
+    invite_link_label: 'Einladungslink',
+    share_with_app_label: 'Mit App teilen',
+    messages_app_label: 'Nachrichten',
+    other_app_label: 'Andere',
+    room_privacy_toast: 'Raum-Privatsphäre',
+    room_title_label: 'Raumtitel',
+    room_title_ph: 'z.B. Late Night Lo-Fi ☕ oder Filmabend',
+    privacy_type_label: 'Privatsphäre-Typ',
+    private_room_label: 'Privater Raum',
+    private_room_desc: 'Nur eingeladene Personen können beitreten.',
+    public_room_label: 'Öffentlicher Raum',
+    public_room_desc: 'Wird im Miruo-Entdecken-Feed gelistet.',
+    platform_select_label: 'Streaming-Plattform',
+    screen_share_label: 'Bildschirm',
+    submit_create_room_btn: 'Raum starten & beitreten',
+    yt_modal_title: 'YouTube',
+    yt_modal_sub: 'Wählen Sie ein Video und schauen Sie gemeinsam im Raum.',
+    yt_browse_btn: 'Durchsuchen ↗',
+    yt_browse_title: 'm.youtube.com öffnen und anmelden',
+    yt_currently_playing_prefix: 'Läuft gerade:',
+    yt_background_playing: 'Läuft ununterbrochen im Hintergrund weiter 🔊',
+    yt_search_ph: 'Auf YouTube nach Videos, Musik oder Kanälen suchen...',
+    yt_search_btn: 'Suchen',
+    tab_trending: 'Trends',
+    tab_music: 'Beliebte Musik',
+    tab_lofi: '24/7 Lo-Fi',
+    tab_series: 'Serien & Trailer',
+    tab_podcast: 'Podcasts & Talk',
+    tab_gaming: 'Gaming & E-Sport',
+    action_play_now: 'Jetzt abspielen',
+    action_add_queue: 'In Warteschlange',
+    suggestion_title: 'Video-Vorschlag',
+    suggested_by_suffix: 'hat vorgeschlagen',
+    friends_modal_title: 'Freunde & Gemeinsames Schauen',
+    saved_friends_header: 'Gespeicherte Freunde',
+    online_label: 'Online',
+    host_label: 'Host',
+    mic_toggle_title: 'Mikrofon umschalten',
+    cam_toggle_title: 'Kamera umschalten (Videoanruf)',
+    chat_toggle_title: 'Chat ein-/ausblenden',
+    online_count_badge: 'Online'
   }
 };
 
-let currentLang = localStorage.getItem('miruo_lang') || 'tr';
+const urlBootLang = (typeof window !== 'undefined' && window.location) ? new URLSearchParams(window.location.search).get('lang') : null;
+let currentLang = (urlBootLang && I18N[urlBootLang]) ? urlBootLang : (localStorage.getItem('miruo_lang') || 'tr');
 
 function applyLanguage(lang) {
   if (!I18N[lang]) lang = 'tr';
@@ -952,6 +1358,14 @@ function applyLanguage(lang) {
     }
   });
 
+  // Update titles with [data-i18n-title]
+  document.querySelectorAll('[data-i18n-title]').forEach(el => {
+    const key = el.getAttribute('data-i18n-title');
+    if (dict[key]) {
+      el.title = dict[key];
+    }
+  });
+
   // Update active style on Settings lang-btns
   document.querySelectorAll('#langSelectorGroup .lang-btn').forEach(btn => {
     if (btn.getAttribute('data-lang') === lang) {
@@ -975,11 +1389,58 @@ function applyLanguage(lang) {
     const val = Number(dom.micSensSlider.value || 25);
     dom.micSensVal.textContent = val < 15 ? (dict.sens_high || 'Yüksek') : (val < 30 ? (dict.sens_med || 'Orta') : (dict.sens_low || 'Düşük'));
   }
+  if (dom && dom.duckingLevelVal && dom.duckingLevelSlider) {
+    const dVal = dom.duckingLevelSlider.value || 30;
+    dom.duckingLevelVal.textContent = lang === 'tr' ? `%${dVal}` : `${dVal}%`;
+  }
 
   // Update dynamic auth modal strings for active mode
   if (typeof updateAuthStringsForCurrentLang === 'function') {
     updateAuthStringsForCurrentLang();
   }
+
+  // Update room dynamic labels
+  const nowPlayingPrefix = document.getElementById('nowPlayingPrefixText');
+  if (nowPlayingPrefix && dict.now_playing_prefix) nowPlayingPrefix.textContent = dict.now_playing_prefix;
+  const nowPlayingSuffix = document.getElementById('nowPlayingSuffixText');
+  if (nowPlayingSuffix && dict.now_playing_suffix !== undefined) nowPlayingSuffix.textContent = dict.now_playing_suffix;
+
+  if (dom && dom.privacyStatusText) {
+    if (state.isPrivateRoom) {
+      dom.privacyStatusText.textContent = dict.privacy_private || 'Private Room';
+    } else {
+      dom.privacyStatusText.textContent = dict.privacy_public || 'Public Room';
+    }
+  }
+
+  const chatWelcome = document.getElementById('chatWelcomeMsgText');
+  if (chatWelcome) {
+    chatWelcome.innerHTML = `<strong class="text-gray-200">Miruo</strong> ${dict.chat_welcome || 'odasına hoş geldiniz!'}`;
+  }
+
+  // Update public room feed dynamically (Kurucu vs Host)
+  if (typeof loadPublicRooms === 'function') loadPublicRooms();
+  else if (typeof renderRoomList === 'function' && typeof DEFAULT_COMMUNITY_ROOMS !== 'undefined') renderRoomList(DEFAULT_COMMUNITY_ROOMS);
+
+  // Update friends online count pill immediately
+  const tabFriendsOnlineCountEl = document.getElementById('tabFriendsOnlineCount');
+  if (tabFriendsOnlineCountEl) {
+    const friendsArr = (state && state.friends) ? state.friends : [];
+    const onlineFriends = friendsArr.filter(f => f.status === 'online' || f.status === 'in_room');
+    const onlineSuffix = dict.online_count_suffix || (currentLang === 'tr' ? 'Çevrimiçi' : 'Online');
+    tabFriendsOnlineCountEl.textContent = `• ${onlineFriends.length} ${onlineSuffix}`;
+  }
+
+  // Refresh friends tab & list dynamically
+  if (typeof renderFriendsTab === 'function') renderFriendsTab();
+  if (typeof renderFriendsList === 'function') renderFriendsList();
+
+  // Refresh active room participants and video grid dynamically
+  if (typeof renderParticipantsList === 'function') renderParticipantsList();
+  if (typeof renderVideoGrid === 'function') renderVideoGrid();
+  if (typeof updateAVToolbarUI === 'function') updateAVToolbarUI();
+  if (typeof updateRoomQueueUI === 'function') updateRoomQueueUI();
+  if (typeof updatePermissionUI === 'function') updatePermissionUI();
 }
 
 function updateAuthStringsForCurrentLang() {
@@ -2855,10 +3316,11 @@ function updateAVToolbarUI() {
   }
 
   if (avText) {
-    if (state.isMicOn && state.isCamOn) avText.textContent = 'Mikrofon & Kamera Açık (Canlı)';
-    else if (state.isMicOn) avText.textContent = 'Mikrofon Canlı • Kamera Kapalı';
-    else if (state.isCamOn) avText.textContent = 'Kamera Canlı • Mikrofon Kapalı';
-    else avText.textContent = 'Mikrofon & Kamera Kapalı';
+    const dict = I18N[currentLang] || I18N.tr;
+    if (state.isMicOn && state.isCamOn) avText.textContent = dict.av_mic_cam_on || 'Mikrofon & Kamera Açık (Canlı)';
+    else if (state.isMicOn) avText.textContent = dict.av_mic_on_cam_off || 'Mikrofon Canlı • Kamera Kapalı';
+    else if (state.isCamOn) avText.textContent = dict.av_cam_on_mic_off || 'Kamera Canlı • Mikrofon Kapalı';
+    else avText.textContent = dict.av_mic_cam_off || 'Mikrofon & Kamera Kapalı';
   }
 }
 
@@ -3001,7 +3463,8 @@ async function toggleCam() {
       broadcastMyMediaStatus();
       renderParticipantsList();
       renderVideoGrid();
-      showToast('📹 Canlı Kamera Açıldı (Sürüklenebilir)');
+      const dictCam = I18N[currentLang] || I18N.tr;
+      showToast(dictCam.toast_cam_opened || '📹 Canlı Kamera Açıldı (Sürüklenebilir)');
     } else {
       throw new Error('Video track not available');
     }
@@ -3018,7 +3481,8 @@ async function toggleCam() {
     broadcastMyMediaStatus();
     renderParticipantsList();
     renderVideoGrid();
-    showToast('📹 Canlı Kamera Önizleme Açıldı (Sürüklenebilir)');
+    const dictCam2 = I18N[currentLang] || I18N.tr;
+    showToast(dictCam2.toast_cam_preview_opened || '📹 Canlı Kamera Önizleme Açıldı (Sürüklenebilir)');
   }
 }
 
@@ -3032,7 +3496,8 @@ function setChatVisibility(visible) {
     dom.openChatFloatingBtn.classList.toggle('hidden', visible);
   }
   if (dom.chatToolbarBtnText) {
-    dom.chatToolbarBtnText.textContent = visible ? 'Sohbet' : 'Sohbeti Aç';
+    const dictChat = I18N[currentLang] || I18N.tr;
+    dom.chatToolbarBtnText.textContent = visible ? (dictChat.chat_tab || 'Sohbet') : (dictChat.show_chat || 'Sohbeti Aç');
   }
   if (dom.toggleChatToolbarBtn) {
     dom.toggleChatToolbarBtn.classList.toggle('bg-rose-500/20', visible);
@@ -3062,6 +3527,8 @@ function renderVideoGrid() {
   const selfTile = document.createElement('div');
   selfTile.className = 'relative w-28 h-28 sm:w-32 sm:h-32 rounded-2xl overflow-hidden bg-black/60 border border-white/10 shadow-lg shrink-0 flex flex-col items-center justify-center';
 
+  const dictGrid = I18N[currentLang] || I18N.tr;
+
   if (state.isCamOn && state.localStream) {
     const v = document.createElement('video');
     v.className = 'w-full h-full object-cover mirror';
@@ -3079,14 +3546,14 @@ function renderVideoGrid() {
       <div class="w-12 h-12 rounded-full overflow-hidden bg-gradient-to-tr from-rose-500 to-indigo-600 flex items-center justify-center text-white font-bold text-base shadow-md ${pulseRing}">
         ${selfAv}
       </div>
-      <span class="text-[10px] text-gray-400 mt-1 font-medium">Kamera Kapalı</span>
+      <span class="text-[10px] text-gray-400 mt-1 font-medium">${dictGrid.cam_off_label || 'Kamera Kapalı'}</span>
     `;
   }
 
   const selfBadge = document.createElement('div');
   selfBadge.className = 'absolute bottom-1.5 left-1.5 right-1.5 px-2 py-0.5 rounded-lg bg-black/60 backdrop-blur-md border border-white/10 flex items-center justify-between text-[10px] text-white';
   selfBadge.innerHTML = `
-    <span class="truncate font-semibold">${state.username || 'Sen'} (Sen)</span>
+    <span class="truncate font-semibold">${state.username || dictGrid.you_badge || 'Sen'} (${dictGrid.you_badge || 'Sen'})</span>
     <span class="${state.isMicOn ? 'text-emerald-400' : 'text-red-400'}">${state.isMicOn ? '🎙️' : '🔇'}</span>
   `;
   selfTile.appendChild(selfBadge);
@@ -3131,7 +3598,7 @@ function renderVideoGrid() {
            </div>`;
       tile.innerHTML = `
         ${avHtml}
-        <span class="text-[10px] text-gray-400 mt-1 font-medium">${m.isCamOn ? 'Canlı' : 'Kamera Kapalı'}</span>
+        <span class="text-[10px] text-gray-400 mt-1 font-medium">${m.isCamOn ? (dictGrid.cam_live_label || 'Canlı') : (dictGrid.cam_off_label || 'Kamera Kapalı')}</span>
       `;
     }
 
@@ -3160,22 +3627,56 @@ const SIMULATED_BOT_PROFILES = [
   { name: 'Selin_K', avatar: 'https://images.unsplash.com/photo-1539571696357-5a69c17a67c6?w=120&auto=format&fit=crop&q=80', char: 'S', color: 'from-fuchsia-500 to-pink-600' }
 ];
 
-const BOT_CHAT_MESSAGES = [
-  "bu parça bağımlılık yaptı yaa 🔥",
-  "selam herkese, ses gayet net geliyor 👋",
-  "efsane seçim elinize sağlık",
-  "klibi ilk defa izliyorum çok iyiymiş",
-  "sesi bir tık daha açabilir misiniz?",
-  "sırada hangi şarkı var acaba? 🎧",
-  "kalp bıraktım ❤️",
-  "bunu listeme kaydettim hemen 👍",
-  "gece moduna çok yakıştı bu parça",
-  "herkese keyifli dinlemeler ✨",
-  "sonraki benden olsun mu? 🎶",
-  "harika senkronize oldu çok iyi",
-  "ritim mükemmel 🔥🔥",
-  "arkadaşları da çağırdım geliyorlar"
-];
+const BOT_CHAT_MESSAGES_I18N = {
+  tr: [
+    "bu parça bağımlılık yaptı yaa 🔥",
+    "selam herkese, ses gayet net geliyor 👋",
+    "efsane seçim elinize sağlık",
+    "klibi ilk defa izliyorum çok iyiymiş",
+    "sesi bir tık daha açabilir misiniz?",
+    "sırada hangi şarkı var acaba? 🎧",
+    "kalp bıraktım ❤️",
+    "bunu listeme kaydettim hemen 👍",
+    "gece moduna çok yakıştı bu parça",
+    "herkese keyifli dinlemeler ✨",
+    "sonraki benden olsun mu? 🎶",
+    "harika senkronize oldu çok iyi",
+    "ritim mükemmel 🔥🔥",
+    "arkadaşları da çağırdım geliyorlar"
+  ],
+  en: [
+    "this track is so addictive 🔥",
+    "hey everyone, audio is super clear 👋",
+    "amazing pick, loving this vibe!",
+    "watching this clip for the first time, it's so good",
+    "could you turn up the volume a bit?",
+    "what song is coming up next? 🎧",
+    "dropped a heart ❤️",
+    "saved this to my playlist right away 👍",
+    "this track fits late night vibes perfectly",
+    "enjoy the stream everyone ✨",
+    "can I pick the next one? 🎶",
+    "synced up perfectly, love it",
+    "the rhythm is incredible 🔥🔥",
+    "just invited my friends, they're joining"
+  ],
+  de: [
+    "dieser Track macht echt süchtig 🔥",
+    "hallo zusammen, Ton ist super klar 👋",
+    "mega Auswahl, gefällt mir sehr!",
+    "schaue diesen Clip zum ersten Mal, richtig gut",
+    "könnt ihr die Lautstärke etwas aufdrehen?",
+    "welches Lied kommt als Nächstes? 🎧",
+    "Herz dagelassen ❤️",
+    "direkt in meiner Playlist gespeichert 👍",
+    "perfekt für den Abendmodus",
+    "viel Spaß beim Zuschauen allen ✨",
+    "darf ich das nächste aussuchen? 🎶",
+    "perfekt synchronisiert, klasse",
+    "der Beat ist der Wahnsinn 🔥🔥",
+    "habe Freunde eingeladen, sie kommen gleich"
+  ]
+};
 
 let botChatInterval = null;
 let activeRoomBots = [];
@@ -3206,7 +3707,8 @@ function startBotsForActiveRoom() {
       return;
     }
     const randomBot = activeRoomBots[Math.floor(Math.random() * activeRoomBots.length)];
-    const randomMsg = BOT_CHAT_MESSAGES[Math.floor(Math.random() * BOT_CHAT_MESSAGES.length)];
+    const botMsgs = BOT_CHAT_MESSAGES_I18N[currentLang] || BOT_CHAT_MESSAGES_I18N.tr;
+    const randomMsg = botMsgs[Math.floor(Math.random() * botMsgs.length)];
     appendBotChatMessage(randomBot, randomMsg);
 
     // 40% chance to drop floating reaction
@@ -3227,13 +3729,15 @@ function stopBotsForActiveRoom() {
 
 function appendBotJoinMessage(botName, botColor) {
   if (!dom.chatMessagesContainer) return;
+  const dict = I18N[currentLang] || I18N.tr;
+  const joinText = dict.chat_bot_joined || 'odaya katıldı 👋';
   const msgEl = document.createElement('div');
   msgEl.className = 'flex items-center gap-2 text-gray-400 text-[11px] py-1';
   msgEl.innerHTML = `
     <div class="w-5 h-5 rounded-full bg-gradient-to-tr ${botColor || 'from-rose-500 to-indigo-600'} flex items-center justify-center text-[9px] font-bold text-white shadow-xs">
       ${botName.charAt(0)}
     </div>
-    <span><strong class="text-gray-200">@${escapeHtml(botName)}</strong> odaya katıldı 👋</span>
+    <span><strong class="text-gray-200">@${escapeHtml(botName)}</strong> ${escapeHtml(joinText)}</span>
   `;
   dom.chatMessagesContainer.appendChild(msgEl);
   dom.chatMessagesContainer.scrollTop = dom.chatMessagesContainer.scrollHeight;
@@ -3263,6 +3767,11 @@ function appendBotChatMessage(bot, message) {
 
 function switchToExplore() {
   stopBotsForActiveRoom();
+  const mainWorkspace = document.querySelector('main');
+  if (mainWorkspace) {
+    mainWorkspace.classList.remove('pt-0', 'max-w-7xl');
+    mainWorkspace.classList.add('max-w-xl');
+  }
   if (dom.mainHeader) dom.mainHeader.classList.remove('hidden');
   const mobileNav = document.getElementById('mobileBottomNav');
   if (mobileNav) mobileNav.classList.remove('hidden');
@@ -3300,6 +3809,10 @@ function switchToExplore() {
 
 function switchToProviderPicker() {
   stopBotsForActiveRoom();
+  const mainWorkspace = document.querySelector('main');
+  if (mainWorkspace) {
+    mainWorkspace.classList.add('pt-0');
+  }
   if (dom.mainHeader) dom.mainHeader.classList.add('hidden');
   const mobileNav = document.getElementById('mobileBottomNav');
   if (mobileNav) mobileNav.classList.add('hidden');
@@ -3319,6 +3832,12 @@ function switchToProviderPicker() {
 
 function switchToMyRoom() {
   // Hide explore header, provider picker and bottom nav when inside a room!
+  const mainWorkspace = document.querySelector('main');
+  if (mainWorkspace) {
+    mainWorkspace.classList.add('pt-0');
+    mainWorkspace.classList.remove('max-w-xl');
+    mainWorkspace.classList.add('max-w-7xl');
+  }
   if (dom.mainHeader) dom.mainHeader.classList.add('hidden');
   const mobileNav = document.getElementById('mobileBottomNav');
   if (mobileNav) mobileNav.classList.add('hidden');
@@ -3616,7 +4135,7 @@ function renderRoomList(roomsToRender) {
 
         <!-- Bottom: Host & Overlapping Avatars + Red Pill Badge -->
         <div class="flex items-center justify-between mt-2 pt-1 border-t border-white/5">
-          <span class="text-[10px] sm:text-[11px] text-gray-500 truncate">Kurucu: @${escapeHtml(r.host || 'admin')}</span>
+          <span class="text-[10px] sm:text-[11px] text-gray-500 truncate">${(I18N[currentLang] || I18N.tr).host_label || 'Kurucu'}: @${escapeHtml(r.host || 'admin')}</span>
           <div class="flex items-center gap-2 shrink-0">
             <div class="flex items-center -space-x-2">
               ${renderStackedAvatars(r.avatars)}
@@ -3670,8 +4189,9 @@ function loadPublicRooms() {
 // 5.8 ROOM HOST, DJ PERMISSIONS & FRIENDS SYSTEM
 // ==========================================
 function updatePermissionUI() {
+  const dict = I18N[currentLang] || I18N.tr;
   if (dom.roomHostName) {
-    dom.roomHostName.textContent = state.isHost ? 'Sen' : (state.hostName || 'Yönetici');
+    dom.roomHostName.textContent = state.isHost ? (dict.you_badge || 'Sen') : (state.hostName || dict.role_admin || 'Yönetici');
   }
 
   // Toggle button appearance for host
@@ -3679,11 +4199,11 @@ function updatePermissionUI() {
     if (state.isHost) {
       dom.toggleRoomPermissionBtn.classList.remove('hidden');
       if (state.controlMode === 'host_only') {
-        dom.permModeText.textContent = 'Sadece Yönetici';
+        dom.permModeText.textContent = currentLang === 'en' ? 'Host Only' : (currentLang === 'de' ? 'Nur Leiter' : 'Sadece Yönetici');
         dom.toggleRoomPermissionBtn.className = 'px-2.5 py-1 rounded-xl bg-rose-500/15 border border-rose-500/30 text-rose-300 text-xs font-semibold flex items-center gap-1.5 transition-all';
         dom.permLockIcon.innerHTML = '<rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0110 0v4"/>';
       } else {
-        dom.permModeText.textContent = 'Herkes Açabilir';
+        dom.permModeText.textContent = currentLang === 'en' ? 'Everyone Can Play' : (currentLang === 'de' ? 'Jeder kann abspielen' : 'Herkes Açabilir');
         dom.toggleRoomPermissionBtn.className = 'px-2.5 py-1 rounded-xl bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 text-xs font-semibold flex items-center gap-1.5 transition-all';
         dom.permLockIcon.innerHTML = '<rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 019.9-1"/>';
       }
@@ -3697,7 +4217,7 @@ function updatePermissionUI() {
   const canControl = state.isHost || state.controlMode === 'everyone' || state.hasDjPermission || state.userRole === 'owner' || state.userRole === 'admin' || state.userRole === 'dj';
 
   if (dom.roomQuickSearchBtnText) {
-    dom.roomQuickSearchBtnText.textContent = canControl ? 'Değiştir' : 'Öner';
+    dom.roomQuickSearchBtnText.textContent = canControl ? (dict.room_change_video || 'Değiştir') : (currentLang === 'en' ? 'Suggest' : (currentLang === 'de' ? 'Vorschlagen' : 'Öner'));
   }
 
   // Toggle input controls and notice bar
@@ -3774,6 +4294,7 @@ function renderFriendsList(filterText = '') {
   if (!dom.friendsListContainer) return;
   dom.friendsListContainer.innerHTML = '';
   
+  const dict = I18N[currentLang] || I18N.tr;
   const query = (filterText || '').toLowerCase().trim().replace(/^@/, '');
   const listToRender = query 
     ? state.friends.filter(f => (f.name && f.name.toLowerCase().includes(query)) || (f.username && f.username.toLowerCase().includes(query)))
@@ -3784,7 +4305,7 @@ function renderFriendsList(filterText = '') {
   if (listToRender.length === 0) {
     dom.friendsListContainer.innerHTML = query 
       ? `<p class="text-xs text-gray-400 text-center py-4">"${escapeHtml(query)}" ile eşleşen kullanıcı bulunamadı.</p>`
-      : '<p class="text-xs text-gray-500 text-center py-4">Henüz ekli arkadaşın yok. Kullanıcı adını girerek ekleyebilirsin!</p>';
+      : `<p class="text-xs text-gray-500 text-center py-4">${dict.no_friends_empty || 'Henüz arkadaş eklemedin.'}</p>`;
     return;
   }
 
@@ -3795,6 +4316,11 @@ function renderFriendsList(filterText = '') {
     let badgeColor = 'bg-emerald-400';
     if (fr.status === 'in_room') badgeColor = 'bg-purple-400';
     if (fr.status === 'idle') badgeColor = 'bg-amber-400';
+
+    let friendStatusLabel = dict.status_online || 'Online';
+    if (fr.status === 'in_room') friendStatusLabel = dict.status_in_room || 'In room';
+    else if (fr.status === 'idle') friendStatusLabel = dict.status_idle || 'Idle';
+    else if (fr.status === 'offline') friendStatusLabel = dict.status_offline || 'Offline';
 
     item.innerHTML = `
       <div class="flex items-center gap-2.5">
@@ -3808,15 +4334,15 @@ function renderFriendsList(filterText = '') {
           </div>
           <span class="text-[10px] text-gray-400 flex items-center gap-1">
             <span class="w-1.5 h-1.5 rounded-full ${badgeColor}"></span>
-            <span>${fr.statusText || 'Çevrimiçi'}</span>
+            <span>${friendStatusLabel}</span>
           </span>
         </div>
       </div>
 
       <div class="flex items-center gap-1.5">
         <button class="invite-friend-btn px-2.5 py-1 bg-rose-500/15 hover:bg-rose-500/25 border border-rose-500/30 text-rose-300 rounded-lg text-[11px] font-semibold transition-all flex items-center gap-1 cursor-pointer" data-name="${fr.name}">
-          <svg class="w-3 h-3 text-rose-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 3h6v6m0-6L10 14"/></svg>
-          <span>Odaya Çağır</span>
+          <svg class="w-3.5 h-3.5 text-rose-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 3h6v6m0-6L10 14"/></svg>
+          <span>${dict.invite_friend || 'Invite'}</span>
         </button>
       </div>
     `;
@@ -3892,6 +4418,8 @@ function renderFriendsTab(filterText = '') {
   const onlineCountDisplay = document.getElementById('tabFriendsOnlineCount');
   if (!container) return;
 
+  const dict = I18N[currentLang] || I18N.tr;
+
   const currentUsername = '@' + (state.username || 'kullanici').replace(/^@/, '');
   if (codeDisplay) codeDisplay.textContent = currentUsername;
   const myCodeModal = document.getElementById('myFriendCodeDisplay');
@@ -3903,13 +4431,14 @@ function renderFriendsTab(filterText = '') {
     : state.friends;
 
   const onlineFriends = state.friends.filter(f => f.status === 'online' || f.status === 'in_room');
-  if (onlineCountDisplay) onlineCountDisplay.textContent = `${onlineFriends.length} Çevrimiçi`;
+  const onlineSuffix = dict.online_count_suffix || (currentLang === 'tr' ? 'Çevrimiçi' : 'Online');
+  if (onlineCountDisplay) onlineCountDisplay.textContent = `• ${onlineFriends.length} ${onlineSuffix}`;
 
   if (listToRender.length === 0) {
     container.innerHTML = `
       <div class="p-8 text-center bg-[#0C0E17] border border-white/10 rounded-2xl">
-        <p class="text-xs text-gray-400">${query ? `"${escapeHtml(query)}" ile eşleşen kullanıcı bulunamadı.` : 'Henüz arkadaş eklemedin.'}</p>
-        <p class="text-[11px] text-gray-500 mt-1">Arkadaşının kullanıcı adını (@kullanici) yukarıdan girerek hemen ekleyebilirsin.</p>
+        <p class="text-xs text-gray-400">${query ? `"${escapeHtml(query)}" ile eşleşen kullanıcı bulunamadı.` : (dict.no_friends_empty || 'Henüz arkadaş eklemedin.')}</p>
+        <p class="text-[11px] text-gray-500 mt-1">${dict.no_friends_sub || 'Arkadaşının kullanıcı adını (@kullanici) yukarıdan girerek hemen ekleyebilirsin.'}</p>
       </div>
     `;
     return;
@@ -3920,6 +4449,15 @@ function renderFriendsTab(filterText = '') {
     const card = document.createElement('div');
     card.className = 'p-3 sm:p-3.5 rounded-2xl bg-[#0C0E17] border border-white/10 hover:border-white/20 transition-all flex items-center justify-between gap-3 shadow-md';
     const isOnline = fr.status === 'online' || fr.status === 'in_room';
+
+    let friendStatusLabel = dict.status_offline || 'Offline';
+    if (fr.currentRoom || fr.status === 'in_room') {
+      friendStatusLabel = dict.status_in_room || 'In room';
+    } else if (fr.status === 'idle') {
+      friendStatusLabel = dict.status_idle || 'Idle';
+    } else if (isOnline) {
+      friendStatusLabel = dict.status_online || 'Online';
+    }
 
     card.innerHTML = `
       <div class="flex items-center gap-3 min-w-0">
@@ -3936,7 +4474,7 @@ function renderFriendsTab(filterText = '') {
             <span class="text-[10px] font-bold text-rose-300">@${(fr.username || fr.name).replace(/^@/, '')}</span>
           </div>
           <span class="text-[10px] ${isOnline ? 'text-emerald-400' : 'text-gray-500'} block">
-            ${fr.currentRoom ? `Şu an odada` : (isOnline ? 'Çevrimiçi' : 'Çevrimdışı')}
+            ${friendStatusLabel}
           </span>
         </div>
       </div>
@@ -3944,7 +4482,7 @@ function renderFriendsTab(filterText = '') {
       <div class="flex items-center gap-1.5 shrink-0">
         <button class="invite-friend-tab-btn px-3 py-1.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-xs font-medium text-gray-200 hover:text-white transition-all cursor-pointer flex items-center gap-1" data-name="${fr.name}">
           <svg class="w-3.5 h-3.5 text-rose-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 3h6v6m0-6L10 14"/></svg>
-          <span>Çağır</span>
+          <span>${dict.invite_btn_short || 'Invite'}</span>
         </button>
       </div>
     `;
@@ -3959,6 +4497,7 @@ function renderFriendsTab(filterText = '') {
     container.appendChild(card);
   });
 }
+
 
 function switchToFriendsTab() {
   if (dom.exploreLobbySection) {
@@ -4187,6 +4726,7 @@ function renderParticipantsList() {
   if (!dom.participantsListContainer) return;
   dom.participantsListContainer.innerHTML = '';
 
+  const dictPart = I18N[currentLang] || I18N.tr;
   const isCurrentUserOwner = state.isHost || state.userRole === 'owner';
   const isCurrentUserAdmin = isCurrentUserOwner || state.userRole === 'admin';
 
@@ -4201,7 +4741,7 @@ function renderParticipantsList() {
 
   const selfMember = {
     userId: state.userId,
-    username: `${state.username} (Sen)`,
+    username: `${state.username} (${dictPart.you_badge || 'Sen'})`,
     avatar: selfAvatar,
     avatarColor: selfAvatarBg,
     isMicOn: state.isMicOn,
@@ -4262,19 +4802,19 @@ function renderParticipantsList() {
 
     // SVG mic active vs muted
     const micSvg = m.isMicOn
-      ? `<span class="p-1.5 rounded-lg bg-emerald-500/20 text-emerald-400 border border-emerald-500/30" title="Mikrofon Açık">
+      ? `<span class="p-1.5 rounded-lg bg-emerald-500/20 text-emerald-400 border border-emerald-500/30" title="${dictPart.mic_on_title || 'Mikrofon Açık'}">
           <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 006 0V4a3 3 0 00-3-3z"/><path d="M19 10v2a7 7 0 01-14 0v-2M12 19v4m-4 0h8"/></svg>
         </span>`
-      : `<span class="p-1.5 rounded-lg bg-red-500/15 text-red-400 border border-red-500/25" title="Mikrofon Kapalı">
+      : `<span class="p-1.5 rounded-lg bg-red-500/15 text-red-400 border border-red-500/25" title="${dictPart.mic_off_title || 'Mikrofon Kapalı'}">
           <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="1" y1="1" x2="23" y2="23"/><path d="M9 9v3a3 3 0 005.12 2.12M15 9.34V4a3 3 0 00-5.94-.6"/><path d="M17 16.95A7 7 0 015 12v-2m14 0v2a7 7 0 01-.11 1.23"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
         </span>`;
 
     // SVG cam active vs muted
     const camSvg = m.isCamOn
-      ? `<span class="p-1.5 rounded-lg bg-emerald-500/20 text-emerald-400 border border-emerald-500/30" title="Kamera Açık">
+      ? `<span class="p-1.5 rounded-lg bg-emerald-500/20 text-emerald-400 border border-emerald-500/30" title="${dictPart.cam_on_title || 'Kamera Açık'}">
           <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 7l-7 5 7 5V7z"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg>
         </span>`
-      : `<span class="p-1.5 rounded-lg bg-red-500/15 text-red-400 border border-red-500/25" title="Kamera Kapalı">
+      : `<span class="p-1.5 rounded-lg bg-red-500/15 text-red-400 border border-red-500/25" title="${dictPart.cam_off_title || 'Kamera Kapalı'}">
           <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 16v1a2 2 0 01-2 2H3a2 2 0 01-2-2V7a2 2 0 012-2h1m5 0h6a2 2 0 012 2v4"/><polyline points="23 7 16 12 23 17"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
         </span>`;
 
@@ -4286,11 +4826,11 @@ function renderParticipantsList() {
 
     const currentRole = m.role || (m.isHost ? 'owner' : 'member');
     const roleBadges = {
-      owner: '<span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-[10px] bg-amber-500/15 text-amber-300 font-semibold border border-amber-500/30 shadow-sm"><svg class="w-3 h-3 text-amber-400 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z"/></svg><span>Oda Sahibi</span></span>',
-      admin: '<span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-[10px] bg-indigo-500/15 text-indigo-300 font-semibold border border-indigo-500/30 shadow-sm"><svg class="w-3 h-3 text-indigo-400 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg><span>Yönetici</span></span>',
-      video_control: '<span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-[10px] bg-rose-500/15 text-rose-300 font-semibold border border-rose-500/30 shadow-sm"><svg class="w-3 h-3 text-rose-400 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg><span>Video Açabilir</span></span>',
-      dj: '<span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-[10px] bg-rose-500/15 text-rose-300 font-semibold border border-rose-500/30 shadow-sm"><svg class="w-3 h-3 text-rose-400 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg><span>Video Açabilir</span></span>',
-      member: '<span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-[10px] bg-white/10 text-gray-300 font-medium border border-white/10"><svg class="w-3 h-3 text-gray-400 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg><span>İzleyici</span></span>'
+      owner: `<span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-[10px] bg-amber-500/15 text-amber-300 font-semibold border border-amber-500/30 shadow-sm"><svg class="w-3 h-3 text-amber-400 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z"/></svg><span>${dictPart.role_owner || 'Oda Sahibi'}</span></span>`,
+      admin: `<span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-[10px] bg-indigo-500/15 text-indigo-300 font-semibold border border-indigo-500/30 shadow-sm"><svg class="w-3 h-3 text-indigo-400 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg><span>${dictPart.role_admin || 'Yönetici'}</span></span>`,
+      video_control: `<span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-[10px] bg-rose-500/15 text-rose-300 font-semibold border border-rose-500/30 shadow-sm"><svg class="w-3 h-3 text-rose-400 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg><span>${dictPart.role_video_control || 'Video Açabilir'}</span></span>`,
+      dj: `<span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-[10px] bg-rose-500/15 text-rose-300 font-semibold border border-rose-500/30 shadow-sm"><svg class="w-3 h-3 text-rose-400 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg><span>${dictPart.role_video_control || 'Video Açabilir'}</span></span>`,
+      member: `<span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-[10px] bg-white/10 text-gray-300 font-medium border border-white/10"><svg class="w-3 h-3 text-gray-400 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg><span>${dictPart.role_member || 'İzleyici'}</span></span>`
     };
 
     let actionsHtml = '';
@@ -4298,14 +4838,14 @@ function renderParticipantsList() {
       actionsHtml = `
         <div class="flex items-center gap-1.5 shrink-0">
           <select class="role-selector-dropdown bg-[#141824] hover:bg-[#1a2030] text-gray-200 text-[11px] font-semibold py-1.5 px-2 rounded-xl border border-white/15 focus:outline-none focus:border-rose-500 transition-all cursor-pointer" data-user-id="${m.userId}" data-username="${m.username}">
-            <option value="admin" ${currentRole === 'admin' ? 'selected' : ''}>Yönetici</option>
-            <option value="video_control" ${currentRole === 'video_control' || currentRole === 'dj' ? 'selected' : ''}>Video Açabilir</option>
-            <option value="member" ${currentRole === 'member' || !currentRole ? 'selected' : ''}>İzleyici</option>
+            <option value="admin" ${currentRole === 'admin' ? 'selected' : ''}>${dictPart.role_admin || 'Yönetici'}</option>
+            <option value="video_control" ${currentRole === 'video_control' || currentRole === 'dj' ? 'selected' : ''}>${dictPart.role_video_control || 'Video Açabilir'}</option>
+            <option value="member" ${currentRole === 'member' || !currentRole ? 'selected' : ''}>${dictPart.role_member || 'İzleyici'}</option>
           </select>
 
-          <button class="kick-participant-btn p-1.5 rounded-xl bg-red-500/15 hover:bg-red-500/25 active:scale-95 text-red-400 hover:text-red-300 border border-red-500/25 transition-all cursor-pointer flex items-center gap-1 text-[11px] font-semibold" data-user-id="${m.userId}" data-username="${m.username}" title="Odadan Çıkar">
+          <button class="kick-participant-btn p-1.5 rounded-xl bg-red-500/15 hover:bg-red-500/25 active:scale-95 text-red-400 hover:text-red-300 border border-red-500/25 transition-all cursor-pointer flex items-center gap-1 text-[11px] font-semibold" data-user-id="${m.userId}" data-username="${m.username}" title="${dictPart.kick_title || 'Odadan Çıkar'}">
             <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/></svg>
-            <span class="hidden sm:inline">Çıkar</span>
+            <span class="hidden sm:inline">${dictPart.kick_btn || 'Çıkar'}</span>
           </button>
         </div>
       `;
@@ -4322,12 +4862,12 @@ function renderParticipantsList() {
       const cleanTargetName = (m.username || '').replace(/^@/, '').trim();
       const isAlreadyFriend = state.friends.some(f => (f.username || f.name).toLowerCase().replace(/^@/, '') === cleanTargetName.toLowerCase());
       if (isAlreadyFriend) {
-        friendBtnHtml = `<span class="px-2 py-0.5 rounded-lg text-[9px] bg-white/5 text-emerald-400 border border-emerald-500/20 font-medium shrink-0">✓ Arkadaş</span>`;
+        friendBtnHtml = `<span class="px-2 py-0.5 rounded-lg text-[9px] bg-white/5 text-emerald-400 border border-emerald-500/20 font-medium shrink-0">${dictPart.friend_badge || '✓ Arkadaş'}</span>`;
       } else {
         friendBtnHtml = `
-          <button type="button" class="add-friend-from-participant-btn px-2 py-1 rounded-xl bg-gradient-to-r from-rose-500 to-indigo-600 hover:opacity-90 active:scale-95 text-white text-[10px] font-bold shadow-sm transition-all cursor-pointer flex items-center gap-1 shrink-0" data-username="${cleanTargetName}" title="Arkadaş Ekle">
+          <button type="button" class="add-friend-from-participant-btn px-2 py-1 rounded-xl bg-gradient-to-r from-rose-500 to-indigo-600 hover:opacity-90 active:scale-95 text-white text-[10px] font-bold shadow-sm transition-all cursor-pointer flex items-center gap-1 shrink-0" data-username="${cleanTargetName}" title="${dictPart.add_friend_title || 'Arkadaş Ekle'}">
             <svg class="w-3 h-3 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="8.5" cy="7" r="4"/><line x1="20" y1="8" x2="20" y2="14"/><line x1="23" y1="11" x2="17" y2="11"/></svg>
-            <span>Ekle</span>
+            <span>${dictPart.add_friend_btn_short || 'Ekle'}</span>
           </button>
         `;
       }
@@ -4339,10 +4879,10 @@ function renderParticipantsList() {
         <div class="truncate">
           <div class="flex items-center gap-1.5 flex-wrap">
             <span class="text-xs font-bold text-white truncate max-w-[110px] sm:max-w-none">${m.username}</span>
-            ${m.isSelf ? '<span class="px-1 py-0.2 rounded text-[9px] bg-rose-500/20 text-rose-300 font-bold border border-rose-500/30">Sen</span>' : ''}
-            ${m.isBot ? '<span class="px-1 py-0.2 rounded text-[9px] bg-blue-500/20 text-blue-300 font-bold border border-blue-500/30">Simüle</span>' : ''}
+            ${m.isSelf ? `<span class="px-1 py-0.2 rounded text-[9px] bg-rose-500/20 text-rose-300 font-bold border border-rose-500/30">${dictPart.you_badge || 'Sen'}</span>` : ''}
+            ${m.isBot ? `<span class="px-1 py-0.2 rounded text-[9px] bg-blue-500/20 text-blue-300 font-bold border border-blue-500/30">${dictPart.simulated_badge || 'Simüle'}</span>` : ''}
           </div>
-          <span class="text-[10px] text-gray-400 block">${m.isSelf ? 'Senin Cihazın' : (m.isBot ? 'Oda Katılımcısı' : 'Canlı Bağlantı')}</span>
+          <span class="text-[10px] text-gray-400 block">${m.isSelf ? (dictPart.your_device || 'Senin Cihazın') : (m.isBot ? (dictPart.room_participant || 'Oda Katılımcısı') : (dictPart.live_connection || 'Canlı Bağlantı'))}</span>
         </div>
       </div>
 
@@ -6234,11 +6774,12 @@ function initEvents() {
         window.webkit.messageHandlers.openPlatform.postMessage({
           provider: providerKey,
           url: config.url,
-          title: config.title
+          title: config.title,
+          lang: currentLang
         });
         return;
       } else if (window.webkit.messageHandlers.openYouTube && providerKey === 'youtube') {
-        window.webkit.messageHandlers.openYouTube.postMessage({});
+        window.webkit.messageHandlers.openYouTube.postMessage({ lang: currentLang });
         return;
       }
     }
@@ -6270,7 +6811,8 @@ function initEvents() {
 
     // Show continuous playback status banner
     const playingTitle = dom.nowPlayingTitle ? dom.nowPlayingTitle.textContent : '';
-    if (state.roomId && dom.raveCurrentlyPlayingBanner && playingTitle && playingTitle !== 'Henüz video seçilmedi') {
+    const isNoVideo = !state.currentVideoId || !playingTitle || playingTitle.includes('Henüz') || playingTitle.includes('No video') || playingTitle.includes('Noch kein') || playingTitle.includes('Video Loading');
+    if (state.roomId && dom.raveCurrentlyPlayingBanner && !isNoVideo) {
       dom.raveCurrentlyPlayingBanner.classList.remove('hidden');
       if (dom.raveCurrentlyPlayingTitle) dom.raveCurrentlyPlayingTitle.textContent = playingTitle;
     } else if (dom.raveCurrentlyPlayingBanner) {
@@ -6300,21 +6842,29 @@ function initEvents() {
     if (!dom.raveYtVideoGrid) return;
     currentRaveYtTag = tag;
 
+    const isEn = currentLang === 'en';
+    const isDe = currentLang === 'de';
+    const feedLoadingText = isEn ? 'Fetching YouTube content...' : (isDe ? 'YouTube-Inhalte werden geladen...' : 'YouTube içerikleri getiriliyor...');
+
     dom.raveYtVideoGrid.innerHTML = `
       <div class="col-span-full py-12 flex flex-col items-center justify-center text-center text-xs text-gray-400">
         <div class="w-6 h-6 border-2 border-red-500 border-t-transparent rounded-full animate-spin mb-2"></div>
-        <span>YouTube içerikleri getiriliyor...</span>
+        <span>${feedLoadingText}</span>
       </div>
     `;
+
+    const liveText = isEn ? 'LIVE' : (isDe ? 'LIVE' : 'CANLI');
+    const liveViewsText = isEn ? '48K watching live' : (isDe ? '48K Live-Zuschauer' : '48K canlı izleyici');
+    const viewsSuffix = isEn ? 'views' : (isDe ? 'Aufrufe' : 'görüntüleme');
 
     const FALLBACK_CATALOG = [
       {
         id: 'jfKfPfyJRdk',
         title: 'Lofi Girl - beats to relax/study to',
         channel: 'Lofi Girl',
-        duration: 'CANLI',
+        duration: liveText,
         category: 'lofi',
-        views: '48K canlı izleyici',
+        views: liveViewsText,
         thumb: 'https://img.youtube.com/vi/jfKfPfyJRdk/hqdefault.jpg'
       },
       {
@@ -6323,7 +6873,7 @@ function initEvents() {
         channel: 'Netflix',
         duration: '3:11',
         category: 'series',
-        views: '32M görüntüleme',
+        views: `32M ${viewsSuffix}`,
         thumb: 'https://img.youtube.com/vi/b9EkMc79ZSU/hqdefault.jpg'
       },
       {
@@ -6332,7 +6882,7 @@ function initEvents() {
         channel: 'Prime Video',
         duration: '2:38',
         category: 'series',
-        views: '18M görüntüleme',
+        views: `18M ${viewsSuffix}`,
         thumb: 'https://img.youtube.com/vi/ezkd3wzB6s8/hqdefault.jpg'
       },
       {
@@ -6341,7 +6891,7 @@ function initEvents() {
         channel: 'Rockstar Games',
         duration: '1:31',
         category: 'gaming',
-        views: '190M görüntüleme',
+        views: `190M ${viewsSuffix}`,
         thumb: 'https://img.youtube.com/vi/QdBZY2fkU-0/hqdefault.jpg'
       },
       {
@@ -6350,7 +6900,7 @@ function initEvents() {
         channel: 'The Weeknd',
         duration: '4:20',
         category: 'music',
-        views: '800M görüntüleme',
+        views: `800M ${viewsSuffix}`,
         thumb: 'https://img.youtube.com/vi/4NRXx6U8ABQ/hqdefault.jpg'
       },
       {
@@ -6359,7 +6909,7 @@ function initEvents() {
         channel: 'Dua Lipa',
         duration: '3:50',
         category: 'music',
-        views: '750M görüntüleme',
+        views: `750M ${viewsSuffix}`,
         thumb: 'https://img.youtube.com/vi/TUVcZfQe-Kw/hqdefault.jpg'
       },
       {
@@ -6368,7 +6918,7 @@ function initEvents() {
         channel: 'Harry Styles',
         duration: '2:45',
         category: 'music',
-        views: '620M görüntüleme',
+        views: `620M ${viewsSuffix}`,
         thumb: 'https://img.youtube.com/vi/H5v3kku4y6Q/hqdefault.jpg'
       },
       {
@@ -6377,7 +6927,7 @@ function initEvents() {
         channel: 'Luis Fonsi',
         duration: '4:42',
         category: 'music',
-        views: '8.4B görüntüleme',
+        views: `8.4B ${viewsSuffix}`,
         thumb: 'https://img.youtube.com/vi/kJQP7kiw5Fk/hqdefault.jpg'
       },
       {
@@ -6386,7 +6936,7 @@ function initEvents() {
         channel: 'Linkin Park',
         duration: '3:07',
         category: 'music',
-        views: '2.2B görüntüleme',
+        views: `2.2B ${viewsSuffix}`,
         thumb: 'https://img.youtube.com/vi/kXYiU_JCYtU/hqdefault.jpg'
       },
       {
@@ -6395,7 +6945,7 @@ function initEvents() {
         channel: 'Mark Ronson',
         duration: '4:30',
         category: 'music',
-        views: '5.1B görüntüleme',
+        views: `5.1B ${viewsSuffix}`,
         thumb: 'https://img.youtube.com/vi/OPf0YbXqDm0/hqdefault.jpg'
       }
     ];
@@ -6421,15 +6971,18 @@ function initEvents() {
     }
 
     if (items.length === 0) {
+      const noVideosFound = isEn ? 'No videos found 🔍' : (isDe ? 'Keine Videos gefunden 🔍' : 'Aradığınız video bulunamadı 🔍');
+      const trySearchText = isEn ? 'Try a different search or browse m.youtube.com.' : (isDe ? 'Versuchen Sie eine andere Suche oder durchsuchen Sie m.youtube.com.' : 'Farklı bir arama yapın veya m.youtube.com\'da gezinin.');
       dom.raveYtVideoGrid.innerHTML = `
         <div class="col-span-full py-10 text-center text-xs text-gray-400">
-          <p>Aradığınız video bulunamadı 🔍</p>
-          <span class="text-[10px] text-gray-500 mt-1 block">Farklı bir arama yapın veya m.youtube.com'da gezinin.</span>
+          <p>${noVideosFound}</p>
+          <span class="text-[10px] text-gray-500 mt-1 block">${trySearchText}</span>
         </div>
       `;
       return;
     }
 
+    const watchText = isEn ? 'Watch' : (isDe ? 'Ansehen' : 'İzle');
     dom.raveYtVideoGrid.innerHTML = items.map(video => `
       <div class="rave-yt-card bg-[#0C0E17] hover:bg-[#141824] border border-white/10 hover:border-red-500/50 rounded-2xl p-2.5 flex flex-col gap-2 cursor-pointer text-left transition-all group shadow-lg hover:shadow-red-600/15 hover:-translate-y-0.5 active:scale-95" data-id="${escapeHtml(video.id)}" data-title="${escapeHtml(video.title)}">
         <div class="relative w-full aspect-video rounded-xl overflow-hidden bg-black/80">
@@ -6447,7 +7000,7 @@ function initEvents() {
           <div class="flex items-center justify-between text-[10px] text-gray-500 mt-2 pt-1 border-t border-white/5">
             <span>${escapeHtml(video.views || '')}</span>
             <span class="text-red-400 font-semibold flex items-center gap-1">
-              <span>İzle</span>
+              <span>${watchText}</span>
               <span>→</span>
             </span>
           </div>
@@ -6478,7 +7031,12 @@ function initEvents() {
     if (isBrowsing) {
       dom.hostBrowsingNotice.classList.remove('hidden');
       if (dom.hostBrowsingNoticeText) {
-        dom.hostBrowsingNoticeText.textContent = `🎬 ${user || 'Oda sahibi'} yeni video arıyor... (Mevcut video çalıyor)`;
+        const browsingNotice = isEn
+          ? `🎬 ${user || 'Host'} is choosing a new video... (Current video playing)`
+          : (isDe
+            ? `🎬 ${user || 'Host'} sucht ein neues Video... (Aktuelles Video läuft)`
+            : `🎬 ${user || 'Oda sahibi'} yeni video arıyor... (Mevcut video çalıyor)`);
+        dom.hostBrowsingNoticeText.textContent = browsingNotice;
       }
     } else {
       dom.hostBrowsingNotice.classList.add('hidden');
@@ -6524,26 +7082,37 @@ function initEvents() {
     if (dom.roomQueueCount) dom.roomQueueCount.textContent = count;
 
     if (dom.roomQueueList) {
+      const dictQueue = I18N[currentLang] || I18N.tr;
       if (!state.roomQueue || state.roomQueue.length === 0) {
-        dom.roomQueueList.innerHTML = `<div class="py-8 text-center text-xs text-gray-400">Sırada bekleyen video yok 🎵</div>`;
+        const emptyMsg = dictQueue.queue_empty || (currentLang === 'tr' ? 'Sırada bekleyen video yok 🎵' : 'No videos waiting in queue 🎵');
+        dom.roomQueueList.innerHTML = `<div class="py-8 text-center text-xs text-gray-400" data-i18n="queue_empty">${emptyMsg}</div>`;
       } else {
         const canManage = state.isHost || state.userRole === 'owner' || state.userRole === 'admin' || state.userRole === 'dj' || state.controlMode === 'everyone' || state.hasDjPermission;
-        dom.roomQueueList.innerHTML = state.roomQueue.map((item, idx) => `
+        dom.roomQueueList.innerHTML = state.roomQueue.map((item, idx) => {
+          const addedByLabel = currentLang === 'en'
+            ? `Added by ${escapeHtml(item.addedBy)}`
+            : (currentLang === 'de'
+              ? `Hinzugefügt von ${escapeHtml(item.addedBy)}`
+              : `${escapeHtml(item.addedBy)} ekledi`);
+          const playTitle = dictQueue.action_play_now || (currentLang === 'tr' ? 'Şimdi Oynat' : 'Play Now');
+          const removeTitle = dictQueue.kick_btn || (currentLang === 'tr' ? 'Kaldır' : 'Remove');
+          return `
           <div class="flex items-center justify-between p-2.5 rounded-2xl bg-white/5 border border-white/10 gap-3 group">
             <span class="text-xs font-mono font-bold text-purple-400 w-4">${idx + 1}</span>
             <img src="${escapeHtml(item.thumb)}" class="w-14 h-9 rounded-lg object-cover bg-black flex-shrink-0" alt="Thumb">
             <div class="flex-1 min-w-0">
               <h5 class="text-xs font-bold text-white truncate">${escapeHtml(item.title)}</h5>
-              <span class="text-[10px] text-gray-400">${escapeHtml(item.addedBy)} ekledi</span>
+              <span class="text-[10px] text-gray-400">${addedByLabel}</span>
             </div>
             ${canManage ? `
               <div class="flex items-center gap-1.5 shrink-0">
-                <button class="queue-play-now-btn px-2 py-1 bg-rose-600 hover:bg-rose-500 text-white rounded-lg text-xs font-bold transition-all cursor-pointer" data-idx="${idx}" title="Şimdi Oynat">▶</button>
-                <button class="queue-remove-btn px-2 py-1 bg-white/10 hover:bg-white/20 text-gray-300 rounded-lg text-xs transition-all cursor-pointer" data-idx="${idx}" title="Kaldır">✕</button>
+                <button class="queue-play-now-btn px-2 py-1 bg-rose-600 hover:bg-rose-500 text-white rounded-lg text-xs font-bold transition-all cursor-pointer" data-idx="${idx}" title="${playTitle}">▶</button>
+                <button class="queue-remove-btn px-2 py-1 bg-white/10 hover:bg-white/20 text-gray-300 rounded-lg text-xs transition-all cursor-pointer" data-idx="${idx}" title="${removeTitle}">✕</button>
               </div>
             ` : ''}
           </div>
-        `).join('');
+        `;
+        }).join('');
 
         dom.roomQueueList.querySelectorAll('.queue-play-now-btn').forEach(btn => {
           btn.addEventListener('click', (e) => {
@@ -6659,7 +7228,7 @@ function initEvents() {
     dom.openNativeYtBrowserBtn.addEventListener('click', () => {
       // In iOS App: call native script message handler
       if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.openYouTube) {
-        window.webkit.messageHandlers.openYouTube.postMessage({});
+        window.webkit.messageHandlers.openYouTube.postMessage({ lang: currentLang });
       } else {
         window.open('https://m.youtube.com', '_blank');
       }
@@ -7558,12 +8127,13 @@ function initEvents() {
   if (dom.saveRoomAccessBtn) {
     dom.saveRoomAccessBtn.addEventListener('click', () => {
       const selectedRule = document.querySelector('input[name="roomAccessRule"]:checked')?.value || 'public';
+      const dict = I18N[currentLang] || I18N.tr;
       if (selectedRule === 'invite') {
         state.isPrivate = true;
-        showToast('Oda Gizliliği: Sadece Davetliler 🔒');
+        showToast(currentLang === 'en' ? 'Room Privacy: Invite Only 🔒' : (currentLang === 'de' ? 'Raum-Privatsphäre: Nur mit Einladung 🔒' : 'Oda Gizliliği: Sadece Davetliler 🔒'));
       } else {
         state.isPrivate = false;
-        showToast('Oda Gizliliği: Herkese Açık 🌍');
+        showToast(currentLang === 'en' ? 'Room Privacy: Everyone (Public) 🌍' : (currentLang === 'de' ? 'Raum-Privatsphäre: Öffentlich 🌍' : 'Oda Gizliliği: Herkese Açık 🌍'));
       }
       if (dom.roomAccessModal) dom.roomAccessModal.classList.add('hidden');
     });
@@ -7571,11 +8141,12 @@ function initEvents() {
   if (dom.copyRoomAccessLinkBtn) {
     dom.copyRoomAccessLinkBtn.addEventListener('click', () => {
       const url = getMiruoRoomUrl(state.roomId);
+      const dict = I18N[currentLang] || I18N.tr;
       navigator.clipboard?.writeText(url).then(() => {
-        showToast('Oda linki kopyalandı! 📋');
-        dom.copyRoomAccessLinkBtn.textContent = 'Kopyalandı! ✓';
+        showToast(dict.invite_copied || 'Oda linki kopyalandı! 📋');
+        dom.copyRoomAccessLinkBtn.textContent = currentLang === 'en' ? 'Copied! ✓' : (currentLang === 'de' ? 'Kopiert! ✓' : 'Kopyalandı! ✓');
         setTimeout(() => {
-          if (dom.copyRoomAccessLinkBtn) dom.copyRoomAccessLinkBtn.textContent = 'Kopyala';
+          if (dom.copyRoomAccessLinkBtn) dom.copyRoomAccessLinkBtn.textContent = dict.copy_btn || 'Kopyala';
         }, 2000);
       }).catch(() => {
         showToast('Link: ' + url);
@@ -7986,23 +8557,26 @@ function initEvents() {
       btn.addEventListener('click', (e) => {
         e.stopPropagation();
         const privacyVal = btn.dataset.privacy;
-        const privacyText = btn.dataset.label;
-        if (selectedPrivacyLabel) selectedPrivacyLabel.textContent = privacyText;
+        const pDict = I18N[currentLang] || I18N.tr;
+        let privacyLabel = pDict.access_public_label || 'Herkese Açık';
+        if (privacyVal === 'friends') privacyLabel = pDict.privacy_friends || 'Sadece Arkadaşlar';
+        else if (privacyVal === 'invite') privacyLabel = pDict.privacy_private || 'Sadece Davet İle';
+        if (selectedPrivacyLabel) selectedPrivacyLabel.textContent = privacyLabel;
 
         if (privacyVal === 'public') {
           state.isPrivateRoom = false;
           if (selectedPrivacyIcon) selectedPrivacyIcon.innerHTML = '<svg class="w-4 h-4 text-emerald-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1 4-10z"/></svg>';
-          if (dom.privacyStatusText) dom.privacyStatusText.textContent = 'Açık Oda';
+          if (dom.privacyStatusText) dom.privacyStatusText.textContent = pDict.privacy_public || 'Açık Oda';
           if (dom.privacyStatusIcon) dom.privacyStatusIcon.innerHTML = '<svg class="w-3 h-3 inline text-emerald-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1 4-10z"/></svg>';
         } else if (privacyVal === 'friends') {
           state.isPrivateRoom = false;
           if (selectedPrivacyIcon) selectedPrivacyIcon.innerHTML = '<svg class="w-4 h-4 text-blue-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>';
-          if (dom.privacyStatusText) dom.privacyStatusText.textContent = 'Arkadaşlar';
+          if (dom.privacyStatusText) dom.privacyStatusText.textContent = pDict.privacy_friends || 'Arkadaşlar';
           if (dom.privacyStatusIcon) dom.privacyStatusIcon.innerHTML = '<svg class="w-3 h-3 inline text-blue-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>';
         } else {
           state.isPrivateRoom = true;
           if (selectedPrivacyIcon) selectedPrivacyIcon.innerHTML = '<svg class="w-4 h-4 text-amber-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>';
-          if (dom.privacyStatusText) dom.privacyStatusText.textContent = 'Özel (Davetli)';
+          if (dom.privacyStatusText) dom.privacyStatusText.textContent = pDict.privacy_private || 'Özel (Davetli)';
           if (dom.privacyStatusIcon) dom.privacyStatusIcon.innerHTML = '<svg class="w-3 h-3 inline text-amber-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>';
         }
 
@@ -8013,7 +8587,7 @@ function initEvents() {
         });
 
         privacyMenu.classList.add('hidden');
-        showToast(`Oda Gizliliği: ${privacyText}`);
+        showToast(`${pDict.room_privacy_toast || 'Oda Gizliliği'}: ${privacyLabel}`);
       });
     });
 
@@ -8616,7 +9190,9 @@ function generateUniqueRoomCode(isPrivate = false) {
   if (dom.duckingLevelSlider) {
     dom.duckingLevelSlider.addEventListener('input', (e) => {
       state.duckingTargetVolume = e.target.value / 100;
-      if (dom.duckingLevelVal) dom.duckingLevelVal.textContent = `%${e.target.value}`;
+      if (dom.duckingLevelVal) {
+        dom.duckingLevelVal.textContent = currentLang === 'tr' ? `%${e.target.value}` : `${e.target.value}%`;
+      }
     });
   }
 
@@ -8797,7 +9373,8 @@ function generateUniqueRoomCode(isPrivate = false) {
   initStageAutoHideEvents();
 
   // Initialize multi-language (TR / EN / DE)
-  const savedLang = localStorage.getItem('miruo_lang') || 'tr';
+  const urlLang = (typeof window !== 'undefined' && window.location) ? new URLSearchParams(window.location.search).get('lang') : null;
+  const savedLang = (urlLang && I18N[urlLang]) ? urlLang : (localStorage.getItem('miruo_lang') || 'tr');
   applyLanguage(savedLang);
 
   // Wire up language selector buttons across Settings modal and Auth modal

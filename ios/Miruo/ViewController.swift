@@ -24,6 +24,19 @@ class ViewController: UIViewController, WKNavigationDelegate, WKUIDelegate, WKSc
         return true
     }
     
+    var currentAppLang: String {
+        if let envLang = ProcessInfo.processInfo.environment["MIRUO_LANG"], !envLang.isEmpty {
+            return envLang
+        }
+        if let saved = UserDefaults.standard.string(forKey: "miruo_lang"), !saved.isEmpty {
+            return saved
+        }
+        let preferred = Locale.preferredLanguages.first ?? "tr"
+        if preferred.hasPrefix("en") { return "en" }
+        if preferred.hasPrefix("de") { return "de" }
+        return "tr"
+    }
+    
     override func viewDidLoad() {
         super.viewDidLoad()
         let miruoDark = UIColor(red: 0.043, green: 0.035, blue: 0.063, alpha: 1.0)
@@ -132,7 +145,7 @@ class ViewController: UIViewController, WKNavigationDelegate, WKUIDelegate, WKSc
         loadingIndicator.isUserInteractionEnabled = false
         
         loadingLabel = UILabel()
-        loadingLabel.text = "Miruo Bağlanıyor..."
+        loadingLabel.text = currentAppLang == "en" ? "Connecting to Miruo..." : (currentAppLang == "de" ? "Verbindung zu Miruo wird hergestellt..." : "Miruo Bağlanıyor...")
         loadingLabel.textColor = .lightGray
         loadingLabel.font = UIFont.systemFont(ofSize: 13, weight: .medium)
         loadingLabel.translatesAutoresizingMaskIntoConstraints = false
@@ -187,7 +200,8 @@ class ViewController: UIViewController, WKNavigationDelegate, WKUIDelegate, WKSc
         }
         #endif
         
-        showErrorUI(message: "Uygulama arayüz dosyaları bulunamadı.")
+        let missingFilesMsg = currentAppLang == "en" ? "App interface files could not be found." : (currentAppLang == "de" ? "App-Oberflächendateien konnten nicht gefunden werden." : "Uygulama arayüz dosyaları bulunamadı.")
+        showErrorUI(message: missingFilesMsg)
     }
 
     func handleDeepLink(_ url: URL) {
@@ -281,19 +295,19 @@ class ViewController: UIViewController, WKNavigationDelegate, WKUIDelegate, WKSc
         iconLabel.font = UIFont.systemFont(ofSize: 42)
         
         let titleLabel = UILabel()
-        titleLabel.text = "Miruo Yeniden Yükleniyor"
+        titleLabel.text = currentAppLang == "en" ? "Reloading Miruo" : (currentAppLang == "de" ? "Miruo wird neu geladen" : "Miruo Yeniden Yükleniyor")
         titleLabel.textColor = .white
         titleLabel.font = UIFont.systemFont(ofSize: 18, weight: .bold)
         
         let descLabel = UILabel()
-        descLabel.text = "Arayüz yüklenirken bir gecikme oluştu. Yenile butonuna basarak anında başlatabilirsiniz."
+        descLabel.text = currentAppLang == "en" ? "There was a delay while loading the interface. Tap reload to start immediately." : (currentAppLang == "de" ? "Beim Laden der Benutzeroberfläche ist eine Verzögerung aufgetreten. Tippen Sie auf Neu laden, um sofort zu starten." : "Arayüz yüklenirken bir gecikme oluştu. Yenile butonuna basarak anında başlatabilirsiniz.")
         descLabel.textColor = UIColor(white: 0.75, alpha: 1.0)
         descLabel.font = UIFont.systemFont(ofSize: 12, weight: .regular)
         descLabel.textAlignment = .center
         descLabel.numberOfLines = 0
         
         let retryBtn = UIButton(type: .system)
-        retryBtn.setTitle("🔄 Tekrar Dene", for: .normal)
+        retryBtn.setTitle(currentAppLang == "en" ? "🔄 Try Again" : (currentAppLang == "de" ? "🔄 Erneut versuchen" : "🔄 Tekrar Dene"), for: .normal)
         retryBtn.backgroundColor = .systemPink
         retryBtn.setTitleColor(.white, for: .normal)
         retryBtn.titleLabel?.font = UIFont.systemFont(ofSize: 14, weight: .bold)
@@ -330,9 +344,11 @@ class ViewController: UIViewController, WKNavigationDelegate, WKUIDelegate, WKSc
     
     @objc private func promptChangeServerUrl() {
         let current = UserDefaults.standard.string(forKey: "miruo_url") ?? "http://192.168.1.20:3000"
+        let alertTitle = currentAppLang == "en" ? "🌐 Miruo Server Configuration" : (currentAppLang == "de" ? "🌐 Miruo Servereinstellung" : "🌐 Miruo Sunucu Ayarı")
+        let alertMsg = currentAppLang == "en" ? "Enter your computer's IP address (Must be on the same Wi-Fi network):" : (currentAppLang == "de" ? "Geben Sie die IP-Adresse Ihres Computers ein (Muss im selben WLAN sein):" : "Bilgisayarınızın IP adresini girin (Aynı Wi-Fi ağında olmalıdır):")
         let alert = UIAlertController(
-            title: "🌐 Miruo Sunucu Ayarı",
-            message: "Bilgisayarınızın IP adresini girin (Aynı Wi-Fi ağında olmalıdır):",
+            title: alertTitle,
+            message: alertMsg,
             preferredStyle: .alert
         )
         
@@ -344,36 +360,43 @@ class ViewController: UIViewController, WKNavigationDelegate, WKUIDelegate, WKSc
             tf.clearButtonMode = .whileEditing
         }
         
-        alert.addAction(UIAlertAction(title: "Güncel IP (192.168.1.20)", style: .default) { [weak self] _ in
+        let ipTitle = currentAppLang == "en" ? "Current IP (192.168.1.20)" : (currentAppLang == "de" ? "Aktuelle IP (192.168.1.20)" : "Güncel IP (192.168.1.20)")
+        alert.addAction(UIAlertAction(title: ipTitle, style: .default) { [weak self] _ in
             UserDefaults.standard.set("http://192.168.1.20:3000", forKey: "miruo_url")
             self?.loadPage()
         })
         
-        alert.addAction(UIAlertAction(title: "Localhost (Simülatör)", style: .default) { [weak self] _ in
+        let localTitle = currentAppLang == "en" ? "Localhost (Simulator)" : (currentAppLang == "de" ? "Localhost (Simulator)" : "Localhost (Simülatör)")
+        alert.addAction(UIAlertAction(title: localTitle, style: .default) { [weak self] _ in
             UserDefaults.standard.set("http://localhost:3000", forKey: "miruo_url")
             self?.loadPage()
         })
         
-        alert.addAction(UIAlertAction(title: "Kaydet ve Bağlan", style: .default) { [weak self, weak alert] _ in
+        let saveTitle = currentAppLang == "en" ? "Save and Connect" : (currentAppLang == "de" ? "Speichern & Verbinden" : "Kaydet ve Bağlan")
+        alert.addAction(UIAlertAction(title: saveTitle, style: .default) { [weak self, weak alert] _ in
             guard let text = alert?.textFields?.first?.text?.trimmingCharacters(in: .whitespacesAndNewlines), !text.isEmpty else { return }
             UserDefaults.standard.set(text, forKey: "miruo_url")
             self?.loadPage()
         })
         
-        alert.addAction(UIAlertAction(title: "Vazgeç", style: .cancel))
+        let cancelTitle = currentAppLang == "en" ? "Cancel" : (currentAppLang == "de" ? "Abbrechen" : "Vazgeç")
+        alert.addAction(UIAlertAction(title: cancelTitle, style: .cancel))
         present(alert, animated: true)
     }
     
     // WKScriptMessageHandler: JS calls window.webkit.messageHandlers.openYouTube / openPlatform
     func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
         if message.name == "openYouTube" {
-            openInAppPlatformBrowser(provider: "youtube", initialUrl: "https://m.youtube.com/feed/trending", title: "YouTube")
+            let dict = message.body as? [String: Any]
+            let lang = dict?["lang"] as? String ?? currentAppLang
+            openInAppPlatformBrowser(provider: "youtube", initialUrl: "https://m.youtube.com/feed/trending", title: "YouTube", lang: lang)
         } else if message.name == "openPlatform" {
             if let dict = message.body as? [String: Any] {
                 let provider = dict["provider"] as? String ?? "youtube"
                 let url = dict["url"] as? String ?? "https://m.youtube.com/feed/trending"
-                let title = dict["title"] as? String ?? "Tarayıcı"
-                openInAppPlatformBrowser(provider: provider, initialUrl: url, title: title)
+                let title = dict["title"] as? String ?? (currentAppLang == "en" ? "Browser" : (currentAppLang == "de" ? "Browser" : "Tarayıcı"))
+                let lang = dict["lang"] as? String ?? currentAppLang
+                openInAppPlatformBrowser(provider: provider, initialUrl: url, title: title, lang: lang)
             }
         } else if message.name == "pickImage" {
             var target = "avatar"
@@ -482,11 +505,12 @@ class ViewController: UIViewController, WKNavigationDelegate, WKUIDelegate, WKSc
         }
     }
     
-    private func openInAppPlatformBrowser(provider: String, initialUrl: String, title: String) {
+    private func openInAppPlatformBrowser(provider: String, initialUrl: String, title: String, lang: String? = nil) {
         let browserVC = PlatformBrowserViewController()
         browserVC.provider = provider
         browserVC.initialUrl = initialUrl
         browserVC.browserTitle = title
+        browserVC.currentLang = lang ?? currentAppLang
         browserVC.onVideoSelected = { [weak self] videoIdOrUrl in
             let escapedId = videoIdOrUrl.replacingOccurrences(of: "'", with: "\\'")
             let js = "window.MiruoBridge && window.MiruoBridge.loadVideo('\(escapedId)');"
@@ -542,6 +566,10 @@ class ViewController: UIViewController, WKNavigationDelegate, WKUIDelegate, WKSc
             let js = "setTimeout(() => { document.getElementById('roomQueueBadgeBtn')?.click(); }, 1200);"
             webView.evaluateJavaScript(js, completionHandler: nil)
         }
+        if let _ = ProcessInfo.processInfo.environment["OPEN_PLATFORM_BROWSER"] {
+            let js = "setTimeout(() => { if (typeof openRealYouTubeInterface === 'function') { openRealYouTubeInterface(); } else { document.getElementById('openNativeYtBrowserBtn')?.click(); } }, 1500);"
+            webView.evaluateJavaScript(js, completionHandler: nil)
+        }
         if let scrollVal = ProcessInfo.processInfo.environment["MIRUO_SCROLL"] {
             let js = "setTimeout(() => { const el = document.getElementById('profileEditModalScrollBody') || window; el.scrollTop = \(scrollVal); }, 1200);"
             webView.evaluateJavaScript(js, completionHandler: nil)
@@ -568,6 +596,28 @@ class ViewController: UIViewController, WKNavigationDelegate, WKUIDelegate, WKSc
         }
         if let _ = ProcessInfo.processInfo.environment["OPEN_GOOGLE_LOGIN"] {
             let js = "setTimeout(() => { document.getElementById('googleLoginBtn')?.click(); }, 1500);"
+            webView.evaluateJavaScript(js, completionHandler: nil)
+        }
+        if let _ = ProcessInfo.processInfo.environment["OPEN_FRIENDS"] {
+            let js = """
+            setTimeout(() => {
+                document.getElementById('authModal')?.classList.add('hidden');
+                if (typeof unfreezeBackgroundAfterModal === 'function') unfreezeBackgroundAfterModal();
+                if (typeof switchToFriendsTab === 'function') switchToFriendsTab();
+                else document.getElementById('navFriendsBtn')?.click();
+            }, 600);
+            """
+            webView.evaluateJavaScript(js, completionHandler: nil)
+        }
+        if let _ = ProcessInfo.processInfo.environment["OPEN_CREATE_ROOM"] {
+            let js = """
+            setTimeout(() => {
+                document.getElementById('authModal')?.classList.add('hidden');
+                if (typeof unfreezeBackgroundAfterModal === 'function') unfreezeBackgroundAfterModal();
+                if (typeof openCreateRoomModal === 'function') openCreateRoomModal();
+                else document.getElementById('navCreateRoomBtn')?.click();
+            }, 600);
+            """
             webView.evaluateJavaScript(js, completionHandler: nil)
         }
     }
@@ -608,6 +658,7 @@ class PlatformBrowserViewController: UIViewController, WKNavigationDelegate, WKU
     var provider: String = "youtube"
     var initialUrl: String = "https://m.youtube.com/feed/trending"
     var browserTitle: String = "YouTube"
+    var currentLang: String = "tr"
     var onVideoSelected: ((String) -> Void)?
     
     private var webView: WKWebView!
@@ -665,13 +716,13 @@ class PlatformBrowserViewController: UIViewController, WKNavigationDelegate, WKU
         searchBar.autocorrectionType = .no
         
         if provider == "youtube" {
-            searchBar.placeholder = "YouTube'da ara..."
+            searchBar.placeholder = currentLang == "en" ? "Search YouTube..." : (currentLang == "de" ? "Auf YouTube suchen..." : "YouTube'da ara...")
         } else if provider == "twitch" {
-            searchBar.placeholder = "Twitch'te yayın ara..."
+            searchBar.placeholder = currentLang == "en" ? "Search Twitch..." : (currentLang == "de" ? "Auf Twitch suchen..." : "Twitch'te yayın ara...")
         } else if provider == "netflix" {
-            searchBar.placeholder = "Netflix'te ara..."
+            searchBar.placeholder = currentLang == "en" ? "Search Netflix..." : (currentLang == "de" ? "Auf Netflix suchen..." : "Netflix'te ara...")
         } else {
-            searchBar.placeholder = "Ara veya link yaz..."
+            searchBar.placeholder = currentLang == "en" ? "Search or enter link..." : (currentLang == "de" ? "Suchen oder Link eingeben..." : "Ara veya link yaz...")
         }
         
         if let tf = searchBar.value(forKey: "searchField") as? UITextField {
@@ -856,7 +907,8 @@ class PlatformBrowserViewController: UIViewController, WKNavigationDelegate, WKU
         
         let syncBtn = UIButton(type: .system)
         syncBtn.translatesAutoresizingMaskIntoConstraints = false
-        syncBtn.setTitle("▶ Bu Videoyu Odaya Aktar ve İzle", for: .normal)
+        let btnTitle = currentLang == "en" ? "▶ Stream Video to Room" : (currentLang == "de" ? "▶ Video in den Raum übertragen" : "▶ Bu Videoyu Odaya Aktar ve İzle")
+        syncBtn.setTitle(btnTitle, for: .normal)
         syncBtn.setTitleColor(.white, for: .normal)
         syncBtn.titleLabel?.font = UIFont.boldSystemFont(ofSize: 13)
         syncBtn.backgroundColor = UIColor(red: 0.88, green: 0.12, blue: 0.28, alpha: 1.0)
@@ -1028,7 +1080,8 @@ class PlatformBrowserViewController: UIViewController, WKNavigationDelegate, WKU
     
     func webView(_ webView: WKWebView, runJavaScriptAlertPanelWithMessage message: String, initiatedByFrame frame: WKFrameInfo, completionHandler: @escaping () -> Void) {
         let alert = UIAlertController(title: nil, message: message, preferredStyle: .alert)
-        alert.addAction(UIAlertAction(title: "Tamam", style: .default) { _ in completionHandler() })
+        let okTitle = currentLang == "en" ? "OK" : (currentLang == "de" ? "OK" : "Tamam")
+        alert.addAction(UIAlertAction(title: okTitle, style: .default) { _ in completionHandler() })
         present(alert, animated: true)
     }
 }

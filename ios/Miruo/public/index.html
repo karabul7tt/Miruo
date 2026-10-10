@@ -58,9 +58,12 @@
 </head>
 <body class="bg-black text-slate-100 font-['Plus_Jakarta_Sans'] overflow-x-hidden min-h-screen flex flex-col">
 
-  <!-- Ambient Glow Background -->
-  <div id="ambientGlow" class="fixed inset-0 pointer-events-none transition-all duration-1000 -z-10 opacity-20">
-    <div class="absolute -top-32 -left-32 w-96 h-96 bg-cyan-500/20 rounded-full blur-[140px]"></div>
+  <!-- iOS Status Bar & Notch Synchronized Blackout Shield -->
+  <div id="iosTopSafeShield"></div>
+
+  <!-- Ambient Glow Background (Pushed below header/notch area to prevent blur leakage) -->
+  <div id="ambientGlow" class="fixed inset-0 pointer-events-none transition-all duration-1000 -z-10 opacity-20" style="top: 260px;">
+    <div class="absolute top-10 -left-32 w-96 h-96 bg-cyan-500/15 rounded-full blur-[140px]"></div>
     <div class="absolute top-1/2 -right-32 w-96 h-96 bg-indigo-500/20 rounded-full blur-[140px]"></div>
     <div class="absolute -bottom-32 left-1/3 w-96 h-96 bg-cyan-600/15 rounded-full blur-[140px]"></div>
   </div>
@@ -78,8 +81,8 @@
   <!-- Touch & Sparkle Particles Layer -->
   <div id="touchLayer" class="fixed inset-0 pointer-events-none z-40 overflow-hidden"></div>
 
-  <!-- Top Navigation Bar (Clean Minimal Brand Header - No duplicate buttons) -->
-  <header id="mainHeader" class="w-full border-b border-white/10 bg-black/95 backdrop-blur-xl flex items-center justify-between px-4 sm:px-6 z-30 sticky top-0" style="padding-top: env(safe-area-inset-top); min-height: calc(3.5rem + env(safe-area-inset-top));">
+  <!-- Top Navigation Bar (Clean Minimal Brand Header - Solid 100% Black, Zero Notch Collision) -->
+  <header id="mainHeader" class="w-full border-b border-white/10 bg-black flex items-center justify-between px-4 sm:px-6 z-30 sticky top-0" style="padding-top: max(14px, env(safe-area-inset-top)); min-height: calc(3.5rem + max(14px, env(safe-area-inset-top)));">
     <div class="w-8 shrink-0"></div>
     <!-- Center: MIRUO logo wordmark with iconic emblem -->
     <div class="flex items-center gap-2.5 cursor-pointer py-1" id="navLogoBtn">
@@ -128,14 +131,14 @@
             <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"/></svg>
           </div>
           <div>
-            <h2 class="text-lg font-bold text-white leading-tight">Arkadaşlar</h2>
-            <p class="text-[11px] text-gray-400">Birlikte izleyeceğin arkadaşlarını yönet</p>
+            <h2 class="text-lg font-bold text-white leading-tight" data-i18n="friends_title">Arkadaşlar</h2>
+            <p class="text-[11px] text-gray-400" data-i18n="friends_subtitle">Birlikte izleyeceğin arkadaşlarını yönet</p>
           </div>
         </div>
         <div class="flex items-center gap-1.5">
           <span class="px-2.5 py-1 rounded-full bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 text-[10px] font-bold flex items-center gap-1">
             <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
-            <span id="tabFriendsOnlineCount">2 Çevrimiçi</span>
+            <span id="tabFriendsOnlineCount">• 2 Online</span>
           </span>
         </div>
       </div>
@@ -147,22 +150,22 @@
             @
           </div>
           <div>
-            <span class="text-[10px] text-gray-400 uppercase tracking-wider block font-semibold">Senin Kullanıcı Adın</span>
+            <span class="text-[10px] text-gray-400 uppercase tracking-wider block font-semibold" data-i18n="your_username_label">Senin Kullanıcı Adın</span>
             <span id="tabMyFriendCodeDisplay" class="text-sm font-bold text-rose-300">@kullanici</span>
           </div>
         </div>
         <button id="tabCopyMyFriendCodeBtn" type="button" class="px-3.5 py-2 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl text-xs font-semibold text-gray-200 hover:text-white transition-all flex items-center gap-1.5 cursor-pointer active:scale-95">
           <svg class="w-3.5 h-3.5 text-rose-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>
-          <span>Kopyala</span>
+          <span data-i18n="copy_btn">Kopyala</span>
         </button>
       </div>
 
       <!-- Add Friend Input Bar (By Unique Username) -->
       <div class="bg-[#0C0E17] border border-white/10 rounded-2xl p-3 shadow-lg space-y-2">
-        <label class="block text-xs font-semibold text-gray-300">İsimden Arkadaş Ekle</label>
+        <label class="block text-xs font-semibold text-gray-300" data-i18n="add_friend_by_name">İsimden Arkadaş Ekle</label>
         <div class="flex items-center gap-2">
-          <input type="text" id="tabAddFriendInput" placeholder="Kullanıcı adı girin (örn: @selin veya can)" class="flex-1 bg-black/40 border border-white/10 rounded-xl px-3.5 py-2.5 text-xs text-white placeholder-gray-500 focus:outline-none focus:border-rose-500 transition-all font-medium min-w-0">
-          <button id="tabSubmitAddFriendBtn" type="button" class="px-4 py-2.5 bg-gradient-to-r from-rose-500 to-indigo-600 hover:opacity-95 text-white font-bold text-xs rounded-xl shadow-md transition-all whitespace-nowrap cursor-pointer active:scale-95 shrink-0">
+          <input type="text" id="tabAddFriendInput" placeholder="Kullanıcı adı girin (örn: @selin veya can)" data-i18n-placeholder="add_friend_ph" class="flex-1 bg-black/40 border border-white/10 rounded-xl px-3.5 py-2.5 text-xs text-white placeholder-gray-500 focus:outline-none focus:border-rose-500 transition-all font-medium min-w-0">
+          <button id="tabSubmitAddFriendBtn" type="button" class="px-4 py-2.5 bg-gradient-to-r from-rose-500 to-indigo-600 hover:opacity-95 text-white font-bold text-xs rounded-xl shadow-md transition-all whitespace-nowrap cursor-pointer active:scale-95 shrink-0" data-i18n="add_btn">
             Ekle
           </button>
         </div>
@@ -170,7 +173,7 @@
 
       <!-- Search Friends Filter -->
       <div class="relative">
-        <input type="text" id="tabFriendSearchInput" placeholder="Kayıtlı arkadaşlarında ara..." class="w-full bg-[#0C0E17] border border-white/10 rounded-xl pl-9 pr-4 py-2.5 text-xs text-white placeholder-gray-500 focus:outline-none focus:border-rose-500 transition-all font-medium shadow-sm">
+        <input type="text" id="tabFriendSearchInput" placeholder="Kayıtlı arkadaşlarında ara..." data-i18n-placeholder="search_friends_ph" class="w-full bg-[#0C0E17] border border-white/10 rounded-xl pl-9 pr-4 py-2.5 text-xs text-white placeholder-gray-500 focus:outline-none focus:border-rose-500 transition-all font-medium shadow-sm">
         <svg class="w-4 h-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
       </div>
 
@@ -181,7 +184,7 @@
     </div> <!-- End 1.2 FRIENDS FULL TAB SECTION -->
 
     <!-- 1.5 PROVIDER PICKER SCREEN -->
-    <div id="providerPickerSection" class="hidden flex-col gap-4 w-full">
+    <div id="providerPickerSection" class="hidden flex-col gap-4 w-full" style="padding-top: max(16px, calc(env(safe-area-inset-top) + 10px)); padding-bottom: max(20px, env(safe-area-inset-bottom));">
       
       <!-- Top Bar: Back Arrow & MIRUO Logo -->
       <div class="flex items-center justify-between pb-1">
@@ -195,7 +198,7 @@
       <!-- Search Bar -->
       <div class="relative flex items-center">
         <svg class="w-4 h-4 text-gray-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
-        <input type="text" id="providerSearchInput" placeholder="video, dizi veya film ara..." class="w-full bg-[#0C0E17]/90 border border-white/10 rounded-2xl pl-10 pr-4 py-3 text-xs text-white placeholder-gray-400 focus:outline-none focus:border-rose-500/80 transition-all font-medium shadow-md">
+        <input type="text" id="providerSearchInput" placeholder="video, dizi veya film ara..." data-i18n-placeholder="provider_search_ph" class="w-full bg-[#0C0E17]/90 border border-white/10 rounded-2xl pl-10 pr-4 py-3 text-xs text-white placeholder-gray-400 focus:outline-none focus:border-rose-500/80 transition-all font-medium shadow-md">
       </div>
 
       <!-- 2-Column Grid of Providers (Matching Image 2 1:1) -->
@@ -286,54 +289,56 @@
     </div> <!-- End 1.5 PROVIDER PICKER SCREEN -->
 
     <!-- 2. THEATER / ROOM WORKSPACE (Opened when joining a room or clicking a platform) -->
-    <div id="roomWorkspaceSection" class="hidden flex-col gap-3 flex-1 w-full max-w-[1400px] mx-auto px-2 sm:px-4">
+    <div id="roomWorkspaceSection" class="hidden flex-col gap-3 flex-1 w-full max-w-[1400px] mx-auto px-2 sm:px-4" style="padding-bottom: max(20px, env(safe-area-inset-bottom));">
       
-      <!-- Sleek Modern Aesthetic Room Top Bar -->
-      <div class="flex items-center justify-between px-3.5 py-2 bg-[#0F0D0B]/85 backdrop-blur-xl border border-white/10 rounded-2xl z-20 shadow-xl">
-        <!-- Brand Logo & Active Room Members Pill -->
-        <div class="flex items-center gap-2.5">
-          <div class="flex items-center gap-2 cursor-pointer" id="roomTopSearchBtn" title="Video Değiştir / Arama">
-            <div class="w-8 h-8 rounded-xl bg-gradient-to-tr from-rose-500 via-purple-600 to-indigo-600 p-0.5 flex items-center justify-center shadow-md active:scale-95 transition-transform">
-              <img src="logo.svg" alt="Miruo" class="w-full h-full rounded-[10px]">
+      <!-- Sleek Modern Aesthetic Room Top Bar (Sticky, Solid Black Background, Zero Notch/Island Collision across all iPhones) -->
+      <header id="roomStickyHeader" class="sticky top-0 z-30 w-full bg-black -mx-2 sm:-mx-4 px-2 sm:px-4 pb-2" style="padding-top: max(14px, calc(env(safe-area-inset-top) + 6px));">
+        <div class="flex items-center justify-between px-3.5 py-2 bg-[#0F0D0B] border border-white/10 rounded-2xl shadow-xl">
+          <!-- Brand Logo & Active Room Members Pill -->
+          <div class="flex items-center gap-2.5">
+            <div class="flex items-center gap-2 cursor-pointer" id="roomTopSearchBtn" title="Video Değiştir / Arama" data-i18n-title="room_change_video">
+              <div class="w-8 h-8 rounded-xl bg-gradient-to-tr from-rose-500 via-purple-600 to-indigo-600 p-0.5 flex items-center justify-center shadow-md active:scale-95 transition-transform">
+                <img src="logo.svg" alt="Miruo" class="w-full h-full rounded-[10px]">
+              </div>
+              <span class="font-extrabold text-sm tracking-tight text-white hidden sm:inline">MIRUO</span>
             </div>
-            <span class="font-extrabold text-sm tracking-tight text-white hidden sm:inline">MIRUO</span>
-          </div>
-          <!-- Room Participant Badge Pill with Live Pulsing Green Indicator -->
-          <div id="roomBadge" class="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-white/10 hover:bg-white/15 border border-white/10 text-xs font-semibold text-gray-200 cursor-pointer active:scale-95 transition-all shadow-sm" title="Odadaki Katılımcılar">
-            <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
-            <svg class="w-3.5 h-3.5 text-gray-300" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
-            <span id="roomMemberCountBadge" class="font-bold">6</span>
+            <!-- Room Participant Badge Pill with Live Pulsing Green Indicator -->
+            <div id="roomBadge" class="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-white/10 hover:bg-white/15 border border-white/10 text-xs font-semibold text-gray-200 cursor-pointer active:scale-95 transition-all shadow-sm" title="Odadaki Katılımcılar" data-i18n-title="room_participants_title">
+              <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+              <svg class="w-3.5 h-3.5 text-gray-300" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+              <span id="roomMemberCountBadge" class="font-bold">6</span>
+            </div>
+
+            <!-- Room Playback Queue Badge Pill -->
+            <div id="roomQueueBadgeBtn" class="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-white/10 hover:bg-white/15 border border-white/10 text-xs font-semibold text-gray-200 cursor-pointer active:scale-95 transition-all shadow-sm" title="Oynatma Sırası" data-i18n-title="queue_title">
+              <svg class="w-3.5 h-3.5 text-purple-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
+              <span class="hidden sm:inline text-[11px] text-gray-400" data-i18n="room_queue_label">Sıra:</span>
+              <span id="roomQueueCount" class="font-bold text-purple-300">0</span>
+            </div>
           </div>
 
-          <!-- Room Playback Queue Badge Pill -->
-          <div id="roomQueueBadgeBtn" class="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-white/10 hover:bg-white/15 border border-white/10 text-xs font-semibold text-gray-200 cursor-pointer active:scale-95 transition-all shadow-sm" title="Oynatma Sırası">
-            <svg class="w-3.5 h-3.5 text-purple-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
-            <span class="hidden sm:inline text-[11px] text-gray-400">Sıra:</span>
-            <span id="roomQueueCount" class="font-bold text-purple-300">0</span>
+          <!-- Sleek Icon Actions -->
+          <div class="flex items-center gap-1.5 shrink-0">
+            <!-- Video Değiştir / Öner -->
+            <button id="roomQuickSearchBtn" class="flex items-center gap-1.5 px-2 sm:px-3 py-1.5 rounded-full bg-white/10 hover:bg-white/15 active:scale-95 border border-white/10 text-xs text-white font-medium transition-all cursor-pointer shadow-sm shrink-0" title="Video Değiştir veya Öner" data-i18n-title="room_change_video">
+              <svg class="w-3.5 h-3.5 text-rose-400 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+              <span id="roomQuickSearchBtnText" class="text-xs font-medium hidden md:inline" data-i18n="room_change_video">Değiştir</span>
+            </button>
+            
+            <!-- Kimler Katılabilir (Replaces Paylaş / Davet) -->
+            <button id="roomAccessBtn" class="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-full bg-gradient-to-r from-cyan-500/20 to-indigo-600/20 hover:from-cyan-500/30 hover:to-indigo-600/30 border border-cyan-500/30 active:scale-95 text-cyan-300 hover:text-white text-xs font-semibold shadow-sm transition-all cursor-pointer shrink-0" title="Kimler Katılabilir" data-i18n-title="who_can_join">
+              <svg class="w-3.5 h-3.5 text-cyan-400 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><circle cx="12" cy="11" r="3"/></svg>
+              <span class="hidden sm:inline" data-i18n="who_can_join">Kimler Katılabilir</span>
+              <span class="sm:hidden text-[11px]" data-i18n="who_can_join_short">Katılım</span>
+            </button>
+
+            <!-- Ayrıl / Kapat (X) Always visible with shrink-0 -->
+            <button id="backToLobbyBtn" class="w-8 h-8 rounded-full bg-white/10 hover:bg-rose-500/20 border border-white/10 hover:border-rose-500/30 active:scale-95 text-gray-300 hover:text-rose-400 flex items-center justify-center font-bold text-sm transition-all cursor-pointer shadow-sm shrink-0" title="Odadan Ayrıl" data-i18n-title="leave_room_btn">
+              <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </button>
           </div>
         </div>
-
-        <!-- Sleek Icon Actions -->
-        <div class="flex items-center gap-1.5 shrink-0">
-          <!-- Video Değiştir / Öner -->
-          <button id="roomQuickSearchBtn" class="flex items-center gap-1.5 px-2 sm:px-3 py-1.5 rounded-full bg-white/10 hover:bg-white/15 active:scale-95 border border-white/10 text-xs text-white font-medium transition-all cursor-pointer shadow-sm shrink-0" title="Video Değiştir veya Öner">
-            <svg class="w-3.5 h-3.5 text-rose-400 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-            <span id="roomQuickSearchBtnText" class="text-xs font-medium hidden md:inline">Değiştir</span>
-          </button>
-          
-          <!-- Kimler Katılabilir (Replaces Paylaş / Davet) -->
-          <button id="roomAccessBtn" class="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-full bg-gradient-to-r from-cyan-500/20 to-indigo-600/20 hover:from-cyan-500/30 hover:to-indigo-600/30 border border-cyan-500/30 active:scale-95 text-cyan-300 hover:text-white text-xs font-semibold shadow-sm transition-all cursor-pointer shrink-0" title="Kimler Katılabilir">
-            <svg class="w-3.5 h-3.5 text-cyan-400 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><circle cx="12" cy="11" r="3"/></svg>
-            <span class="hidden sm:inline">Kimler Katılabilir</span>
-            <span class="sm:hidden text-[11px]">Katılım</span>
-          </button>
-
-          <!-- Ayrıl / Kapat (X) Always visible with shrink-0 -->
-          <button id="backToLobbyBtn" class="w-8 h-8 rounded-full bg-white/10 hover:bg-rose-500/20 border border-white/10 hover:border-rose-500/30 active:scale-95 text-gray-300 hover:text-rose-400 flex items-center justify-center font-bold text-sm transition-all cursor-pointer shadow-sm shrink-0" title="Odadan Ayrıl">
-            <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-          </button>
-        </div>
-      </div>
+      </header>
 
       <!-- Main Room Layout: Side-by-Side Split on Desktop (md:) and Landscape matching YouTube Live Stream format -->
       <div id="roomMainSplitLayout" class="flex flex-col md:flex-row landscape:flex-row gap-3 sm:gap-4 items-stretch flex-1 min-h-0 w-full transition-all duration-300">
@@ -372,14 +377,14 @@
           <div class="w-14 h-14 rounded-2xl bg-white/5 border border-white/10 flex items-center justify-center text-rose-400 mb-3 shadow-xl">
             <svg class="w-7 h-7" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><path d="M8 21h8m-4-4v4"/><polygon points="10 8 16 11 10 14 10 8" fill="currentColor"/></svg>
           </div>
-          <h3 class="text-sm font-bold text-gray-200">Video Yükleniyor veya Seçilmedi</h3>
-          <p class="text-[11px] text-gray-400 mt-1 max-w-xs">Üstteki arama ikonuna veya platform kartına basarak dilediğiniz YouTube videosunu başlatın.</p>
+          <h3 class="text-sm font-bold text-gray-200" data-i18n="video_placeholder_title">Video Yükleniyor veya Seçilmedi</h3>
+          <p class="text-[11px] text-gray-400 mt-1 max-w-xs" data-i18n="video_placeholder_desc">Üstteki arama ikonuna veya platform kartına basarak dilediğiniz YouTube videosunu başlatın.</p>
         </div>
 
         <!-- Miruo Player Overlay Controls -->
         <div id="ravePlayerOverlay" class="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-black/40 opacity-0 pointer-events-none transition-opacity duration-300 flex flex-col justify-between p-3 sm:p-4 z-10">
           <div class="flex items-center justify-between pointer-events-auto">
-            <span class="text-xs text-gray-300 font-semibold px-2 py-0.5 rounded-md bg-black/50 backdrop-blur-sm">Miruo Oynatıcı</span>
+            <span class="text-xs text-gray-300 font-semibold px-2 py-0.5 rounded-md bg-black/50 backdrop-blur-sm" data-i18n="miruo_player">Miruo Oynatıcı</span>
             <button id="raveRoomSettingsBtn" class="text-white hover:text-rose-400 transition-colors text-lg cursor-pointer">⋮</button>
           </div>
 
@@ -398,8 +403,8 @@
                 M
               </div>
               <div class="truncate flex-1">
-                <h3 id="raveOverlayTitle" class="text-xs font-bold text-white truncate">Video Başlığı</h3>
-                <span id="stageSubtitleText" class="text-[10px] text-gray-300 truncate block">YouTube'da Miruo</span>
+                <h3 id="raveOverlayTitle" class="text-xs font-bold text-white truncate" data-i18n="video_title_default">Video Başlığı</h3>
+                <span id="stageSubtitleText" class="text-[10px] text-gray-300 truncate block" data-i18n="video_subtitle_default">YouTube'da Miruo</span>
               </div>
             </div>
 
@@ -408,7 +413,7 @@
               <span id="currentTimeDisplay">0:00</span>
               <input type="range" id="seekSlider" min="0" max="100" value="0" class="flex-1 accent-rose-500 h-1 bg-white/30 rounded-lg cursor-pointer">
               <span id="durationDisplay">0:00</span>
-              <button id="toggleFullscreenBtn" class="text-white hover:text-rose-400 transition-colors p-1 cursor-pointer" title="Tam Ekran">
+              <button id="toggleFullscreenBtn" class="text-white hover:text-rose-400 transition-colors p-1 cursor-pointer" title="Tam Ekran" data-i18n-title="fullscreen_title">
                 <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/></svg>
               </button>
             </div>
@@ -454,18 +459,18 @@
             </div>
             <div class="flex items-center gap-1">
               <span class="w-1.5 h-1.5 rounded-full bg-rose-500 animate-ping"></span>
-              <span class="text-[9px] font-semibold text-rose-300">Canlı Kamera Feed</span>
+              <span class="text-[9px] font-semibold text-rose-300" data-i18n="live_cam_feed">Canlı Kamera Feed</span>
             </div>
           </div>
 
           <!-- Top Left: Sen (Kamera) Badge -->
           <div class="absolute top-2 left-2 px-2 py-0.5 rounded-lg bg-black/70 backdrop-blur-sm text-[10px] font-bold text-rose-300 flex items-center gap-1.5 pointer-events-none">
             <span class="w-1.5 h-1.5 rounded-full bg-rose-500 animate-pulse"></span>
-            <span>Sen (Kamera)</span>
+            <span data-i18n="self_camera_badge">Sen (Kamera)</span>
           </div>
 
           <!-- Top Right: Close Camera X Button (Direct one-tap camera off) -->
-          <button id="closeSelfPipBtn" type="button" class="absolute top-2 right-2 w-6 h-6 rounded-full bg-black/75 hover:bg-rose-600 active:scale-90 text-white flex items-center justify-center cursor-pointer z-40 transition-all border border-white/20 shadow-lg" title="Kamerayı Kapat">
+          <button id="closeSelfPipBtn" type="button" class="absolute top-2 right-2 w-6 h-6 rounded-full bg-black/75 hover:bg-rose-600 active:scale-90 text-white flex items-center justify-center cursor-pointer z-40 transition-all border border-white/20 shadow-lg" title="Kamerayı Kapat" data-i18n-title="close_cam_title">
             <svg class="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
           </button>
         </div>
@@ -484,7 +489,7 @@
               </div>
               <div class="truncate text-xs">
                 <div class="text-gray-300 truncate">
-                  Şimdi <strong id="nowPlayingTitle" class="text-white font-semibold">Video</strong> oynatılıyor
+                  <span id="nowPlayingPrefixText" data-i18n="now_playing_prefix">Şimdi</span> <strong id="nowPlayingTitle" class="text-white font-semibold">Video</strong> <span id="nowPlayingSuffixText" data-i18n="now_playing_suffix">oynatılıyor</span>
                 </div>
                 <div class="flex items-center gap-1.5 text-[10px] text-gray-400 mt-0.5">
                   <span id="nowPlayingProviderBadge" class="px-1.5 py-0.2 rounded bg-rose-500/20 text-rose-300 font-semibold">YouTube</span>
@@ -492,7 +497,7 @@
                   <span id="privacyStatusIcon">
                     <svg class="w-3 h-3 inline text-emerald-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
                   </span>
-                  <span id="privacyStatusText">Açık Oda</span>
+                  <span id="privacyStatusText" data-i18n="privacy_public">Açık Oda</span>
                 </div>
               </div>
             </div>
@@ -503,7 +508,7 @@
               </button>
               <button id="nowPlayingShareBtn" class="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-gradient-to-r from-rose-500 to-pink-600 hover:from-rose-600 hover:to-pink-700 active:scale-95 text-white text-xs font-bold shadow-md hover:scale-105 transition-all cursor-pointer" title="Odayı Paylaş">
                 <svg class="w-3.5 h-3.5 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>
-                <span>Paylaş</span>
+                <span data-i18n="share_btn">Paylaş</span>
               </button>
               <button id="nowPlayingNextBtn" class="w-8 h-8 rounded-full bg-white/5 hover:bg-white/15 text-gray-300 hover:text-white flex items-center justify-center transition-colors cursor-pointer" title="Sıradaki">
                 <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 4 15 12 5 20 5 4"/><line x1="19" y1="5" x2="19" y2="19"/></svg>
@@ -515,12 +520,12 @@
           <div class="px-3 py-2 bg-[#0F0D0B] border border-white/10 rounded-2xl shadow-md flex items-center justify-between gap-3 shrink-0">
             <div class="flex items-center gap-2">
               <!-- Mic Button (Toggle on/off with active pulse & vector slash) -->
-              <button id="toggleMicBtn" class="w-9 h-9 sm:w-10 sm:h-10 rounded-full bg-white/10 hover:bg-white/20 text-white border border-white/10 flex items-center justify-center font-bold shadow-lg transition-all active:scale-95 shrink-0 cursor-pointer" title="Mikrofon Aç/Kapat">
+              <button id="toggleMicBtn" class="w-9 h-9 sm:w-10 sm:h-10 rounded-full bg-white/10 hover:bg-white/20 text-white border border-white/10 flex items-center justify-center font-bold shadow-lg transition-all active:scale-95 shrink-0 cursor-pointer" title="Mikrofon Aç/Kapat" data-i18n-title="mic_toggle_title">
                 <svg id="micIconSvg" class="w-4 h-4 sm:w-4.5 sm:h-4.5 text-gray-300" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="1" y1="1" x2="23" y2="23"/><path d="M9 9v3a3 3 0 0 0 5.12 2.12M15 9.34V4a3 3 0 0 0-5.94-.6"/><path d="M17 16.95A7 7 0 0 1 5 12v-2m14 0v2a7 7 0 0 1-.11 1.23"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
               </button>
 
               <!-- Camera Button (Toggle video on/off with active pulse & vector slash) -->
-              <button id="toggleCamBtn" class="w-9 h-9 sm:w-10 sm:h-10 rounded-full bg-white/10 hover:bg-white/20 text-white border border-white/10 flex items-center justify-center font-bold shadow-lg transition-all active:scale-95 shrink-0 cursor-pointer" title="Kamera Aç/Kapat (Görüntülü Konuşma)">
+              <button id="toggleCamBtn" class="w-9 h-9 sm:w-10 sm:h-10 rounded-full bg-white/10 hover:bg-white/20 text-white border border-white/10 flex items-center justify-center font-bold shadow-lg transition-all active:scale-95 shrink-0 cursor-pointer" title="Kamera Aç/Kapat (Görüntülü Konuşma)" data-i18n-title="cam_toggle_title">
                 <svg id="camIconSvg" class="w-4 h-4 sm:w-4.5 sm:h-4.5 text-gray-300" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 16v1a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h1m5 0h6a2 2 0 0 1 2 2v4"/><polyline points="23 7 16 12 23 17"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
               </button>
 
@@ -533,14 +538,14 @@
 
             <div class="flex items-center gap-1.5">
               <!-- Chat Toggle Toolbar Button -->
-              <button id="toggleChatToolbarBtn" type="button" class="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white/5 hover:bg-white/10 active:scale-95 border border-white/10 text-xs text-gray-300 hover:text-white font-medium transition-all cursor-pointer" title="Sohbeti Aç / Gizle">
+              <button id="toggleChatToolbarBtn" type="button" class="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white/5 hover:bg-white/10 active:scale-95 border border-white/10 text-xs text-gray-300 hover:text-white font-medium transition-all cursor-pointer" title="Sohbeti Aç / Gizle" data-i18n-title="chat_toggle_title">
                 <svg class="w-3.5 h-3.5 text-rose-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
-                <span id="chatToolbarBtnText">Sohbet</span>
+                <span id="chatToolbarBtnText" data-i18n="chat_tab">Sohbet</span>
               </button>
 
-              <button id="roomChangeVideoBottomBtn" type="button" class="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-rose-500/15 hover:bg-rose-500/25 active:scale-95 border border-rose-500/30 text-xs text-rose-300 hover:text-white font-semibold transition-all cursor-pointer" title="Video Seç / Değiştir">
+              <button id="roomChangeVideoBottomBtn" type="button" class="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-rose-500/15 hover:bg-rose-500/25 active:scale-95 border border-rose-500/30 text-xs text-rose-300 hover:text-white font-semibold transition-all cursor-pointer" title="Video Seç / Değiştir" data-i18n-title="select_video_btn">
                 <svg class="w-3.5 h-3.5 text-rose-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-                <span>Video Seç</span>
+                <span data-i18n="select_video_btn">Video Seç</span>
               </button>
             </div>
           </div>
@@ -554,16 +559,16 @@
           <div class="px-3 py-2 bg-[#0F0D0B] border-b border-white/5 flex items-center justify-between text-xs shrink-0">
             <div class="flex items-center gap-2">
               <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
-              <span class="text-xs font-bold text-white tracking-wide">Canlı Sohbet</span>
-              <span class="text-[10px] text-gray-400 hidden sm:inline">En Popüler</span>
+              <span class="text-xs font-bold text-white tracking-wide" data-i18n="live_chat_title">Canlı Sohbet</span>
+              <span class="text-[10px] text-gray-400 hidden sm:inline" data-i18n="top_chat">En Popüler</span>
             </div>
             <div class="flex items-center gap-1.5">
-              <button id="chatExpandBtn" type="button" class="md:hidden flex items-center gap-1 px-2 py-0.5 rounded-lg bg-white/5 hover:bg-white/10 text-[10px] text-gray-300 hover:text-white transition-all cursor-pointer" title="Sohbeti Büyüt / Küçült">
+              <button id="chatExpandBtn" type="button" class="md:hidden flex items-center gap-1 px-2 py-0.5 rounded-lg bg-white/5 hover:bg-white/10 text-[10px] text-gray-300 hover:text-white transition-all cursor-pointer" title="Sohbeti Büyüt / Küçült" data-i18n-title="chat_expand">
                 <svg id="chatExpandIcon" class="w-3 h-3 text-gray-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></svg>
-                <span id="chatExpandLabel">Büyüt</span>
+                <span id="chatExpandLabel" data-i18n="chat_expand">Büyüt</span>
               </button>
               <!-- Close Chat X Button (YouTube Format: "ısterse çarpıya basıp yazssız izlesın") -->
-              <button id="closeChatSidebarBtn" type="button" class="w-7 h-7 rounded-full bg-white/5 hover:bg-white/15 text-gray-300 hover:text-white flex items-center justify-center transition-all cursor-pointer" title="Sohbeti Gizle (Yazısız İzle)">
+              <button id="closeChatSidebarBtn" type="button" class="w-7 h-7 rounded-full bg-white/5 hover:bg-white/15 text-gray-300 hover:text-white flex items-center justify-center transition-all cursor-pointer" title="Sohbeti Gizle (Yazısız İzle)" data-i18n-title="close_btn">
                 <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
               </button>
             </div>
@@ -573,13 +578,13 @@
           <div id="chatMessagesContainer" class="p-2.5 overflow-y-auto space-y-2 text-xs flex-1 min-h-[100px] transition-all duration-300">
             <div class="flex items-center gap-2 text-gray-400 text-[11px] py-1">
               <div class="w-5 h-5 rounded-full bg-indigo-500/30 flex items-center justify-center text-[10px] font-bold text-indigo-300">M</div>
-              <span><strong class="text-gray-200">Miruo</strong> odasına hoş geldiniz!</span>
+              <span id="chatWelcomeMsgText"><strong class="text-gray-200">Miruo</strong> odasına hoş geldiniz!</span>
             </div>
           </div>
 
           <!-- Quick Mention & Sticker Popovers (Contextual Trays) -->
           <div id="chatMentionPopover" class="hidden px-3 py-2 bg-[#0B0D14] border-t border-white/10 flex items-center gap-1.5 overflow-x-auto no-scrollbar animate-fade-in shrink-0">
-            <span class="text-[10px] text-gray-400 font-bold mr-1 shrink-0">Bahset:</span>
+            <span class="text-[10px] text-gray-400 font-bold mr-1 shrink-0" data-i18n="chat_mention_label">Bahset:</span>
             <button type="button" class="mention-chip px-2.5 py-1 rounded-full bg-white/10 hover:bg-rose-500/20 text-xs text-rose-300 font-medium whitespace-nowrap cursor-pointer transition-all active:scale-95" data-mention="@herkes">@herkes</button>
             <button type="button" class="mention-chip px-2.5 py-1 rounded-full bg-white/10 hover:bg-indigo-500/20 text-xs text-indigo-300 font-medium whitespace-nowrap cursor-pointer transition-all active:scale-95" data-mention="@Barış_99">@Barış_99</button>
             <button type="button" class="mention-chip px-2.5 py-1 rounded-full bg-white/10 hover:bg-emerald-500/20 text-xs text-emerald-300 font-medium whitespace-nowrap cursor-pointer transition-all active:scale-95" data-mention="@Ece_99">@Ece_99</button>
@@ -587,7 +592,7 @@
           </div>
 
           <div id="chatStickerPopover" class="hidden px-3 py-2 bg-[#0B0D14] border-t border-white/10 flex items-center gap-2 overflow-x-auto no-scrollbar animate-fade-in shrink-0">
-            <span class="text-[10px] text-gray-400 font-bold mr-1 shrink-0">Tepki:</span>
+            <span class="text-[10px] text-gray-400 font-bold mr-1 shrink-0" data-i18n="chat_reaction_label">Tepki:</span>
             <button type="button" class="sticker-chip text-lg p-1 hover:scale-125 transition-transform active:scale-95 cursor-pointer" data-sticker="🍿">🍿</button>
             <button type="button" class="sticker-chip text-lg p-1 hover:scale-125 transition-transform active:scale-95 cursor-pointer" data-sticker="🔥">🔥</button>
             <button type="button" class="sticker-chip text-lg p-1 hover:scale-125 transition-transform active:scale-95 cursor-pointer" data-sticker="❤️">❤️</button>
@@ -598,7 +603,7 @@
             <button type="button" class="sticker-chip text-lg p-1 hover:scale-125 transition-transform active:scale-95 cursor-pointer" data-sticker="✨">✨</button>
             <label for="chatImageFileInput" class="ml-auto text-[11px] font-bold text-rose-400 hover:text-rose-300 px-2.5 py-1 rounded-lg bg-rose-500/10 border border-rose-500/20 cursor-pointer whitespace-nowrap flex items-center gap-1.5">
               <svg class="w-3.5 h-3.5 text-rose-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
-              <span>Fotoğraf Ekle</span>
+              <span data-i18n="chat_add_photo">Fotoğraf Ekle</span>
             </label>
           </div>
 
@@ -609,7 +614,7 @@
 
             <!-- Chat Input Pill -->
             <div class="flex-1 flex items-center bg-white/10 rounded-full px-3.5 py-2 border border-white/10 focus-within:border-white/30">
-              <input type="text" id="chatMessageInput" placeholder="Mesaj yaz..." maxlength="200" class="w-full bg-transparent text-xs text-white placeholder-gray-400 focus:outline-none">
+              <input type="text" id="chatMessageInput" placeholder="Mesaj yaz..." data-i18n-placeholder="chat_ph" maxlength="200" class="w-full bg-transparent text-xs text-white placeholder-gray-400 focus:outline-none">
               <button id="sendChatMessageBtn" class="text-rose-400 hover:text-rose-300 font-bold text-xs ml-1.5 transition-colors cursor-pointer" title="Gönder">
                 <svg class="w-4 h-4 text-rose-400 fill-current" viewBox="0 0 24 24"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>
               </button>
@@ -638,7 +643,7 @@
       <button id="openChatFloatingBtn" type="button" class="hidden fixed bottom-6 right-6 z-30 px-4 py-2.5 rounded-full bg-[#0E111A]/95 hover:bg-black text-white backdrop-blur-xl border border-rose-500/40 hover:border-rose-500 shadow-2xl flex items-center gap-2.5 text-xs font-bold transition-all hover:scale-105 active:scale-95 cursor-pointer" title="Sohbeti Göster">
         <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
         <svg class="w-4 h-4 text-rose-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
-        <span>Sohbeti Göster</span>
+        <span data-i18n="show_chat">Sohbeti Göster</span>
       </button>
 
     </div> <!-- End MY ROOM WORKSPACE -->
@@ -675,15 +680,15 @@
   </nav>
 
   <!-- ROOM SHARE & INVITE MODAL (Clean sheet opened by Paylaş button) -->
-  <div id="roomShareModal" class="fixed inset-0 bg-black/80 backdrop-blur-md z-50 hidden items-end sm:items-center justify-center p-0 sm:p-4">
+  <div id="roomShareModal" class="fixed inset-0 bg-black/92 z-50 hidden items-end sm:items-center justify-center p-0 sm:p-4">
     <div class="bg-[#0B0D14] border border-white/10 rounded-t-3xl sm:rounded-3xl p-5 sm:p-6 max-w-md w-full shadow-2xl relative overflow-visible space-y-4 animate-fade-in">
       <div class="flex items-center justify-between border-b border-white/10 pb-3">
         <div>
           <h3 class="font-bold text-sm text-white flex items-center gap-2">
             <svg class="w-4 h-4 text-rose-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>
-            <span>Odayı Paylaş & Davet Et</span>
+            <span data-i18n="share_room_title">Odayı Paylaş & Davet Et</span>
           </h3>
-          <p class="text-[11px] text-gray-400 mt-0.5">Arkadaşlarınla aynı anda senkronize izle</p>
+          <p class="text-[11px] text-gray-400 mt-0.5" data-i18n="share_room_sub">Arkadaşlarınla aynı anda senkronize izle</p>
         </div>
         <button id="closeRoomShareBtn" class="w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 active:scale-95 text-white flex items-center justify-center font-bold text-sm cursor-pointer transition-colors">
           <svg class="w-4 h-4 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
@@ -692,13 +697,13 @@
 
       <!-- Kimler Katılabilir? (Sade Tek Tıkla Açılan Seçim) -->
       <div class="space-y-1.5 relative">
-        <label class="block text-[11px] font-bold text-gray-300">Kimler Katılabilir?</label>
+        <label class="block text-[11px] font-bold text-gray-300" data-i18n="who_can_join_title">Kimler Katılabilir?</label>
         <button id="privacySelectTrigger" type="button" class="w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-white text-xs font-medium transition-all cursor-pointer">
           <div class="flex items-center gap-2">
             <span id="selectedPrivacyIcon">
               <svg class="w-4 h-4 text-emerald-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1 4-10z"/></svg>
             </span>
-            <span id="selectedPrivacyLabel">Herkese Açık</span>
+            <span id="selectedPrivacyLabel" data-i18n="access_public_label">Herkese Açık</span>
           </div>
           <svg class="w-4 h-4 text-gray-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
         </button>
@@ -709,8 +714,8 @@
             <div class="flex items-center gap-2">
               <svg class="w-4 h-4 text-emerald-400 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1 4-10z"/></svg>
               <div>
-                <div class="text-xs font-bold text-white">Herkese Açık</div>
-                <div class="text-[10px] text-gray-400">Herkes keşfetten veya bağlantıyla katılabilir</div>
+                <div class="text-xs font-bold text-white" data-i18n="access_public_label">Herkese Açık</div>
+                <div class="text-[10px] text-gray-400" data-i18n="share_public_desc">Herkes keşfetten veya bağlantıyla katılabilir</div>
               </div>
             </div>
             <span class="privacy-check text-emerald-400 text-xs font-bold">✓</span>
@@ -720,8 +725,8 @@
             <div class="flex items-center gap-2">
               <svg class="w-4 h-4 text-blue-400 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
               <div>
-                <div class="text-xs font-bold text-white">Sadece Arkadaşlar</div>
-                <div class="text-[10px] text-gray-400">Yalnızca takip ettiğin kişiler katılabilir</div>
+                <div class="text-xs font-bold text-white" data-i18n="privacy_friends">Sadece Arkadaşlar</div>
+                <div class="text-[10px] text-gray-400" data-i18n="share_friends_desc">Yalnızca takip ettiğin kişiler katılabilir</div>
               </div>
             </div>
             <span class="privacy-check text-emerald-400 text-xs font-bold hidden">✓</span>
@@ -731,8 +736,8 @@
             <div class="flex items-center gap-2">
               <svg class="w-4 h-4 text-amber-400 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
               <div>
-                <div class="text-xs font-bold text-white">Sadece Davet İle</div>
-                <div class="text-[10px] text-gray-400">Özel oda, sadece davet linkiyle girilebilir</div>
+                <div class="text-xs font-bold text-white" data-i18n="privacy_private">Sadece Davet İle</div>
+                <div class="text-[10px] text-gray-400" data-i18n="share_invite_desc">Özel oda, sadece davet linkiyle girilebilir</div>
               </div>
             </div>
             <span class="privacy-check text-emerald-400 text-xs font-bold hidden">✓</span>
@@ -742,20 +747,20 @@
 
       <!-- Davet Linki & Kopyala -->
       <div class="space-y-1.5">
-        <label class="block text-[11px] font-bold text-gray-300">Davet Linki</label>
+        <label class="block text-[11px] font-bold text-gray-300" data-i18n="invite_link_label">Davet Linki</label>
         <div class="flex items-center gap-2 p-2 rounded-xl bg-black/40 border border-white/10">
           <svg class="w-4 h-4 text-gray-400 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
           <span id="raveInviteLinkText" class="flex-1 text-xs text-sky-400 font-mono truncate">https://miruo.app/oda/ODA-77</span>
           <button id="copyRaveInviteBtn" class="flex items-center gap-1 px-3 py-1.5 bg-white/15 hover:bg-white/25 active:scale-95 text-white rounded-lg text-xs font-bold transition-all shrink-0 cursor-pointer">
             <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
-            <span>Kopyala</span>
+            <span data-i18n="copy_btn">Kopyala</span>
           </button>
         </div>
       </div>
 
       <!-- Sosyal Paylaşım Butonları (Vektör Simgeler) -->
       <div class="space-y-1.5">
-        <label class="block text-[11px] font-bold text-gray-300">Uygulama ile Paylaş</label>
+        <label class="block text-[11px] font-bold text-gray-300" data-i18n="share_with_app_label">Uygulama ile Paylaş</label>
         <div class="grid grid-cols-4 gap-2 pt-1">
           <!-- WhatsApp -->
           <button type="button" class="share-app-btn flex flex-col items-center gap-1.5 p-2 rounded-xl bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-500/30 text-white cursor-pointer group active:scale-95 transition-all" data-channel="whatsapp">
@@ -770,7 +775,7 @@
             <div class="w-10 h-10 rounded-full bg-[#007AFF] flex items-center justify-center text-white shadow-md">
               <svg class="w-5 h-5 fill-none stroke-current" viewBox="0 0 24 24" stroke-width="2"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg>
             </div>
-            <span class="text-[10px] font-medium text-gray-200">Mesajlar</span>
+            <span class="text-[10px] font-medium text-gray-200" data-i18n="messages_app_label">Mesajlar</span>
           </button>
 
           <!-- Telegram -->
@@ -786,7 +791,7 @@
             <div class="w-10 h-10 rounded-full bg-purple-600 flex items-center justify-center text-white shadow-md">
               <svg class="w-5 h-5 fill-none stroke-current" viewBox="0 0 24 24" stroke-width="2"><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/></svg>
             </div>
-            <span class="text-[10px] font-medium text-gray-200">Diğer</span>
+            <span class="text-[10px] font-medium text-gray-200" data-i18n="other_app_label">Diğer</span>
           </button>
         </div>
       </div>
@@ -794,49 +799,49 @@
   </div>
 
   <!-- CREATE ROOM MODAL (Clean Root Overlay) -->
-  <div id="createRoomModal" class="fixed inset-0 bg-black/80 backdrop-blur-md z-50 hidden items-center justify-center p-4">
+  <div id="createRoomModal" class="fixed inset-0 bg-black/92 z-50 hidden items-center justify-center p-4">
     <div class="bg-[#0E111A] border border-white/10 rounded-3xl p-6 sm:p-7 max-w-md w-full shadow-2xl relative overflow-hidden space-y-5">
       <div class="flex items-center justify-between border-b border-white/5 pb-3">
         <h3 class="font-bold text-sm text-white flex items-center gap-2">
           <div class="w-6 h-6 rounded-lg bg-rose-500/20 text-rose-400 flex items-center justify-center">
             <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/></svg>
           </div>
-          <span>Yeni Oda Oluştur</span>
+          <span data-i18n="create_room_title">Yeni Oda Oluştur</span>
         </h3>
         <button id="closeCreateRoomBtn" class="close-modal-btn w-9 h-9 rounded-full bg-white/10 hover:bg-white/20 active:scale-95 text-gray-200 hover:text-white flex items-center justify-center text-sm font-bold transition-all cursor-pointer select-none">✕</button>
       </div>
 
       <!-- Room Title Input -->
       <div>
-        <label class="block text-xs font-medium text-gray-300 mb-1.5">Oda Başlığı</label>
-        <input type="text" id="newRoomTitleInput" placeholder="Örn: Gece Lo-Fi Sohbeti ☕ veya Sinema Gecesi" class="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-2.5 text-xs text-white focus:outline-none focus:border-rose-500 transition-all font-medium">
+        <label class="block text-xs font-medium text-gray-300 mb-1.5" data-i18n="room_title_label">Oda Başlığı</label>
+        <input type="text" id="newRoomTitleInput" data-i18n-placeholder="room_title_ph" placeholder="Örn: Gece Lo-Fi Sohbeti ☕ veya Sinema Gecesi" class="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-2.5 text-xs text-white focus:outline-none focus:border-rose-500 transition-all font-medium">
       </div>
 
       <!-- Privacy Mode Selector -->
       <div>
-        <label class="block text-xs font-medium text-gray-300 mb-1.5">Gizlilik Türü</label>
+        <label class="block text-xs font-medium text-gray-300 mb-1.5" data-i18n="privacy_type_label">Gizlilik Türü</label>
         <div class="grid grid-cols-2 gap-3">
           <button type="button" id="selectPrivateRoomBtn" class="p-3 rounded-2xl border-2 border-rose-500 bg-rose-500/10 text-left transition-all">
             <div class="flex items-center gap-2 mb-1 text-rose-300 font-semibold text-xs">
               <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg>
-              <span>Özel Oda</span>
+              <span data-i18n="private_room_label">Özel Oda</span>
             </div>
-            <p class="text-[10px] text-gray-400 leading-tight">Sadece davet ettiğin kişiler girebilir.</p>
+            <p class="text-[10px] text-gray-400 leading-tight" data-i18n="private_room_desc">Sadece davet ettiğin kişiler girebilir.</p>
           </button>
 
           <button type="button" id="selectPublicRoomBtn" class="p-3 rounded-2xl border border-white/10 bg-white/5 hover:bg-white/10 text-left transition-all">
             <div class="flex items-center gap-2 mb-1 text-gray-300 font-semibold text-xs">
               <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path stroke-linecap="round" stroke-linejoin="round" d="M2 12h20M12 2a15.3 15.3 0 014 10 15.3 15.3 0 01-4 10 15.3 15.3 0 01-4-10 15.3 15.3 0 014-10z"/></svg>
-              <span>Herkese Açık</span>
+              <span data-i18n="public_room_label">Herkese Açık</span>
             </div>
-            <p class="text-[10px] text-gray-400 leading-tight">Miruo Keşfet akışında listelenir.</p>
+            <p class="text-[10px] text-gray-400 leading-tight" data-i18n="public_room_desc">Miruo Keşfet akışında listelenir.</p>
           </button>
         </div>
       </div>
 
       <!-- Platform Selection Grid -->
       <div>
-        <label class="block text-xs font-medium text-gray-300 mb-1.5">İzleme / Dinleme Platformu</label>
+        <label class="block text-xs font-medium text-gray-300 mb-1.5" data-i18n="platform_select_label">İzleme / Dinleme Platformu</label>
         <div class="grid grid-cols-3 sm:grid-cols-5 gap-2">
           
           <div class="platform-choice active p-2 rounded-xl border-2 border-rose-500 bg-rose-500/15 flex flex-col items-center text-center gap-1 cursor-pointer transition-all" data-category="YouTube">
@@ -861,13 +866,13 @@
 
           <div class="platform-choice p-2 rounded-xl border border-white/10 bg-white/5 hover:bg-white/10 flex flex-col items-center text-center gap-1 cursor-pointer transition-all" data-category="Ekran Paylaş">
             <svg class="w-5 h-5 text-purple-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8m-4-4v4"/></svg>
-            <span class="text-[11px] font-bold text-white block">Ekran</span>
+            <span class="text-[11px] font-bold text-white block" data-i18n="screen_share_label">Ekran</span>
           </div>
 
         </div>
       </div>
 
-      <button id="submitCreateRoomBtn" class="w-full py-3 bg-gradient-to-r from-rose-500 via-purple-600 to-indigo-600 hover:opacity-95 text-white rounded-xl text-xs font-bold shadow-lg shadow-rose-500/25 transition-all cursor-pointer">
+      <button id="submitCreateRoomBtn" class="w-full py-3 bg-gradient-to-r from-rose-500 via-purple-600 to-indigo-600 hover:opacity-95 text-white rounded-xl text-xs font-bold shadow-lg shadow-rose-500/25 transition-all cursor-pointer" data-i18n="submit_create_room_btn">
         Odayı Başlat & Katıl
       </button>
     </div>
@@ -1268,7 +1273,7 @@
   </div>
 
   <!-- KIMLER KATILABILIR & ODA GIZLILIK AYARLARI MODAL -->
-  <div id="roomAccessModal" class="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/80 backdrop-blur-md p-0 sm:p-4 hidden">
+  <div id="roomAccessModal" class="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/92 p-0 sm:p-4 hidden">
     <div class="w-full max-w-sm sm:max-w-md bg-[#0A0C14] border border-white/10 rounded-t-[32px] sm:rounded-[32px] p-6 sm:p-7 shadow-2xl text-white space-y-4 relative">
       
       <!-- Close button on top-right -->
@@ -1282,20 +1287,20 @@
           <svg class="w-5 h-5 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><circle cx="12" cy="11" r="3"/></svg>
         </div>
         <div>
-          <h2 class="text-lg font-bold tracking-tight text-white">Kimler Katılabilir?</h2>
-          <p class="text-xs text-gray-400">Oda katılım ve erişim ayarlarını yönetin.</p>
+          <h2 class="text-lg font-bold tracking-tight text-white" data-i18n="who_can_join_title">Kimler Katılabilir?</h2>
+          <p class="text-xs text-gray-400" data-i18n="who_can_join_sub">Oda katılım ve erişim ayarlarını yönetin.</p>
         </div>
       </div>
 
       <!-- Room Code Badge & Copy Link Box -->
       <div class="p-3.5 rounded-2xl bg-white/5 border border-white/10 space-y-2.5">
         <div class="flex items-center justify-between">
-          <span class="text-xs text-gray-400">Rastgele Oda Kodu</span>
+          <span class="text-xs text-gray-400" data-i18n="random_room_code_label">Rastgele Oda Kodu</span>
           <span id="roomAccessModalCode" class="text-sm font-extrabold font-mono text-cyan-400 tracking-wider bg-cyan-500/10 border border-cyan-500/20 px-2.5 py-1 rounded-lg">ODA-77</span>
         </div>
         <div class="flex items-center gap-2">
           <input type="text" id="roomAccessLinkInput" readonly class="flex-1 bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-xs text-gray-300 select-all font-mono">
-          <button id="copyRoomAccessLinkBtn" type="button" class="px-3.5 py-2 rounded-xl bg-gradient-to-r from-cyan-500 to-indigo-600 hover:opacity-90 active:scale-95 text-white text-xs font-bold transition-all cursor-pointer shrink-0 shadow-sm">
+          <button id="copyRoomAccessLinkBtn" type="button" class="px-3.5 py-2 rounded-xl bg-gradient-to-r from-cyan-500 to-indigo-600 hover:opacity-90 active:scale-95 text-white text-xs font-bold transition-all cursor-pointer shrink-0 shadow-sm" data-i18n="copy_btn">
             Kopyala
           </button>
         </div>
@@ -1303,30 +1308,30 @@
 
       <!-- Access Mode Options -->
       <div class="space-y-2.5">
-        <span class="text-xs font-semibold text-gray-400">Katılım İzni</span>
+        <span class="text-xs font-semibold text-gray-400" data-i18n="access_permission_label">Katılım İzni</span>
         
         <label id="accessOptionPublic" class="flex items-start gap-3 p-3 rounded-2xl bg-cyan-500/10 border border-cyan-500/30 cursor-pointer transition-all">
           <input type="radio" name="roomAccessRule" value="public" checked class="mt-1 text-cyan-500 focus:ring-cyan-500 accent-cyan-500">
           <div>
             <div class="text-xs font-bold text-white flex items-center gap-1.5">
-              <span>🌍 Herkese Açık</span>
-              <span class="text-[10px] px-1.5 py-0.2 bg-cyan-500/20 text-cyan-300 rounded-md font-semibold">Önerilen</span>
+              <span data-i18n="access_public_label">🌍 Herkese Açık</span>
+              <span class="text-[10px] px-1.5 py-0.2 bg-cyan-500/20 text-cyan-300 rounded-md font-semibold" data-i18n="recommended_badge">Önerilen</span>
             </div>
-            <p class="text-[11px] text-gray-400 mt-0.5">Oda bağlantısına veya koduna sahip herkes odaya doğrudan katılabilir.</p>
+            <p class="text-[11px] text-gray-400 mt-0.5" data-i18n="access_public_desc">Oda bağlantısına veya koduna sahip herkes odaya doğrudan katılabilir.</p>
           </div>
         </label>
 
         <label id="accessOptionInviteOnly" class="flex items-start gap-3 p-3 rounded-2xl bg-white/5 border border-white/10 hover:border-white/20 cursor-pointer transition-all">
           <input type="radio" name="roomAccessRule" value="invite" class="mt-1 text-cyan-500 focus:ring-cyan-500 accent-cyan-500">
           <div>
-            <div class="text-xs font-bold text-white">🔒 Sadece Davetliler</div>
-            <p class="text-[11px] text-gray-400 mt-0.5">Yalnızca oda sahibinin davet ettiği ve onayladığı kişiler katılabilir.</p>
+            <div class="text-xs font-bold text-white" data-i18n="access_invite_label">🔒 Sadece Davetliler</div>
+            <p class="text-[11px] text-gray-400 mt-0.5" data-i18n="access_invite_desc">Yalnızca oda sahibinin davet ettiği ve onayladığı kişiler katılabilir.</p>
           </div>
         </label>
       </div>
 
       <!-- Done Button -->
-      <button id="saveRoomAccessBtn" type="button" class="w-full py-3 bg-gradient-to-r from-cyan-500 to-indigo-600 hover:from-cyan-400 hover:to-indigo-500 active:scale-[0.98] text-white font-bold text-sm rounded-2xl shadow-lg shadow-cyan-500/25 transition-all cursor-pointer">
+      <button id="saveRoomAccessBtn" type="button" class="w-full py-3 bg-gradient-to-r from-cyan-500 to-indigo-600 hover:from-cyan-400 hover:to-indigo-500 active:scale-[0.98] text-white font-bold text-sm rounded-2xl shadow-lg shadow-cyan-500/25 transition-all cursor-pointer" data-i18n="done_btn">
         Tamam
       </button>
 
@@ -1334,7 +1339,7 @@
   </div>
 
   <!-- IN-APP YOUTUBE BROWSER & PICKER MODAL -->
-  <div id="raveYoutubeModal" class="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/85 backdrop-blur-md p-0 sm:p-4 hidden">
+  <div id="raveYoutubeModal" class="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/95 p-0 sm:p-4 hidden">
     <div class="bg-[#0B0D14] border border-white/10 rounded-t-[32px] sm:rounded-3xl max-w-2xl w-full h-[88vh] sm:h-[82vh] shadow-2xl flex flex-col overflow-hidden">
       
       <!-- Modal Header -->
@@ -1347,16 +1352,16 @@
             <h3 class="text-sm font-bold text-white flex items-center gap-2">
               <span>YouTube</span>
             </h3>
-            <span class="text-[10px] text-gray-400">Video seçin ve odadakilerle birlikte izleyin.</span>
+            <span class="text-[10px] text-gray-400" data-i18n="yt_modal_sub">Video seçin ve odadakilerle birlikte izleyin.</span>
           </div>
         </div>
 
         <div class="flex items-center gap-2">
           <!-- In-App Web Browser Trigger (Loads m.youtube.com natively or in iframe) -->
-          <button id="openNativeYtBrowserBtn" class="px-3 py-1.5 rounded-xl bg-white/10 hover:bg-white/20 text-xs font-semibold text-white flex items-center gap-1.5 transition-all cursor-pointer" title="m.youtube.com'u açıp hesabına gir">
+          <button id="openNativeYtBrowserBtn" class="px-3 py-1.5 rounded-xl bg-white/10 hover:bg-white/20 text-xs font-semibold text-white flex items-center gap-1.5 transition-all cursor-pointer" title="m.youtube.com'u açıp hesabına gir" data-i18n-title="yt_browse_title">
             <svg class="w-3.5 h-3.5 text-red-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20M2 12h20"/></svg>
             <span class="hidden sm:inline">m.youtube.com</span>
-            <span>Gezin ↗</span>
+            <span data-i18n="yt_browse_btn">Gezin ↗</span>
           </button>
           <button id="closeRaveYoutubeBtn" class="close-modal-btn w-9 h-9 rounded-full bg-white/10 hover:bg-white/20 active:scale-95 text-gray-200 hover:text-white flex items-center justify-center text-sm font-bold transition-all cursor-pointer select-none">✕</button>
         </div>
@@ -1366,19 +1371,19 @@
       <div id="raveCurrentlyPlayingBanner" class="hidden px-4 py-2 bg-gradient-to-r from-rose-500/15 via-purple-500/10 to-transparent border-b border-rose-500/20 flex items-center justify-between text-xs">
         <div class="flex items-center gap-2 text-rose-300 font-medium truncate">
           <span class="w-2 h-2 rounded-full bg-rose-500 animate-pulse shrink-0"></span>
-          <span class="truncate">Şu an çalıyor: <strong id="raveCurrentlyPlayingTitle" class="text-white">...</strong></span>
+          <span class="truncate"><span data-i18n="yt_currently_playing_prefix">Şu an çalıyor:</span> <strong id="raveCurrentlyPlayingTitle" class="text-white">...</strong></span>
         </div>
-        <span class="text-[10px] text-emerald-400 font-medium px-2 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/20 shrink-0">Arka Planda Kesintisiz Devam Ediyor 🔊</span>
+        <span class="text-[10px] text-emerald-400 font-medium px-2 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/20 shrink-0" data-i18n="yt_background_playing">Arka Planda Kesintisiz Devam Ediyor 🔊</span>
       </div>
 
       <!-- Search Bar -->
       <div class="p-4 bg-black/20 border-b border-white/5 space-y-3">
         <div class="relative flex items-center">
           <svg class="w-4 h-4 text-gray-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
-          <input type="text" id="raveYtSearchInput" placeholder="YouTube'da şarkı, klip, sanatçı, dizi veya kanal ara..." class="w-full bg-black/50 border border-white/10 rounded-2xl pl-10 pr-24 py-2.5 text-xs text-white placeholder-gray-500 focus:outline-none focus:border-red-500 transition-all font-medium">
+          <input type="text" id="raveYtSearchInput" data-i18n-placeholder="yt_search_ph" placeholder="YouTube'da şarkı, klip, sanatçı, dizi veya kanal ara..." class="w-full bg-black/50 border border-white/10 rounded-2xl pl-10 pr-24 py-2.5 text-xs text-white placeholder-gray-500 focus:outline-none focus:border-red-500 transition-all font-medium">
           <div class="absolute right-1.5 top-1/2 -translate-y-1/2 flex items-center gap-1">
             <button id="clearRaveYtSearchBtn" class="hidden px-2 py-1 text-gray-400 hover:text-white text-xs">✕</button>
-            <button id="submitRaveYtSearchBtn" class="px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white rounded-xl text-xs font-bold transition-all shadow-md shadow-red-600/30 cursor-pointer">
+            <button id="submitRaveYtSearchBtn" class="px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white rounded-xl text-xs font-bold transition-all shadow-md shadow-red-600/30 cursor-pointer" data-i18n="yt_search_btn">
               Ara
             </button>
           </div>
@@ -1386,12 +1391,12 @@
 
         <!-- Quick Filter Pills -->
         <div class="flex items-center gap-1.5 overflow-x-auto no-scrollbar text-xs">
-          <button class="rave-yt-tab active px-3 py-1 rounded-xl bg-red-600 text-white font-bold whitespace-nowrap transition-all cursor-pointer" data-tag="trending">Trendler</button>
-          <button class="rave-yt-tab px-3 py-1 rounded-xl bg-white/5 hover:bg-white/10 text-gray-300 whitespace-nowrap transition-all cursor-pointer" data-tag="music">Popüler Müzik</button>
-          <button class="rave-yt-tab px-3 py-1 rounded-xl bg-white/5 hover:bg-white/10 text-gray-300 whitespace-nowrap transition-all cursor-pointer" data-tag="lofi">24/7 Lo-Fi</button>
-          <button class="rave-yt-tab px-3 py-1 rounded-xl bg-white/5 hover:bg-white/10 text-gray-300 whitespace-nowrap transition-all cursor-pointer" data-tag="series">Dizi & Fragman</button>
-          <button class="rave-yt-tab px-3 py-1 rounded-xl bg-white/5 hover:bg-white/10 text-gray-300 whitespace-nowrap transition-all cursor-pointer" data-tag="podcast">Podcast & Sohbet</button>
-          <button class="rave-yt-tab px-3 py-1 rounded-xl bg-white/5 hover:bg-white/10 text-gray-300 whitespace-nowrap transition-all cursor-pointer" data-tag="gaming">Oyun & Espor</button>
+          <button class="rave-yt-tab active px-3 py-1 rounded-xl bg-red-600 text-white font-bold whitespace-nowrap transition-all cursor-pointer" data-tag="trending" data-i18n="tab_trending">Trendler</button>
+          <button class="rave-yt-tab px-3 py-1 rounded-xl bg-white/5 hover:bg-white/10 text-gray-300 whitespace-nowrap transition-all cursor-pointer" data-tag="music" data-i18n="tab_music">Popüler Müzik</button>
+          <button class="rave-yt-tab px-3 py-1 rounded-xl bg-white/5 hover:bg-white/10 text-gray-300 whitespace-nowrap transition-all cursor-pointer" data-tag="lofi" data-i18n="tab_lofi">24/7 Lo-Fi</button>
+          <button class="rave-yt-tab px-3 py-1 rounded-xl bg-white/5 hover:bg-white/10 text-gray-300 whitespace-nowrap transition-all cursor-pointer" data-tag="series" data-i18n="tab_series">Dizi & Fragman</button>
+          <button class="rave-yt-tab px-3 py-1 rounded-xl bg-white/5 hover:bg-white/10 text-gray-300 whitespace-nowrap transition-all cursor-pointer" data-tag="podcast" data-i18n="tab_podcast">Podcast & Sohbet</button>
+          <button class="rave-yt-tab px-3 py-1 rounded-xl bg-white/5 hover:bg-white/10 text-gray-300 whitespace-nowrap transition-all cursor-pointer" data-tag="gaming" data-i18n="tab_gaming">Oyun & Espor</button>
         </div>
       </div>
 
@@ -1406,7 +1411,7 @@
           <div class="flex items-center gap-2.5 min-w-0">
             <img id="raveActionThumb" src="" class="w-14 h-9 rounded-lg object-cover bg-black flex-shrink-0 border border-white/10" alt="Thumb">
             <div class="min-w-0">
-              <h4 id="raveActionTitle" class="text-xs font-bold text-white truncate">Video Başlığı</h4>
+              <h4 id="raveActionTitle" class="text-xs font-bold text-white truncate" data-i18n="video_title_default">Video Başlığı</h4>
               <p id="raveActionChannel" class="text-[10px] text-gray-400 truncate">Kanal</p>
             </div>
           </div>
@@ -1415,11 +1420,11 @@
         <div class="grid grid-cols-2 gap-2 pt-0.5" id="raveActionButtonsContainer">
           <button id="raveActionPlayNowBtn" class="py-2.5 px-3 rounded-xl bg-gradient-to-r from-rose-600 to-red-600 hover:from-rose-500 hover:to-red-500 active:scale-95 text-white font-bold text-xs flex items-center justify-center gap-1.5 shadow-md shadow-rose-600/30 transition-all cursor-pointer">
             <svg class="w-3.5 h-3.5 fill-current" viewBox="0 0 24 24"><polygon points="5 3 19 12 5 21 5 3"/></svg>
-            <span>Hemen Oynat</span>
+            <span data-i18n="action_play_now">Hemen Oynat</span>
           </button>
           <button id="raveActionQueueBtn" class="py-2.5 px-3 rounded-xl bg-white/10 hover:bg-white/15 active:scale-95 text-white font-semibold text-xs flex items-center justify-center gap-1.5 border border-white/10 transition-all cursor-pointer">
             <svg class="w-3.5 h-3.5 text-purple-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-            <span>Sıraya Ekle</span>
+            <span data-i18n="action_add_queue">Sıraya Ekle</span>
           </button>
         </div>
       </div>
@@ -1440,35 +1445,35 @@
     <div class="flex items-center justify-between text-xs">
       <span class="text-amber-400 font-bold flex items-center gap-1.5">
         <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a7 7 0 0 0-7 7c0 2.38 1.19 4.47 3 5.74V17a2 2 0 0 0 2 2h4a2 2 0 0 0 2-2v-2.26c1.81-1.27 3-3.36 3-5.74a7 7 0 0 0-7-7M9 21a1 1 0 0 0 1 1h4a1 1 0 0 0 1-1v-1H9z"/></svg>
-        <span>Video Önerisi</span>
+        <span data-i18n="suggestion_title">Video Önerisi</span>
       </span>
       <button id="closeSuggestionBannerBtn" class="text-gray-400 hover:text-white text-sm cursor-pointer p-0.5">✕</button>
     </div>
     <div class="flex items-center gap-2.5">
       <img id="suggestionThumb" src="" class="w-16 h-10 object-cover rounded-lg bg-black border border-white/10 shrink-0" alt="Thumb">
       <div class="flex-1 min-w-0">
-        <div id="suggestionTitle" class="text-xs font-bold text-white truncate">Video Başlığı</div>
-        <div id="suggestionSender" class="text-[10px] text-gray-400">Caner önerdi</div>
+        <div id="suggestionTitle" class="text-xs font-bold text-white truncate" data-i18n="video_title_default">Video Başlığı</div>
+        <div id="suggestionSender" class="text-[10px] text-gray-400">Caner</div>
       </div>
     </div>
     <div class="flex items-center gap-2 mt-0.5">
-      <button id="acceptSuggestionPlayNowBtn" class="flex-1 py-1.5 bg-rose-600 hover:bg-rose-500 active:scale-95 text-white rounded-xl text-xs font-bold transition-all shadow-md cursor-pointer">▶ Hemen Oynat</button>
-      <button id="acceptSuggestionQueueBtn" class="flex-1 py-1.5 bg-white/10 hover:bg-white/20 active:scale-95 text-white rounded-xl text-xs font-medium transition-all cursor-pointer">➕ Sıraya Ekle</button>
+      <button id="acceptSuggestionPlayNowBtn" class="flex-1 py-1.5 bg-rose-600 hover:bg-rose-500 active:scale-95 text-white rounded-xl text-xs font-bold transition-all shadow-md cursor-pointer">▶ <span data-i18n="action_play_now">Hemen Oynat</span></button>
+      <button id="acceptSuggestionQueueBtn" class="flex-1 py-1.5 bg-white/10 hover:bg-white/20 active:scale-95 text-white rounded-xl text-xs font-medium transition-all cursor-pointer">➕ <span data-i18n="action_add_queue">Sıraya Ekle</span></button>
     </div>
   </div>
 
   <!-- Room Playback Queue Modal (Oynatma Sırası Modalı) -->
-  <div id="roomQueueModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4 hidden">
+  <div id="roomQueueModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/92 p-4 hidden">
     <div class="bg-[#0B0D14] border border-white/10 rounded-3xl max-w-md w-full max-h-[75vh] shadow-2xl flex flex-col overflow-hidden">
       <div class="px-5 py-4 border-b border-white/10 flex items-center justify-between bg-black/40">
         <div class="flex items-center gap-2">
           <svg class="w-4 h-4 text-purple-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
-          <h3 class="text-sm font-bold text-white">Oynatma Sırası</h3>
+          <h3 class="text-sm font-bold text-white" data-i18n="queue_title">Oynatma Sırası</h3>
         </div>
         <button id="closeQueueModalBtn" class="w-7 h-7 rounded-full bg-white/10 text-gray-300 hover:text-white flex items-center justify-center text-xs cursor-pointer">✕</button>
       </div>
       <div id="roomQueueList" class="p-4 flex-1 overflow-y-auto space-y-2">
-        <div class="py-8 text-center text-xs text-gray-400">Sırada bekleyen video yok 🎵</div>
+        <div class="py-8 text-center text-xs text-gray-400" data-i18n="queue_empty">No videos waiting in queue 🎵</div>
       </div>
     </div>
   </div>
@@ -1719,7 +1724,7 @@
           <div>
             <div class="flex justify-between text-xs text-gray-300 mb-1 font-medium">
               <span data-i18n="ducking_title">Konuşma Sırasında Video Sesi</span>
-              <span id="duckingLevelVal" class="text-rose-400 font-bold">%30</span>
+              <span id="duckingLevelVal" class="text-rose-400 font-bold">30%</span>
             </div>
             <input type="range" id="duckingLevelSlider" min="10" max="60" value="30" class="w-full accent-[#A64D79]">
             <p class="text-[10px] text-gray-400 mt-1" data-i18n="ducking_desc">Biri konuştuğunda video sesini otomatik kısar.</p>
@@ -1983,7 +1988,7 @@
   </div>
 
   <!-- Delete Account Confirmation Modal -->
-  <div id="deleteAccountModal" class="fixed inset-0 bg-black/85 backdrop-blur-md z-[100] hidden items-center justify-center p-4">
+  <div id="deleteAccountModal" class="fixed inset-0 bg-black/95 z-[100] hidden items-center justify-center p-4">
     <div class="bg-[#14080F] border border-white/10 rounded-3xl p-6 sm:p-7 max-w-sm w-full shadow-2xl relative space-y-4">
       <div class="flex items-center gap-3">
         <div class="w-10 h-10 rounded-2xl bg-white/5 border border-white/10 flex items-center justify-center text-rose-400 shrink-0">
@@ -2014,14 +2019,14 @@
   </div>
 
   <!-- Friends Modal (Arkadaşlarım & Arkadaş Ekle) -->
-  <div id="friendsModal" class="fixed inset-0 bg-black/80 backdrop-blur-md z-50 hidden flex items-center justify-center p-4">
+  <div id="friendsModal" class="fixed inset-0 bg-black/92 z-50 hidden flex items-center justify-center p-4">
     <div class="bg-[#0E111A] border border-white/10 rounded-3xl p-6 sm:p-7 max-w-md w-full shadow-2xl relative overflow-hidden space-y-5">
       
       <!-- Modal Header -->
       <div class="flex items-center justify-between border-b border-white/5 pb-3">
         <h3 class="font-bold text-sm text-white flex items-center gap-2">
           <svg class="w-4 h-4 text-rose-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"/></svg>
-          <span>Arkadaşlar & Ortak İzleme</span>
+          <span data-i18n="friends_modal_title">Arkadaşlar & Ortak İzleme</span>
         </h3>
         <button id="closeFriendsModalBtn" class="close-modal-btn w-9 h-9 rounded-full bg-white/10 hover:bg-white/20 active:scale-95 text-gray-200 hover:text-white flex items-center justify-center text-sm font-bold transition-all cursor-pointer select-none">✕</button>
       </div>
@@ -2033,22 +2038,22 @@
             @
           </div>
           <div>
-            <span class="text-[10px] text-gray-400 uppercase tracking-wider block font-semibold">Senin Kullanıcı Adın</span>
+            <span class="text-[10px] text-gray-400 uppercase tracking-wider block font-semibold" data-i18n="your_username_label">Senin Kullanıcı Adın</span>
             <span id="myFriendCodeDisplay" class="text-xs font-bold text-rose-300">@kullanici</span>
           </div>
         </div>
         <button id="copyMyFriendCodeBtn" class="px-3 py-1.5 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl text-[11px] font-semibold text-gray-200 hover:text-white transition-all flex items-center gap-1.5 cursor-pointer">
-          <svg class="w-3 h-3 text-rose-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>
-          <span>Kopyala</span>
+          <svg class="w-3.5 h-3.5 text-rose-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>
+          <span data-i18n="copy_btn">Kopyala</span>
         </button>
       </div>
 
       <!-- Add Friend Bar (By Username) -->
       <div>
-        <label class="block text-xs font-medium text-gray-300 mb-1.5">İsimden Arkadaş Ekle (Kullanıcı Adı)</label>
+        <label class="block text-xs font-medium text-gray-300 mb-1.5" data-i18n="add_friend_by_name">İsimden Arkadaş Ekle (Kullanıcı Adı)</label>
         <div class="flex items-center gap-2">
-          <input type="text" id="addFriendInput" placeholder="Kullanıcı adı girin (örn: @selin veya can)" class="flex-1 bg-black/40 border border-white/10 rounded-xl px-3.5 py-2 text-xs text-white placeholder-gray-500 focus:outline-none focus:border-rose-500 transition-all font-medium">
-          <button id="submitAddFriendBtn" class="px-4 py-2 bg-gradient-to-r from-rose-500 to-indigo-600 hover:opacity-95 text-white font-bold text-xs rounded-xl shadow-md shadow-rose-500/20 transition-all whitespace-nowrap cursor-pointer">
+          <input type="text" id="addFriendInput" data-i18n-placeholder="add_friend_ph" placeholder="Kullanıcı adı girin (örn: @selin veya can)" class="flex-1 bg-black/40 border border-white/10 rounded-xl px-3.5 py-2 text-xs text-white placeholder-gray-500 focus:outline-none focus:border-rose-500 transition-all font-medium">
+          <button id="submitAddFriendBtn" class="px-4 py-2 bg-gradient-to-r from-rose-500 to-indigo-600 hover:opacity-95 text-white font-bold text-xs rounded-xl shadow-md shadow-rose-500/20 transition-all whitespace-nowrap cursor-pointer" data-i18n="add_btn">
             Ekle
           </button>
         </div>
@@ -2057,13 +2062,13 @@
       <!-- Friends List with Search Filter -->
       <div>
         <div class="flex items-center justify-between mb-2">
-          <span class="text-xs font-medium text-gray-400">Kayıtlı Arkadaşlar (<span id="friendsCountDisplay">3</span>)</span>
-          <span class="text-[10px] text-emerald-400 font-medium">Çevrimiçi</span>
+          <span class="text-xs font-medium text-gray-400"><span data-i18n="saved_friends_header">Kayıtlı Arkadaşlar</span> (<span id="friendsCountDisplay">3</span>)</span>
+          <span class="text-[10px] text-emerald-400 font-medium" data-i18n="online_label">Çevrimiçi</span>
         </div>
 
         <!-- Instant Friend Search Filter Bar -->
         <div class="relative mb-2.5">
-          <input type="text" id="friendSearchInput" placeholder="Arkadaşlarım arasında ara..." class="w-full bg-black/40 border border-white/10 rounded-xl pl-8 pr-3 py-1.5 text-xs text-white placeholder-gray-500 focus:outline-none focus:border-rose-500 transition-all font-medium">
+          <input type="text" id="friendSearchInput" data-i18n-placeholder="search_friends_ph" placeholder="Arkadaşlarım arasında ara..." class="w-full bg-black/40 border border-white/10 rounded-xl pl-8 pr-3 py-1.5 text-xs text-white placeholder-gray-500 focus:outline-none focus:border-rose-500 transition-all font-medium">
           <svg class="w-3.5 h-3.5 text-gray-400 absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
         </div>
         
@@ -2076,7 +2081,7 @@
   </div>
 
   <!-- Room Participants & Management Modal (Odadakiler, Yetki Verme, Odadan Atma) -->
-  <div id="roomParticipantsModal" class="fixed inset-0 bg-black/80 backdrop-blur-md z-50 hidden items-center justify-center p-4">
+  <div id="roomParticipantsModal" class="fixed inset-0 bg-black/92 z-50 hidden items-center justify-center p-4">
     <div class="bg-[#0E111A] border border-white/10 rounded-3xl p-5 sm:p-6 max-w-md w-full shadow-2xl relative overflow-hidden space-y-4">
       
       <!-- Modal Header -->

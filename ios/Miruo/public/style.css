@@ -434,4 +434,28 @@ body.modal-open-freeze {
   overflow: hidden !important;
 }
 
+/* Top notch and Island synchronization: 100% solid, zero blur leak across all iPhones */
+#iosTopSafeShield {
+  position: fixed !important;
+  top: 0 !important;
+  left: 0 !important;
+  right: 0 !important;
+  height: max(20px, env(safe-area-inset-top)) !important;
+  background-color: #000000 !important;
+  z-index: 999998 !important;
+  pointer-events: none !important;
+}
+
+#roomStickyHeader {
+  background-color: #000000 !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+#mainHeader {
+  background-color: #000000 !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
 
