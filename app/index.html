@@ -169,8 +169,8 @@
       <!-- Celestial Starfield Canvas (Sliding shooting stars matching Miruo official website) -->
       <canvas id="profileStarCanvas" class="pointer-events-none absolute inset-0 w-full h-full z-0"></canvas>
 
-      <!-- TOP HEADER (ÜSTTE DÜZENLE TARAFI) -->
-      <div class="relative z-10 bg-[#0C0E17]/90 backdrop-blur-2xl border border-white/10 rounded-2xl p-3.5 flex flex-col gap-2.5 shadow-2xl">
+      <!-- TOP HEADER (ÜSTTE DÜZENLE TARAFI - YILDIZLARIN AKTIĞI SAYDAM ZEMİN) -->
+      <div class="relative z-10 px-1 py-1 flex flex-col gap-2.5">
         <!-- Top Bar: App Title on left, Edit & Settings on right -->
         <div class="flex items-center justify-between">
           <div class="flex items-center gap-1.5">
@@ -194,41 +194,39 @@
           </div>
         </div>
 
-        <!-- Identity Subheader: User Name, @handle & Rules Button -->
+        <!-- Identity Subheader: User Name, @handle & Title -->
         <div class="flex items-center justify-between px-0.5">
           <div>
             <h2 id="tabProfileFullName" class="text-base font-black text-white tracking-tight leading-tight">Mehmet Karabulut</h2>
             <p id="tabProfileUsername" class="text-xs font-semibold text-rose-300">@mehmet_vip</p>
           </div>
-          <button id="affinityInfoBtn" type="button" class="px-2.5 py-1 rounded-xl bg-white/5 hover:bg-white/10 text-gray-300 text-[10px] font-bold border border-white/10 flex items-center gap-1 transition-all cursor-pointer">
-            <span>ℹ️</span> <span>Nasıl Çalışır?</span>
-          </button>
+          <span class="px-2.5 py-1 rounded-xl bg-white/5 border border-white/10 text-white text-[10px] font-black uppercase tracking-wider">İlişkiler</span>
         </div>
 
-        <!-- Relationship Category Counter Bar (NO HEARTS!) -->
+        <!-- Relationship Category Counter Bar (NO ICONS, ONLY TEXT) -->
         <div class="grid grid-cols-4 gap-1.5 pt-0.5 text-center select-none">
-          <div class="px-2 py-1 rounded-xl bg-black/40 border border-rose-500/25 flex flex-col items-center">
-            <span class="text-[9px] font-bold text-rose-300">👑 Partner</span>
+          <div class="px-1.5 py-1.5 rounded-xl bg-white/[0.04] border border-rose-500/25 flex flex-col items-center">
+            <span class="text-[9px] font-extrabold text-rose-300">Partner</span>
             <span id="affinityCountPartner" class="text-[8px] text-gray-300 font-bold">0/1</span>
           </div>
-          <div class="px-2 py-1 rounded-xl bg-black/40 border border-cyan-500/25 flex flex-col items-center">
-            <span class="text-[9px] font-bold text-cyan-300">🤝 Kanka</span>
+          <div class="px-1.5 py-1.5 rounded-xl bg-white/[0.04] border border-cyan-500/25 flex flex-col items-center">
+            <span class="text-[9px] font-extrabold text-cyan-300">Kanka</span>
             <span id="affinityCountBro" class="text-[8px] text-gray-300 font-bold">0/3</span>
           </div>
-          <div class="px-2 py-1 rounded-xl bg-black/40 border border-purple-500/25 flex flex-col items-center">
-            <span class="text-[9px] font-bold text-purple-300">✨ Yakın Ark.</span>
+          <div class="px-1.5 py-1.5 rounded-xl bg-white/[0.04] border border-purple-500/25 flex flex-col items-center">
+            <span class="text-[9px] font-extrabold text-purple-300">Yakın Ark.</span>
             <span id="affinityCountBestie" class="text-[8px] text-gray-300 font-bold">0/3</span>
           </div>
-          <div class="px-2 py-1 rounded-xl bg-black/40 border border-amber-500/25 flex flex-col items-center">
-            <span class="text-[9px] font-bold text-amber-300">🗝️ Sırdaş</span>
+          <div class="px-1.5 py-1.5 rounded-xl bg-white/[0.04] border border-amber-500/25 flex flex-col items-center">
+            <span class="text-[9px] font-extrabold text-amber-300">Sırdaş</span>
             <span id="affinityCountConfidant" class="text-[8px] text-gray-300 font-bold">0/2</span>
           </div>
         </div>
       </div>
 
-      <!-- 1.3.1 THE CONSTELLATION GRAPH (Our Big Photo in Center, 9 Radiating Branches) -->
+      <!-- 1.3.1 THE CONSTELLATION GRAPH (Our Big Photo in Center, 9 Radiating Branches, Transparent background) -->
       <div id="profileAffinityCard" class="relative z-10 w-full flex-1 flex flex-col items-center justify-center">
-        <div id="affinityConstellationContainer" class="relative w-full aspect-square max-w-[390px] mx-auto overflow-hidden rounded-3xl bg-[#080711]/90 border border-white/10 flex items-center justify-center select-none shadow-2xl">
+        <div id="affinityConstellationContainer" class="relative w-full aspect-square max-w-[390px] mx-auto overflow-hidden rounded-3xl bg-transparent flex items-center justify-center select-none">
           <!-- Background Celestial Ring Graphic -->
           <div class="pointer-events-none absolute inset-0 flex items-center justify-center">
             <div class="w-4/5 h-4/5 rounded-full border border-purple-500/10"></div>
@@ -2409,25 +2407,17 @@
     <div class="bg-[#0C0E1B] border border-white/15 rounded-t-3xl sm:rounded-3xl max-w-md w-full p-5 shadow-2xl space-y-4 max-h-[88vh] flex flex-col">
       <!-- Header -->
       <div class="flex items-center justify-between pb-1 border-b border-white/10">
-        <div class="flex items-center gap-2.5">
-          <span id="affinityPickerCategoryIcon" class="text-xl">❤️</span>
-          <div>
-            <h3 id="affinityPickerTitle" class="text-sm font-extrabold text-white">Partner Seç</h3>
-            <p class="text-[10px] text-gray-400">En az 3 saat birlikte izlenen arkadaşını bağla</p>
-          </div>
+        <div>
+          <h3 id="affinityPickerTitle" class="text-sm font-extrabold text-white">Partner Seç</h3>
+          <p class="text-[10px] text-gray-400">En az 3 saat birlikte izlenen arkadaşını bağla</p>
         </div>
         <button id="closeAffinityPickerBtn" type="button" class="w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 active:scale-95 text-gray-300 hover:text-white flex items-center justify-center text-xs font-bold transition-all cursor-pointer">✕</button>
       </div>
 
       <!-- 3-Hour Criterion Banner -->
-      <div class="p-3 rounded-2xl bg-gradient-to-r from-rose-500/15 via-purple-500/10 to-indigo-500/15 border border-rose-500/30 flex items-start gap-2.5 shrink-0">
-        <div class="w-7 h-7 rounded-xl bg-rose-500/20 text-rose-300 flex items-center justify-center shrink-0 mt-0.5">
-          ⏱️
-        </div>
-        <div class="text-[11px] leading-relaxed">
-          <span class="font-extrabold text-white block">3 Saat Birlikte İzleme Kuralı</span>
-          <span class="text-gray-300">Partnerlik ve ilişki bağı kurabilmek için o kullanıcıyla en az 3 saat (180 dakika) video izlemiş olmanız gerekmektedir.</span>
-        </div>
+      <div class="p-3 rounded-2xl bg-white/5 border border-white/10 flex flex-col gap-1 shrink-0">
+        <span class="font-extrabold text-white text-xs block">3 Saat Birlikte İzleme Şartı</span>
+        <span class="text-[11px] text-gray-300 leading-relaxed">İlişki bağı kurabilmek için seçilen kullanıcıyla en az 3 saat (180 dakika) video izlemiş olmanız gerekmektedir.</span>
       </div>
 
       <!-- Friends List Container (Categorized into Eligible & Locked) -->
@@ -2438,7 +2428,7 @@
       <!-- Quick Test/Simulation Bar for Demo/Testing -->
       <div class="p-2.5 rounded-2xl bg-white/5 border border-white/10 flex flex-col gap-1.5 shrink-0">
         <div class="flex items-center justify-between text-[10px]">
-          <span class="font-bold text-gray-300 flex items-center gap-1">⚡ <span>Test Simülatörü (+30 Dk İzleme Ekle):</span></span>
+          <span class="font-bold text-gray-300">Test Simülatörü (+30 Dk İzleme Ekle):</span>
           <span class="text-gray-500 text-[9px]">Test için tıkla</span>
         </div>
         <div class="flex items-center gap-1.5 flex-wrap" id="affinityQuickSimBtns">
@@ -2452,8 +2442,8 @@
   <div id="affinitySlotDetailModal" class="fixed inset-0 z-[100000] flex items-end sm:items-center justify-center bg-black/85 backdrop-blur-md p-0 sm:p-4 hidden animate-fade-in">
     <div class="bg-[#0C0E1B] border border-white/15 rounded-t-3xl sm:rounded-3xl max-w-sm w-full p-5 shadow-2xl space-y-4">
       <div class="flex items-center justify-between">
-        <span id="affinityDetailCategoryPill" class="px-2.5 py-1 rounded-full text-xs font-bold bg-rose-500/20 text-rose-300 border border-rose-500/30 flex items-center gap-1">
-          👑 Partner
+        <span id="affinityDetailCategoryPill" class="px-2.5 py-1 rounded-full text-xs font-extrabold bg-rose-500/20 text-rose-300 border border-rose-500/30">
+          Partner
         </span>
         <button id="closeAffinitySlotDetailBtn" type="button" class="w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 active:scale-95 text-gray-300 hover:text-white flex items-center justify-center text-xs font-bold transition-all cursor-pointer">✕</button>
       </div>
@@ -2473,11 +2463,11 @@
       <div class="grid grid-cols-2 gap-2 text-center">
         <div class="p-3 rounded-2xl bg-white/5 border border-white/10">
           <span class="text-[10px] text-gray-400 block font-semibold">Birlikte İzleme</span>
-          <span id="affinityDetailWatchTime" class="text-xs font-black text-emerald-400">⏱️ 3.6 saat</span>
+          <span id="affinityDetailWatchTime" class="text-xs font-black text-emerald-400">3.6 saat</span>
         </div>
         <div class="p-3 rounded-2xl bg-white/5 border border-white/10">
           <span class="text-[10px] text-gray-400 block font-semibold">Bağ Seviyesi</span>
-          <span id="affinityDetailLevel" class="text-xs font-black text-purple-300">✨ Samimiyet Lv.1</span>
+          <span id="affinityDetailLevel" class="text-xs font-black text-purple-300">1. Seviye</span>
         </div>
       </div>
 
@@ -2485,52 +2475,28 @@
       <div class="space-y-2 pt-1">
         <button id="affinityDetailViewProfileBtn" type="button" class="w-full py-2.5 rounded-xl bg-white/10 hover:bg-white/15 active:scale-98 text-white text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-2 border border-white/10">
           <svg class="w-4 h-4 text-cyan-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
-          <span>Kullanıcı Profilini ve İlişki Ağını Gör</span>
+          <span>Profili Gör</span>
         </button>
-        <button id="affinityDetailInviteBtn" type="button" class="w-full py-2.5 rounded-xl bg-gradient-to-r from-rose-600 to-purple-600 hover:opacity-95 active:scale-98 text-white text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-2 shadow-md">
+        <button id="affinityDetailInviteBtn" type="button" class="w-full py-2.5 rounded-xl bg-gradient-to-r from-rose-600 via-pink-600 to-[#A64D79] hover:opacity-95 active:scale-98 text-white text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-2 shadow-md">
           <svg class="w-4 h-4 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg>
-          <span>Odaya Birlikte İzlemeye Çağır</span>
+          <span>Birlikte İzlemeye Çağır</span>
         </button>
-        <button id="affinityDetailUnbindBtn" type="button" class="w-full py-2 rounded-xl bg-red-500/10 hover:bg-red-500/20 active:scale-98 text-red-400 text-xs font-semibold transition-all cursor-pointer flex items-center justify-center gap-1.5 border border-red-500/20">
+        <button id="affinityDetailUnbindBtn" type="button" class="w-full py-2.5 rounded-xl bg-red-500/15 hover:bg-red-500/25 active:scale-98 text-red-300 text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5 border border-red-500/30">
           <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-          <span>Bağı Kaldır (Slotu Boşalt)</span>
+          <span>Bağlantıyı Kaldır</span>
         </button>
       </div>
     </div>
   </div>
 
-  <!-- AFFINITY HOW IT WORKS MODAL -->
-  <div id="affinityRuleModal" class="fixed inset-0 z-[100000] flex items-center justify-center bg-black/85 backdrop-blur-md p-4 hidden animate-fade-in">
-    <div class="bg-[#0C0E1B] border border-white/15 rounded-3xl max-w-sm w-full p-5 shadow-2xl space-y-4">
-      <div class="flex items-center justify-between">
-        <h3 class="text-sm font-extrabold text-white flex items-center gap-2">
-          <span>✨ Mobile Legends Tarzı Partnerlik</span>
-        </h3>
-        <button id="closeAffinityRuleBtn" type="button" class="w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 active:scale-95 text-gray-300 hover:text-white flex items-center justify-center text-xs font-bold transition-all cursor-pointer">✕</button>
-      </div>
-      <div class="text-xs text-gray-300 space-y-2.5 leading-relaxed">
-        <p>🎮 <strong>İlişki Ağı:</strong> Profilinizde tıpkı Mobile Legends: Bang Bang oyunundaki gibi yıldız haritası dalları şeklinde arkadaşlarınızla partnerlik bağı kurabilirsiniz.</p>
-        <p>⏱️ <strong>3 Saat Kuralı:</strong> Bir arkadaşınızla bağ kurabilmeniz için onunla en az <strong>3 saat (180 dakika)</strong> video izlemiş olmanız gerekir.</p>
-        <p>👑 <strong>Kategoriler:</strong></p>
-        <ul class="space-y-1 pl-2 text-[11px]">
-          <li>• <span class="text-rose-400 font-bold">👑 Partner:</span> 1 Özel Slot (En değerli partneriniz)</li>
-          <li>• <span class="text-cyan-400 font-bold">🤝 Kankalar:</span> 3 Slot (Dizi & film yoldaşlarınız)</li>
-          <li>• <span class="text-purple-400 font-bold">✨ Yakın Arkadaşlar:</span> 3 Slot (En iyi dostlarınız)</li>
-          <li>• <span class="text-amber-400 font-bold">🗝️ Sırdaşlar:</span> 2 Slot (Gece kuşu izleme ortaklarınız)</li>
-        </ul>
-        <p>👥 <strong>Herkese Açık Profil:</strong> Bir başkasının profiline baktığınızda da onun ilişki haritasını ve partnerlerini canlı olarak görebilirsiniz!</p>
-      </div>
-      <button id="confirmAffinityRuleBtn" type="button" class="w-full py-2.5 rounded-xl bg-gradient-to-r from-rose-600 via-pink-600 to-[#A64D79] text-white text-xs font-bold active:scale-98 transition-all cursor-pointer shadow-md">
-        Anladım
-      </button>
-    </div>
-  </div>
+  <!-- DEDICATED PUBLIC USER PROFILE MODAL (Viewing someone else's profile with Starfield Background) -->
+  <div id="userPublicProfileModal" class="fixed inset-0 text-white z-[99999] hidden flex-col w-screen h-screen overflow-hidden bg-[#07060f]" style="position: fixed !important; top: 0 !important; left: 0 !important; right: 0 !important; bottom: 0 !important; width: 100vw !important; height: 100vh !important; z-index: 99999 !important; overscroll-behavior: none !important;">
+    <!-- Celestial Starfield Canvas for Public Profile (Sliding shooting stars) -->
+    <canvas id="publicProfileStarCanvas" class="pointer-events-none absolute inset-0 w-full h-full z-0"></canvas>
 
-  <!-- DEDICATED PUBLIC USER PROFILE MODAL (Viewing someone else's profile with their MLBB Affinity Tree) -->
-  <div id="userPublicProfileModal" class="fixed inset-0 bg-[#0B0910] text-white z-[99999] hidden flex-col w-screen h-screen overflow-hidden" style="background-color: #0B0910 !important; position: fixed !important; top: 0 !important; left: 0 !important; right: 0 !important; bottom: 0 !important; width: 100vw !important; height: 100vh !important; z-index: 99999 !important; overscroll-behavior: none !important;">
     <!-- Top Bar -->
-    <header class="flex items-center justify-between px-4 py-3 bg-[#0B0910] border-b border-white/10 shrink-0 select-none" style="padding-top: max(16px, calc(env(safe-area-inset-top) + 8px));">
-      <button id="closePublicProfileBtn" type="button" class="w-9 h-9 rounded-full bg-white/10 hover:bg-white/20 active:scale-95 text-white flex items-center justify-center font-bold text-sm transition-all cursor-pointer" title="Geri">
+    <header class="relative z-10 flex items-center justify-between px-4 py-3 bg-black/40 backdrop-blur-md border-b border-white/10 shrink-0 select-none" style="padding-top: max(16px, calc(env(safe-area-inset-top) + 8px));">
+      <button id="closePublicProfileBtn" type="button" class="w-9 h-9 rounded-full bg-white/10 hover:bg-white/20 active:scale-90 text-white flex items-center justify-center font-black text-base transition-all cursor-pointer shadow-sm" title="Geri">
         ←
       </button>
       <div class="text-center">
@@ -2541,9 +2507,9 @@
     </header>
 
     <!-- Scrollable Content -->
-    <main class="flex-1 w-full overflow-y-auto no-scrollbar p-4 space-y-4" style="-webkit-overflow-scrolling: touch; padding-bottom: max(32px, env(safe-area-inset-bottom));">
+    <main class="relative z-10 flex-1 w-full overflow-y-auto no-scrollbar p-4 space-y-4" style="-webkit-overflow-scrolling: touch; padding-bottom: max(32px, env(safe-area-inset-bottom));">
       <!-- User Main Card -->
-      <div class="bg-[#0C0E17]/85 backdrop-blur-xl border border-white/10 rounded-3xl p-6 flex flex-col items-center justify-center text-center shadow-2xl space-y-3 relative">
+      <div class="bg-white/[0.04] backdrop-blur-md border border-white/10 rounded-3xl p-6 flex flex-col items-center justify-center text-center shadow-2xl space-y-3 relative">
         <div class="relative">
           <div id="publicProfileAvatar" class="w-20 h-20 rounded-full bg-gradient-to-tr from-rose-500 to-indigo-600 flex items-center justify-center text-2xl font-black text-white shadow-xl overflow-hidden border-2 border-rose-400/40 ring-4 ring-rose-500/10">
             K
@@ -2556,7 +2522,7 @@
           <p id="publicProfileUsername" class="text-xs font-semibold text-rose-300 mt-0.5">@kullanici</p>
           <div class="mt-1 flex items-center justify-center gap-1.5">
             <span id="publicProfileStatusText" class="text-[10px] font-bold text-emerald-400 bg-emerald-500/15 border border-emerald-500/30 px-2.5 py-0.5 rounded-full">Çevrimiçi</span>
-            <span id="publicProfileRelationWithMeBadge" class="text-[10px] font-bold text-rose-300 bg-rose-500/15 border border-rose-500/30 px-2.5 py-0.5 rounded-full hidden">👑 Senin Partnerin</span>
+            <span id="publicProfileRelationWithMeBadge" class="text-[10px] font-bold text-rose-300 bg-rose-500/15 border border-rose-500/30 px-2.5 py-0.5 rounded-full hidden">Senin Partnerin</span>
           </div>
         </div>
 
@@ -2564,7 +2530,7 @@
         <div class="grid grid-cols-2 gap-2 w-full pt-1">
           <div class="p-2.5 rounded-2xl bg-white/5 border border-white/10 text-center">
             <span class="text-[9px] text-gray-400 block font-semibold">Birlikte İzleme</span>
-            <span id="publicProfileWatchHours" class="text-xs font-black text-emerald-400">⏱️ 3.6s</span>
+            <span id="publicProfileWatchHours" class="text-xs font-black text-emerald-400">3.6 saat</span>
           </div>
           <div class="p-2.5 rounded-2xl bg-white/5 border border-white/10 text-center">
             <span class="text-[9px] text-gray-400 block font-semibold">Arkadaşlar</span>
@@ -2585,26 +2551,20 @@
         </div>
       </div>
 
-      <!-- Mobile Legends Style Affinity Constellation of this user -->
-      <div class="bg-gradient-to-b from-[#130E26]/90 via-[#0A0D1A]/95 to-[#080711] backdrop-blur-xl border border-rose-500/25 rounded-3xl p-4 sm:p-5 shadow-2xl flex flex-col gap-3">
+      <!-- Relations Constellation of this user -->
+      <div class="bg-white/[0.03] backdrop-blur-md border border-white/10 rounded-3xl p-4 sm:p-5 shadow-2xl flex flex-col gap-3">
         <div class="flex items-center justify-between">
           <div class="flex items-center gap-2">
-            <div class="w-8 h-8 rounded-xl bg-gradient-to-tr from-rose-500 to-purple-600 flex items-center justify-center text-white shadow-md">
-              <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
-            </div>
             <div>
-              <div class="flex items-center gap-1.5">
-                <h3 class="text-sm font-black text-transparent bg-clip-text bg-gradient-to-r from-rose-400 via-pink-300 to-purple-300 tracking-wider uppercase">PARTNERLİK & İLİŞKİLER</h3>
-                <span class="px-1.5 py-0.5 rounded-full text-[9px] font-extrabold bg-rose-500/20 text-rose-300 border border-rose-500/30">MLBB</span>
-              </div>
-              <p id="publicAffinitySubtitle" class="text-[10px] text-gray-400">Bu kullanıcının kurduğu bağlar</p>
+              <h3 class="text-sm font-black text-white tracking-wider uppercase">İlişkiler</h3>
+              <p id="publicAffinitySubtitle" class="text-[10px] text-gray-400">Kullanıcının kurduğu bağlar</p>
             </div>
           </div>
           <span class="px-2 py-0.5 rounded-full bg-white/5 border border-white/10 text-[10px] text-gray-300 font-semibold">Görüntüleme Modu</span>
         </div>
 
         <!-- The Constellation Canvas / Graph (for this public user) -->
-        <div id="publicAffinityContainer" class="relative w-full aspect-square max-w-[360px] mx-auto overflow-hidden rounded-2xl bg-[#090814]/90 border border-white/5 flex items-center justify-center select-none shadow-inner">
+        <div id="publicAffinityContainer" class="relative w-full aspect-square max-w-[360px] mx-auto overflow-hidden rounded-2xl bg-transparent flex items-center justify-center select-none">
           <div class="pointer-events-none absolute inset-0 flex items-center justify-center">
             <div class="w-4/5 h-4/5 rounded-full border border-purple-500/10"></div>
             <div class="absolute w-1/2 h-1/2 rounded-full border border-rose-500/15"></div>
@@ -2616,7 +2576,7 @@
           </svg>
 
           <div id="publicAffinityNodesLayer" class="absolute inset-0 w-full h-full pointer-events-auto">
-            <!-- Injected by renderPublicAffinityTree() -->
+            <!-- Injected by renderAffinityTree() -->
           </div>
         </div>
       </div>
