@@ -376,14 +376,114 @@ body.stage-is-fullscreen #selfPipCard {
   display: none !important;
 }
 
-/* Fullscreen Live Chat Overlay (Classic YouTube Live Format) */
+/* Fullscreen Live Chat Overlay (Classic YouTube Live Format - Responsive Portrait & Landscape) */
 #stageContainer:fullscreen #fsChatOverlay,
 #stageContainer:-webkit-full-screen #fsChatOverlay,
 #stageContainer.is-fullscreen-pseudo #fsChatOverlay,
 body.stage-is-fullscreen #fsChatOverlay {
   z-index: 999998 !important;
-  max-height: calc(100vh - 80px) !important;
   pointer-events: auto !important;
+}
+
+/* Portrait Mode: Chat covers the bottom down to the screen edge smoothly without empty black space */
+@media (orientation: portrait) {
+  #stageContainer:fullscreen #fsChatOverlay,
+  #stageContainer:-webkit-full-screen #fsChatOverlay,
+  #stageContainer.is-fullscreen-pseudo #fsChatOverlay,
+  body.stage-is-fullscreen #fsChatOverlay {
+    position: absolute !important;
+    left: 0 !important;
+    right: 0 !important;
+    bottom: 0 !important;
+    top: auto !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    height: 56vh !important;
+    max-height: 56vh !important;
+    border-radius: 24px 24px 0 0 !important;
+    border-left: none !important;
+    border-right: none !important;
+    border-bottom: none !important;
+    border-top: 1px solid rgba(255, 255, 255, 0.15) !important;
+    box-shadow: 0 -12px 40px rgba(0, 0, 0, 0.85) !important;
+    padding-bottom: max(16px, env(safe-area-inset-bottom, 16px)) !important;
+  }
+
+  /* When chat is active in portrait fullscreen, align video to top smoothly */
+  #stageContainer:fullscreen.fs-chat-active #player,
+  #stageContainer:-webkit-full-screen.fs-chat-active #player,
+  #stageContainer.is-fullscreen-pseudo.fs-chat-active #player,
+  #stageContainer:fullscreen.fs-chat-active #nativeVideoPlayer,
+  #stageContainer:-webkit-full-screen.fs-chat-active #nativeVideoPlayer,
+  #stageContainer.is-fullscreen-pseudo.fs-chat-active #nativeVideoPlayer,
+  #stageContainer:fullscreen.fs-chat-active #webPlayerFrame,
+  #stageContainer:-webkit-full-screen.fs-chat-active #webPlayerFrame,
+  #stageContainer.is-fullscreen-pseudo.fs-chat-active #webPlayerFrame,
+  #stageContainer:fullscreen.fs-chat-active #remoteScreenPlayer,
+  #stageContainer:-webkit-full-screen.fs-chat-active #remoteScreenPlayer,
+  #stageContainer.is-fullscreen-pseudo.fs-chat-active #remoteScreenPlayer,
+  #stageContainer:fullscreen.fs-chat-active #ravePlayerOverlay,
+  #stageContainer:-webkit-full-screen.fs-chat-active #ravePlayerOverlay,
+  #stageContainer.is-fullscreen-pseudo.fs-chat-active #ravePlayerOverlay,
+  body.stage-is-fullscreen.fs-chat-active #player,
+  body.stage-is-fullscreen.fs-chat-active #nativeVideoPlayer,
+  body.stage-is-fullscreen.fs-chat-active #webPlayerFrame,
+  body.stage-is-fullscreen.fs-chat-active #remoteScreenPlayer,
+  body.stage-is-fullscreen.fs-chat-active #ravePlayerOverlay {
+    top: 2% !important;
+    height: 40vh !important;
+    max-height: 40vh !important;
+    transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1) !important;
+  }
+}
+
+/* Landscape Mode: Chat stretches full height top-to-bottom, video shifts left gracefully */
+@media (orientation: landscape) {
+  #stageContainer:fullscreen #fsChatOverlay,
+  #stageContainer:-webkit-full-screen #fsChatOverlay,
+  #stageContainer.is-fullscreen-pseudo #fsChatOverlay,
+  body.stage-is-fullscreen #fsChatOverlay {
+    position: absolute !important;
+    top: 0 !important;
+    bottom: 0 !important;
+    right: 0 !important;
+    height: 100vh !important;
+    max-height: 100vh !important;
+    border-radius: 0 !important;
+    border-top: none !important;
+    border-bottom: none !important;
+    border-right: none !important;
+    border-left: 1px solid rgba(255, 255, 255, 0.15) !important;
+    width: 320px !important;
+    max-width: 360px !important;
+    padding-bottom: max(8px, env(safe-area-inset-bottom, 8px)) !important;
+  }
+
+  /* Shift video left when chat is active in landscape fullscreen */
+  #stageContainer:fullscreen.fs-chat-active #player,
+  #stageContainer:-webkit-full-screen.fs-chat-active #player,
+  #stageContainer.is-fullscreen-pseudo.fs-chat-active #player,
+  #stageContainer:fullscreen.fs-chat-active #nativeVideoPlayer,
+  #stageContainer:-webkit-full-screen.fs-chat-active #nativeVideoPlayer,
+  #stageContainer.is-fullscreen-pseudo.fs-chat-active #nativeVideoPlayer,
+  #stageContainer:fullscreen.fs-chat-active #webPlayerFrame,
+  #stageContainer:-webkit-full-screen.fs-chat-active #webPlayerFrame,
+  #stageContainer.is-fullscreen-pseudo.fs-chat-active #webPlayerFrame,
+  #stageContainer:fullscreen.fs-chat-active #remoteScreenPlayer,
+  #stageContainer:-webkit-full-screen.fs-chat-active #remoteScreenPlayer,
+  #stageContainer.is-fullscreen-pseudo.fs-chat-active #remoteScreenPlayer,
+  #stageContainer:fullscreen.fs-chat-active #ravePlayerOverlay,
+  #stageContainer:-webkit-full-screen.fs-chat-active #ravePlayerOverlay,
+  #stageContainer.is-fullscreen-pseudo.fs-chat-active #ravePlayerOverlay,
+  body.stage-is-fullscreen.fs-chat-active #player,
+  body.stage-is-fullscreen.fs-chat-active #nativeVideoPlayer,
+  body.stage-is-fullscreen.fs-chat-active #webPlayerFrame,
+  body.stage-is-fullscreen.fs-chat-active #remoteScreenPlayer,
+  body.stage-is-fullscreen.fs-chat-active #ravePlayerOverlay {
+    margin-right: 320px !important;
+    width: calc(100% - 320px) !important;
+    transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1) !important;
+  }
 }
 
 #stageContainer:fullscreen #openFsChatFloatingBtn,

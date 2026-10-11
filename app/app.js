@@ -2078,8 +2078,22 @@ const dom = {
   profileEditModalScrollBody: document.getElementById('profileEditModalScrollBody')
 };
 
-// Background View Freezing & Unfreezing for Modals (Guarantees zero background bleed)
+// Background View Freezing & Unfreezing for Modals (Guarantees zero background bleed & never gets stuck)
 let activeModalCount = 0;
+
+function areAnyModalsVisible() {
+  const modalIds = [
+    'authModal',
+    'dedicatedProfileEditModal',
+    'userPublicProfileModal',
+    'deleteAccountModal',
+    'resetPasswordModal'
+  ];
+  return modalIds.some(id => {
+    const el = document.getElementById(id);
+    return el && !el.classList.contains('hidden') && el.style.display !== 'none';
+  });
+}
 
 function freezeBackgroundForModal() {
   activeModalCount++;
@@ -2092,9 +2106,14 @@ function freezeBackgroundForModal() {
   if (profileTab) profileTab.classList.add('hidden');
 }
 
-function unfreezeBackgroundAfterModal() {
-  activeModalCount = Math.max(0, activeModalCount - 1);
-  if (activeModalCount === 0) {
+function unfreezeBackgroundAfterModal(force = false) {
+  if (force || !areAnyModalsVisible()) {
+    activeModalCount = 0;
+  } else {
+    activeModalCount = Math.max(0, activeModalCount - 1);
+  }
+  if (activeModalCount === 0 || !areAnyModalsVisible()) {
+    activeModalCount = 0;
     document.body.classList.remove('modal-open-freeze');
     if (!state.isInRoom) {
       const profileTab = document.getElementById('profileTabSection');
@@ -2120,6 +2139,8 @@ function unfreezeBackgroundAfterModal() {
     }
   }
 }
+window.unfreezeBackgroundAfterModal = unfreezeBackgroundAfterModal;
+window.areAnyModalsVisible = areAnyModalsVisible;
 
 // Universal responsive click & tap handler
 function addInstantTap(el, handler) {
@@ -3173,17 +3194,26 @@ function saveFsChatSettings() {
 function applyFsChatFullscreenSettings(isFullscreen) {
   const overlay = document.getElementById('fsChatOverlay');
   const floatBtn = document.getElementById('openFsChatFloatingBtn');
+  const stage = dom.stageContainer || document.getElementById('stageContainer');
+  const isChatShowing = isFullscreen && state.isChatVisible && fsChatSettings.isFsChatOpen && fsChatSettings.showInFullscreen;
+
   if (isFullscreen) {
-    if (!state.isChatVisible || !fsChatSettings.isFsChatOpen || !fsChatSettings.showInFullscreen) {
+    if (!isChatShowing) {
       if (overlay) overlay.classList.add('hidden');
       if (floatBtn) floatBtn.classList.remove('hidden');
+      if (stage) stage.classList.remove('fs-chat-active');
+      document.body.classList.remove('fs-chat-active');
     } else {
       if (overlay) overlay.classList.remove('hidden');
       if (floatBtn) floatBtn.classList.add('hidden');
+      if (stage) stage.classList.add('fs-chat-active');
+      document.body.classList.add('fs-chat-active');
     }
   } else {
     if (overlay) overlay.classList.add('hidden');
     if (floatBtn) floatBtn.classList.toggle('hidden', state.isChatVisible);
+    if (stage) stage.classList.remove('fs-chat-active');
+    document.body.classList.remove('fs-chat-active');
   }
 }
 
@@ -4916,21 +4946,382 @@ function copyToClipboard(text) {
   return Promise.resolve(true);
 }
 
-function inviteFriendToRoom(friend) {
-  if (!state.roomId) {
-    state.roomId = 'miruo-' + Math.random().toString(36).substring(2, 8);
+function sendRoomInvite(friend) {
+  if (!friend) return;
+  const cleanTarget = (friend.cleanUsername || friend.username || friend.name || '').replace(/^@/, '').trim();
+  const myUsername = (state.username || 'kullanici').replace(/^@/, '');
+  const roomId = state.roomId || 'ODA-77';
+
+  let invites = [];
+  try {
+    invites = JSON.parse(localStorage.getItem('miruo_room_invites') || '[]');
+  } catch (e) { invites = []; }
+
+  const newInvite = {
+    id: 'room_inv_' + Date.now(),
+    fromUsername: myUsername,
+    toUsername: cleanTarget,
+    roomId: roomId,
+    createdAt: Date.now()
+  };
+  invites.unshift(newInvite);
+  localStorage.setItem('miruo_room_invites', JSON.stringify(invites));
+
+  if (typeof signalingSocket !== 'undefined' && signalingSocket && signalingSocket.readyState === 1) {
+    try {
+      signalingSocket.send(JSON.stringify({
+        type: 'room_invite',
+        roomId: roomId,
+        from: myUsername,
+        to: cleanTarget
+      }));
+    } catch (e) {}
   }
-  const inviteUrl = `${window.location.origin}/?room=${encodeURIComponent(state.roomId)}`;
-  const cleanName = (friend && (friend.name || friend.username))
-    ? (friend.name || friend.username).replace(/[^\w\sçÇğĞıİöÖşŞüÜ-]/g, '').trim()
-    : 'Arkadaş';
-  copyToClipboard(inviteUrl).then(() => {
-    showToast(`${cleanName} odaya çağrıldı! Davet linki kopyalandı.`);
-  }).catch(() => {
-    showToast(`${cleanName} odaya çağrıldı! Davet linki kopyalandı.`);
-  });
+  return newInvite;
+}
+window.sendRoomInvite = sendRoomInvite;
+
+function inviteFriendToRoom(friend) {
+  if (!friend) return;
+  const cleanUsername = (friend.cleanUsername || friend.username || friend.name || '').replace(/^@/, '').trim();
+  if (!state.roomId) {
+    state.roomId = 'ODA-77';
+  }
+
+  // 1. Send the invitation
+  sendRoomInvite(friend);
+
+  // 2. Open / switch to room immediately ("oda açsın")
+  switchToMyRoom();
+  connectSignaling();
+
+  // 3. Inform user with prominent toast
+  showToast(`Oda açıldı! @${cleanUsername} kullanıcısına davet gönderildi.`);
 }
 window.inviteFriendToRoom = inviteFriendToRoom;
+
+function getIncomingAffinityRequests() {
+  let list = [];
+  try {
+    const raw = localStorage.getItem('miruo_affinity_requests');
+    if (raw) {
+      list = JSON.parse(raw);
+    }
+    const alreadySeeded = localStorage.getItem('miruo_aff_seeded');
+    if (list.length === 0 && !alreadySeeded) {
+      // Seed initial mock request from @selin for Partner so user can test accept/reject immediately
+      const defaultReq = {
+        id: 'aff_req_selin_init',
+        slotKey: 'partner_1',
+        category: 'partner',
+        categoryTitle: 'Partner',
+        fromUsername: 'selin',
+        toUsername: (state.username || 'mehmet_vip').replace(/^@/, ''),
+        friendName: '@selin',
+        status: 'pending',
+        createdAt: Date.now()
+      };
+      list = [defaultReq];
+      localStorage.setItem('miruo_affinity_requests', JSON.stringify(list));
+      localStorage.setItem('miruo_aff_seeded', '1');
+    }
+  } catch (e) {
+    list = [];
+  }
+  return list.filter(r => r.status === 'pending');
+}
+
+function getIncomingRoomInvites() {
+  let list = [];
+  try {
+    const raw = localStorage.getItem('miruo_room_invites');
+    if (raw) {
+      list = JSON.parse(raw);
+    }
+    const alreadySeeded = localStorage.getItem('miruo_room_seeded');
+    if (list.length === 0 && !alreadySeeded) {
+      // Seed a sample room invite from @can so user can test and see the room invite card!
+      const defaultInv = {
+        id: 'room_inv_can_init',
+        fromUsername: 'can',
+        toUsername: (state.username || 'mehmet_vip').replace(/^@/, ''),
+        roomId: 'ODA-77',
+        createdAt: Date.now()
+      };
+      list = [defaultInv];
+      localStorage.setItem('miruo_room_invites', JSON.stringify(list));
+      localStorage.setItem('miruo_room_seeded', '1');
+    }
+  } catch (e) {
+    list = [];
+  }
+  return list.filter(inv => inv.status !== 'accepted' && inv.status !== 'rejected');
+}
+
+function acceptAffinityRequest(reqId) {
+  let requests = [];
+  try {
+    requests = JSON.parse(localStorage.getItem('miruo_affinity_requests') || '[]');
+  } catch (e) { requests = []; }
+
+  const req = requests.find(r => r.id === reqId);
+  if (!req) return;
+
+  req.status = 'accepted';
+  localStorage.setItem('miruo_affinity_requests', JSON.stringify(requests.filter(r => r.id !== reqId)));
+
+  const cleanFrom = req.fromUsername.replace(/^@/, '').toLowerCase();
+  const currentTree = getUserAffinityTree();
+  
+  // Find appropriate slot for this category
+  const targetCategory = req.category || 'partner';
+  const matchingSlots = AFFINITY_SLOTS.filter(s => s.category === targetCategory);
+  let targetSlotKey = req.slotKey;
+  if (!targetSlotKey || (currentTree[targetSlotKey] && !currentTree[targetSlotKey].isPending)) {
+    const freeSlot = matchingSlots.find(s => !currentTree[s.key] || currentTree[s.key].isPending);
+    targetSlotKey = freeSlot ? freeSlot.key : matchingSlots[0].key;
+  }
+
+  // Bind to my slot!
+  currentTree[targetSlotKey] = {
+    username: cleanFrom,
+    name: '@' + cleanFrom,
+    avatarUrl: req.friendAvatarUrl || '',
+    category: targetCategory,
+    isPending: false,
+    boundAt: Date.now()
+  };
+  saveUserAffinityTree(currentTree);
+
+  // Sync mutual affinities so both users' trees show each other!
+  let mutuals = {};
+  try {
+    mutuals = JSON.parse(localStorage.getItem('miruo_mutual_affinities') || '{}');
+  } catch (e) { mutuals = {}; }
+  mutuals[cleanFrom] = {
+    category: targetCategory,
+    categoryTitle: req.categoryTitle || 'Partner',
+    partnerOf: (state.username || 'mehmet_vip').replace(/^@/, '').toLowerCase(),
+    acceptedAt: Date.now()
+  };
+  localStorage.setItem('miruo_mutual_affinities', JSON.stringify(mutuals));
+
+  showToast(`🎉 @${cleanFrom} ile ${req.categoryTitle || 'Partner'} ilişkiniz kuruldu! Her iki tarafta da görünür.`);
+  renderIncomingRequests();
+  renderFriendsTab();
+  renderAffinityTree();
+}
+window.acceptAffinityRequest = acceptAffinityRequest;
+
+function rejectAffinityRequest(reqId) {
+  let requests = [];
+  try {
+    requests = JSON.parse(localStorage.getItem('miruo_affinity_requests') || '[]');
+  } catch (e) { requests = []; }
+
+  const req = requests.find(r => r.id === reqId);
+  if (req && req.slotKey) {
+    const currentTree = getUserAffinityTree();
+    if (currentTree[req.slotKey] && currentTree[req.slotKey].isPending) {
+      currentTree[req.slotKey] = null;
+      saveUserAffinityTree(currentTree);
+    }
+  }
+
+  localStorage.setItem('miruo_affinity_requests', JSON.stringify(requests.filter(r => r.id !== reqId)));
+  showToast('İlişki isteği reddedildi.');
+  renderIncomingRequests();
+  renderFriendsTab();
+  renderAffinityTree();
+}
+window.rejectAffinityRequest = rejectAffinityRequest;
+
+function acceptRoomInvite(inviteId, targetRoomId) {
+  let invites = [];
+  try {
+    invites = JSON.parse(localStorage.getItem('miruo_room_invites') || '[]');
+  } catch (e) { invites = []; }
+
+  localStorage.setItem('miruo_room_invites', JSON.stringify(invites.filter(inv => inv.id !== inviteId)));
+  showToast(`Odaya katılınıyor: ${targetRoomId}`);
+  state.roomId = (targetRoomId || 'ODA-77').toUpperCase();
+  switchToMyRoom();
+  connectSignaling();
+  renderIncomingRequests();
+}
+window.acceptRoomInvite = acceptRoomInvite;
+
+function rejectRoomInvite(inviteId) {
+  let invites = [];
+  try {
+    invites = JSON.parse(localStorage.getItem('miruo_room_invites') || '[]');
+  } catch (e) { invites = []; }
+
+  localStorage.setItem('miruo_room_invites', JSON.stringify(invites.filter(inv => inv.id !== inviteId)));
+  showToast('Oda daveti reddedildi.');
+  renderIncomingRequests();
+}
+window.rejectRoomInvite = rejectRoomInvite;
+
+function sendAffinityRequest(slotKey, friend) {
+  if (!slotKey || !friend) return;
+  const slotDef = AFFINITY_SLOTS.find(s => s.key === slotKey);
+  const cat = slotDef ? AFFINITY_CATEGORIES[slotDef.category] : AFFINITY_CATEGORIES.partner;
+  const slotTitle = slotDef ? slotDef.title : (cat ? cat.name : 'İlişki');
+  const targetUsername = (friend.cleanUsername || friend.username || '').replace(/^@/, '');
+  const myUsername = (state.username || 'mehmet_vip').replace(/^@/, '');
+
+  let requests = [];
+  try {
+    requests = JSON.parse(localStorage.getItem('miruo_affinity_requests') || '[]');
+  } catch (e) { requests = []; }
+
+  const req = {
+    id: 'aff_req_' + Date.now(),
+    slotKey: slotKey,
+    category: slotDef ? slotDef.category : 'partner',
+    categoryTitle: slotTitle,
+    fromUsername: myUsername,
+    toUsername: targetUsername,
+    friendName: friend.name || ('@' + targetUsername),
+    friendAvatarUrl: friend.avatarUrl || '',
+    status: 'pending',
+    createdAt: Date.now()
+  };
+
+  requests.unshift(req);
+  localStorage.setItem('miruo_affinity_requests', JSON.stringify(requests));
+
+  // Mark pending in user's tree so they see "İstek Gönderildi"
+  const currentTree = getUserAffinityTree();
+  currentTree[slotKey] = {
+    username: targetUsername,
+    name: '@' + targetUsername,
+    avatarUrl: friend.avatarUrl || '',
+    category: slotDef ? slotDef.category : 'partner',
+    isPending: true,
+    requestId: req.id,
+    boundAt: Date.now()
+  };
+  saveUserAffinityTree(currentTree);
+
+  closeAffinityPicker();
+  renderAffinityTree();
+  showToast(`@${targetUsername} kullanıcısına ${slotTitle} isteği gönderildi!`);
+}
+window.sendAffinityRequest = sendAffinityRequest;
+
+function renderIncomingRequests() {
+  const container = document.getElementById('incomingRequestsContainer');
+  if (!container) return;
+
+  const affReqs = getIncomingAffinityRequests();
+  const roomInvs = getIncomingRoomInvites();
+
+  if (affReqs.length === 0 && roomInvs.length === 0) {
+    container.classList.add('hidden');
+    container.innerHTML = '';
+    return;
+  }
+
+  container.classList.remove('hidden');
+  container.innerHTML = '';
+
+  // Render Relationship Requests
+  affReqs.forEach(req => {
+    const card = document.createElement('div');
+    card.className = 'p-3.5 rounded-2xl bg-gradient-to-r from-[#240B22]/95 via-[#160B24]/95 to-[#0F0D1C]/95 border border-rose-500/35 flex items-center justify-between gap-3 shadow-xl animate-in fade-in duration-200';
+    const char = (req.fromUsername.charAt(0) || 'S').toUpperCase();
+    card.innerHTML = `
+      <div class="flex items-center gap-2.5 truncate min-w-0 flex-1">
+        <div class="w-10 h-10 rounded-full bg-gradient-to-tr from-rose-500 to-indigo-600 flex items-center justify-center font-black text-white text-xs shrink-0 shadow-md border border-white/20">
+          ${char}
+        </div>
+        <div class="truncate">
+          <div class="flex items-center gap-1.5">
+            <span class="text-xs font-bold text-white truncate">@${escapeHtml(req.fromUsername)}</span>
+            <span class="px-1.5 py-0.2 rounded-full bg-rose-500/25 text-rose-300 border border-rose-500/40 text-[9px] font-extrabold tracking-wide">${escapeHtml(req.categoryTitle || 'Partner')}</span>
+          </div>
+          <p class="text-[11px] text-gray-300 truncate mt-0.5">Seninle <strong class="text-rose-300 font-bold">${escapeHtml(req.categoryTitle || 'Partner')}</strong> olmak istiyor</p>
+        </div>
+      </div>
+      <div class="flex items-center gap-1.5 shrink-0">
+        <button type="button" class="accept-aff-req-btn px-3 py-1.5 rounded-xl bg-gradient-to-r from-rose-600 via-pink-600 to-[#A64D79] hover:opacity-95 active:scale-95 text-white font-bold text-xs shadow-md shadow-rose-600/30 transition-all cursor-pointer">
+          Kabul Et
+        </button>
+        <button type="button" class="reject-aff-req-btn px-2.5 py-1.5 rounded-xl bg-white/10 hover:bg-white/15 active:scale-95 text-gray-300 hover:text-white font-semibold text-xs border border-white/10 transition-all cursor-pointer">
+          Reddet
+        </button>
+      </div>
+    `;
+
+    const acceptBtn = card.querySelector('.accept-aff-req-btn');
+    if (acceptBtn) {
+      addInstantTap(acceptBtn, (e) => {
+        if (e && e.stopPropagation) e.stopPropagation();
+        acceptAffinityRequest(req.id);
+      });
+    }
+
+    const rejectBtn = card.querySelector('.reject-aff-req-btn');
+    if (rejectBtn) {
+      addInstantTap(rejectBtn, (e) => {
+        if (e && e.stopPropagation) e.stopPropagation();
+        rejectAffinityRequest(req.id);
+      });
+    }
+
+    container.appendChild(card);
+  });
+
+  // Render Room Invitations
+  roomInvs.forEach(inv => {
+    const card = document.createElement('div');
+    card.className = 'p-3.5 rounded-2xl bg-gradient-to-r from-[#12142E]/95 via-[#0D1829]/95 to-[#0C0E1A]/95 border border-indigo-500/35 flex items-center justify-between gap-3 shadow-xl animate-in fade-in duration-200';
+    const char = (inv.fromUsername.charAt(0) || 'C').toUpperCase();
+    card.innerHTML = `
+      <div class="flex items-center gap-2.5 truncate min-w-0 flex-1">
+        <div class="w-10 h-10 rounded-full bg-gradient-to-tr from-indigo-500 to-cyan-600 flex items-center justify-center font-black text-white text-xs shrink-0 shadow-md border border-white/20">
+          ${char}
+        </div>
+        <div class="truncate">
+          <div class="flex items-center gap-1.5">
+            <span class="text-xs font-bold text-white truncate">@${escapeHtml(inv.fromUsername)}</span>
+            <span class="px-1.5 py-0.2 rounded-full bg-indigo-500/25 text-indigo-300 border border-indigo-500/40 text-[9px] font-extrabold tracking-wide">Oda Daveti</span>
+          </div>
+          <p class="text-[11px] text-gray-300 truncate mt-0.5">Seni odaya davet etti (<span class="text-white font-bold">${escapeHtml(inv.roomId || 'ODA-77')}</span>)</p>
+        </div>
+      </div>
+      <div class="flex items-center gap-1.5 shrink-0">
+        <button type="button" class="join-room-inv-btn px-3 py-1.5 rounded-xl bg-gradient-to-r from-indigo-600 to-cyan-600 hover:opacity-95 active:scale-95 text-white font-bold text-xs shadow-md shadow-indigo-600/30 transition-all cursor-pointer">
+          Katıl
+        </button>
+        <button type="button" class="reject-room-inv-btn px-2.5 py-1.5 rounded-xl bg-white/10 hover:bg-white/15 active:scale-95 text-gray-300 hover:text-white font-semibold text-xs border border-white/10 transition-all cursor-pointer">
+          Reddet
+        </button>
+      </div>
+    `;
+
+    const joinBtn = card.querySelector('.join-room-inv-btn');
+    if (joinBtn) {
+      addInstantTap(joinBtn, (e) => {
+        if (e && e.stopPropagation) e.stopPropagation();
+        acceptRoomInvite(inv.id, inv.roomId);
+      });
+    }
+
+    const rejectBtn = card.querySelector('.reject-room-inv-btn');
+    if (rejectBtn) {
+      addInstantTap(rejectBtn, (e) => {
+        if (e && e.stopPropagation) e.stopPropagation();
+        rejectRoomInvite(inv.id);
+      });
+    }
+
+    container.appendChild(card);
+  });
+}
+window.renderIncomingRequests = renderIncomingRequests;
 
 function openFriendQuickOptions(fr) {
   if (!fr) return;
@@ -5049,6 +5440,9 @@ function renderFriendsTab(filterText = '') {
   if (!container) return;
 
   const dict = I18N[currentLang] || I18N.tr;
+
+  // Render incoming affinity requests and room invites
+  renderIncomingRequests();
 
   const currentUsername = '@' + (state.username || 'kullanici').replace(/^@/, '');
   if (codeDisplay) codeDisplay.textContent = currentUsername;
@@ -5723,29 +6117,58 @@ function getMockAffinityTreeForUser(targetUsername) {
   const myUsername = (savedUser.username || state.username || 'kullanici').replace(/^@/, '');
   const myName = '@' + myUsername;
 
-  // Check if I added this user as my partner
+  let mutuals = {};
+  try {
+    mutuals = JSON.parse(localStorage.getItem('miruo_mutual_affinities') || '{}');
+  } catch (e) { mutuals = {}; }
+
   let isPartnerWithMe = false;
-  if (currentTree.partner_1 && currentTree.partner_1.username && currentTree.partner_1.username.toLowerCase().replace(/^@/, '') === clean) {
-    isPartnerWithMe = true;
+  let isBroWithMe = false;
+  let isBestieWithMe = false;
+  let isConfidantWithMe = false;
+
+  const mutual = mutuals[clean];
+  if (mutual && (mutual.partnerOf || '').toLowerCase() === myUsername.toLowerCase()) {
+    if (mutual.category === 'partner') isPartnerWithMe = true;
+    else if (mutual.category === 'bro') isBroWithMe = true;
+    else if (mutual.category === 'bestie') isBestieWithMe = true;
+    else if (mutual.category === 'confidant') isConfidantWithMe = true;
   }
 
-  const partnerWatchMins = isPartnerWithMe ? getSharedWatchMinutes(clean) : 1440; // Lv. 8 MAX (86px)
+  // Also check if currentTree has an accepted slot for this user
+  Object.keys(currentTree).forEach(k => {
+    const slot = currentTree[k];
+    if (slot && slot.username && slot.username.toLowerCase() === clean && !slot.isPending) {
+      if (slot.category === 'partner') isPartnerWithMe = true;
+      else if (slot.category === 'bro') isBroWithMe = true;
+      else if (slot.category === 'bestie') isBestieWithMe = true;
+      else if (slot.category === 'confidant') isConfidantWithMe = true;
+    }
+  });
+
+  const partnerWatchMins = isPartnerWithMe ? getSharedWatchMinutes(clean) : 1440;
 
   const tree = {
     partner_1: isPartnerWithMe 
       ? { username: myUsername, name: myName, category: 'partner', watchMins: partnerWatchMins } 
-      : { username: 'selin', name: 'Selin Yılmaz', category: 'partner', watchMins: 1440 }, // Lv. 8 MAX (86px, matches center node size)
-    bro_1: clean === 'can' 
-      ? { username: 'emre', name: 'Emre Yıldız', category: 'bro', watchMins: 360 } // Lv. 2 (50px)
-      : { username: 'can', name: 'Can Demir', category: 'bro', watchMins: 720 }, // Lv. 4 (62px)
+      : { username: 'selin', name: 'Selin Yılmaz', category: 'partner', watchMins: 1440 },
+    bro_1: isBroWithMe
+      ? { username: myUsername, name: myName, category: 'bro', watchMins: getSharedWatchMinutes(clean) }
+      : (clean === 'can' 
+          ? { username: 'emre', name: 'Emre Yıldız', category: 'bro', watchMins: 360 } 
+          : { username: 'can', name: 'Can Demir', category: 'bro', watchMins: 720 }),
     bro_2: null,
     bro_3: null,
-    bestie_1: clean === 'merve' 
-      ? { username: 'selin', name: 'Selin Yılmaz', category: 'bestie', watchMins: 900 } // Lv. 5 (68px)
-      : { username: 'merve', name: 'Merve Kaya', category: 'bestie', watchMins: 180 }, // Lv. 1 (44px)
+    bestie_1: isBestieWithMe
+      ? { username: myUsername, name: myName, category: 'bestie', watchMins: getSharedWatchMinutes(clean) }
+      : (clean === 'merve' 
+          ? { username: 'selin', name: 'Selin Yılmaz', category: 'bestie', watchMins: 900 } 
+          : { username: 'merve', name: 'Merve Kaya', category: 'bestie', watchMins: 180 }),
     bestie_2: null,
     bestie_3: null,
-    confidant_1: null,
+    confidant_1: isConfidantWithMe
+      ? { username: myUsername, name: myName, category: 'confidant', watchMins: getSharedWatchMinutes(clean) }
+      : null,
     confidant_2: null
   };
 
@@ -5836,42 +6259,58 @@ function renderAffinityTree(containerId = 'affinityConstellationContainer', svgI
     }
 
     if (assigned) {
+      const isPending = !!assigned.isPending;
       const friendMinutes = (assigned.watchMins !== undefined) ? assigned.watchMins : getSharedWatchMinutes(assigned.username);
       const level = getAffinityLevel(friendMinutes);
 
-      // Connecting line thickness and glow increase as bond level grows:
-      const coreWidth = isPartner ? (2.8 + (level - 1) * 0.45) : (1.8 + (level - 1) * 0.3);
-      const glowWidth = coreWidth * 2.3;
-      const glowOpacity = Math.min(0.85, (0.35 + (level - 1) * 0.06)).toFixed(2);
+      if (isPending) {
+        // Pending request connecting branch: dashed amber line
+        const pendingLine = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+        pendingLine.setAttribute('x1', '50');
+        pendingLine.setAttribute('y1', '50');
+        pendingLine.setAttribute('x2', slot.x.toString());
+        pendingLine.setAttribute('y2', slot.y.toString());
+        pendingLine.setAttribute('stroke', '#F59E0B');
+        pendingLine.setAttribute('stroke-width', '2.2');
+        pendingLine.setAttribute('stroke-linecap', 'round');
+        pendingLine.setAttribute('stroke-dasharray', '4 4');
+        pendingLine.setAttribute('opacity', '0.85');
+        svg.appendChild(pendingLine);
+      } else {
+        // Connecting line thickness and glow increase as bond level grows:
+        const coreWidth = isPartner ? (2.8 + (level - 1) * 0.45) : (1.8 + (level - 1) * 0.3);
+        const glowWidth = coreWidth * 2.3;
+        const glowOpacity = Math.min(0.85, (0.35 + (level - 1) * 0.06)).toFixed(2);
 
-      // 1. Dual SVG Lines Fix: Outer Glow Line (No SVG filters, 100% reliable across WebKit & Safari)
-      const glowLine = document.createElementNS('http://www.w3.org/2000/svg', 'line');
-      glowLine.setAttribute('x1', '50');
-      glowLine.setAttribute('y1', '50');
-      glowLine.setAttribute('x2', slot.x.toString());
-      glowLine.setAttribute('y2', slot.y.toString());
-      glowLine.setAttribute('stroke', glowColor);
-      glowLine.setAttribute('stroke-width', glowWidth.toFixed(1));
-      glowLine.setAttribute('stroke-linecap', 'round');
-      glowLine.setAttribute('opacity', glowOpacity);
-      svg.appendChild(glowLine);
+        // 1. Dual SVG Lines Fix: Outer Glow Line (No SVG filters, 100% reliable across WebKit & Safari)
+        const glowLine = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+        glowLine.setAttribute('x1', '50');
+        glowLine.setAttribute('y1', '50');
+        glowLine.setAttribute('x2', slot.x.toString());
+        glowLine.setAttribute('y2', slot.y.toString());
+        glowLine.setAttribute('stroke', glowColor);
+        glowLine.setAttribute('stroke-width', glowWidth.toFixed(1));
+        glowLine.setAttribute('stroke-linecap', 'round');
+        glowLine.setAttribute('opacity', glowOpacity);
+        svg.appendChild(glowLine);
 
-      // 2. Inner Crisp Core Line (Never vanishes when bound!)
-      const coreLine = document.createElementNS('http://www.w3.org/2000/svg', 'line');
-      coreLine.setAttribute('x1', '50');
-      coreLine.setAttribute('y1', '50');
-      coreLine.setAttribute('x2', slot.x.toString());
-      coreLine.setAttribute('y2', slot.y.toString());
-      coreLine.setAttribute('stroke', strokeColor);
-      coreLine.setAttribute('stroke-width', coreWidth.toFixed(1));
-      coreLine.setAttribute('stroke-linecap', 'round');
-      coreLine.setAttribute('opacity', '0.98');
-      svg.appendChild(coreLine);
+        // 2. Inner Crisp Core Line (Never vanishes when bound!)
+        const coreLine = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+        coreLine.setAttribute('x1', '50');
+        coreLine.setAttribute('y1', '50');
+        coreLine.setAttribute('x2', slot.x.toString());
+        coreLine.setAttribute('y2', slot.y.toString());
+        coreLine.setAttribute('stroke', strokeColor);
+        coreLine.setAttribute('stroke-width', coreWidth.toFixed(1));
+        coreLine.setAttribute('stroke-linecap', 'round');
+        coreLine.setAttribute('opacity', '0.98');
+        svg.appendChild(coreLine);
 
-      if (slot.category === 'partner') countPartner++;
-      else if (slot.category === 'bro') countBro++;
-      else if (slot.category === 'bestie') countBestie++;
-      else if (slot.category === 'confidant') countConfidant++;
+        if (slot.category === 'partner') countPartner++;
+        else if (slot.category === 'bro') countBro++;
+        else if (slot.category === 'bestie') countBestie++;
+        else if (slot.category === 'confidant') countConfidant++;
+      }
     } else {
       // Empty slot: subtle dashed line
       let emptyStroke = 'rgba(255, 255, 255, 0.15)';
@@ -5900,6 +6339,7 @@ function renderAffinityTree(containerId = 'affinityConstellationContainer', svgI
 
     if (assigned) {
       // FILLED SLOT WITH LEVEL & DYNAMIC SIZE (Level badge on node removed per user request; level is shown inside detail modal when tapped)
+      const isPending = !!assigned.isPending;
       const friendMinutes = (assigned.watchMins !== undefined) ? assigned.watchMins : getSharedWatchMinutes(assigned.username);
       const level = getAffinityLevel(friendMinutes);
       const initial = (assigned.name || assigned.username || 'A').charAt(0).toUpperCase();
@@ -5909,18 +6349,33 @@ function renderAffinityTree(containerId = 'affinityConstellationContainer', svgI
       const nodeSize = Math.round(44 + (level - 1) * 6);
       const avatarFontSize = nodeSize >= 75 ? 'text-2xl font-black' : (nodeSize >= 58 ? 'text-base font-black' : 'text-xs font-bold');
 
-      nodeEl.innerHTML = `
-        <div class="relative flex items-center justify-center" style="width: ${nodeSize}px; height: ${nodeSize}px;">
-          <div class="w-full h-full rounded-full overflow-hidden ${cat.glowClass} flex items-center justify-center text-white ${avatarFontSize} bg-gradient-to-tr from-gray-900 to-[#1b152b] shadow-2xl transition-all duration-300" style="border: ${level >= 6 ? '2.5px' : '2px'} solid ${strokeColor};">
-            ${assigned.avatarUrl ? `<img src="${assigned.avatarUrl}" class="w-full h-full object-cover">` : initial}
+      if (isPending) {
+        nodeEl.innerHTML = `
+          <div class="relative flex items-center justify-center" style="width: ${nodeSize}px; height: ${nodeSize}px;">
+            <div class="w-full h-full rounded-full overflow-hidden flex items-center justify-center text-white ${avatarFontSize} bg-gradient-to-tr from-gray-900 to-[#1b152b] shadow-2xl transition-all duration-300" style="border: 2.5px dashed #F59E0B;">
+              ${assigned.avatarUrl ? `<img src="${assigned.avatarUrl}" class="w-full h-full object-cover">` : initial}
+            </div>
+            <span class="absolute bottom-0 right-0 w-3 h-3 rounded-full border border-black bg-amber-400 animate-pulse z-10 shadow-sm"></span>
           </div>
-          <span class="absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full border border-black bg-emerald-400 z-10"></span>
-        </div>
-        <div class="mt-1 flex flex-col items-center">
-          <span class="text-[9px] font-extrabold text-white truncate max-w-[75px] px-1.5 py-0.2 bg-black/75 rounded backdrop-blur-xs leading-tight">${escapeHtml('@' + (assigned.username || assigned.name || 'kullanici').replace(/^@/, ''))}</span>
-          <span class="text-[8px] font-bold text-emerald-300 leading-tight">${formatSharedWatchTime(friendMinutes)}</span>
-        </div>
-      `;
+          <div class="mt-1 flex flex-col items-center">
+            <span class="text-[9px] font-extrabold text-white truncate max-w-[75px] px-1.5 py-0.2 bg-black/75 rounded backdrop-blur-xs leading-tight">${escapeHtml('@' + (assigned.username || assigned.name || 'kullanici').replace(/^@/, ''))}</span>
+            <span class="text-[8px] font-black text-amber-300 bg-amber-500/25 px-1.5 py-0.2 rounded-full border border-amber-500/40 leading-tight mt-0.5 tracking-tight">İstek Gönderildi</span>
+          </div>
+        `;
+      } else {
+        nodeEl.innerHTML = `
+          <div class="relative flex items-center justify-center" style="width: ${nodeSize}px; height: ${nodeSize}px;">
+            <div class="w-full h-full rounded-full overflow-hidden ${cat.glowClass} flex items-center justify-center text-white ${avatarFontSize} bg-gradient-to-tr from-gray-900 to-[#1b152b] shadow-2xl transition-all duration-300" style="border: ${level >= 6 ? '2.5px' : '2px'} solid ${strokeColor};">
+              ${assigned.avatarUrl ? `<img src="${assigned.avatarUrl}" class="w-full h-full object-cover">` : initial}
+            </div>
+            <span class="absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full border border-black bg-emerald-400 z-10"></span>
+          </div>
+          <div class="mt-1 flex flex-col items-center">
+            <span class="text-[9px] font-extrabold text-white truncate max-w-[75px] px-1.5 py-0.2 bg-black/75 rounded backdrop-blur-xs leading-tight">${escapeHtml('@' + (assigned.username || assigned.name || 'kullanici').replace(/^@/, ''))}</span>
+            <span class="text-[8px] font-bold text-emerald-300 leading-tight">${formatSharedWatchTime(friendMinutes)}</span>
+          </div>
+        `;
+      }
 
       addInstantTap(nodeEl, (e) => {
         e.stopPropagation();
@@ -6102,6 +6557,17 @@ function renderAffinityPickerList() {
     eligible.forEach(fr => {
       const card = document.createElement('div');
       card.className = 'p-3 rounded-2xl bg-white/5 border border-emerald-500/30 flex items-center justify-between gap-3 shadow-md hover:border-emerald-500/50 transition-all';
+      
+      const targetUser = (fr.cleanUsername || fr.username || '').replace(/^@/, '');
+      const currentTree = getUserAffinityTree();
+      const existingInSlot = currentTree[currentPickerSlotKey];
+      const isAlreadyPending = existingInSlot && existingInSlot.username === targetUser && existingInSlot.isPending;
+
+      const btnText = isAlreadyPending ? 'İstek Gönderildi' : 'İstek Gönder';
+      const btnStyle = isAlreadyPending 
+        ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40 cursor-default' 
+        : 'bg-gradient-to-r from-rose-600 via-pink-600 to-[#A64D79] hover:opacity-95 active:scale-95 text-white shadow-md cursor-pointer';
+
       card.innerHTML = `
         <div class="flex items-center gap-3 min-w-0">
           <div class="w-10 h-10 rounded-full bg-gradient-to-tr from-rose-500 to-indigo-600 flex items-center justify-center text-xs font-bold text-white shrink-0 shadow-sm border border-white/20">
@@ -6117,14 +6583,16 @@ function renderAffinityPickerList() {
             </span>
           </div>
         </div>
-        <button type="button" class="bind-affinity-btn px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-rose-600 via-pink-600 to-[#A64D79] hover:opacity-95 active:scale-95 text-white text-xs font-extrabold shadow-md transition-all cursor-pointer shrink-0">
-          İlişki Kur
+        <button type="button" class="bind-affinity-btn px-3.5 py-1.5 rounded-xl ${btnStyle} text-xs font-extrabold shadow-md transition-all shrink-0">
+          ${btnText}
         </button>
       `;
 
-      addInstantTap(card.querySelector('.bind-affinity-btn'), () => {
-        bindFriendToSlot(currentPickerSlotKey, fr);
-      });
+      if (!isAlreadyPending) {
+        addInstantTap(card.querySelector('.bind-affinity-btn'), () => {
+          sendAffinityRequest(currentPickerSlotKey, fr);
+        });
+      }
 
       listContainer.appendChild(card);
     });
@@ -6171,14 +6639,21 @@ function openAffinitySlotDetail(slotKey, assigned) {
   const userEl = document.getElementById('affinityDetailUsername');
   const watchEl = document.getElementById('affinityDetailWatchTime');
   const levelEl = document.getElementById('affinityDetailLevel');
+  const unbindBtn = document.getElementById('affinityDetailUnbindBtn');
   if (!modal || !assigned) return;
 
   const slotDef = AFFINITY_SLOTS.find(s => s.key === slotKey);
   const cat = slotDef ? AFFINITY_CATEGORIES[slotDef.category] : AFFINITY_CATEGORIES.partner;
+  const isPending = !!assigned.isPending;
 
   if (catPill) {
-    catPill.textContent = cat.name;
-    catPill.className = `px-2.5 py-1 rounded-full text-xs font-extrabold ${cat.color === 'rose' ? 'bg-rose-500/20 text-rose-300 border-rose-500/30' : (cat.color === 'cyan' ? 'bg-cyan-500/20 text-cyan-300 border-cyan-500/30' : (cat.color === 'purple' ? 'bg-purple-500/20 text-purple-300 border-purple-500/30' : 'bg-amber-500/20 text-amber-300 border-amber-500/30'))} border flex items-center justify-center`;
+    if (isPending) {
+      catPill.textContent = `${cat.name} (İstek Gönderildi)`;
+      catPill.className = 'px-2.5 py-1 rounded-full text-xs font-extrabold bg-amber-500/20 text-amber-300 border-amber-500/40 border flex items-center justify-center';
+    } else {
+      catPill.textContent = cat.name;
+      catPill.className = `px-2.5 py-1 rounded-full text-xs font-extrabold ${cat.color === 'rose' ? 'bg-rose-500/20 text-rose-300 border-rose-500/30' : (cat.color === 'cyan' ? 'bg-cyan-500/20 text-cyan-300 border-cyan-500/30' : (cat.color === 'purple' ? 'bg-purple-500/20 text-purple-300 border-purple-500/30' : 'bg-amber-500/20 text-amber-300 border-amber-500/30'))} border flex items-center justify-center`;
+    }
   }
 
   if (avatarEl) {
@@ -6191,15 +6666,27 @@ function openAffinitySlotDetail(slotKey, assigned) {
 
   const cleanUsername = (assigned.username || assigned.name || 'kullanici').replace(/^@/, '');
   if (nameEl) nameEl.textContent = `@${cleanUsername}`;
-  if (userEl) userEl.textContent = '';
+  if (userEl) userEl.textContent = isPending ? 'Karşı tarafın onaylaması bekleniyor' : '';
 
   const watchMins = (assigned.watchMins !== undefined) ? assigned.watchMins : getSharedWatchMinutes(cleanUsername);
   const level = getAffinityLevel(watchMins);
 
-  if (watchEl) watchEl.textContent = formatSharedWatchTime(watchMins);
+  if (watchEl) watchEl.textContent = isPending ? 'İstek Gönderildi' : formatSharedWatchTime(watchMins);
   if (levelEl) {
-    levelEl.textContent = `${level}. Seviye${level === 8 ? ' (MAX)' : ''}`;
-    levelEl.className = `text-xs font-black ${level === 8 ? 'text-amber-300' : 'text-purple-300'}`;
+    if (isPending) {
+      levelEl.textContent = 'Onay Bekliyor';
+      levelEl.className = 'text-xs font-black text-amber-300';
+    } else {
+      levelEl.textContent = `${level}. Seviye${level === 8 ? ' (MAX)' : ''}`;
+      levelEl.className = `text-xs font-black ${level === 8 ? 'text-amber-300' : 'text-purple-300'}`;
+    }
+  }
+
+  if (unbindBtn) {
+    unbindBtn.textContent = isPending ? 'İsteği İptal Et' : 'Bağlantıyı Kaldır';
+    unbindBtn.className = isPending
+      ? 'w-full py-2.5 rounded-xl bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 text-xs font-bold transition-all cursor-pointer'
+      : 'w-full py-2.5 rounded-xl bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 border border-rose-500/40 text-xs font-bold transition-all cursor-pointer';
   }
 
   modal.classList.remove('hidden');
@@ -7569,6 +8056,19 @@ function loadUserSession() {
     setTimeout(() => {
       openAddFriendModal();
     }, 600);
+  } else if (urlParams.get('view') === 'room_fs_chat' || urlParams.get('view') === 'fs_chat') {
+    switchToMyRoom();
+    connectSignaling();
+    setTimeout(() => {
+      const stage = dom.stageContainer || document.getElementById('stageContainer');
+      if (stage) stage.classList.add('is-fullscreen-pseudo');
+      document.body.classList.add('stage-is-fullscreen');
+      setFsChatVisibility(true);
+      applyFsChatFullscreenSettings(true);
+    }, 500);
+  } else if (urlParams.get('view') === 'room') {
+    switchToMyRoom();
+    connectSignaling();
   } else if (initialView === 'friends' || urlParams.get('tab') === 'friends' || hash === 'friends' || urlParams.get('view') === 'friends') {
     switchToFriendsTab();
   } else if (initialView === 'profile' || urlParams.get('view') === 'profile' || urlParams.get('tab') === 'profile' || hash === 'profile' || hash === 'profile_edit' || hash === 'settings') {
@@ -7655,9 +8155,19 @@ function updateUserUI(user) {
   const customUsername = localStorage.getItem('miruo_custom_username') || user.username || user.name || state.username || 'kullanici';
   const cleanUsername = customUsername.replace(/^@/, '');
   const displayHandle = '@' + cleanUsername;
+  const displayName = displayHandle;
+  state.username = cleanUsername;
   state.avatarUrl = user.avatarUrl || state.avatarUrl || '';
   state.avatarBg = user.avatarBg || state.avatarBg || '';
   if (dom.userNameHeader) dom.userNameHeader.textContent = displayHandle;
+
+  const myFriendCodeDisplay = document.getElementById('myFriendCodeDisplay');
+  const tabMyFriendCodeDisplay = document.getElementById('tabMyFriendCodeDisplay');
+  const modalMyFriendCodeDisplay = document.getElementById('modalMyFriendCodeDisplay');
+  if (myFriendCodeDisplay) myFriendCodeDisplay.textContent = displayHandle;
+  if (tabMyFriendCodeDisplay) tabMyFriendCodeDisplay.textContent = displayHandle;
+  if (modalMyFriendCodeDisplay) modalMyFriendCodeDisplay.textContent = displayHandle;
+
   if (dom.userProfileBtn) {
     if (user.avatarUrl) {
       dom.userProfileBtn.innerHTML = `<img src="${user.avatarUrl}" class="w-full h-full object-cover rounded-full" alt="Avatar">`;
@@ -10130,7 +10640,7 @@ function initEvents() {
     if (!dedicatedModal) return;
     dedicatedModal.classList.add('hidden');
     dedicatedModal.classList.remove('flex');
-    unfreezeBackgroundAfterModal();
+    unfreezeBackgroundAfterModal(true);
   }
 
   window.openDedicatedProfileModal = openDedicatedProfileModal;
@@ -10675,16 +11185,16 @@ function initEvents() {
         statusEl.className = 'text-[11px] font-semibold text-emerald-400 pt-0.5 block';
       }
 
-      showToast(dict.profile_updated || `Profil güncellendi (@${cleanUsername})`);
-
       const dedicatedModal = document.getElementById('dedicatedProfileEditModal');
-      if (dedicatedModal && !dedicatedModal.classList.contains('hidden')) {
+      if (dedicatedModal) {
         dedicatedModal.classList.add('hidden');
         dedicatedModal.classList.remove('flex');
-        unfreezeBackgroundAfterModal();
       }
+      unfreezeBackgroundAfterModal(true);
       renderProfileTab();
       renderAffinityTree();
+      renderFriendsTab();
+      renderFriendsList();
     });
   }
 
@@ -12774,12 +13284,31 @@ function initAffinityEvents() {
       const currentTree = getUserAffinityTree();
       const item = currentTree[currentDetailSlotKey];
       if (item) {
-        const friendName = item.name || 'Arkadaş';
+        const friendName = item.name || ('@' + item.username);
+        const isPending = !!item.isPending;
+
+        if (isPending) {
+          let requests = [];
+          try {
+            requests = JSON.parse(localStorage.getItem('miruo_affinity_requests') || '[]');
+          } catch (err) { requests = []; }
+          const targetClean = (item.username || '').replace(/^@/, '').toLowerCase();
+          localStorage.setItem('miruo_affinity_requests', JSON.stringify(requests.filter(r => (r.toUsername || '').toLowerCase() !== targetClean)));
+        }
+
+        const cleanUser = (item.username || '').replace(/^@/, '').toLowerCase();
+        let mutuals = {};
+        try {
+          mutuals = JSON.parse(localStorage.getItem('miruo_mutual_affinities') || '{}');
+          delete mutuals[cleanUser];
+          localStorage.setItem('miruo_mutual_affinities', JSON.stringify(mutuals));
+        } catch (err) {}
+
         currentTree[currentDetailSlotKey] = null;
         saveUserAffinityTree(currentTree);
         closeAffinitySlotDetail();
         renderAffinityTree();
-        showToast(`${friendName} ile olan bağlantı kaldırıldı.`);
+        showToast(isPending ? `${friendName} ile olan ilişki isteği iptal edildi.` : `${friendName} ile olan bağlantı kaldırıldı.`);
       }
     });
   }
