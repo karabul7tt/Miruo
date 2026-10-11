@@ -174,8 +174,8 @@
         <!-- Top Bar: User Name & @handle on left, Edit & Settings on right -->
         <div class="flex items-center justify-between">
           <div>
-            <h2 id="tabProfileFullName" class="text-base font-black text-white tracking-tight leading-tight">Mehmet Karabulut</h2>
-            <p id="tabProfileUsername" class="text-xs font-semibold text-rose-300">@mehmet_vip</p>
+            <h2 id="tabProfileFullName" class="text-base font-black text-white tracking-tight leading-tight">@kullanici</h2>
+            <p id="tabProfileUsername" class="text-xs font-semibold text-rose-300 hidden"></p>
           </div>
 
           <div class="flex items-center gap-2">
@@ -996,6 +996,9 @@
 
   <!-- FULLSCREEN AUTH SCREEN (Image 3 Design with Animated Miruo Owl, No Welcome/Lightning, Miruo Colors) -->
   <div id="authModal" class="fixed inset-0 z-[99999] flex flex-col justify-between bg-[#0B0910] text-white overflow-y-auto no-scrollbar hidden transition-all duration-300" style="background-color: #0B0910 !important; position: fixed !important; top: 0 !important; left: 0 !important; right: 0 !important; bottom: 0 !important; width: 100vw !important; height: 100vh !important; z-index: 99999 !important; overscroll-behavior: none !important;">
+    <!-- Celestial Sliding Starfield Canvas -->
+    <canvas id="authStarCanvas" class="pointer-events-none absolute inset-0 w-full h-full z-0"></canvas>
+
     <!-- Ambient Aura Glow (No lightning, elegant Miruo tone) -->
     <div class="fixed inset-0 pointer-events-none -z-10 overflow-hidden">
       <div class="absolute -top-20 left-1/2 -translate-x-1/2 w-96 h-96 bg-[#A64D79]/25 rounded-full blur-[120px]"></div>
@@ -1003,9 +1006,9 @@
     </div>
 
     <!-- Top Action Bar: Language Switcher & Close X -->
-    <div class="w-full flex items-center justify-between px-5 pt-safe-top pb-1 shrink-0" style="padding-top: max(16px, env(safe-area-inset-top));">
+    <div class="w-full flex items-center justify-between px-5 pt-safe-top pb-1 shrink-0 relative z-10" style="padding-top: max(16px, env(safe-area-inset-top));">
       <!-- Clean Language Switcher on Auth Modal (No flags) -->
-      <div id="authLangSelectorGroup" class="flex items-center gap-1.5 bg-white/5 p-1 rounded-xl border border-white/10">
+      <div id="authLangSelectorGroup" class="flex items-center gap-1.5 bg-white/5 p-1 rounded-xl border border-white/10 backdrop-blur-sm">
         <button type="button" class="auth-lang-btn px-2.5 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer" data-lang="tr">Türkçe</button>
         <button type="button" class="auth-lang-btn px-2.5 py-1 rounded-lg text-xs font-medium text-gray-400 hover:text-white transition-all cursor-pointer" data-lang="en">English</button>
         <button type="button" class="auth-lang-btn px-2.5 py-1 rounded-lg text-xs font-medium text-gray-400 hover:text-white transition-all cursor-pointer" data-lang="de">Deutsch</button>
@@ -1016,11 +1019,11 @@
       </button>
     </div>
 
-    <!-- TOP SECTION: ANIMATED 3D MIRUO OWL MASCOT (Moving & Blinking Eyes, No Lightning, No Welcome Back) -->
-    <div class="flex-1 flex flex-col items-center justify-center pt-2 pb-2 px-4 select-none min-h-[140px]">
+    <!-- TOP SECTION: ANIMATED 3D MIRUO OWL MASCOT (Moving & Blinking Eyes, Celestial Sliding Stars) -->
+    <div class="flex-1 flex flex-col items-center justify-center pt-3 pb-3 px-4 select-none relative z-10 min-h-[140px]">
       <div class="owlbox mb-2">
         <div class="owl3d cursor-pointer" id="authOwlContainer" title="Gözler seni takip ediyor!">
-          <svg id="authOwlSvg" viewBox="0 0 120 120" class="w-24 h-24 drop-shadow-2xl" role="img" aria-label="Miruo Baykuşu">
+          <svg id="authOwlSvg" viewBox="0 0 120 120" class="w-24 h-24 drop-shadow-[0_0_24px_rgba(166,77,121,0.45)]" role="img" aria-label="Miruo Baykuşu">
             <defs>
               <linearGradient id="authOwlRoseGrad" x1="0" y1="0" x2="1" y2="1">
                 <stop offset="0%" stop-color="#C26D97"/>
@@ -1040,7 +1043,8 @@
           </svg>
         </div>
       </div>
-      <h1 class="text-2xl font-black tracking-wider text-white font-['Plus_Jakarta_Sans']">MIRUO</h1>
+      <h1 class="text-2xl sm:text-3xl font-black tracking-wider text-white font-['Plus_Jakarta_Sans']">MIRUO</h1>
+      <p class="text-xs text-rose-300/80 font-medium tracking-wide mt-1">Birlikte izlemenin en samimi yolu</p>
     </div>
 
     <!-- FULLSCREEN AUTH CARD (Pushed down to hug content, zero empty white space) -->
@@ -1125,7 +1129,7 @@
             <label id="authContactLabel" for="authContactInput" class="block text-[11px] font-bold text-gray-600 mb-1" data-i18n="email_label">E-posta</label>
             <div class="auth-input-container relative flex items-center border border-gray-200 rounded-2xl px-3.5 py-2.5">
               <svg class="w-4 h-4 text-gray-400 mr-2.5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/></svg>
-              <input type="email" id="authContactInput" name="email" autocomplete="email" autocorrect="off" autocapitalize="none" placeholder="ornek@gmail.com" data-i18n-placeholder="email_ph" class="w-full bg-transparent text-xs text-gray-900 placeholder-gray-400 focus:outline-none font-medium">
+              <input type="text" id="authContactInput" name="email" autocomplete="username" autocorrect="off" autocapitalize="none" placeholder="ornek@gmail.com veya kullanıcı adı" data-i18n-placeholder="email_ph" class="w-full bg-transparent text-xs text-gray-900 placeholder-gray-400 focus:outline-none font-medium">
             </div>
           </div>
 
@@ -2269,10 +2273,13 @@
 
       <!-- Add Friend Bar (By Username) -->
       <div>
-        <label class="block text-xs font-medium text-gray-300 mb-1.5" data-i18n="add_friend_by_name">İsimden Arkadaş Ekle (Kullanıcı Adı)</label>
+        <label class="block text-xs font-medium text-gray-300 mb-1.5" data-i18n="add_friend_by_name">Kullanıcı Adı ile Arkadaş Ekle</label>
         <div class="flex items-center gap-2">
-          <input type="text" id="addFriendInput" data-i18n-placeholder="add_friend_ph" placeholder="Kullanıcı adı girin (örn: @selin veya can)" class="flex-1 bg-black/40 border border-white/10 rounded-xl px-3.5 py-2 text-xs text-white placeholder-gray-500 focus:outline-none focus:border-rose-500 transition-all font-medium">
-          <button id="submitAddFriendBtn" class="px-4 py-2 bg-gradient-to-r from-rose-600 via-pink-600 to-[#A64D79] hover:opacity-95 text-white font-bold text-xs rounded-xl shadow-md shadow-rose-600/25 transition-all whitespace-nowrap cursor-pointer" data-i18n="add_btn">
+          <div class="flex-1 flex items-center bg-black/40 border border-white/10 rounded-xl px-3 py-2 focus-within:border-rose-500 transition-colors">
+            <span class="text-rose-400 font-bold text-xs mr-1 select-none">@</span>
+            <input type="text" id="addFriendInput" placeholder="kullaniciadi (örn: can)" class="flex-1 bg-transparent text-xs text-white placeholder-gray-500 focus:outline-none font-medium min-w-0">
+          </div>
+          <button id="submitAddFriendBtn" class="px-4 py-2 bg-gradient-to-r from-rose-600 via-pink-600 to-[#A64D79] hover:opacity-95 text-white font-bold text-xs rounded-xl shadow-md shadow-rose-600/25 transition-all whitespace-nowrap cursor-pointer active:scale-95 shrink-0" data-i18n="add_btn">
             Ekle
           </button>
         </div>
@@ -2451,8 +2458,8 @@
           S
         </div>
         <div>
-          <h3 id="affinityDetailName" class="text-base font-extrabold text-white">Selin Yılmaz</h3>
-          <p id="affinityDetailUsername" class="text-xs font-semibold text-rose-300">@selin</p>
+          <h3 id="affinityDetailName" class="text-base font-extrabold text-white">@selin</h3>
+          <p id="affinityDetailUsername" class="text-xs font-semibold text-rose-300 hidden"></p>
         </div>
       </div>
 
@@ -2514,8 +2521,8 @@
         </div>
 
         <div>
-          <h2 id="publicProfileFullName" class="text-lg font-extrabold text-white tracking-tight">Kullanıcı Adı</h2>
-          <p id="publicProfileUsername" class="text-xs font-semibold text-rose-300 mt-0.5">@kullanici</p>
+          <h2 id="publicProfileFullName" class="text-lg font-extrabold text-white tracking-tight">@kullanici</h2>
+          <p id="publicProfileUsername" class="text-xs font-semibold text-rose-300 mt-0.5 hidden"></p>
           <div class="mt-1 flex items-center justify-center gap-1.5">
             <span id="publicProfileStatusText" class="text-[10px] font-bold text-emerald-400 bg-emerald-500/15 border border-emerald-500/30 px-2.5 py-0.5 rounded-full">Çevrimiçi</span>
             <span id="publicProfileRelationWithMeBadge" class="text-[10px] font-bold text-rose-300 bg-rose-500/15 border border-rose-500/30 px-2.5 py-0.5 rounded-full hidden">Senin Partnerin</span>
@@ -2580,12 +2587,6 @@
         <button id="closePublicProfileOptionsBtn" type="button" class="w-7 h-7 rounded-full bg-white/10 text-gray-300 hover:text-white flex items-center justify-center text-sm font-bold cursor-pointer">✕</button>
       </div>
       <div class="space-y-2 pt-1">
-        <button id="optViewProfileBtn" type="button" class="w-full py-3.5 px-4 rounded-2xl bg-white/5 hover:bg-white/10 active:scale-98 text-white font-bold text-xs transition-all border border-white/10 text-center flex items-center justify-center cursor-pointer">
-          Profili Gör
-        </button>
-        <button id="optInviteFriendBtn" type="button" class="w-full py-3.5 px-4 rounded-2xl bg-white/5 hover:bg-white/10 active:scale-98 text-white font-bold text-xs transition-all border border-white/10 text-center flex items-center justify-center cursor-pointer">
-          Odaya Çağır
-        </button>
         <button id="optRemoveFriendBtn" type="button" class="w-full py-3.5 px-4 rounded-2xl bg-white/5 hover:bg-white/10 active:scale-98 text-white font-bold text-xs transition-all border border-white/10 text-center flex items-center justify-center cursor-pointer">
           Arkadaşlıktan Çıkar
         </button>

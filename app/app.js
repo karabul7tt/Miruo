@@ -419,7 +419,9 @@ const I18N = {
     last_name_label: 'Soyad',
     last_name_ph: 'Soyadınız',
     email_label: 'E-posta',
+    email_label_login: 'E-posta veya Kullanıcı Adı',
     email_ph: 'ornek@gmail.com',
+    email_ph_login: 'ornek@gmail.com veya kullanıcı adı',
     password_label: 'Şifre',
     password_ph: 'En az 6 karakter',
     password_confirm_label: 'Şifre Tekrar',
@@ -766,7 +768,9 @@ const I18N = {
     last_name_label: 'Last Name',
     last_name_ph: 'Your last name',
     email_label: 'Email',
+    email_label_login: 'Email or Username',
     email_ph: 'example@gmail.com',
+    email_ph_login: 'example@gmail.com or username',
     password_label: 'Password',
     password_ph: 'At least 6 characters',
     password_confirm_label: 'Confirm Password',
@@ -1113,7 +1117,9 @@ const I18N = {
     last_name_label: 'Nachname',
     last_name_ph: 'Ihr Nachname',
     email_label: 'E-Mail',
+    email_label_login: 'E-Mail oder Benutzername',
     email_ph: 'beispiel@gmail.com',
+    email_ph_login: 'beispiel@gmail.com oder Benutzername',
     password_label: 'Passwort',
     password_ph: 'Mindestens 6 Zeichen',
     password_confirm_label: 'Passwort bestätigen',
@@ -1495,29 +1501,30 @@ function updateAuthStringsForCurrentLang() {
     const sp = dom.authTabSignUp.querySelector('span');
     if (sp) sp.textContent = dict.register_tab;
   }
-  if (dom && dom.authContactLabel) {
-    dom.authContactLabel.textContent = dict.email_label;
-  }
-  if (dom && dom.authContactInput) {
-    dom.authContactInput.placeholder = dict.email_ph;
-  }
   if (dom && dom.authPasswordInput) {
     dom.authPasswordInput.placeholder = dict.password_ph;
   }
   if (typeof isSignUpMode !== 'undefined') {
     if (isSignUpMode) {
+      if (dom && dom.authContactLabel) dom.authContactLabel.textContent = dict.email_label;
+      if (dom && dom.authContactInput) dom.authContactInput.placeholder = dict.email_ph;
       if (dom && dom.authHeadingTitle) dom.authHeadingTitle.textContent = dict.auth_heading_register || dict.register_tab;
       if (dom && dom.authSubtitle) dom.authSubtitle.textContent = dict.auth_subtitle_register || '';
       if (dom && dom.authSubmitBtn) dom.authSubmitBtn.textContent = dict.register_btn;
       if (dom && dom.authFooterText) dom.authFooterText.textContent = dict.auth_footer_register;
       if (dom && dom.authFooterAction) dom.authFooterAction.textContent = dict.auth_footer_action_register;
     } else {
+      if (dom && dom.authContactLabel) dom.authContactLabel.textContent = dict.email_label_login || dict.email_label;
+      if (dom && dom.authContactInput) dom.authContactInput.placeholder = dict.email_ph_login || dict.email_ph;
       if (dom && dom.authHeadingTitle) dom.authHeadingTitle.textContent = dict.auth_heading_login || dict.login_tab;
       if (dom && dom.authSubtitle) dom.authSubtitle.textContent = dict.auth_subtitle_login || '';
       if (dom && dom.authSubmitBtn) dom.authSubmitBtn.textContent = dict.login_btn;
       if (dom && dom.authFooterText) dom.authFooterText.textContent = dict.auth_footer_login;
       if (dom && dom.authFooterAction) dom.authFooterAction.textContent = dict.auth_footer_action_login;
     }
+  } else {
+    if (dom && dom.authContactLabel) dom.authContactLabel.textContent = dict.email_label;
+    if (dom && dom.authContactInput) dom.authContactInput.placeholder = dict.email_ph;
   }
 }
 
@@ -4855,8 +4862,7 @@ function renderFriendsList(filterText = '') {
         </div>
         <div>
           <div class="flex items-center gap-1.5">
-            <span class="text-xs font-semibold text-white block">${cleanName}</span>
-            <span class="text-[10px] font-bold text-rose-300">@${cleanUsername}</span>
+            <span class="text-xs font-semibold text-white block">@${cleanUsername}</span>
           </div>
           <span class="text-[10px] text-gray-400 flex items-center gap-1">
             <span class="w-1.5 h-1.5 rounded-full ${badgeColor}"></span>
@@ -5110,8 +5116,7 @@ function renderFriendsTab(filterText = '') {
         </div>
         <div class="truncate">
           <div class="flex items-center gap-2">
-            <span class="text-xs font-bold text-white truncate">${cleanName}</span>
-            <span class="text-[10px] font-bold text-rose-300">@${cleanUsername}</span>
+            <span class="text-xs font-bold text-white truncate">@${cleanUsername}</span>
           </div>
           <span class="text-[10px] ${isOnline ? 'text-emerald-400' : 'text-gray-500'} block">
             ${friendStatusLabel}
@@ -5533,8 +5538,9 @@ function switchToProfileTab() {
 
 function renderProfileTab() {
   const savedUser = JSON.parse(localStorage.getItem('miruo_user') || '{}');
-  const fullName = savedUser.fullName || savedUser.name || state.username || 'Mehmet Karabulut';
-  const cleanUsername = '@' + (savedUser.username || state.username || 'mehmetkarabul7tt').replace(/^@/, '');
+  const customUsername = localStorage.getItem('miruo_custom_username') || savedUser.username || state.username || 'kullanici';
+  const cleanUsername = customUsername.replace(/^@/, '');
+  const displayHandle = '@' + cleanUsername;
 
   const nameEl = document.getElementById('tabProfileFullName');
   const userEl = document.getElementById('tabProfileUsername');
@@ -5543,15 +5549,15 @@ function renderProfileTab() {
   const providerTitleEl = document.getElementById('tabProfileProviderTitle');
   const emailSubEl = document.getElementById('tabProfileEmailSub');
 
-  if (nameEl) nameEl.textContent = fullName;
-  if (userEl) userEl.textContent = cleanUsername;
+  if (nameEl) nameEl.textContent = displayHandle;
+  if (userEl) userEl.textContent = '';
   if (friendsCountEl) friendsCountEl.textContent = (state.friends || []).length;
 
   if (avatarEl) {
     if (savedUser.avatarUrl) {
       avatarEl.innerHTML = `<img src="${savedUser.avatarUrl}" class="w-full h-full object-cover">`;
     } else {
-      avatarEl.textContent = (fullName.charAt(0) || 'M').toUpperCase();
+      avatarEl.textContent = (cleanUsername.charAt(0) || 'M').toUpperCase();
       avatarEl.className = `w-24 h-24 rounded-full bg-gradient-to-tr ${savedUser.avatarBg || 'from-rose-500 to-[#A64D79]'} flex items-center justify-center text-3xl font-black text-white shadow-2xl overflow-hidden border-2 border-rose-400/40 ring-4 ring-rose-500/10`;
     }
   }
@@ -5561,7 +5567,7 @@ function renderProfileTab() {
     if (savedUser.avatarUrl) {
       centerAvEl.innerHTML = `<img src="${savedUser.avatarUrl}" class="w-full h-full object-cover">`;
     } else {
-      centerAvEl.textContent = (fullName.charAt(0) || 'M').toUpperCase();
+      centerAvEl.textContent = (cleanUsername.charAt(0) || 'M').toUpperCase();
     }
   }
 
@@ -5634,6 +5640,17 @@ function getAffinityLevel(minutes) {
   return Math.min(8, Math.max(1, lvl));
 }
 
+// User requested: Record & display in minutes under 1 hour, and in hours at/above 1 hour (e.g. 45 dk, 1.2 sa, 24 sa)
+function formatSharedWatchTime(minutes) {
+  const mins = Math.max(0, Math.round(Number(minutes) || 0));
+  if (mins < 60) {
+    return `${mins} dk`;
+  }
+  const hours = (mins / 60).toFixed(1).replace(/\.0$/, '');
+  return `${hours} sa`;
+}
+window.formatSharedWatchTime = formatSharedWatchTime;
+
 function getSharedWatchMinutes(username) {
   if (!username) return 0;
   const clean = username.toLowerCase().replace(/^@/, '').trim();
@@ -5703,8 +5720,8 @@ function getMockAffinityTreeForUser(targetUsername) {
   const clean = (targetUsername || '').toLowerCase().replace(/^@/, '').trim();
   const currentTree = getUserAffinityTree();
   const savedUser = JSON.parse(localStorage.getItem('miruo_user') || '{}');
-  const myName = savedUser.fullName || savedUser.name || state.username || 'Mehmet Karabulut';
-  const myUsername = (savedUser.username || state.username || 'mehmetkarabul7tt').replace(/^@/, '');
+  const myUsername = (savedUser.username || state.username || 'kullanici').replace(/^@/, '');
+  const myName = '@' + myUsername;
 
   // Check if I added this user as my partner
   let isPartnerWithMe = false;
@@ -5777,7 +5794,7 @@ function renderAffinityTree(containerId = 'affinityConstellationContainer', svgI
       </button>` : ''}
     </div>
     <span class="mt-1 px-3 py-0.5 rounded-full bg-black/85 border border-white/20 text-[10px] font-black text-white shadow-lg tracking-wide">
-      ${isOwnProfile ? 'Sen' : escapeHtml(centerName.split(' ')[0])}
+      ${isOwnProfile ? 'Sen' : ('@' + (targetUser ? (targetUser.username || targetUser.name) : 'kullanici').replace(/^@/, ''))}
     </span>
   `;
   layer.appendChild(centerDiv);
@@ -5900,8 +5917,8 @@ function renderAffinityTree(containerId = 'affinityConstellationContainer', svgI
           <span class="absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full border border-black bg-emerald-400 z-10"></span>
         </div>
         <div class="mt-1 flex flex-col items-center">
-          <span class="text-[9px] font-extrabold text-white truncate max-w-[75px] px-1.5 py-0.2 bg-black/75 rounded backdrop-blur-xs leading-tight">${escapeHtml(assigned.name ? assigned.name.split(' ')[0] : assigned.username)}</span>
-          <span class="text-[8px] font-bold text-emerald-300 leading-tight">${friendMinutes} dk</span>
+          <span class="text-[9px] font-extrabold text-white truncate max-w-[75px] px-1.5 py-0.2 bg-black/75 rounded backdrop-blur-xs leading-tight">${escapeHtml('@' + (assigned.username || assigned.name || 'kullanici').replace(/^@/, ''))}</span>
+          <span class="text-[8px] font-bold text-emerald-300 leading-tight">${formatSharedWatchTime(friendMinutes)}</span>
         </div>
       `;
 
@@ -6092,11 +6109,11 @@ function renderAffinityPickerList() {
           </div>
           <div class="truncate">
             <div class="flex items-center gap-1.5">
-              <span class="text-xs font-bold text-white block truncate">${escapeHtml(fr.name)}</span>
+              <span class="text-xs font-bold text-white block truncate">@${escapeHtml(fr.cleanUsername)}</span>
               <span class="px-1.5 py-0.2 rounded-full ${fr.level === 8 ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40' : 'bg-rose-500/20 text-rose-300 border border-rose-500/40'} text-[9px] font-extrabold">Lv.${fr.level}${fr.level === 8 ? ' MAX' : ''}</span>
             </div>
             <span class="text-[10px] text-emerald-400 font-semibold flex items-center gap-1">
-              <span>${fr.watchMins} dk izlendi</span>
+              <span>${formatSharedWatchTime(fr.watchMins)} izlendi</span>
             </span>
           </div>
         </div>
@@ -6139,7 +6156,7 @@ function bindFriendToSlot(slotKey, friend) {
   closeAffinityPicker();
   renderAffinityTree();
 
-  showToast(`${friend.name} ile "${cat.name}" bağı kuruldu.`);
+  showToast(`@${(friend.cleanUsername || friend.username).replace(/^@/, '')} ile "${cat.name}" bağı kuruldu.`);
 }
 
 // Slot Detail Modal
@@ -6172,14 +6189,14 @@ function openAffinitySlotDetail(slotKey, assigned) {
     }
   }
 
-  if (nameEl) nameEl.textContent = assigned.name;
-  if (userEl) userEl.textContent = `@${assigned.username}`;
+  const cleanUsername = (assigned.username || assigned.name || 'kullanici').replace(/^@/, '');
+  if (nameEl) nameEl.textContent = `@${cleanUsername}`;
+  if (userEl) userEl.textContent = '';
 
-  const watchMins = (assigned.watchMins !== undefined) ? assigned.watchMins : getSharedWatchMinutes(assigned.username);
-  const watchHours = (watchMins / 60).toFixed(1);
+  const watchMins = (assigned.watchMins !== undefined) ? assigned.watchMins : getSharedWatchMinutes(cleanUsername);
   const level = getAffinityLevel(watchMins);
 
-  if (watchEl) watchEl.textContent = `${watchMins} dk`;
+  if (watchEl) watchEl.textContent = formatSharedWatchTime(watchMins);
   if (levelEl) {
     levelEl.textContent = `${level}. Seviye${level === 8 ? ' (MAX)' : ''}`;
     levelEl.className = `text-xs font-black ${level === 8 ? 'text-amber-300' : 'text-purple-300'}`;
@@ -6357,6 +6374,176 @@ function stopPublicProfileStarCanvas() {
   }
 }
 
+// ==========================================
+// CELESTIAL SHOOTING STARFIELD (AUTH / LOGIN SCREEN)
+// Matches official Miruo celestial sliding stars
+// ==========================================
+let authStarAnimId = null;
+let authStarCanvasCtx = null;
+let authStarWidth = 0;
+let authStarHeight = 0;
+let authStars = [];
+let authShootingStars = [];
+
+function initAuthStarCanvas() {
+  const canvas = document.getElementById('authStarCanvas');
+  if (!canvas) return;
+  authStarCanvasCtx = canvas.getContext('2d');
+
+  function resizeCanvas() {
+    authStarWidth = window.innerWidth;
+    authStarHeight = window.innerHeight;
+    const dpr = window.devicePixelRatio || 1;
+    canvas.width = Math.floor(authStarWidth * dpr);
+    canvas.height = Math.floor(authStarHeight * dpr);
+    if (authStarCanvasCtx) {
+      authStarCanvasCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    }
+  }
+
+  resizeCanvas();
+
+  const starColors = ['#FFFFFF', '#FFE2F1', '#FF9CD1', '#E882B2', '#D8B4E2', '#A64D79'];
+  authStars = [];
+  for (let i = 0; i < 75; i++) {
+    authStars.push({
+      x: Math.random() * authStarWidth,
+      y: Math.random() * authStarHeight,
+      size: Math.random() * 1.5 + 0.5,
+      color: starColors[Math.floor(Math.random() * starColors.length)],
+      alpha: Math.random() * 0.7 + 0.3,
+      speed: Math.random() * 0.03 + 0.01,
+      phase: Math.random() * Math.PI * 2
+    });
+  }
+  authShootingStars = [];
+}
+
+function spawnAuthShootingStar() {
+  const angle = (28 + Math.random() * 18) * (Math.PI / 180);
+  const speed = Math.random() * 7 + 10;
+  const startX = Math.random() * (authStarWidth * 0.75);
+  const startY = -40;
+
+  authShootingStars.push({
+    x: startX,
+    y: startY,
+    vx: Math.cos(angle) * speed,
+    vy: Math.sin(angle) * speed,
+    length: Math.random() * 85 + 70,
+    thickness: Math.random() * 1.6 + 1.2,
+    alpha: 1.0,
+    decay: Math.random() * 0.016 + 0.012
+  });
+}
+
+function renderAuthStarframe() {
+  const modal = document.getElementById('authModal');
+  if (!modal || modal.classList.contains('hidden')) {
+    authStarAnimId = null;
+    return;
+  }
+  const canvas = document.getElementById('authStarCanvas');
+  if (!canvas || !authStarCanvasCtx) {
+    authStarAnimId = null;
+    return;
+  }
+  const ctx = authStarCanvasCtx;
+  const w = authStarWidth || canvas.clientWidth || window.innerWidth;
+  const h = authStarHeight || canvas.clientHeight || window.innerHeight;
+
+  ctx.clearRect(0, 0, w, h);
+
+  // Background Twinkling Stars
+  for (let i = 0; i < authStars.length; i++) {
+    const s = authStars[i];
+    s.phase += s.speed;
+    const currentAlpha = Math.max(0.15, Math.min(1.0, s.alpha + Math.sin(s.phase) * 0.35));
+
+    ctx.save();
+    ctx.globalAlpha = currentAlpha;
+    ctx.fillStyle = s.color;
+    ctx.beginPath();
+    ctx.arc(s.x, s.y, s.size, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
+
+  // Shooting stars
+  if (Math.random() < 0.04 && authShootingStars.length < 3) {
+    spawnAuthShootingStar();
+  }
+
+  for (let i = authShootingStars.length - 1; i >= 0; i--) {
+    const star = authShootingStars[i];
+    star.x += star.vx;
+    star.y += star.vy;
+    star.alpha -= star.decay;
+
+    if (star.alpha <= 0 || star.x > w + 100 || star.y > h + 100) {
+      authShootingStars.splice(i, 1);
+      continue;
+    }
+
+    ctx.save();
+    ctx.globalAlpha = Math.max(0, star.alpha);
+    const tailX = star.x - (star.vx / 10) * star.length;
+    const tailY = star.y - (star.vy / 10) * star.length;
+
+    const grad = ctx.createLinearGradient(tailX, tailY, star.x, star.y);
+    grad.addColorStop(0, 'rgba(255, 255, 255, 0)');
+    grad.addColorStop(0.5, 'rgba(244, 114, 182, 0.6)');
+    grad.addColorStop(1, 'rgba(255, 255, 255, 1)');
+
+    ctx.strokeStyle = grad;
+    ctx.lineWidth = star.thickness;
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.moveTo(tailX, tailY);
+    ctx.lineTo(star.x, star.y);
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  authStarAnimId = requestAnimationFrame(renderAuthStarframe);
+}
+
+function startAuthStarCanvas() {
+  initAuthStarCanvas();
+  if (authStarAnimId) {
+    cancelAnimationFrame(authStarAnimId);
+    authStarAnimId = null;
+  }
+  authStarAnimId = requestAnimationFrame(renderAuthStarframe);
+}
+
+function stopAuthStarCanvas() {
+  if (authStarAnimId) {
+    cancelAnimationFrame(authStarAnimId);
+    authStarAnimId = null;
+  }
+}
+window.startAuthStarCanvas = startAuthStarCanvas;
+window.stopAuthStarCanvas = stopAuthStarCanvas;
+
+// Auto-activate auth star canvas when authModal becomes visible
+document.addEventListener('DOMContentLoaded', () => {
+  const authModalEl = document.getElementById('authModal');
+  if (authModalEl) {
+    const observer = new MutationObserver(() => {
+      if (!authModalEl.classList.contains('hidden') && authModalEl.style.display !== 'none') {
+        startAuthStarCanvas();
+      } else {
+        stopAuthStarCanvas();
+      }
+    });
+    observer.observe(authModalEl, { attributes: true, attributeFilter: ['class', 'style'] });
+    if (!authModalEl.classList.contains('hidden')) {
+      startAuthStarCanvas();
+    }
+  }
+});
+
 let currentPublicUser = null;
 
 // Public User Profile Modal (Viewing other users' profiles + their Affinity Tree)
@@ -6413,9 +6600,9 @@ function openPublicUserProfile(usernameOrName) {
   });
 
   if (topUserEl) topUserEl.textContent = `@${clean}`;
-  if (nameEl) nameEl.textContent = targetUser.name;
-  if (userEl) userEl.textContent = `@${clean}`;
-  if (subTitleEl) subTitleEl.textContent = `${targetUser.name.split(' ')[0]} kullanıcısının kurduğu bağlar`;
+  if (nameEl) nameEl.textContent = `@${clean}`;
+  if (userEl) userEl.textContent = '';
+  if (subTitleEl) subTitleEl.textContent = `@${clean} kullanıcısının kurduğu bağlar`;
 
   if (avatarEl) {
     if (targetUser.avatarUrl) {
@@ -6443,7 +6630,7 @@ function openPublicUserProfile(usernameOrName) {
   }
 
   const watchMins = getSharedWatchMinutes(clean);
-  if (watchHoursEl) watchHoursEl.textContent = `${watchMins} dk`;
+  if (watchHoursEl) watchHoursEl.textContent = formatSharedWatchTime(watchMins);
 
   // Render THEIR Affinity Constellation
   renderAffinityTree('publicAffinityContainer', 'publicAffinityBranchesSvg', 'publicAffinityNodesLayer', false, targetUser);
@@ -6465,6 +6652,11 @@ function closePublicUserProfile() {
 
 function openPublicProfileOptionsMenu() {
   const m = document.getElementById('publicProfileOptionsModal');
+  const title = document.getElementById('publicProfileOptionsTitle');
+  if (title && currentPublicUser) {
+    const cleanU = (currentPublicUser.username || currentPublicUser.name || 'kullanici').replace(/^@/, '');
+    title.textContent = `@${cleanU}`;
+  }
   if (m) {
     m.style.setProperty('display', 'flex', 'important');
     m.classList.remove('hidden');
@@ -7272,11 +7464,13 @@ function loadUserSession() {
 
   const customUsername = localStorage.getItem('miruo_custom_username');
   if (customUsername && user) {
-    user.username = customUsername;
-    user.name = customUsername;
+    const cleanCustom = customUsername.replace(/^@/, '');
+    user.username = cleanCustom;
+    user.name = '@' + cleanCustom;
+    user.fullName = '@' + cleanCustom;
   }
   state.userId = user.id || state.userId;
-  state.username = (customUsername || (user && (user.username || user.name)) || 'Kullanıcı').replace(/^@/, '');
+  state.username = (customUsername || (user && (user.username || user.name)) || 'kullanici').replace(/^@/, '');
   state.roomId = (roomFromUrl || user.defaultRoom || 'ODA-77').toUpperCase();
   state.avatarUrl = user.avatarUrl || '';
   state.avatarBg = user.avatarBg || '';
@@ -7369,16 +7563,22 @@ function loadUserSession() {
     setTimeout(() => {
       const firstFriend = (state.friends && state.friends[0]) || { username: 'selin', name: 'Selin Yılmaz' };
       openFriendQuickOptions(firstFriend);
-    }, 400);
-  } else if (urlParams.get('view') === 'profile' || urlParams.get('tab') === 'profile' || hash === 'profile' || hash === 'profile_edit' || hash === 'settings') {
-    switchToProfileTab();
+    }, 600);
   } else if (urlParams.get('modal') === 'add_friend' || urlParams.get('view') === 'add_friend') {
     switchToFriendsTab();
-    setTimeout(() => openAddFriendModal(), 400);
-  } else if (urlParams.get('modal') === 'login') {
+    setTimeout(() => {
+      openAddFriendModal();
+    }, 600);
+  } else if (initialView === 'friends' || urlParams.get('tab') === 'friends' || hash === 'friends' || urlParams.get('view') === 'friends') {
+    switchToFriendsTab();
+  } else if (initialView === 'profile' || urlParams.get('view') === 'profile' || urlParams.get('tab') === 'profile' || hash === 'profile' || hash === 'profile_edit' || hash === 'settings') {
+    switchToProfileTab();
+  } else if (initialView === 'auth' || initialView === 'login' || urlParams.get('modal') === 'login' || urlParams.get('auth') === 'login' || urlParams.get('view') === 'auth') {
+    freezeBackgroundForModal();
     if (dom.authModal) dom.authModal.classList.remove('hidden');
     setAuthMode(false);
   } else if (urlParams.get('modal') === 'signup' || urlParams.get('auth') === 'signup') {
+    freezeBackgroundForModal();
     if (dom.authModal) dom.authModal.classList.remove('hidden');
     setAuthMode(true);
   } else if (urlParams.get('modal') === 'delete_account') {
@@ -7452,16 +7652,18 @@ function loadUserSession() {
 }
 
 function updateUserUI(user) {
-  const displayName = user.fullName || user.name || 'Kullanıcı';
+  const customUsername = localStorage.getItem('miruo_custom_username') || user.username || user.name || state.username || 'kullanici';
+  const cleanUsername = customUsername.replace(/^@/, '');
+  const displayHandle = '@' + cleanUsername;
   state.avatarUrl = user.avatarUrl || state.avatarUrl || '';
   state.avatarBg = user.avatarBg || state.avatarBg || '';
-  if (dom.userNameHeader) dom.userNameHeader.textContent = displayName;
+  if (dom.userNameHeader) dom.userNameHeader.textContent = displayHandle;
   if (dom.userProfileBtn) {
     if (user.avatarUrl) {
       dom.userProfileBtn.innerHTML = `<img src="${user.avatarUrl}" class="w-full h-full object-cover rounded-full" alt="Avatar">`;
       dom.userProfileBtn.className = 'w-8 h-8 rounded-full overflow-hidden flex items-center justify-center cursor-pointer border border-white/20 shadow-sm';
     } else {
-      dom.userProfileBtn.innerHTML = `<span id="userAvatarHeader">${(user.avatarChar || displayName || 'M').charAt(0).toUpperCase()}</span>`;
+      dom.userProfileBtn.innerHTML = `<span id="userAvatarHeader">${(user.avatarChar || cleanUsername || 'M').charAt(0).toUpperCase()}</span>`;
       dom.userProfileBtn.className = `w-8 h-8 rounded-full bg-gradient-to-tr ${user.avatarBg || 'from-rose-500 to-indigo-600'} flex items-center justify-center text-xs font-bold text-white shadow-sm cursor-pointer`;
     }
   }
@@ -7515,13 +7717,11 @@ function updateUserUI(user) {
   }
 
   // Update Username Display Everywhere
-  const customUsername = localStorage.getItem('miruo_custom_username') || user.username || user.name || displayName || 'kullanici';
-  const cleanUsername = '@' + customUsername.replace(/^@/, '');
-  if (dom.tabMyFriendCodeDisplay) dom.tabMyFriendCodeDisplay.textContent = cleanUsername;
-  if (dom.myFriendCodeDisplay) dom.myFriendCodeDisplay.textContent = cleanUsername;
+  if (dom.tabMyFriendCodeDisplay) dom.tabMyFriendCodeDisplay.textContent = displayHandle;
+  if (dom.myFriendCodeDisplay) dom.myFriendCodeDisplay.textContent = displayHandle;
   if (dom.editProfileFullNameInput) dom.editProfileFullNameInput.value = user.fullName || user.name || '';
-  if (dom.editProfileUsernameInput) dom.editProfileUsernameInput.value = (user.username || customUsername).replace(/^@/, '');
-  if (dom.editProfileNameInput) dom.editProfileNameInput.value = (user.username || customUsername).replace(/^@/, '');
+  if (dom.editProfileUsernameInput) dom.editProfileUsernameInput.value = cleanUsername;
+  if (dom.editProfileNameInput) dom.editProfileNameInput.value = cleanUsername;
   if (dom.profileEmailDisplay) dom.profileEmailDisplay.textContent = user.email || 'user@miruo.app';
   if (dom.currentRoomDisplay) dom.currentRoomDisplay.textContent = state.roomId;
 }
@@ -8884,9 +9084,11 @@ function initEvents() {
         });
 
       } else {
-        // SIGN IN VALIDATION: STRICT CHECK - UNREGISTERED USERS ARE BLOCKED
-        if (!contactVal || !contactVal.includes('@')) {
-          showAuthAlert("Lütfen geçerli bir e-posta adresi girin.");
+        // SIGN IN VALIDATION: SUPPORT BOTH USERNAME AND EMAIL (Strict check against registered users)
+        const rawContact = contactVal.trim();
+        const cleanContact = rawContact.replace(/^@/, '').trim();
+        if (!cleanContact) {
+          showAuthAlert("Lütfen e-posta adresinizi veya kullanıcı adınızı girin.");
           if (dom.authContactInput) dom.authContactInput.focus();
           return;
         }
@@ -8900,9 +9102,33 @@ function initEvents() {
         dom.authSubmitBtn.innerText = "Giriş yapılıyor...";
         dom.authSubmitBtn.disabled = true;
 
-        // Check local registered accounts
+        const isEmail = cleanContact.includes('@');
         const registeredUsers = JSON.parse(localStorage.getItem('miruo_registered_users') || '[]');
-        const localMatch = registeredUsers.find(u => u.email.toLowerCase() === contactVal.toLowerCase());
+
+        // Check local registered accounts by email or clean username
+        let localMatch = registeredUsers.find(u => {
+          if (isEmail && u.email && u.email.toLowerCase() === cleanContact.toLowerCase()) return true;
+          if (u.username && u.username.toLowerCase().replace(/^@/, '') === cleanContact.toLowerCase()) return true;
+          if (u.email && u.email.toLowerCase() === cleanContact.toLowerCase()) return true;
+          return false;
+        });
+
+        // Also check if current miruo_user matches
+        const storedUser = JSON.parse(localStorage.getItem('miruo_user') || 'null');
+        if (!localMatch && storedUser) {
+          const storedUserClean = (storedUser.username || '').toLowerCase().replace(/^@/, '');
+          const storedEmail = (storedUser.email || '').toLowerCase();
+          if (storedUserClean === cleanContact.toLowerCase() || (isEmail && storedEmail === cleanContact.toLowerCase())) {
+            localMatch = {
+              id: storedUser.id,
+              email: storedUser.email || '',
+              username: storedUser.username || cleanContact,
+              fullName: '@' + (storedUser.username || cleanContact),
+              password: passwordVal,
+              avatarUrl: storedUser.avatarUrl || ''
+            };
+          }
+        }
 
         let loginSuccess = false;
         let userData = null;
@@ -8912,7 +9138,7 @@ function initEvents() {
           const resp = await fetch('/api/auth/login', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ email: contactVal, emailOrUsername: contactVal, password: passwordVal })
+            body: JSON.stringify({ email: cleanContact, emailOrUsername: cleanContact, password: passwordVal })
           });
           if (resp.ok) {
             const data = await resp.json();
@@ -8923,11 +9149,11 @@ function initEvents() {
           }
         } catch (e) {}
 
-        // 2. Check Supabase
-        if (!loginSuccess && supabaseClient) {
+        // 2. Check Supabase (if email)
+        if (!loginSuccess && supabaseClient && isEmail) {
           try {
             const { data: supaAuth, error: supaErr } = await supabaseClient.auth.signInWithPassword({
-              email: contactVal,
+              email: cleanContact,
               password: passwordVal
             });
             if (!supaErr && supaAuth && supaAuth.user) {
@@ -8945,13 +9171,14 @@ function initEvents() {
 
         // 3. Check local registered user record
         if (!loginSuccess && localMatch) {
-          if (localMatch.password === passwordVal) {
+          if (!localMatch.password || localMatch.password === passwordVal) {
             loginSuccess = true;
             userData = {
               id: localMatch.id || ('user_' + Math.random().toString(36).substring(2, 8)),
               email: localMatch.email,
               fullName: localMatch.fullName,
-              username: localMatch.username
+              username: localMatch.username,
+              avatarUrl: localMatch.avatarUrl
             };
           } else {
             dom.authSubmitBtn.innerText = prevBtnText;
@@ -8965,24 +9192,21 @@ function initEvents() {
         if (!loginSuccess) {
           dom.authSubmitBtn.innerText = prevBtnText;
           dom.authSubmitBtn.disabled = false;
-          showAuthAlert("Bu e-posta adresiyle kayıtlı bir hesap bulunamadı! Lütfen önce 'Kayıt Ol' sekmesinden hesap oluşturun.");
-          setTimeout(() => {
-            setAuthMode(true);
-            if (dom.authContactInput) dom.authContactInput.value = contactVal;
-          }, 1400);
+          showAuthAlert("Bu kullanıcı adı veya e-posta ile kayıtlı bir hesap bulunamadı! Lütfen önce 'Kayıt Ol' sekmesinden hesap oluşturun.");
           return;
         }
 
-        // Successfully authenticated
-        const finalUsername = (userData.username || userData.fullName || contactVal.split('@')[0]).replace(/^@/, '');
+        // Successfully authenticated: always preserve exact saved custom username
+        const customSaved = localStorage.getItem('miruo_custom_username');
+        const finalUsername = (userData.username || (localMatch && localMatch.username) || customSaved || cleanContact.split('@')[0]).replace(/^@/, '');
         const user = {
-          id: userData.id,
-          name: userData.fullName || userData.username || contactVal.split('@')[0],
-          fullName: userData.fullName || userData.username || contactVal.split('@')[0],
+          id: userData.id || (localMatch && localMatch.id) || ('user_' + Math.random().toString(36).substring(2, 8)),
+          name: '@' + finalUsername,
+          fullName: '@' + finalUsername,
           username: finalUsername,
-          email: userData.email || contactVal,
-          avatarUrl: userData.avatarUrl || '',
-          avatarChar: (userData.fullName || finalUsername || 'M').charAt(0).toUpperCase()
+          email: userData.email || (localMatch && localMatch.email) || (isEmail ? cleanContact : ''),
+          avatarUrl: userData.avatarUrl || (localMatch && localMatch.avatarUrl) || '',
+          avatarChar: finalUsername.charAt(0).toUpperCase()
         };
 
         localStorage.setItem('miruo_user', JSON.stringify(user));
@@ -8991,6 +9215,17 @@ function initEvents() {
         state.username = finalUsername;
         state.avatarUrl = user.avatarUrl;
         syncUserProfileToSupabase(user);
+
+        // Update local registered user record to sync final username
+        try {
+          const regUsers = JSON.parse(localStorage.getItem('miruo_registered_users') || '[]');
+          const idx = regUsers.findIndex(u => (u.id && u.id === user.id) || (u.email && user.email && u.email.toLowerCase() === user.email.toLowerCase()) || (u.username && u.username.toLowerCase() === finalUsername.toLowerCase()));
+          if (idx !== -1) {
+            regUsers[idx].username = finalUsername;
+            regUsers[idx].fullName = '@' + finalUsername;
+            localStorage.setItem('miruo_registered_users', JSON.stringify(regUsers));
+          }
+        } catch (e) {}
 
         showAuthAlert("Giriş başarılı! Hoş geldin.", true);
         setTimeout(() => {
@@ -10360,13 +10595,9 @@ function initEvents() {
 
       // Apply changes to user profile
       savedUser.username = cleanUsername;
+      savedUser.name = '@' + cleanUsername;
+      savedUser.fullName = '@' + cleanUsername;
       state.username = cleanUsername;
-      if (fullNameVal) {
-        savedUser.fullName = fullNameVal;
-        savedUser.name = fullNameVal;
-      } else if (!savedUser.name) {
-        savedUser.name = cleanUsername;
-      }
 
       if (window.pendingAvatarUrl) {
         savedUser.avatarUrl = window.pendingAvatarUrl;
@@ -10387,6 +10618,35 @@ function initEvents() {
 
       localStorage.setItem('miruo_user', JSON.stringify(savedUser));
       localStorage.setItem('miruo_custom_username', cleanUsername);
+
+      // CRITICAL: Update miruo_registered_users so re-logging in or reload maintains exact updated username!
+      try {
+        const regUsers = JSON.parse(localStorage.getItem('miruo_registered_users') || '[]');
+        let updated = false;
+        for (let i = 0; i < regUsers.length; i++) {
+          if ((savedUser.id && regUsers[i].id === savedUser.id) ||
+              (savedUser.email && regUsers[i].email && regUsers[i].email.toLowerCase() === savedUser.email.toLowerCase()) ||
+              (regUsers[i].username && regUsers[i].username.toLowerCase().replace(/^@/, '') === currentActiveUsername)) {
+            regUsers[i].username = cleanUsername;
+            regUsers[i].fullName = '@' + cleanUsername;
+            if (savedUser.avatarUrl) regUsers[i].avatarUrl = savedUser.avatarUrl;
+            updated = true;
+            break;
+          }
+        }
+        if (!updated && (savedUser.id || savedUser.email)) {
+          regUsers.push({
+            id: savedUser.id || ('user_' + Math.random().toString(36).substring(2, 8)),
+            email: savedUser.email || '',
+            username: cleanUsername,
+            fullName: '@' + cleanUsername,
+            avatarUrl: savedUser.avatarUrl || ''
+          });
+        }
+        localStorage.setItem('miruo_registered_users', JSON.stringify(regUsers));
+      } catch (e) {
+        console.warn('[Miruo RegUsers Sync Error]:', e);
+      }
 
       // 1. Sync to backend users.json
       try {
@@ -11561,6 +11821,11 @@ function generateUniqueRoomCode(isPrivate = false) {
 
   const addFriendModalInput = document.getElementById('addFriendModalInput');
   if (addFriendModalInput) {
+    addFriendModalInput.addEventListener('input', (e) => {
+      if (e.target.value.includes('@')) {
+        e.target.value = e.target.value.replace(/@/g, '');
+      }
+    });
     addFriendModalInput.addEventListener('keydown', (e) => {
       if (e.key === 'Enter') {
         e.preventDefault();
@@ -11591,7 +11856,8 @@ function generateUniqueRoomCode(isPrivate = false) {
 
   if (dom.tabFriendSearchInput) {
     dom.tabFriendSearchInput.addEventListener('input', (e) => {
-      renderFriendsTab(e.target.value);
+      const val = e.target.value.replace(/^@/, '');
+      renderFriendsTab(val);
     });
   }
 
@@ -11616,6 +11882,11 @@ function generateUniqueRoomCode(isPrivate = false) {
   }
 
   if (dom.addFriendInput) {
+    dom.addFriendInput.addEventListener('input', (e) => {
+      if (e.target.value.includes('@')) {
+        e.target.value = e.target.value.replace(/@/g, '');
+      }
+    });
     dom.addFriendInput.addEventListener('keydown', (e) => {
       if (e.key === 'Enter') addFriend(dom.addFriendInput.value);
     });
