@@ -301,12 +301,15 @@ body.stage-is-fullscreen #selfPipCard {
 }
 
 /* Floating Reopen Chat Button in Fullscreen & Pseudo-Fullscreen */
-#openFsChatFloatingBtn,
-#openChatFloatingBtn {
+#openFsChatFloatingBtn {
   z-index: 999998 !important;
   pointer-events: auto !important;
   bottom: max(24px, calc(16px + env(safe-area-inset-bottom, 0px))) !important;
   right: max(16px, calc(16px + env(safe-area-inset-right, 0px))) !important;
+}
+
+#openChatFloatingBtn {
+  display: none !important;
 }
 
 /* Persistent Exit Fullscreen Button */
@@ -474,15 +477,25 @@ body.stage-is-fullscreen #fsChatOverlay {
   #stageContainer.is-fullscreen-pseudo.fs-chat-active #remoteScreenPlayer,
   #stageContainer:fullscreen.fs-chat-active #ravePlayerOverlay,
   #stageContainer:-webkit-full-screen.fs-chat-active #ravePlayerOverlay,
-  #stageContainer.is-fullscreen-pseudo.fs-chat-active #ravePlayerOverlay,
-  body.stage-is-fullscreen.fs-chat-active #player,
-  body.stage-is-fullscreen.fs-chat-active #nativeVideoPlayer,
-  body.stage-is-fullscreen.fs-chat-active #webPlayerFrame,
-  body.stage-is-fullscreen.fs-chat-active #remoteScreenPlayer,
-  body.stage-is-fullscreen.fs-chat-active #ravePlayerOverlay {
+  #stageContainer.is-fullscreen-pseudo.fs-chat-active #ravePlayerOverlay {
     margin-right: 320px !important;
     width: calc(100% - 320px) !important;
     transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1) !important;
+  }
+}
+
+/* Portrait strict override: Video is NEVER shifted right or reduced in width */
+@media (orientation: portrait) {
+  #stageContainer #ytPlayerContainer,
+  #stageContainer #ytPlayerContainer iframe,
+  #stageContainer #miruoYtIframe,
+  #stageContainer #nativeVideoPlayer,
+  #stageContainer #webPlayerFrame,
+  #stageContainer #remoteScreenPlayer,
+  #stageContainer #ravePlayerOverlay {
+    margin-right: 0 !important;
+    width: 100% !important;
+    max-width: 100% !important;
   }
 }
 
@@ -815,24 +828,26 @@ body.in-room-mode #roomMainSplitLayout {
     overflow-y: auto !important;
   }
 
-  /* When Chat is CLOSED (.chat-is-closed): Video expands to full height! */
+  /* When Chat is CLOSED (.chat-is-closed): Video remains crisp 16:9 and centered */
   body.in-room-mode:not(.stage-is-fullscreen) #roomWorkspaceSection.chat-is-closed #roomPlayerColumn {
     flex: 1 1 0% !important;
-    height: 100% !important;
+    width: 100% !important;
     min-height: 0 !important;
     display: flex !important;
     flex-direction: column !important;
-    gap: 8px !important;
-    width: 100% !important;
+    justify-content: center !important;
+    align-items: center !important;
+    gap: 12px !important;
   }
 
   body.in-room-mode:not(.stage-is-fullscreen) #roomWorkspaceSection.chat-is-closed #stageContainer {
-    flex: 1 1 0% !important;
     width: 100% !important;
-    height: 100% !important;
-    max-height: none !important;
-    aspect-ratio: auto !important;
+    max-width: 100% !important;
+    aspect-ratio: 16/9 !important;
+    height: auto !important;
+    max-height: 70vh !important;
     border-radius: 16px !important;
+    flex-shrink: 0 !important;
   }
 
   body.in-room-mode:not(.stage-is-fullscreen) #roomWorkspaceSection.chat-is-closed #roomChatSidebar {
@@ -944,6 +959,120 @@ body.in-room-mode #roomMainSplitLayout {
 .affinity-glow-confidant {
   border: 2.5px solid #fb7185 !important;
   box-shadow: 0 0 16px rgba(251, 113, 133, 0.55), inset 0 0 10px rgba(251, 113, 133, 0.25) !important;
+}
+
+/* ========================================================
+   IN-APP FLOATING MINI PLAYER (PICTURE-IN-PICTURE DOCK)
+   "odada ayrıca bu küçük buton gibi alta çekilsin sonra uygulama içi gezilebilsin"
+   ======================================================== */
+body.has-mini-player #roomWorkspaceSection {
+  display: block !important;
+  position: static !important;
+  height: 0 !important;
+  min-height: 0 !important;
+  max-height: 0 !important;
+  overflow: visible !important;
+  padding: 0 !important;
+  margin: 0 !important;
+}
+
+body.has-mini-player #roomStickyHeader,
+body.has-mini-player #roomChatSidebar,
+body.has-mini-player #roomControlsToolbar,
+body.has-mini-player #nowPlayingBar,
+body.has-mini-player #openChatFloatingBtn,
+body.has-mini-player #openFsChatFloatingBtn,
+body.has-mini-player #roomVideoGrid {
+  display: none !important;
+}
+
+body.has-mini-player #roomMainSplitLayout,
+body.has-mini-player #roomPlayerColumn {
+  display: contents !important;
+}
+
+body.has-mini-player #stageContainer {
+  position: fixed !important;
+  bottom: max(78px, calc(68px + env(safe-area-inset-bottom, 12px))) !important;
+  right: 12px !important;
+  width: 176px !important;
+  height: 99px !important;
+  aspect-ratio: 16/9 !important;
+  z-index: 99990 !important;
+  border-radius: 14px !important;
+  border: 1.5px solid rgba(255, 255, 255, 0.25) !important;
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.9), 0 0 20px rgba(244, 63, 94, 0.35) !important;
+  overflow: hidden !important;
+  background: #000 !important;
+  transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1) !important;
+  cursor: pointer !important;
+}
+
+body.has-mini-player #stageContainer #stageFloatingFullscreenBtn,
+body.has-mini-player #stageContainer #stageExitFullscreenFloatingBtn,
+body.has-mini-player #stageContainer #ravePlayerOverlay,
+body.has-mini-player #stageContainer #selfPipCard,
+body.has-mini-player #stageContainer #partnerPipCard,
+body.has-mini-player #stageContainer #fsChatOverlay {
+  display: none !important;
+}
+
+body.has-mini-player #stageContainer #miniPlayerOverlay {
+  display: flex !important;
+}
+
+/* ========================================================
+   DRAGGABLE & RESIZABLE FULLSCREEN CHAT OVERLAY
+   "bu sohbet basılı tutup kenarlardan küçültülebilsin sürüklenebilsin"
+   ======================================================== */
+#fsChatOverlay {
+  min-width: 220px !important;
+  max-width: calc(100vw - 16px) !important;
+  min-height: 180px !important;
+  max-height: calc(100vh - 16px) !important;
+  user-select: none;
+  touch-action: none;
+}
+
+#fsChatHeader {
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+}
+
+#fsChatHeader:active {
+  cursor: grabbing;
+}
+
+.fs-chat-resize-handle {
+  position: absolute;
+  touch-action: none;
+  user-select: none;
+  z-index: 60;
+}
+
+.fs-chat-resize-w {
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 10px;
+  cursor: ew-resize;
+}
+
+.fs-chat-resize-n {
+  left: 0;
+  right: 0;
+  top: 0;
+  height: 10px;
+  cursor: ns-resize;
+}
+
+.fs-chat-resize-nw {
+  left: 0;
+  top: 0;
+  width: 24px;
+  height: 24px;
+  cursor: nwse-resize;
 }
 
 

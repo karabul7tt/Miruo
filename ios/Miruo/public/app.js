@@ -1682,6 +1682,11 @@ const dom = {
   roomChatSidebar: document.getElementById('roomChatSidebar'),
   closeChatSidebarBtn: document.getElementById('closeChatSidebarBtn'),
   openChatFloatingBtn: document.getElementById('openChatFloatingBtn'),
+  minimizeRoomBtn: document.getElementById('minimizeRoomBtn'),
+  miniPlayerOverlay: document.getElementById('miniPlayerOverlay'),
+  miniPlayerMaximizeBtn: document.getElementById('miniPlayerMaximizeBtn'),
+  miniPlayerCloseBtn: document.getElementById('miniPlayerCloseBtn'),
+  miniPlayerPlayPauseBtn: document.getElementById('miniPlayerPlayPauseBtn'),
   toggleChatToolbarBtn: document.getElementById('toggleChatToolbarBtn'),
   chatToolbarBtnText: document.getElementById('chatToolbarBtnText'),
   fsChatOverlay: document.getElementById('fsChatOverlay'),
@@ -2663,6 +2668,8 @@ function loadYoutubeVideo(urlOrId) {
       const stageSubtitle = document.getElementById('stageSubtitleText');
       if (stageSubtitle) stageSubtitle.textContent = `${vAuthor}'da YouTube`;
       if (dom.nowPlayingTitle) dom.nowPlayingTitle.textContent = vTitle;
+      const miniTitle = document.getElementById('miniPlayerTitle');
+      if (miniTitle) miniTitle.textContent = vTitle;
     }).catch(() => {});
 
   // Send video change to peer with timestamp for zero-latency sync (guard against loopback)
@@ -2915,6 +2922,7 @@ function updatePlayPauseUI(playing) {
     dom.playIcon.classList.remove('hidden');
     dom.pauseIcon.classList.add('hidden');
   }
+  updateMiniPlayerPlayPauseUI(playing);
 }
 
 function updateDurationUI(dur) {
@@ -3076,12 +3084,12 @@ function enterStageFullscreenDimensions() {
     }
   }
 
-  // Floating restore chat buttons appear
+  // Floating restore chat button (only fs button in fullscreen!)
   if (dom.openFsChatFloatingBtn) {
-    dom.openFsChatFloatingBtn.classList.remove('hidden');
+    dom.openFsChatFloatingBtn.classList.toggle('hidden', state.isChatVisible);
   }
   if (dom.openChatFloatingBtn) {
-    dom.openChatFloatingBtn.classList.remove('hidden');
+    dom.openChatFloatingBtn.classList.add('hidden');
   }
   if (dom.stageExitFullscreenFloatingBtn) {
     dom.stageExitFullscreenFloatingBtn.classList.remove('hidden');
@@ -3102,6 +3110,12 @@ function exitStageFullscreenDimensions() {
   dom.stageContainer.style.removeProperty('z-index');
   dom.stageContainer.style.removeProperty('aspect-ratio');
   document.body.classList.remove('stage-is-fullscreen');
+  document.body.classList.remove('fs-chat-active');
+  dom.stageContainer.classList.remove('fs-chat-active');
+
+  if (dom.fsChatOverlay) {
+    dom.fsChatOverlay.classList.add('hidden');
+  }
 
   if (document.fullscreenElement || document.webkitFullscreenElement) {
     if (document.exitFullscreen) {
@@ -3117,16 +3131,16 @@ function exitStageFullscreenDimensions() {
     dom.stageExitFullscreenFloatingBtn.classList.add('hidden');
   }
 
-  if (state.isChatVisible) {
-    if (dom.openFsChatFloatingBtn) {
-      dom.openFsChatFloatingBtn.classList.add('hidden');
-    }
-    if (dom.openChatFloatingBtn) {
-      dom.openChatFloatingBtn.classList.add('hidden');
-    }
+  // Outside fullscreen, NEVER show openFsChatFloatingBtn!
+  if (dom.openFsChatFloatingBtn) {
+    dom.openFsChatFloatingBtn.classList.add('hidden');
+  }
+  if (dom.openChatFloatingBtn) {
+    dom.openChatFloatingBtn.classList.add('hidden');
   }
 
   updateFullscreenUI();
+  window.dispatchEvent(new Event('resize'));
 }
 
 function toggleFullscreen() {
@@ -3198,6 +3212,7 @@ function applyFsChatFullscreenSettings(isFullscreen) {
   const isChatShowing = isFullscreen && state.isChatVisible && fsChatSettings.isFsChatOpen && fsChatSettings.showInFullscreen;
 
   if (isFullscreen) {
+    if (dom.openChatFloatingBtn) dom.openChatFloatingBtn.classList.add('hidden');
     if (!isChatShowing) {
       if (overlay) overlay.classList.add('hidden');
       if (floatBtn) floatBtn.classList.remove('hidden');
@@ -3211,7 +3226,8 @@ function applyFsChatFullscreenSettings(isFullscreen) {
     }
   } else {
     if (overlay) overlay.classList.add('hidden');
-    if (floatBtn) floatBtn.classList.toggle('hidden', state.isChatVisible);
+    if (floatBtn) floatBtn.classList.add('hidden'); // ALWAYS hidden when not in fullscreen!
+    if (dom.openChatFloatingBtn) dom.openChatFloatingBtn.classList.add('hidden');
     if (stage) stage.classList.remove('fs-chat-active');
     document.body.classList.remove('fs-chat-active');
   }
@@ -3362,6 +3378,8 @@ function leaveRoom() {
 
   exitStageFullscreenDimensions();
   document.body.classList.remove('in-room-mode');
+  document.body.classList.remove('has-mini-player');
+  state.isMiniPlayer = false;
 
   state.currentVideoId = null;
   state.isPlaying = false;
@@ -3997,15 +4015,22 @@ async function toggleCam() {
 // YouTube Live Format Chat Sidebar Visibility Manager
 function setChatVisibility(visible) {
   state.isChatVisible = visible;
+  const isFs = isStageFullscreen();
+
   if (dom.roomChatSidebar) {
     dom.roomChatSidebar.classList.toggle('hidden', !visible);
   }
+
+  // Strictly only ONE chat button can EVER be shown:
+  // Non-fullscreen: the toolbar toggleChatToolbarBtn is always visible, so floating button is kept hidden!
+  // Fullscreen: show openFsChatFloatingBtn when fs chat overlay is closed.
   if (dom.openChatFloatingBtn) {
-    dom.openChatFloatingBtn.classList.toggle('hidden', visible);
+    dom.openChatFloatingBtn.classList.add('hidden');
   }
   if (dom.openFsChatFloatingBtn) {
-    dom.openFsChatFloatingBtn.classList.toggle('hidden', visible);
+    dom.openFsChatFloatingBtn.classList.toggle('hidden', visible || !isFs);
   }
+
   if (dom.chatToolbarBtnText) {
     const dictChat = I18N[currentLang] || I18N.tr;
     dom.chatToolbarBtnText.textContent = visible ? (dictChat.chat_tab || 'Sohbet') : (dictChat.show_chat || 'Sohbeti Aç');
@@ -4027,12 +4052,24 @@ function setChatVisibility(visible) {
     dom.stageContainer.classList.toggle('stage-chat-closed', !visible);
   }
 
-  if (isStageFullscreen()) {
+  if (isFs) {
     if (dom.fsChatOverlay) {
       dom.fsChatOverlay.classList.toggle('hidden', !visible);
     }
+    if (visible) {
+      if (dom.stageContainer) dom.stageContainer.classList.add('fs-chat-active');
+      document.body.classList.add('fs-chat-active');
+    } else {
+      if (dom.stageContainer) dom.stageContainer.classList.remove('fs-chat-active');
+      document.body.classList.remove('fs-chat-active');
+    }
+  } else {
+    if (dom.fsChatOverlay) dom.fsChatOverlay.classList.add('hidden');
+    if (dom.stageContainer) dom.stageContainer.classList.remove('fs-chat-active');
+    document.body.classList.remove('fs-chat-active');
   }
   updateFullscreenUI();
+  window.dispatchEvent(new Event('resize'));
 }
 
 function updateCamButtonUI(isOn) {
@@ -4297,6 +4334,13 @@ function appendBotChatMessage(bot, message) {
 function switchToExplore() {
   state.currentTab = 'explore';
   document.body.classList.remove('in-room-mode');
+  if (!state.isMiniPlayer) {
+    document.body.classList.remove('has-mini-player');
+    if (dom.roomWorkspaceSection) {
+      dom.roomWorkspaceSection.classList.add('hidden');
+      dom.roomWorkspaceSection.classList.remove('flex', 'block');
+    }
+  }
   if (typeof stopProfileStarCanvas === 'function') stopProfileStarCanvas();
   stopBotsForActiveRoom();
   const mainWorkspace = document.querySelector('main');
@@ -4991,12 +5035,12 @@ function inviteFriendToRoom(friend) {
   // 1. Send the invitation
   sendRoomInvite(friend);
 
-  // 2. Open / switch to room immediately ("oda açsın")
-  switchToMyRoom();
+  // 2. Open / switch to Provider Picker ('+' screen) so host can pick content
+  switchToProviderPicker();
   connectSignaling();
 
   // 3. Inform user with prominent toast
-  showToast(`Oda açıldı! @${cleanUsername} kullanıcısına davet gönderildi.`);
+  showToast(`@${cleanUsername} odaya çağrıldı! İzlemek istediğiniz içeriği seçin.`);
 }
 window.inviteFriendToRoom = inviteFriendToRoom;
 
@@ -5289,7 +5333,7 @@ function renderIncomingRequests() {
             <span class="text-xs font-bold text-white truncate">@${escapeHtml(inv.fromUsername)}</span>
             <span class="px-1.5 py-0.2 rounded-full bg-indigo-500/25 text-indigo-300 border border-indigo-500/40 text-[9px] font-extrabold tracking-wide">Oda Daveti</span>
           </div>
-          <p class="text-[11px] text-gray-300 truncate mt-0.5">Seni odaya davet etti (<span class="text-white font-bold">${escapeHtml(inv.roomId || 'ODA-77')}</span>)</p>
+          <p class="text-[11px] text-gray-300 truncate mt-0.5">Sizi odaya çağırdı (<span class="text-white font-bold">${escapeHtml(inv.roomId || 'ODA-77')}</span>)</p>
         </div>
       </div>
       <div class="flex items-center gap-1.5 shrink-0">
@@ -5860,9 +5904,9 @@ function switchToFriendsTab() {
     dom.providerPickerSection.classList.add('hidden');
     dom.providerPickerSection.classList.remove('flex');
   }
-  if (dom.roomWorkspaceSection) {
+  if (!state.isMiniPlayer && dom.roomWorkspaceSection) {
     dom.roomWorkspaceSection.classList.add('hidden');
-    dom.roomWorkspaceSection.classList.remove('flex');
+    dom.roomWorkspaceSection.classList.remove('flex', 'block');
   }
   const profileTab = document.getElementById('profileTabSection');
   if (profileTab) {
@@ -5900,9 +5944,9 @@ function switchToProfileTab() {
     dom.providerPickerSection.classList.add('hidden');
     dom.providerPickerSection.classList.remove('flex');
   }
-  if (dom.roomWorkspaceSection) {
+  if (!state.isMiniPlayer && dom.roomWorkspaceSection) {
     dom.roomWorkspaceSection.classList.add('hidden');
-    dom.roomWorkspaceSection.classList.remove('flex');
+    dom.roomWorkspaceSection.classList.remove('flex', 'block');
   }
   const friendsTab = document.getElementById('friendsTabSection');
   if (friendsTab) {
@@ -7288,16 +7332,14 @@ function closeRoomParticipantsModal() {
 }
 
 function kickParticipant(userId, username) {
-  if (!confirm(`"${username}" kullanıcısını odadan çıkarmak istediğinize emin misiniz?`)) {
-    return;
-  }
+  if (!userId && !username) return;
 
   // 1. If simulated bot
-  if (userId.startsWith('bot_') || (activeRoomBots && activeRoomBots.some(b => 'bot_' + b.name === userId || b.name === username))) {
+  if ((userId && userId.startsWith('bot_')) || (activeRoomBots && activeRoomBots.some(b => ('bot_' + b.name) === userId || b.name === username))) {
     activeRoomBots = activeRoomBots.filter(b => ('bot_' + b.name) !== userId && b.name !== username);
     renderParticipantsList();
     renderVideoGrid();
-    showToast(`${username} odadan atıldı.`);
+    showToast(`${username} odadan çıkarıldı.`);
     renderChatMessage('Sistem', `${username} oda sahibi tarafından odadan çıkarıldı.`, false, null);
     return;
   }
@@ -7308,7 +7350,7 @@ function kickParticipant(userId, username) {
     targetUsername: username
   });
 
-  delete state.participants[userId];
+  if (userId) delete state.participants[userId];
   renderParticipantsList();
   renderVideoGrid();
   showToast(`"${username}" odadan çıkarıldı.`);
@@ -7599,7 +7641,8 @@ function renderParticipantsList() {
 
     const kickBtn = card.querySelector('.kick-participant-btn');
     if (kickBtn) {
-      kickBtn.addEventListener('click', () => {
+      addInstantTap(kickBtn, (e) => {
+        if (e && e.stopPropagation) e.stopPropagation();
         const uId = kickBtn.getAttribute('data-user-id');
         const uName = kickBtn.getAttribute('data-username');
         kickParticipant(uId, uName);
@@ -8274,6 +8317,241 @@ async function logoutUser() {
 
   showToast('Oturum kapatıldı.');
 }
+
+// ==========================================
+// IN-APP MINI PLAYER (PIP DOCK) CONTROLLER
+// "odada ayrıca bu küçük buton gibi alta çekilsin sonra uygulama içi gezilebilsin"
+// ==========================================
+function minimizeRoomToMiniPlayer() {
+  if (!state.isInRoom && !state.roomId) return;
+  state.isMiniPlayer = true;
+  document.body.classList.add('has-mini-player');
+  document.body.classList.remove('in-room-mode');
+
+  // Keep roomWorkspaceSection in DOM for video playback, but CSS collapses everything except stageContainer
+  if (dom.roomWorkspaceSection) {
+    dom.roomWorkspaceSection.classList.remove('hidden');
+    dom.roomWorkspaceSection.classList.add('block');
+  }
+
+  // Show normal app navigation and explore lobby
+  if (dom.mainHeader) dom.mainHeader.classList.remove('hidden');
+  const mobileNav = document.getElementById('mobileBottomNav');
+  if (mobileNav) mobileNav.classList.remove('hidden');
+
+  const mainWorkspace = document.querySelector('main');
+  if (mainWorkspace) {
+    mainWorkspace.classList.remove('pt-0', 'max-w-7xl');
+    mainWorkspace.classList.add('max-w-xl');
+  }
+
+  // Show active tab content (explore by default)
+  if (state.currentTab === 'friends') {
+    switchToFriendsTab();
+  } else if (state.currentTab === 'profile') {
+    switchToProfileTab();
+  } else {
+    state.currentTab = 'explore';
+    if (dom.exploreLobbySection) {
+      dom.exploreLobbySection.classList.remove('hidden');
+      dom.exploreLobbySection.classList.add('flex');
+    }
+  }
+
+  // Update mini player title & controls
+  const miniTitle = document.getElementById('miniPlayerTitle');
+  if (miniTitle) {
+    miniTitle.textContent = (dom.raveOverlayTitle && dom.raveOverlayTitle.textContent) || state.roomId || 'Miruo';
+  }
+  updateMiniPlayerPlayPauseUI(state.isPlaying);
+  showToast('Oda alta küçültüldü. Uygulama içinde serbestçe gezinebilirsiniz.');
+  window.dispatchEvent(new Event('resize'));
+}
+window.minimizeRoomToMiniPlayer = minimizeRoomToMiniPlayer;
+
+function restoreRoomFromMiniPlayer() {
+  if (!state.isMiniPlayer) return;
+  state.isMiniPlayer = false;
+  document.body.classList.remove('has-mini-player');
+  document.body.classList.add('in-room-mode');
+
+  const mainWorkspace = document.querySelector('main');
+  if (mainWorkspace) {
+    mainWorkspace.classList.add('pt-0', 'max-w-7xl');
+    mainWorkspace.classList.remove('max-w-xl');
+  }
+
+  // Hide explore, friends, profile & nav, restore room view
+  if (dom.mainHeader) dom.mainHeader.classList.add('hidden');
+  const mobileNav = document.getElementById('mobileBottomNav');
+  if (mobileNav) mobileNav.classList.add('hidden');
+  if (dom.exploreLobbySection) {
+    dom.exploreLobbySection.classList.add('hidden');
+    dom.exploreLobbySection.classList.remove('flex');
+  }
+  const friendsTab = document.getElementById('friendsTabSection');
+  if (friendsTab) {
+    friendsTab.classList.add('hidden');
+    friendsTab.classList.remove('flex');
+  }
+  const profileTab = document.getElementById('profileTabSection');
+  if (profileTab) {
+    profileTab.classList.add('hidden');
+    profileTab.classList.remove('flex');
+  }
+  if (dom.roomWorkspaceSection) {
+    dom.roomWorkspaceSection.classList.remove('hidden', 'block');
+    dom.roomWorkspaceSection.classList.add('flex');
+  }
+  window.dispatchEvent(new Event('resize'));
+}
+window.restoreRoomFromMiniPlayer = restoreRoomFromMiniPlayer;
+
+function updateMiniPlayerPlayPauseUI(isPlaying) {
+  const playIcon = document.getElementById('miniPlayerPlayIcon');
+  const pauseIcon = document.getElementById('miniPlayerPauseIcon');
+  if (playIcon) playIcon.classList.toggle('hidden', isPlaying);
+  if (pauseIcon) pauseIcon.classList.toggle('hidden', !isPlaying);
+}
+window.updateMiniPlayerPlayPauseUI = updateMiniPlayerPlayPauseUI;
+
+// ==========================================
+// DRAGGABLE & RESIZABLE FULLSCREEN CHAT OVERLAY
+// "bu sohbet basılı tutup kenarlardan küçültülebilsin sürüklenebilsin"
+// ==========================================
+function initFsChatDragAndResize() {
+  const overlay = document.getElementById('fsChatOverlay');
+  const header = document.getElementById('fsChatHeader');
+  const resizeW = document.getElementById('fsChatResizeW');
+  const resizeN = document.getElementById('fsChatResizeN');
+  const resizeNW = document.getElementById('fsChatResizeNW');
+
+  if (!overlay || !header) return;
+
+  // 1. Dragging Header
+  let isDragging = false;
+  let dragStartX = 0;
+  let dragStartY = 0;
+  let initialLeft = 0;
+  let initialTop = 0;
+
+  header.addEventListener('pointerdown', (e) => {
+    if (e.target.closest('#closeFsChatBtn')) return;
+    isDragging = true;
+    try { header.setPointerCapture(e.pointerId); } catch (_) {}
+
+    const rect = overlay.getBoundingClientRect();
+    overlay.style.right = 'auto';
+    overlay.style.bottom = 'auto';
+    overlay.style.left = `${rect.left}px`;
+    overlay.style.top = `${rect.top}px`;
+    overlay.style.width = `${rect.width}px`;
+    overlay.style.height = `${rect.height}px`;
+
+    dragStartX = e.clientX;
+    dragStartY = e.clientY;
+    initialLeft = rect.left;
+    initialTop = rect.top;
+    e.preventDefault();
+  });
+
+  header.addEventListener('pointermove', (e) => {
+    if (!isDragging) return;
+    const dx = e.clientX - dragStartX;
+    const dy = e.clientY - dragStartY;
+    const rect = overlay.getBoundingClientRect();
+
+    const maxLeft = Math.max(0, window.innerWidth - rect.width - 6);
+    const maxTop = Math.max(0, window.innerHeight - rect.height - 6);
+
+    const newLeft = Math.min(Math.max(6, initialLeft + dx), maxLeft);
+    const newTop = Math.min(Math.max(6, initialTop + dy), maxTop);
+
+    overlay.style.left = `${newLeft}px`;
+    overlay.style.top = `${newTop}px`;
+  });
+
+  const stopDrag = (e) => {
+    if (isDragging) {
+      isDragging = false;
+      try { header.releasePointerCapture(e.pointerId); } catch (_) {}
+    }
+  };
+  header.addEventListener('pointerup', stopDrag);
+  header.addEventListener('pointercancel', stopDrag);
+
+  // 2. Resizing from handles
+  const bindResizeHandle = (handleEl, doX, doY) => {
+    if (!handleEl) return;
+    let isResizing = false;
+    let startX = 0;
+    let startY = 0;
+    let startWidth = 0;
+    let startHeight = 0;
+    let startLeft = 0;
+    let startTop = 0;
+
+    handleEl.addEventListener('pointerdown', (e) => {
+      isResizing = true;
+      try { handleEl.setPointerCapture(e.pointerId); } catch (_) {}
+
+      const rect = overlay.getBoundingClientRect();
+      overlay.style.right = 'auto';
+      overlay.style.bottom = 'auto';
+      overlay.style.left = `${rect.left}px`;
+      overlay.style.top = `${rect.top}px`;
+      overlay.style.width = `${rect.width}px`;
+      overlay.style.height = `${rect.height}px`;
+
+      startX = e.clientX;
+      startY = e.clientY;
+      startWidth = rect.width;
+      startHeight = rect.height;
+      startLeft = rect.left;
+      startTop = rect.top;
+      e.preventDefault();
+      e.stopPropagation();
+    });
+
+    handleEl.addEventListener('pointermove', (e) => {
+      if (!isResizing) return;
+      const dx = e.clientX - startX;
+      const dy = e.clientY - startY;
+
+      if (doX) {
+        const minW = 200;
+        const maxW = Math.max(minW, startLeft + startWidth - 10);
+        const newW = Math.min(Math.max(minW, startWidth - dx), maxW);
+        const newLeft = startLeft + (startWidth - newW);
+        overlay.style.width = `${newW}px`;
+        overlay.style.left = `${newLeft}px`;
+      }
+
+      if (doY) {
+        const minH = 160;
+        const maxH = Math.max(minH, startTop + startHeight - 10);
+        const newH = Math.min(Math.max(minH, startHeight - dy), maxH);
+        const newTop = startTop + (startHeight - newH);
+        overlay.style.height = `${newH}px`;
+        overlay.style.top = `${newTop}px`;
+      }
+    });
+
+    const stopResize = (e) => {
+      if (isResizing) {
+        isResizing = false;
+        try { handleEl.releasePointerCapture(e.pointerId); } catch (_) {}
+      }
+    };
+    handleEl.addEventListener('pointerup', stopResize);
+    handleEl.addEventListener('pointercancel', stopResize);
+  };
+
+  bindResizeHandle(resizeW, true, false);
+  bindResizeHandle(resizeN, false, true);
+  bindResizeHandle(resizeNW, true, true);
+}
+window.initFsChatDragAndResize = initFsChatDragAndResize;
 
 function initEvents() {
   // Welcome / Onboarding Avatar Selection
@@ -12729,6 +13007,70 @@ function generateUniqueRoomCode(isPrivate = false) {
       fsChatSettings.showInFullscreen = e.target.checked;
       saveFsChatSettings();
     });
+  }
+
+  // Initialize Fullscreen Chat Drag & Resize ("kenarlardan küçültülebilsin sürüklenebilsin")
+  initFsChatDragAndResize();
+
+  // In-App Mini Player Wiring ("küçük buton gibi alta çekilsin sonra uygulama içi gezilebilsin")
+  const minimizeBtn = document.getElementById('minimizeRoomBtn');
+  if (minimizeBtn) {
+    addInstantTap(minimizeBtn, (e) => {
+      e.stopPropagation();
+      minimizeRoomToMiniPlayer();
+    });
+  }
+
+  const miniPlayerMaximizeBtn = document.getElementById('miniPlayerMaximizeBtn');
+  if (miniPlayerMaximizeBtn) {
+    addInstantTap(miniPlayerMaximizeBtn, (e) => {
+      e.stopPropagation();
+      restoreRoomFromMiniPlayer();
+    });
+  }
+
+  const miniPlayerCloseBtn = document.getElementById('miniPlayerCloseBtn');
+  if (miniPlayerCloseBtn) {
+    addInstantTap(miniPlayerCloseBtn, (e) => {
+      e.stopPropagation();
+      leaveRoom();
+    });
+  }
+
+  const miniPlayerPlayPauseBtn = document.getElementById('miniPlayerPlayPauseBtn');
+  if (miniPlayerPlayPauseBtn) {
+    addInstantTap(miniPlayerPlayPauseBtn, (e) => {
+      e.stopPropagation();
+      togglePlayPause();
+    });
+  }
+
+  // Tapping on stageContainer when mini player is active restores full room
+  if (dom.stageContainer) {
+    dom.stageContainer.addEventListener('click', (e) => {
+      if (document.body.classList.contains('has-mini-player')) {
+        if (e.target.closest('#miniPlayerCloseBtn') || e.target.closest('#miniPlayerPlayPauseBtn')) {
+          return;
+        }
+        e.stopPropagation();
+        restoreRoomFromMiniPlayer();
+      }
+    });
+  }
+
+  // Pull-down swipe gesture on room header minimizes room to mini player
+  const stickyHeader = document.getElementById('roomStickyHeader');
+  if (stickyHeader) {
+    let touchStartY = 0;
+    stickyHeader.addEventListener('touchstart', (e) => {
+      touchStartY = e.touches[0].clientY;
+    }, { passive: true });
+    stickyHeader.addEventListener('touchend', (e) => {
+      const touchEndY = e.changedTouches[0].clientY;
+      if (touchEndY - touchStartY > 45) { // Downward pull
+        minimizeRoomToMiniPlayer();
+      }
+    }, { passive: true });
   }
 
   // Select Video Bottom Toolbar Button
