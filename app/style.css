@@ -905,34 +905,7 @@ body.in-room-mode #roomMainSplitLayout {
   }
 }
 
-/* YouTube Live Sidebar Components */
-#chatLivePollCard {
-  transition: all 0.2s ease-in-out;
-}
 
-#chatLivePollCard .poll-voted {
-  border-color: rgba(244, 63, 94, 0.6) !important;
-}
-
-.yt-member-badge {
-  display: inline-flex;
-  align-items: center;
-  padding: 1px 5px;
-  border-radius: 4px;
-  background-color: rgba(16, 185, 129, 0.18);
-  color: #34d399;
-  font-size: 9.5px;
-  font-weight: 700;
-  letter-spacing: -0.02em;
-}
-
-.yt-chat-stream-line {
-  display: flex;
-  align-items: flex-start;
-  gap: 8px;
-  padding: 3px 0;
-  line-height: 1.35;
-}
 
 /* ========================================================
    MOBILE LEGENDS STYLE AFFINITY / PARTNERLİK SİSTEMİ

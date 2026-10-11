@@ -1676,31 +1676,10 @@ const dom = {
   closeSelfPipBtn: document.getElementById('closeSelfPipBtn'),
   selfPipAvatarInitial: document.getElementById('selfPipAvatarInitial'),
 
-  // YouTube Live Classic Format Split Layout & Live Chat Sidebar
+  // Split Layout & Live Chat Sidebar
   roomMainSplitLayout: document.getElementById('roomMainSplitLayout'),
   roomPlayerColumn: document.getElementById('roomPlayerColumn'),
   roomChatSidebar: document.getElementById('roomChatSidebar'),
-  chatModeSelectorBtn: document.getElementById('chatModeSelectorBtn'),
-  chatHeaderTitle: document.getElementById('chatHeaderTitle'),
-  chatOptionsBtn: document.getElementById('chatOptionsBtn'),
-  chatPinnedBanner: document.getElementById('chatPinnedBanner'),
-  closePinnedBannerBtn: document.getElementById('closePinnedBannerBtn'),
-  pinnedBannerUsername: document.getElementById('pinnedBannerUsername'),
-  pinnedBannerText: document.getElementById('pinnedBannerText'),
-  chatLivePollCard: document.getElementById('chatLivePollCard'),
-  pollQuestionText: document.getElementById('pollQuestionText'),
-  pollVoteCountText: document.getElementById('pollVoteCountText'),
-  pollOption1Btn: document.getElementById('pollOption1Btn'),
-  pollOption2Btn: document.getElementById('pollOption2Btn'),
-  pollOption1Bar: document.getElementById('pollOption1Bar'),
-  pollOption2Bar: document.getElementById('pollOption2Bar'),
-  pollOption1Pct: document.getElementById('pollOption1Pct'),
-  pollOption2Pct: document.getElementById('pollOption2Pct'),
-  pollOption1Label: document.getElementById('pollOption1Label'),
-  pollOption2Label: document.getElementById('pollOption2Label'),
-  chatJoinMemberBtn: document.getElementById('chatJoinMemberBtn'),
-  chatSuperChatBtn: document.getElementById('chatSuperChatBtn'),
-  chatHeartReactionBtn: document.getElementById('chatHeartReactionBtn'),
   closeChatSidebarBtn: document.getElementById('closeChatSidebarBtn'),
   openChatFloatingBtn: document.getElementById('openChatFloatingBtn'),
   minimizeRoomBtn: document.getElementById('minimizeRoomBtn'),
@@ -7828,11 +7807,7 @@ function renderChatMessage(sender, text, isSelf, timeStr, imageUrl = null, avata
 
   const time = timeStr || new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   const msgEl = document.createElement('div');
-
-  const isSuperChat = typeof text === 'string' && (text.includes('[$') || text.toLowerCase().includes('super chat'));
-  msgEl.className = isSuperChat 
-    ? 'w-full my-1.5 p-2.5 rounded-xl bg-gradient-to-r from-amber-500/20 via-orange-500/20 to-amber-600/20 border border-amber-500/40 shadow-lg animate-fade-in'
-    : `flex gap-2 max-w-[92%] ${isSelf ? 'ml-auto flex-row-reverse' : 'mr-auto flex-row'}`;
+  msgEl.className = `flex gap-2 max-w-[88%] ${isSelf ? 'ml-auto flex-row-reverse' : 'mr-auto flex-row'}`;
 
   const avUrl = isSelf ? (state.avatarUrl || avatarUrl) : avatarUrl;
   const initial = (sender || 'M').charAt(0).toUpperCase();
@@ -7842,43 +7817,25 @@ function renderChatMessage(sender, text, isSelf, timeStr, imageUrl = null, avata
     </div>
   `;
 
-  const memberBadgeHtml = !isSelf && sender !== 'Sistem' 
-    ? `<span class="yt-member-badge">1 aydır üye</span>` 
-    : '';
-
   const bubbleColor = isSelf 
     ? 'bg-gradient-to-r from-rose-600 to-indigo-600 text-white rounded-2xl rounded-tr-sm shadow-md shadow-rose-900/20' 
-    : 'bg-[#181818] text-gray-100 rounded-2xl rounded-tl-sm border border-white/10 shadow-sm';
+    : 'bg-[#141824] text-gray-100 rounded-2xl rounded-tl-sm border border-white/10 shadow-sm';
 
   const imageHtml = imageUrl ? `<div class="mb-1.5"><img src="${imageUrl}" class="rounded-xl max-h-48 max-w-full object-cover border border-white/20 shadow-md" alt="Görsel"></div>` : '';
+  const textHtml = text ? `<div class="${bubbleColor} px-3.5 py-2 text-xs leading-relaxed break-words whitespace-pre-wrap select-text">${escapeHtml(text)}</div>` : '';
 
-  let textHtml = '';
-  if (isSuperChat) {
-    textHtml = `
-      <div class="flex items-center gap-2 mb-1">
-        <span class="px-2 py-0.5 rounded-full bg-amber-500 text-black font-extrabold text-[10px] shadow-sm">SUPER CHAT</span>
-        <span class="text-amber-300 font-bold text-xs">${escapeHtml(sender)}</span>
-        <span class="text-[10px] text-gray-400 ml-auto">${time}</span>
+  msgEl.innerHTML = `
+    ${avatarHtml}
+    <div class="flex-1 min-w-0 ${isSelf ? 'text-right' : 'text-left'}">
+      <div class="flex items-center gap-1.5 mb-1 px-1 text-[10px] text-gray-400 ${isSelf ? 'justify-end' : 'justify-start'}">
+        <span class="chat-sender-profile-trigger font-semibold cursor-pointer hover:underline ${isSelf ? 'text-rose-300' : 'text-indigo-300'}">${escapeHtml(sender)}</span>
+        <span>•</span>
+        <span>${time}</span>
       </div>
-      <div class="text-xs font-semibold text-white mt-1">${escapeHtml(text)}</div>
-    `;
-    msgEl.innerHTML = textHtml;
-  } else {
-    textHtml = text ? `<div class="${bubbleColor} px-3 py-1.5 text-xs leading-relaxed break-words whitespace-pre-wrap select-text">${escapeHtml(text)}</div>` : '';
-    msgEl.innerHTML = `
-      ${avatarHtml}
-      <div class="flex-1 min-w-0 ${isSelf ? 'text-right' : 'text-left'}">
-        <div class="flex items-center gap-1.5 mb-0.5 px-1 text-[10px] text-gray-400 ${isSelf ? 'justify-end' : 'justify-start'}">
-          <span class="chat-sender-profile-trigger font-semibold cursor-pointer hover:underline ${isSelf ? 'text-rose-300' : 'text-indigo-300'}">${escapeHtml(sender)}</span>
-          ${memberBadgeHtml}
-          <span>•</span>
-          <span>${time}</span>
-        </div>
-        ${imageHtml}
-        ${textHtml}
-      </div>
-    `;
-  }
+      ${imageHtml}
+      ${textHtml}
+    </div>
+  `;
 
   msgEl.querySelectorAll('.chat-sender-profile-trigger').forEach(el => {
     addInstantTap(el, () => {
@@ -13124,93 +13081,7 @@ function generateUniqueRoomCode(isPrivate = false) {
     });
   }
 
-  // YouTube Live Header Mode Selector
-  if (dom.chatModeSelectorBtn) {
-    addInstantTap(dom.chatModeSelectorBtn, () => {
-      const isTop = dom.chatHeaderTitle.textContent.includes('Popüler');
-      dom.chatHeaderTitle.textContent = isTop ? 'Tüm sohbet mesajları' : 'Popüler sohbet mesajları';
-      showToast(isTop ? 'Tüm mesajlar gösteriliyor' : 'Popüler mesajlar filtrelendi');
-    });
-  }
 
-  // YouTube Live Header Options (⋮)
-  if (dom.chatOptionsBtn) {
-    addInstantTap(dom.chatOptionsBtn, () => {
-      showToast('Sohbet ayarları: Katılımcılar, filtreler, zaman damgaları');
-    });
-  }
-
-  // Pinned Banner Dismiss
-  if (dom.closePinnedBannerBtn && dom.chatPinnedBanner) {
-    addInstantTap(dom.closePinnedBannerBtn, () => {
-      dom.chatPinnedBanner.classList.add('hidden');
-    });
-  }
-
-  // Community Live Poll Card Voting
-  let pollVotes = { opt1: 738, opt2: 682, userVoted: null };
-  const updatePollDisplay = () => {
-    const total = pollVotes.opt1 + pollVotes.opt2;
-    const p1 = total > 0 ? Math.round((pollVotes.opt1 / total) * 100) : 50;
-    const p2 = 100 - p1;
-    if (dom.pollVoteCountText) dom.pollVoteCountText.textContent = `${total.toLocaleString()} oy`;
-    if (dom.pollOption1Pct) dom.pollOption1Pct.textContent = `${p1}%`;
-    if (dom.pollOption2Pct) dom.pollOption2Pct.textContent = `${p2}%`;
-    if (dom.pollOption1Bar) dom.pollOption1Bar.style.width = `${p1}%`;
-    if (dom.pollOption2Bar) dom.pollOption2Bar.style.width = `${p2}%`;
-  };
-
-  if (dom.pollOption1Btn) {
-    addInstantTap(dom.pollOption1Btn, () => {
-      if (pollVotes.userVoted !== 1) {
-        if (pollVotes.userVoted === 2) pollVotes.opt2 = Math.max(0, pollVotes.opt2 - 1);
-        pollVotes.opt1++;
-        pollVotes.userVoted = 1;
-        updatePollDisplay();
-        dom.pollOption1Btn.classList.add('ring-2', 'ring-rose-500');
-        if (dom.pollOption2Btn) dom.pollOption2Btn.classList.remove('ring-2', 'ring-blue-500');
-        showToast('Oyunuz: SİYAH kaydedildi!');
-        sendP2PData('poll_vote', { option: 1 });
-      }
-    });
-  }
-
-  if (dom.pollOption2Btn) {
-    addInstantTap(dom.pollOption2Btn, () => {
-      if (pollVotes.userVoted !== 2) {
-        if (pollVotes.userVoted === 1) pollVotes.opt1 = Math.max(0, pollVotes.opt1 - 1);
-        pollVotes.opt2++;
-        pollVotes.userVoted = 2;
-        updatePollDisplay();
-        dom.pollOption2Btn.classList.add('ring-2', 'ring-blue-500');
-        if (dom.pollOption1Btn) dom.pollOption1Btn.classList.remove('ring-2', 'ring-rose-500');
-        showToast('Oyunuz: BEYAZ kaydedildi!');
-        sendP2PData('poll_vote', { option: 2 });
-      }
-    });
-  }
-
-  // YouTube Live Bottom Actions: Membership, Super Chat, Heart
-  if (dom.chatJoinMemberBtn) {
-    addInstantTap(dom.chatJoinMemberBtn, () => {
-      showToast('🎉 Tebrikler! Kanala üye oldunuz!');
-      renderChatMessage('Sistem', `🎉 ${state.username || 'Kullanıcı'} kanala katıldı ve üye oldu!`, false);
-    });
-  }
-
-  if (dom.chatSuperChatBtn) {
-    addInstantTap(dom.chatSuperChatBtn, () => {
-      const superMsg = `[$50 Super Chat] Harika yayın, tebrikler! 🚀`;
-      sendChatMessage(superMsg);
-      showToast('Super Chat gönderildi: 50₺ 🌟');
-    });
-  }
-
-  if (dom.chatHeartReactionBtn) {
-    addInstantTap(dom.chatHeartReactionBtn, () => {
-      spawnFloatingReaction('❤️', true);
-    });
-  }
 
   // Fullscreen Live Chat (Classic YouTube Format)
   if (dom.closeFsChatBtn) {
