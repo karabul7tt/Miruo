@@ -1680,6 +1680,27 @@ const dom = {
   roomMainSplitLayout: document.getElementById('roomMainSplitLayout'),
   roomPlayerColumn: document.getElementById('roomPlayerColumn'),
   roomChatSidebar: document.getElementById('roomChatSidebar'),
+  chatModeSelectorBtn: document.getElementById('chatModeSelectorBtn'),
+  chatHeaderTitle: document.getElementById('chatHeaderTitle'),
+  chatOptionsBtn: document.getElementById('chatOptionsBtn'),
+  chatPinnedBanner: document.getElementById('chatPinnedBanner'),
+  closePinnedBannerBtn: document.getElementById('closePinnedBannerBtn'),
+  pinnedBannerUsername: document.getElementById('pinnedBannerUsername'),
+  pinnedBannerText: document.getElementById('pinnedBannerText'),
+  chatLivePollCard: document.getElementById('chatLivePollCard'),
+  pollQuestionText: document.getElementById('pollQuestionText'),
+  pollVoteCountText: document.getElementById('pollVoteCountText'),
+  pollOption1Btn: document.getElementById('pollOption1Btn'),
+  pollOption2Btn: document.getElementById('pollOption2Btn'),
+  pollOption1Bar: document.getElementById('pollOption1Bar'),
+  pollOption2Bar: document.getElementById('pollOption2Bar'),
+  pollOption1Pct: document.getElementById('pollOption1Pct'),
+  pollOption2Pct: document.getElementById('pollOption2Pct'),
+  pollOption1Label: document.getElementById('pollOption1Label'),
+  pollOption2Label: document.getElementById('pollOption2Label'),
+  chatJoinMemberBtn: document.getElementById('chatJoinMemberBtn'),
+  chatSuperChatBtn: document.getElementById('chatSuperChatBtn'),
+  chatHeartReactionBtn: document.getElementById('chatHeartReactionBtn'),
   closeChatSidebarBtn: document.getElementById('closeChatSidebarBtn'),
   openChatFloatingBtn: document.getElementById('openChatFloatingBtn'),
   minimizeRoomBtn: document.getElementById('minimizeRoomBtn'),
@@ -2778,7 +2799,53 @@ function sendYtCommand(func, args = []) {
 function handleRemoteSync(payload) {
   if (!payload) return;
   state.isRemoteAction = true;
+  clearTimeout(state.remoteActionTimer);
+  state.remoteActionTimer = setTimeout(() => {
+    state.isRemoteAction = false;
+  }, 850);
+
   const transit = payload.sentAt ? Math.max(0, (Date.now() - payload.sentAt) / 1000) : 0;
+
+  // 1. Peer or resuming client requested full synchronization
+  if (payload.action === 'request_sync') {
+    if (state.currentVideoId) {
+      sendP2PData('sync', {
+        action: 'full_sync',
+        videoId: state.currentVideoId,
+        time: state.currentTime,
+        isPlaying: state.isPlaying,
+        sentAt: Date.now()
+      });
+    }
+    return;
+  }
+
+  // 2. Full synchronization state payload
+  if (payload.action === 'full_sync') {
+    if (payload.videoId && payload.videoId !== state.currentVideoId) {
+      loadYoutubeVideo(payload.videoId);
+    }
+    const targetTime = (typeof payload.time === 'number' ? payload.time : state.currentTime) + (payload.isPlaying ? transit : 0);
+    if (Math.abs(state.currentTime - targetTime) > 0.4) {
+      if (state.activeMode === 'youtube') {
+        sendYtCommand('seekTo', [targetTime, true]);
+      } else if (dom.nativeVideoPlayer) {
+        dom.nativeVideoPlayer.currentTime = targetTime;
+      }
+      state.currentTime = targetTime;
+    }
+    if (typeof payload.isPlaying === 'boolean' && payload.isPlaying !== state.isPlaying) {
+      state.isPlaying = payload.isPlaying;
+      if (state.activeMode === 'youtube') {
+        sendYtCommand(payload.isPlaying ? 'playVideo' : 'pauseVideo');
+      } else if (dom.nativeVideoPlayer) {
+        if (payload.isPlaying) dom.nativeVideoPlayer.play();
+        else dom.nativeVideoPlayer.pause();
+      }
+      updatePlayPauseUI(payload.isPlaying);
+    }
+    return;
+  }
 
   if (payload.action === 'load_yt') {
     if (state.currentVideoId !== payload.videoId) {
@@ -2862,10 +2929,6 @@ function handleRemoteSync(payload) {
       updatePlayPauseUI(false);
     }
   }
-
-  setTimeout(() => {
-    state.isRemoteAction = false;
-  }, 300);
 }
 
 // 2.5s Sync Heartbeat to guarantee zero drift between host and peers
@@ -2884,14 +2947,19 @@ function startSyncHeartbeat() {
   }, 2500);
 }
 
-// Playback Tracking (Timeline Slider & Duration)
+// Playback Tracking (Timeline Slider & Duration - Drift-Free Hardware Sync)
 let trackingInterval = null;
 function startPlaybackTracking() {
   if (trackingInterval) clearInterval(trackingInterval);
   trackingInterval = setInterval(() => {
     if (state.activeMode === 'youtube') {
       if (state.isPlaying && !state.isUserDraggingSeek) {
-        state.currentTime = Math.min((state.duration || 999999), (state.currentTime || 0) + 0.5);
+        if (state.lastReportedYtAt) {
+          const elapsed = (Date.now() - state.lastReportedYtAt) / 1000;
+          state.currentTime = Math.min((state.duration || 999999), (state.lastReportedYtTime || 0) + elapsed);
+        } else {
+          state.currentTime = Math.min((state.duration || 999999), (state.currentTime || 0) + 0.5);
+        }
       }
     } else if (state.activeMode === 'direct' && dom.nativeVideoPlayer) {
       state.currentTime = dom.nativeVideoPlayer.currentTime || 0;
@@ -2955,7 +3023,7 @@ function togglePlayPause() {
   }
 }
 
-// YouTube postMessage Bridge for Frame-Accurate Zero-Latency Scrubber & Play State Sync
+// YouTube postMessage Bridge: Two-Way Frame-Accurate Zero-Latency Play State & Scrubber Sync
 window.addEventListener('message', (event) => {
   if (!event.data) return;
   let data = event.data;
@@ -2970,10 +3038,26 @@ window.addEventListener('message', (event) => {
       if (dom.durationDisplay) dom.durationDisplay.textContent = formatTime(state.duration);
     }
     if (typeof data.info.currentTime === 'number') {
+      const prevTime = state.currentTime;
       state.currentTime = data.info.currentTime;
+      state.lastReportedYtTime = data.info.currentTime;
+      state.lastReportedYtAt = Date.now();
+
       if (dom.currentTimeDisplay) dom.currentTimeDisplay.textContent = formatTime(state.currentTime);
       if (dom.seekSlider && !state.isUserDraggingSeek && state.duration > 0) {
         dom.seekSlider.value = (state.currentTime / state.duration) * 100;
+      }
+
+      // Check if user scrubbed inside YouTube iframe progress bar directly
+      if (typeof prevTime === 'number' && Math.abs(data.info.currentTime - prevTime) > 1.8) {
+        if (!state.isRemoteAction && !state.isUserDraggingSeek && (Date.now() - (state.lastSyncSentAt || 0) > 800)) {
+          state.lastSyncSentAt = Date.now();
+          sendP2PData('sync', {
+            action: 'seek',
+            time: data.info.currentTime,
+            sentAt: Date.now()
+          });
+        }
       }
     }
     if (typeof data.info.playerState === 'number') {
@@ -2988,12 +3072,66 @@ window.addEventListener('message', (event) => {
       if (isNowPlaying !== state.isPlaying && !state.isRemoteAction) {
         state.isPlaying = isNowPlaying;
         updatePlayPauseUI(isNowPlaying);
+        state.lastSyncSentAt = Date.now();
+        sendP2PData('sync', {
+          action: isNowPlaying ? 'play' : 'pause',
+          time: state.currentTime,
+          sentAt: Date.now()
+        });
       }
     }
   } else if (data.event === 'onReady') {
     sendYtCommand('addEventListener', ['onStateChange']);
   }
 });
+
+// App Lifecycle Foreground Resume & Tab Switch Resynchronization
+function handleAppForegroundResume() {
+  console.log('[Miruo Sync] Uygulama ön plana geldi, senkronizasyon kontrol ediliyor...');
+
+  // 1. Reconnect WebSocket if dropped during sleep/backgrounding
+  if (!ws || ws.readyState !== WebSocket.OPEN) {
+    if (state.roomId) {
+      console.log('[Miruo Sync] Sinyal soketi yenileniyor...');
+      connectSignaling();
+    }
+  }
+
+  // 2. Re-wake YouTube iframe state and ping listening
+  sendYtCommand('listening');
+  if (dom.ytPlayerIframe && dom.ytPlayerIframe.contentWindow) {
+    try {
+      dom.ytPlayerIframe.contentWindow.postMessage(JSON.stringify({ event: 'listening' }), '*');
+    } catch (_) {}
+  }
+
+  // 3. Re-sync room state
+  if (state.roomId) {
+    // Request full synchronization from room host
+    sendP2PData('sync', { action: 'request_sync', sentAt: Date.now() });
+
+    // If local user is host or active player, also announce current status
+    if (state.currentVideoId && state.isPlaying) {
+      sendP2PData('sync', {
+        action: 'heartbeat',
+        time: state.currentTime,
+        isPlaying: state.isPlaying,
+        sentAt: Date.now()
+      });
+    }
+  }
+
+  // 4. Force responsive reflow
+  window.dispatchEvent(new Event('resize'));
+}
+
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible') {
+    handleAppForegroundResume();
+  }
+});
+window.addEventListener('focus', handleAppForegroundResume);
+window.addEventListener('pageshow', handleAppForegroundResume);
 
 // Screen Sharing (Netflix / Dizi / Browser)
 async function startScreenSharing() {
@@ -4070,6 +4208,13 @@ function setChatVisibility(visible) {
   }
   updateFullscreenUI();
   window.dispatchEvent(new Event('resize'));
+  sendYtCommand('listening');
+  setTimeout(() => {
+    window.dispatchEvent(new Event('resize'));
+  }, 100);
+  setTimeout(() => {
+    window.dispatchEvent(new Event('resize'));
+  }, 320);
 }
 
 function updateCamButtonUI(isOn) {
@@ -4438,8 +4583,8 @@ function switchToMyRoom() {
     dom.roomWorkspaceSection.classList.remove('hidden');
     dom.roomWorkspaceSection.classList.add('flex');
   }
-  // Ensure YouTube Live Classic format (video left, chat right) is active by default
-  setChatVisibility(true);
+  // Ensure YouTube Live Classic format (video left, chat right) respects chat visibility state
+  setChatVisibility(state.isChatVisible !== false);
   if (dom.viewMyRoomBtn) {
     dom.viewMyRoomBtn.className = 'px-3.5 py-1.5 rounded-lg font-semibold text-rose-300 bg-rose-500/15 border border-rose-500/30 flex items-center gap-2 transition-all';
   }
@@ -7683,7 +7828,11 @@ function renderChatMessage(sender, text, isSelf, timeStr, imageUrl = null, avata
 
   const time = timeStr || new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   const msgEl = document.createElement('div');
-  msgEl.className = `flex gap-2 max-w-[88%] ${isSelf ? 'ml-auto flex-row-reverse' : 'mr-auto flex-row'}`;
+
+  const isSuperChat = typeof text === 'string' && (text.includes('[$') || text.toLowerCase().includes('super chat'));
+  msgEl.className = isSuperChat 
+    ? 'w-full my-1.5 p-2.5 rounded-xl bg-gradient-to-r from-amber-500/20 via-orange-500/20 to-amber-600/20 border border-amber-500/40 shadow-lg animate-fade-in'
+    : `flex gap-2 max-w-[92%] ${isSelf ? 'ml-auto flex-row-reverse' : 'mr-auto flex-row'}`;
 
   const avUrl = isSelf ? (state.avatarUrl || avatarUrl) : avatarUrl;
   const initial = (sender || 'M').charAt(0).toUpperCase();
@@ -7693,25 +7842,43 @@ function renderChatMessage(sender, text, isSelf, timeStr, imageUrl = null, avata
     </div>
   `;
 
+  const memberBadgeHtml = !isSelf && sender !== 'Sistem' 
+    ? `<span class="yt-member-badge">1 aydır üye</span>` 
+    : '';
+
   const bubbleColor = isSelf 
     ? 'bg-gradient-to-r from-rose-600 to-indigo-600 text-white rounded-2xl rounded-tr-sm shadow-md shadow-rose-900/20' 
-    : 'bg-[#141824] text-gray-100 rounded-2xl rounded-tl-sm border border-white/10 shadow-sm';
+    : 'bg-[#181818] text-gray-100 rounded-2xl rounded-tl-sm border border-white/10 shadow-sm';
 
   const imageHtml = imageUrl ? `<div class="mb-1.5"><img src="${imageUrl}" class="rounded-xl max-h-48 max-w-full object-cover border border-white/20 shadow-md" alt="Görsel"></div>` : '';
-  const textHtml = text ? `<div class="${bubbleColor} px-3.5 py-2 text-xs leading-relaxed break-words whitespace-pre-wrap select-text">${escapeHtml(text)}</div>` : '';
 
-  msgEl.innerHTML = `
-    ${avatarHtml}
-    <div class="flex-1 min-w-0 ${isSelf ? 'text-right' : 'text-left'}">
-      <div class="flex items-center gap-1.5 mb-1 px-1 text-[10px] text-gray-400 ${isSelf ? 'justify-end' : 'justify-start'}">
-        <span class="chat-sender-profile-trigger font-semibold cursor-pointer hover:underline ${isSelf ? 'text-rose-300' : 'text-indigo-300'}">${escapeHtml(sender)}</span>
-        <span>•</span>
-        <span>${time}</span>
+  let textHtml = '';
+  if (isSuperChat) {
+    textHtml = `
+      <div class="flex items-center gap-2 mb-1">
+        <span class="px-2 py-0.5 rounded-full bg-amber-500 text-black font-extrabold text-[10px] shadow-sm">SUPER CHAT</span>
+        <span class="text-amber-300 font-bold text-xs">${escapeHtml(sender)}</span>
+        <span class="text-[10px] text-gray-400 ml-auto">${time}</span>
       </div>
-      ${imageHtml}
-      ${textHtml}
-    </div>
-  `;
+      <div class="text-xs font-semibold text-white mt-1">${escapeHtml(text)}</div>
+    `;
+    msgEl.innerHTML = textHtml;
+  } else {
+    textHtml = text ? `<div class="${bubbleColor} px-3 py-1.5 text-xs leading-relaxed break-words whitespace-pre-wrap select-text">${escapeHtml(text)}</div>` : '';
+    msgEl.innerHTML = `
+      ${avatarHtml}
+      <div class="flex-1 min-w-0 ${isSelf ? 'text-right' : 'text-left'}">
+        <div class="flex items-center gap-1.5 mb-0.5 px-1 text-[10px] text-gray-400 ${isSelf ? 'justify-end' : 'justify-start'}">
+          <span class="chat-sender-profile-trigger font-semibold cursor-pointer hover:underline ${isSelf ? 'text-rose-300' : 'text-indigo-300'}">${escapeHtml(sender)}</span>
+          ${memberBadgeHtml}
+          <span>•</span>
+          <span>${time}</span>
+        </div>
+        ${imageHtml}
+        ${textHtml}
+      </div>
+    `;
+  }
 
   msgEl.querySelectorAll('.chat-sender-profile-trigger').forEach(el => {
     addInstantTap(el, () => {
@@ -12939,7 +13106,7 @@ function generateUniqueRoomCode(isPrivate = false) {
       if (e && e.stopPropagation) e.stopPropagation();
       setChatVisibility(false);
       const dict = I18N[currentLang] || I18N.tr;
-      showToast(dict.toast_chat_closed || 'Sohbet gizlendi, video tam ekrana geçti');
+      showToast(dict.toast_chat_closed || 'Sohbet gizlendi, video tam ekrana genişletildi');
     });
   }
   if (dom.openChatFloatingBtn) {
@@ -12954,6 +13121,94 @@ function generateUniqueRoomCode(isPrivate = false) {
     addInstantTap(dom.toggleChatToolbarBtn, (e) => {
       if (e && e.stopPropagation) e.stopPropagation();
       setChatVisibility(!state.isChatVisible);
+    });
+  }
+
+  // YouTube Live Header Mode Selector
+  if (dom.chatModeSelectorBtn) {
+    addInstantTap(dom.chatModeSelectorBtn, () => {
+      const isTop = dom.chatHeaderTitle.textContent.includes('Popüler');
+      dom.chatHeaderTitle.textContent = isTop ? 'Tüm sohbet mesajları' : 'Popüler sohbet mesajları';
+      showToast(isTop ? 'Tüm mesajlar gösteriliyor' : 'Popüler mesajlar filtrelendi');
+    });
+  }
+
+  // YouTube Live Header Options (⋮)
+  if (dom.chatOptionsBtn) {
+    addInstantTap(dom.chatOptionsBtn, () => {
+      showToast('Sohbet ayarları: Katılımcılar, filtreler, zaman damgaları');
+    });
+  }
+
+  // Pinned Banner Dismiss
+  if (dom.closePinnedBannerBtn && dom.chatPinnedBanner) {
+    addInstantTap(dom.closePinnedBannerBtn, () => {
+      dom.chatPinnedBanner.classList.add('hidden');
+    });
+  }
+
+  // Community Live Poll Card Voting
+  let pollVotes = { opt1: 738, opt2: 682, userVoted: null };
+  const updatePollDisplay = () => {
+    const total = pollVotes.opt1 + pollVotes.opt2;
+    const p1 = total > 0 ? Math.round((pollVotes.opt1 / total) * 100) : 50;
+    const p2 = 100 - p1;
+    if (dom.pollVoteCountText) dom.pollVoteCountText.textContent = `${total.toLocaleString()} oy`;
+    if (dom.pollOption1Pct) dom.pollOption1Pct.textContent = `${p1}%`;
+    if (dom.pollOption2Pct) dom.pollOption2Pct.textContent = `${p2}%`;
+    if (dom.pollOption1Bar) dom.pollOption1Bar.style.width = `${p1}%`;
+    if (dom.pollOption2Bar) dom.pollOption2Bar.style.width = `${p2}%`;
+  };
+
+  if (dom.pollOption1Btn) {
+    addInstantTap(dom.pollOption1Btn, () => {
+      if (pollVotes.userVoted !== 1) {
+        if (pollVotes.userVoted === 2) pollVotes.opt2 = Math.max(0, pollVotes.opt2 - 1);
+        pollVotes.opt1++;
+        pollVotes.userVoted = 1;
+        updatePollDisplay();
+        dom.pollOption1Btn.classList.add('ring-2', 'ring-rose-500');
+        if (dom.pollOption2Btn) dom.pollOption2Btn.classList.remove('ring-2', 'ring-blue-500');
+        showToast('Oyunuz: SİYAH kaydedildi!');
+        sendP2PData('poll_vote', { option: 1 });
+      }
+    });
+  }
+
+  if (dom.pollOption2Btn) {
+    addInstantTap(dom.pollOption2Btn, () => {
+      if (pollVotes.userVoted !== 2) {
+        if (pollVotes.userVoted === 1) pollVotes.opt1 = Math.max(0, pollVotes.opt1 - 1);
+        pollVotes.opt2++;
+        pollVotes.userVoted = 2;
+        updatePollDisplay();
+        dom.pollOption2Btn.classList.add('ring-2', 'ring-blue-500');
+        if (dom.pollOption1Btn) dom.pollOption1Btn.classList.remove('ring-2', 'ring-rose-500');
+        showToast('Oyunuz: BEYAZ kaydedildi!');
+        sendP2PData('poll_vote', { option: 2 });
+      }
+    });
+  }
+
+  // YouTube Live Bottom Actions: Membership, Super Chat, Heart
+  if (dom.chatJoinMemberBtn) {
+    addInstantTap(dom.chatJoinMemberBtn, () => {
+      showToast('🎉 Tebrikler! Kanala üye oldunuz!');
+      renderChatMessage('Sistem', `🎉 ${state.username || 'Kullanıcı'} kanala katıldı ve üye oldu!`, false);
+    });
+  }
+
+  if (dom.chatSuperChatBtn) {
+    addInstantTap(dom.chatSuperChatBtn, () => {
+      const superMsg = `[$50 Super Chat] Harika yayın, tebrikler! 🚀`;
+      sendChatMessage(superMsg);
+      showToast('Super Chat gönderildi: 50₺ 🌟');
+    });
+  }
+
+  if (dom.chatHeartReactionBtn) {
+    addInstantTap(dom.chatHeartReactionBtn, () => {
+      spawnFloatingReaction('❤️', true);
     });
   }
 
@@ -13726,6 +13981,7 @@ window.kickParticipant = kickParticipant;
 window.setParticipantRole = setParticipantRole;
 window.toggleCam = toggleCam;
 window.initAffinityEvents = initAffinityEvents;
+window.setChatVisibility = setChatVisibility;
 
 // Start
 document.addEventListener('DOMContentLoaded', initEvents);
