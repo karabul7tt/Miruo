@@ -1009,17 +1009,27 @@ body.has-mini-player #stageContainer {
   position: fixed !important;
   bottom: max(78px, calc(68px + env(safe-area-inset-bottom, 12px))) !important;
   right: 12px !important;
-  width: 176px !important;
-  height: 99px !important;
+  width: 196px !important;
+  height: 110px !important;
   aspect-ratio: 16/9 !important;
   z-index: 99990 !important;
-  border-radius: 14px !important;
-  border: 1.5px solid rgba(255, 255, 255, 0.25) !important;
-  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.9), 0 0 20px rgba(244, 63, 94, 0.35) !important;
+  border-radius: 16px !important;
+  border: 1.5px solid rgba(255, 255, 255, 0.28) !important;
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.95), 0 0 24px rgba(244, 63, 94, 0.35) !important;
   overflow: hidden !important;
   background: #000 !important;
   transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1) !important;
   cursor: pointer !important;
+}
+
+@media (min-width: 768px) {
+  body.has-mini-player #stageContainer {
+    bottom: 24px !important;
+    right: 24px !important;
+    width: 300px !important;
+    height: 169px !important;
+    border-radius: 18px !important;
+  }
 }
 
 body.has-mini-player #stageContainer #stageFloatingFullscreenBtn,
@@ -1033,6 +1043,9 @@ body.has-mini-player #stageContainer #fsChatOverlay {
 
 body.has-mini-player #stageContainer #miniPlayerOverlay {
   display: flex !important;
+  background: linear-gradient(to top, rgba(0, 0, 0, 0.82) 0%, rgba(0, 0, 0, 0.25) 55%, transparent 100%) !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
 }
 
 /* ========================================================

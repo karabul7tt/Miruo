@@ -4530,6 +4530,19 @@ function switchToProviderPicker() {
     dom.roomWorkspaceSection.classList.add('hidden');
     dom.roomWorkspaceSection.classList.remove('flex');
   }
+  const friendsTab = document.getElementById('friendsTabSection');
+  if (friendsTab) {
+    friendsTab.classList.add('hidden');
+    friendsTab.classList.remove('flex');
+  }
+  const profileTab = document.getElementById('profileTabSection');
+  if (profileTab) {
+    profileTab.classList.add('hidden');
+    profileTab.classList.remove('flex');
+  }
+  if (typeof closePublicUserProfile === 'function') closePublicUserProfile();
+  if (typeof closePublicProfileOptionsMenu === 'function') closePublicProfileOptionsMenu();
+
   if (dom.providerPickerSection) {
     dom.providerPickerSection.classList.remove('hidden');
     dom.providerPickerSection.classList.add('flex');
@@ -4540,7 +4553,7 @@ function switchToMyRoom() {
   // Add in-room-mode class for full-height responsive layout
   document.body.classList.add('in-room-mode');
   state.isInRoom = true;
-  // Hide explore header, provider picker and bottom nav when inside a room!
+  // Hide explore header, provider picker, friends, profile and bottom nav when inside a room!
   const mainWorkspace = document.querySelector('main');
   if (mainWorkspace) {
     mainWorkspace.classList.add('pt-0');
@@ -4558,6 +4571,19 @@ function switchToMyRoom() {
     dom.providerPickerSection.classList.add('hidden');
     dom.providerPickerSection.classList.remove('flex');
   }
+  const friendsTab = document.getElementById('friendsTabSection');
+  if (friendsTab) {
+    friendsTab.classList.add('hidden');
+    friendsTab.classList.remove('flex');
+  }
+  const profileTab = document.getElementById('profileTabSection');
+  if (profileTab) {
+    profileTab.classList.add('hidden');
+    profileTab.classList.remove('flex');
+  }
+  if (typeof closePublicUserProfile === 'function') closePublicUserProfile();
+  if (typeof closePublicProfileOptionsMenu === 'function') closePublicProfileOptionsMenu();
+
   if (dom.roomWorkspaceSection) {
     dom.roomWorkspaceSection.classList.remove('hidden');
     dom.roomWorkspaceSection.classList.add('flex');
@@ -5152,6 +5178,9 @@ window.sendRoomInvite = sendRoomInvite;
 function inviteFriendToRoom(friend) {
   if (!friend) return;
   const cleanUsername = (friend.cleanUsername || friend.username || friend.name || '').replace(/^@/, '').trim();
+  if (typeof closePublicUserProfile === 'function') closePublicUserProfile();
+  if (typeof closePublicProfileOptionsMenu === 'function') closePublicProfileOptionsMenu();
+
   if (!state.roomId) {
     state.roomId = 'ODA-77';
   }
@@ -5159,12 +5188,16 @@ function inviteFriendToRoom(friend) {
   // 1. Send the invitation
   sendRoomInvite(friend);
 
-  // 2. Open / switch to Provider Picker ('+' screen) so host can pick content
-  switchToProviderPicker();
-  connectSignaling();
-
-  // 3. Inform user with prominent toast
-  showToast(`@${cleanUsername} odaya çağrıldı! İzlemek istediğiniz içeriği seçin.`);
+  // 2. If already in a room or video is running, stay in full room view
+  if (state.isInRoom || state.currentVideoId) {
+    switchToMyRoom();
+    showToast(`@${cleanUsername} odaya davet edildi!`);
+  } else {
+    // Switch to Provider Picker ('+' screen) so host can pick content
+    switchToProviderPicker();
+    connectSignaling();
+    showToast(`@${cleanUsername} odaya çağrıldı! İzlemek istediğiniz içeriği seçin.`);
+  }
 }
 window.inviteFriendToRoom = inviteFriendToRoom;
 
@@ -8482,13 +8515,16 @@ function minimizeRoomToMiniPlayer() {
     }
   }
 
-  // Update mini player title & controls
+  // Update mini player title & controls (never display room number/code)
   const miniTitle = document.getElementById('miniPlayerTitle');
   if (miniTitle) {
-    miniTitle.textContent = (dom.raveOverlayTitle && dom.raveOverlayTitle.textContent) || state.roomId || 'Miruo';
+    const rawPlaying = (dom.nowPlayingTitle && dom.nowPlayingTitle.textContent) || '';
+    const isGeneric = !rawPlaying || rawPlaying.includes('Henüz') || rawPlaying.includes('No video') || rawPlaying.includes('Video oynatılıyor') || rawPlaying.toLowerCase() === 'video';
+    const vTitle = !isGeneric ? rawPlaying : (dom.raveOverlayTitle && dom.raveOverlayTitle.textContent);
+    miniTitle.textContent = (vTitle && !vTitle.startsWith('ODA-')) ? vTitle : 'Miruo';
   }
   updateMiniPlayerPlayPauseUI(state.isPlaying);
-  showToast('Oda alta küçültüldü. Uygulama içinde serbestçe gezinebilirsiniz.');
+  showToast('Oda mini oynatıcıya küçültüldü.');
   window.dispatchEvent(new Event('resize'));
 }
 window.minimizeRoomToMiniPlayer = minimizeRoomToMiniPlayer;
@@ -10919,6 +10955,9 @@ function initEvents() {
     if (dom.profileEditModal) {
       freezeBackgroundForModal();
       dom.profileEditModal.classList.remove('hidden');
+      if (typeof renderConnectedAccountsUI === 'function') {
+        renderConnectedAccountsUI();
+      }
       if (section === 'accounts') {
         const el = document.getElementById('settingsSectionAccounts');
         if (el) el.scrollIntoView({ behavior: 'smooth' });
@@ -11846,30 +11885,144 @@ function initEvents() {
     });
   }
 
-  // Platform Account Launcher Toggles (Opens official web apps in native in-app browser)
+  // ==========================================
+  // CONNECTED PLATFORMS & ACCOUNTS MANAGER
+  // "Bir hesabı bağladığımda ayarlarda bağlı hesap görünmeli ve yanında 'Bağlandı' yazmalı."
+  // ==========================================
+  const CONNECTED_ACCOUNTS_KEY = 'miruo_connected_accounts';
+
+  function getConnectedAccounts() {
+    try {
+      const raw = localStorage.getItem(CONNECTED_ACCOUNTS_KEY);
+      if (raw) return JSON.parse(raw);
+    } catch (e) {}
+    return {
+      youtube: { connected: false, account: '' },
+      netflix: { connected: false, account: '' },
+      prime: { connected: false, account: '' },
+      disney: { connected: false, account: '' }
+    };
+  }
+
+  function saveConnectedAccounts(accounts) {
+    localStorage.setItem(CONNECTED_ACCOUNTS_KEY, JSON.stringify(accounts));
+    renderConnectedAccountsUI();
+  }
+
+  function toggleAccountConnection(provider) {
+    const accounts = getConnectedAccounts();
+    const current = accounts[provider] || { connected: false, account: '' };
+    const savedUser = JSON.parse(localStorage.getItem('miruo_user') || '{}');
+    const userEmail = savedUser.email || `${(state.username || 'kullanici').toLowerCase()}@miruo.app`;
+
+    const providerNames = {
+      youtube: 'YouTube / Google',
+      netflix: 'Netflix',
+      prime: 'Prime Video',
+      disney: 'Disney+'
+    };
+    const pName = providerNames[provider] || provider;
+
+    if (current.connected) {
+      if (window.confirm(`${pName} hesabı bağlantısını kesmek istediğinize emin misiniz?`)) {
+        accounts[provider] = { connected: false, account: '' };
+        saveConnectedAccounts(accounts);
+        showToast(`${pName} bağlantısı kaldırıldı.`);
+      }
+    } else {
+      accounts[provider] = {
+        connected: true,
+        account: userEmail,
+        connectedAt: Date.now()
+      };
+      saveConnectedAccounts(accounts);
+      showToast(`${pName} hesabı bağlandı!`);
+    }
+  }
+
+  function renderConnectedAccountsUI() {
+    const accounts = getConnectedAccounts();
+
+    const configs = [
+      { key: 'youtube', btnId: 'toggleYtAccountBtn', badgeId: 'ytAccountStatusBadge', subId: 'ytAccountSubText', defaultSub: 'Google hesabı ile oturum aç' },
+      { key: 'netflix', btnId: 'toggleNetflixAccountBtn', badgeId: 'netflixAccountStatusBadge', subId: 'netflixAccountSubText', defaultSub: 'Netflix hesabı ile oturum aç' },
+      { key: 'prime', btnId: 'togglePrimeAccountBtn', badgeId: 'primeAccountStatusBadge', subId: 'primeAccountSubText', defaultSub: 'Prime hesabı ile oturum aç' },
+      { key: 'disney', btnId: 'toggleDisneyAccountBtn', badgeId: 'disneyAccountStatusBadge', subId: 'disneyAccountSubText', defaultSub: 'Disney+ hesabı ile oturum aç' }
+    ];
+
+    configs.forEach(cfg => {
+      const acc = accounts[cfg.key] || { connected: false, account: '' };
+      const btn = document.getElementById(cfg.btnId);
+      const badge = document.getElementById(cfg.badgeId);
+      const sub = document.getElementById(cfg.subId);
+
+      if (btn) {
+        if (acc.connected) {
+          btn.textContent = 'Bağlantıyı Kes';
+          btn.className = 'px-3 py-1.5 rounded-lg bg-white/10 hover:bg-rose-500/20 hover:text-rose-300 border border-white/15 text-xs font-semibold text-gray-300 transition-all cursor-pointer shrink-0';
+        } else {
+          btn.textContent = 'Giriş Yap';
+          btn.className = 'px-3 py-1.5 rounded-lg bg-[#A64D79]/20 hover:bg-[#A64D79]/30 border border-[#A64D79]/30 text-xs font-semibold text-rose-200 transition-all cursor-pointer shrink-0';
+        }
+      }
+
+      if (badge) {
+        if (acc.connected) {
+          badge.innerHTML = `
+            <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 shadow-xs">
+              <svg class="w-3 h-3 text-emerald-400 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+              <span>Bağlandı</span>
+            </span>
+          `;
+          badge.classList.remove('hidden');
+        } else {
+          badge.innerHTML = '';
+          badge.classList.add('hidden');
+        }
+      }
+
+      if (sub) {
+        if (acc.connected && acc.account) {
+          sub.textContent = `Bağlı hesap: ${acc.account}`;
+          sub.className = 'text-[10px] text-emerald-400 font-medium block truncate';
+        } else {
+          sub.textContent = cfg.defaultSub;
+          sub.className = 'text-[10px] text-gray-400 block truncate';
+        }
+      }
+    });
+  }
+
+  window.renderConnectedAccountsUI = renderConnectedAccountsUI;
+  window.toggleAccountConnection = toggleAccountConnection;
+
+  // Platform Account Connect / Disconnect Buttons
   if (dom.toggleYtAccountBtn) {
     dom.toggleYtAccountBtn.addEventListener('click', () => {
-      launchPlatform('youtube');
+      toggleAccountConnection('youtube');
     });
   }
 
   if (dom.toggleNetflixAccountBtn) {
     dom.toggleNetflixAccountBtn.addEventListener('click', () => {
-      launchPlatform('netflix');
+      toggleAccountConnection('netflix');
     });
   }
 
   if (dom.togglePrimeAccountBtn) {
     dom.togglePrimeAccountBtn.addEventListener('click', () => {
-      launchPlatform('prime');
+      toggleAccountConnection('prime');
     });
   }
 
   if (dom.toggleDisneyAccountBtn) {
     dom.toggleDisneyAccountBtn.addEventListener('click', () => {
-      launchPlatform('disney');
+      toggleAccountConnection('disney');
     });
   }
+
+  // Initial render on boot
+  renderConnectedAccountsUI();
 
   // Rave PiP Corner Buttons
   document.querySelectorAll('.pip-corner-btn').forEach(btn => {
@@ -13646,13 +13799,31 @@ function initAffinityEvents() {
   if (optRemoveFriendBtn) {
     addInstantTap(optRemoveFriendBtn, (e) => {
       e.stopPropagation();
-      closePublicProfileOptionsMenu();
-      if (!currentPublicUser) return;
+      if (!currentPublicUser) {
+        closePublicProfileOptionsMenu();
+        return;
+      }
       const clean = (currentPublicUser.username || '').toLowerCase().replace(/^@/, '');
+      const displayName = currentPublicUser.name || currentPublicUser.username || clean;
+
+      // Kullanıcı isteği: Çıkarmadan önce onay sorulmalı ("Emin misin?")
+      const confirmed = window.confirm(`@${clean} adlı kişiyi arkadaş listenizden çıkarmak istediğinize emin misiniz?`);
+      if (!confirmed) {
+        return;
+      }
+
+      closePublicProfileOptionsMenu();
+
       if (Array.isArray(state.friends)) {
         state.friends = state.friends.filter(f => (f.username || '').toLowerCase().replace(/^@/, '') !== clean);
         localStorage.setItem('miruo_friends', JSON.stringify(state.friends));
+        // Anında listeden kalkmalı (Yenileme gerektirmeden)
+        if (typeof renderFriendsTab === 'function') {
+          const searchInput = document.getElementById('tabFriendSearchInput');
+          renderFriendsTab(searchInput ? searchInput.value : '');
+        }
         if (typeof renderFriendsList === 'function') renderFriendsList();
+        if (typeof renderProfileTab === 'function') renderProfileTab();
       }
       const currentTree = getUserAffinityTree();
       let slotChanged = false;
@@ -13668,7 +13839,8 @@ function initAffinityEvents() {
       }
       const friendToggleText = document.getElementById('publicProfileFriendToggleText');
       if (friendToggleText) friendToggleText.textContent = 'Arkadaş Ekle';
-      showToast(`${currentPublicUser.name || clean} arkadaş listenizden çıkarıldı.`);
+      closePublicUserProfile();
+      showToast(`@${clean} arkadaş listenizden çıkarıldı.`);
     });
   }
 
@@ -13676,9 +13848,18 @@ function initAffinityEvents() {
   if (optBlockUserBtn) {
     addInstantTap(optBlockUserBtn, (e) => {
       e.stopPropagation();
-      closePublicProfileOptionsMenu();
-      if (!currentPublicUser) return;
+      if (!currentPublicUser) {
+        closePublicProfileOptionsMenu();
+        return;
+      }
       const clean = (currentPublicUser.username || '').toLowerCase().replace(/^@/, '');
+
+      const confirmed = window.confirm(`@${clean} adlı kullanıcıyı engellemek istediğinize emin misiniz?`);
+      if (!confirmed) {
+        return;
+      }
+
+      closePublicProfileOptionsMenu();
       try {
         const blocked = JSON.parse(localStorage.getItem('miruo_blocked_users') || '[]');
         if (!blocked.includes(clean)) {
@@ -13689,7 +13870,9 @@ function initAffinityEvents() {
       if (Array.isArray(state.friends)) {
         state.friends = state.friends.filter(f => (f.username || '').toLowerCase().replace(/^@/, '') !== clean);
         localStorage.setItem('miruo_friends', JSON.stringify(state.friends));
+        if (typeof renderFriendsTab === 'function') renderFriendsTab();
         if (typeof renderFriendsList === 'function') renderFriendsList();
+        if (typeof renderProfileTab === 'function') renderProfileTab();
       }
       const currentTree = getUserAffinityTree();
       let slotChanged = false;
@@ -13798,7 +13981,37 @@ function initAffinityEvents() {
   if (publicProfileFriendToggleBtn) {
     addInstantTap(publicProfileFriendToggleBtn, (e) => {
       e.stopPropagation();
-      showToast('Arkadaşlık durumu aktif.');
+      if (!currentPublicUser) return;
+      const clean = (currentPublicUser.username || '').toLowerCase().replace(/^@/, '');
+      const isFriend = Array.isArray(state.friends) && state.friends.some(f => (f.username || '').toLowerCase().replace(/^@/, '') === clean);
+      if (isFriend) {
+        const confirmed = window.confirm(`@${clean} adlı kişiyi arkadaş listenizden çıkarmak istediğinize emin misiniz?`);
+        if (!confirmed) return;
+        state.friends = state.friends.filter(f => (f.username || '').toLowerCase().replace(/^@/, '') !== clean);
+        localStorage.setItem('miruo_friends', JSON.stringify(state.friends));
+        if (typeof renderFriendsTab === 'function') renderFriendsTab();
+        if (typeof renderFriendsList === 'function') renderFriendsList();
+        if (typeof renderProfileTab === 'function') renderProfileTab();
+        const toggleText = document.getElementById('publicProfileFriendToggleText');
+        if (toggleText) toggleText.textContent = 'Arkadaş Ekle';
+        closePublicUserProfile();
+        showToast(`@${clean} arkadaş listenizden çıkarıldı.`);
+      } else {
+        state.friends.unshift({
+          name: currentPublicUser.name || clean,
+          username: clean,
+          avatarUrl: currentPublicUser.avatarUrl || '',
+          status: 'online',
+          lastActive: Date.now()
+        });
+        localStorage.setItem('miruo_friends', JSON.stringify(state.friends));
+        if (typeof renderFriendsTab === 'function') renderFriendsTab();
+        if (typeof renderFriendsList === 'function') renderFriendsList();
+        if (typeof renderProfileTab === 'function') renderProfileTab();
+        const toggleText = document.getElementById('publicProfileFriendToggleText');
+        if (toggleText) toggleText.textContent = 'Arkadaşsınız';
+        showToast(`@${clean} arkadaş listenize eklendi!`);
+      }
     });
   }
 
