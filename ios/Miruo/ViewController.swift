@@ -683,6 +683,20 @@ class ViewController: UIViewController, WKNavigationDelegate, WKUIDelegate, WKSc
     ) {
         decisionHandler(.grant)
     }
+    
+    // WKUIDelegate: Native JavaScript Alert & Confirm Handlers
+    func webView(_ webView: WKWebView, runJavaScriptAlertPanelWithMessage message: String, initiatedByFrame frame: WKFrameInfo, completionHandler: @escaping () -> Void) {
+        let alert = UIAlertController(title: "Miruo", message: message, preferredStyle: .alert)
+        alert.addAction(UIAlertAction(title: "Tamam", style: .default) { _ in completionHandler() })
+        present(alert, animated: true)
+    }
+    
+    func webView(_ webView: WKWebView, runJavaScriptConfirmPanelWithMessage message: String, initiatedByFrame frame: WKFrameInfo, completionHandler: @escaping (Bool) -> Void) {
+        let alert = UIAlertController(title: "Miruo", message: message, preferredStyle: .alert)
+        alert.addAction(UIAlertAction(title: "İptal", style: .cancel) { _ in completionHandler(false) })
+        alert.addAction(UIAlertAction(title: "Evet", style: .destructive) { _ in completionHandler(true) })
+        present(alert, animated: true)
+    }
 }
 
 // Full-Featured In-App Browser for YouTube, Netflix, Prime, Disney+, Twitch, Web, etc.

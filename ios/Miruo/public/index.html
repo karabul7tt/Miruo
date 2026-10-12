@@ -2655,5 +2655,26 @@
     </div>
   </div>
 
+  <!-- IN-APP MODERN CONFIRMATION MODAL (100% Reliable across iOS WKWebView, Desktop & Android) -->
+  <div id="miruoConfirmModal" class="fixed inset-0 z-[100010] hidden items-center justify-center bg-black/85 backdrop-blur-md p-4 select-none" style="position: fixed !important; top: 0 !important; left: 0 !important; right: 0 !important; bottom: 0 !important; width: 100vw !important; height: 100vh !important; z-index: 100010 !important;">
+    <div class="w-full max-w-sm bg-[#0E101A] border border-white/20 rounded-3xl p-5 sm:p-6 shadow-2xl text-center space-y-4 animate-in fade-in zoom-in duration-150">
+      <div class="w-12 h-12 rounded-2xl bg-rose-500/15 border border-rose-500/30 text-rose-400 mx-auto flex items-center justify-center shadow-lg">
+        <svg class="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+      </div>
+      <div>
+        <h3 id="miruoConfirmTitle" class="text-base font-extrabold text-white">Emin misiniz?</h3>
+        <p id="miruoConfirmMessage" class="text-xs text-gray-300 mt-1.5 leading-relaxed">Bu işlemi onaylamak istiyor musunuz?</p>
+      </div>
+      <div class="flex items-center gap-2.5 pt-2">
+        <button id="miruoConfirmCancelBtn" type="button" class="flex-1 py-3 rounded-2xl bg-white/10 hover:bg-white/15 active:scale-95 text-gray-200 font-bold text-xs transition-all cursor-pointer">
+          Vazgeç
+        </button>
+        <button id="miruoConfirmActionBtn" type="button" class="flex-1 py-3 rounded-2xl bg-rose-600 hover:bg-rose-700 active:scale-95 text-white font-extrabold text-xs transition-all shadow-md shadow-rose-600/30 cursor-pointer">
+          Evet, Çıkar
+        </button>
+      </div>
+    </div>
+  </div>
+
 </body>
 </html>

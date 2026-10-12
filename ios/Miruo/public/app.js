@@ -5188,10 +5188,18 @@ function inviteFriendToRoom(friend) {
   // 1. Send the invitation
   sendRoomInvite(friend);
 
-  // 2. If already in a room or video is running, stay in full room view
-  if (state.isInRoom || state.currentVideoId) {
+  // 2. User rule: "mını ekrana alıp bırıını odaya çağırınca bişey vermesın ben tekrar buyutmek ıstersem basıp buyuteyım"
+  // If mini-player is active, DO NOT change the view or blank out the screen!
+  // Leave the user in their active view (e.g. Friends tab) with the mini player docked in corner.
+  if (state.isMiniPlayer || document.body.classList.contains('has-mini-player')) {
+    showToast(`@${cleanUsername} odaya çağrıldı!`);
+    return;
+  }
+
+  // If already inside full room view (not mini player):
+  if (state.isInRoom) {
     switchToMyRoom();
-    showToast(`@${cleanUsername} odaya davet edildi!`);
+    showToast(`@${cleanUsername} odaya çağrıldı!`);
   } else {
     // Switch to Provider Picker ('+' screen) so host can pick content
     switchToProviderPicker();
@@ -5566,6 +5574,115 @@ function closeAddFriendModal() {
   modal.classList.remove('flex');
 }
 window.closeAddFriendModal = closeAddFriendModal;
+
+// ==========================================
+// IN-APP CONFIRMATION DIALOG (iOS & Cross-Platform Safe)
+// Replaces window.confirm to guarantee reliable execution without WKWebView suppression
+// ==========================================
+function showMiruoConfirm({ title = 'Emin misiniz?', message = '', actionText = 'Evet, Çıkar', onConfirm }) {
+  const modal = document.getElementById('miruoConfirmModal');
+  const titleEl = document.getElementById('miruoConfirmTitle');
+  const msgEl = document.getElementById('miruoConfirmMessage');
+  const actionBtn = document.getElementById('miruoConfirmActionBtn');
+  const cancelBtn = document.getElementById('miruoConfirmCancelBtn');
+
+  if (!modal) {
+    if (window.confirm(message || title)) {
+      if (typeof onConfirm === 'function') onConfirm();
+    }
+    return;
+  }
+
+  if (titleEl) titleEl.textContent = title;
+  if (msgEl) msgEl.textContent = message;
+
+  if (actionBtn) {
+    actionBtn.textContent = actionText;
+    actionBtn.onclick = (e) => {
+      e.stopPropagation();
+      modal.classList.add('hidden');
+      modal.classList.remove('flex');
+      if (typeof onConfirm === 'function') onConfirm();
+    };
+  }
+
+  if (cancelBtn) {
+    cancelBtn.onclick = (e) => {
+      e.stopPropagation();
+      modal.classList.add('hidden');
+      modal.classList.remove('flex');
+    };
+  }
+
+  modal.onclick = (e) => {
+    if (e.target === modal) {
+      modal.classList.add('hidden');
+      modal.classList.remove('flex');
+    }
+  };
+
+  modal.classList.remove('hidden');
+  modal.classList.add('flex');
+}
+window.showMiruoConfirm = showMiruoConfirm;
+
+// Centralized Friend Removal with Instant Multi-View Refresh
+function executeRemoveFriend(targetUser) {
+  if (!targetUser) return;
+  const clean = (targetUser.username || targetUser.name || '').toLowerCase().replace(/^@/, '').trim();
+  const displayName = targetUser.name || targetUser.username || clean;
+  if (!clean) return;
+
+  // 1. Remove from state.friends matching username or name
+  if (Array.isArray(state.friends)) {
+    state.friends = state.friends.filter(f => {
+      const fU = (f.username || '').toLowerCase().replace(/^@/, '').trim();
+      const fN = (f.name || '').toLowerCase().replace(/^@/, '').trim();
+      return fU !== clean && fN !== clean;
+    });
+    localStorage.setItem('miruo_friends', JSON.stringify(state.friends));
+  }
+
+  // 2. Remove from affinity tree
+  try {
+    const currentTree = getUserAffinityTree();
+    let slotChanged = false;
+    Object.entries(currentTree).forEach(([sKey, val]) => {
+      if (val) {
+        const vU = (val.username || '').toLowerCase().replace(/^@/, '').trim();
+        const vN = (val.name || '').toLowerCase().replace(/^@/, '').trim();
+        if (vU === clean || vN === clean) {
+          delete currentTree[sKey];
+          slotChanged = true;
+        }
+      }
+    });
+    if (slotChanged) {
+      saveUserAffinityTree(currentTree);
+      if (typeof renderAffinityTree === 'function') {
+        renderAffinityTree('tabProfileAffinityContainer', 'tabProfileAffinityBranchesSvg', 'tabProfileAffinityNodesLayer', true);
+      }
+    }
+  } catch (err) {}
+
+  // 3. Immediately refresh Friends Tab, Friends List, and Profile Tab
+  if (typeof renderFriendsTab === 'function') {
+    const searchInput = document.getElementById('tabFriendSearchInput');
+    renderFriendsTab(searchInput ? searchInput.value : '');
+  }
+  if (typeof renderFriendsList === 'function') renderFriendsList();
+  if (typeof renderProfileTab === 'function') renderProfileTab();
+
+  // 4. Update profile buttons if open
+  const friendToggleText = document.getElementById('publicProfileFriendToggleText');
+  if (friendToggleText) friendToggleText.textContent = 'Arkadaş Ekle';
+
+  if (typeof closePublicProfileOptionsMenu === 'function') closePublicProfileOptionsMenu();
+  if (typeof closePublicUserProfile === 'function') closePublicUserProfile();
+
+  showToast(`@${clean} arkadaş listenizden çıkarıldı.`);
+}
+window.executeRemoveFriend = executeRemoveFriend;
 
 async function submitAddFriendModal() {
   const input = document.getElementById('addFriendModalInput');
@@ -13799,48 +13916,17 @@ function initAffinityEvents() {
   if (optRemoveFriendBtn) {
     addInstantTap(optRemoveFriendBtn, (e) => {
       e.stopPropagation();
-      if (!currentPublicUser) {
-        closePublicProfileOptionsMenu();
-        return;
-      }
-      const clean = (currentPublicUser.username || '').toLowerCase().replace(/^@/, '');
-      const displayName = currentPublicUser.name || currentPublicUser.username || clean;
-
-      // Kullanıcı isteği: Çıkarmadan önce onay sorulmalı ("Emin misin?")
-      const confirmed = window.confirm(`@${clean} adlı kişiyi arkadaş listenizden çıkarmak istediğinize emin misiniz?`);
-      if (!confirmed) {
-        return;
-      }
-
       closePublicProfileOptionsMenu();
-
-      if (Array.isArray(state.friends)) {
-        state.friends = state.friends.filter(f => (f.username || '').toLowerCase().replace(/^@/, '') !== clean);
-        localStorage.setItem('miruo_friends', JSON.stringify(state.friends));
-        // Anında listeden kalkmalı (Yenileme gerektirmeden)
-        if (typeof renderFriendsTab === 'function') {
-          const searchInput = document.getElementById('tabFriendSearchInput');
-          renderFriendsTab(searchInput ? searchInput.value : '');
-        }
-        if (typeof renderFriendsList === 'function') renderFriendsList();
-        if (typeof renderProfileTab === 'function') renderProfileTab();
-      }
-      const currentTree = getUserAffinityTree();
-      let slotChanged = false;
-      Object.entries(currentTree).forEach(([sKey, val]) => {
-        if (val && (val.username || '').toLowerCase().replace(/^@/, '') === clean) {
-          delete currentTree[sKey];
-          slotChanged = true;
+      if (!currentPublicUser) return;
+      const clean = (currentPublicUser.username || currentPublicUser.name || 'kullanici').replace(/^@/, '');
+      showMiruoConfirm({
+        title: 'Arkadaşlıktan Çıkar',
+        message: `@${clean} adlı kişiyi arkadaş listenizden çıkarmak istediğinize emin misiniz?`,
+        actionText: 'Evet, Çıkar',
+        onConfirm: () => {
+          executeRemoveFriend(currentPublicUser);
         }
       });
-      if (slotChanged) {
-        saveUserAffinityTree(currentTree);
-        renderAffinityTree('tabProfileAffinityContainer', 'tabProfileAffinityBranchesSvg', 'tabProfileAffinityNodesLayer', true);
-      }
-      const friendToggleText = document.getElementById('publicProfileFriendToggleText');
-      if (friendToggleText) friendToggleText.textContent = 'Arkadaş Ekle';
-      closePublicUserProfile();
-      showToast(`@${clean} arkadaş listenizden çıkarıldı.`);
     });
   }
 
@@ -13848,46 +13934,25 @@ function initAffinityEvents() {
   if (optBlockUserBtn) {
     addInstantTap(optBlockUserBtn, (e) => {
       e.stopPropagation();
-      if (!currentPublicUser) {
-        closePublicProfileOptionsMenu();
-        return;
-      }
-      const clean = (currentPublicUser.username || '').toLowerCase().replace(/^@/, '');
-
-      const confirmed = window.confirm(`@${clean} adlı kullanıcıyı engellemek istediğinize emin misiniz?`);
-      if (!confirmed) {
-        return;
-      }
-
       closePublicProfileOptionsMenu();
-      try {
-        const blocked = JSON.parse(localStorage.getItem('miruo_blocked_users') || '[]');
-        if (!blocked.includes(clean)) {
-          blocked.push(clean);
-          localStorage.setItem('miruo_blocked_users', JSON.stringify(blocked));
-        }
-      } catch (err) {}
-      if (Array.isArray(state.friends)) {
-        state.friends = state.friends.filter(f => (f.username || '').toLowerCase().replace(/^@/, '') !== clean);
-        localStorage.setItem('miruo_friends', JSON.stringify(state.friends));
-        if (typeof renderFriendsTab === 'function') renderFriendsTab();
-        if (typeof renderFriendsList === 'function') renderFriendsList();
-        if (typeof renderProfileTab === 'function') renderProfileTab();
-      }
-      const currentTree = getUserAffinityTree();
-      let slotChanged = false;
-      Object.entries(currentTree).forEach(([sKey, val]) => {
-        if (val && (val.username || '').toLowerCase().replace(/^@/, '') === clean) {
-          delete currentTree[sKey];
-          slotChanged = true;
+      if (!currentPublicUser) return;
+      const clean = (currentPublicUser.username || currentPublicUser.name || 'kullanici').replace(/^@/, '');
+      showMiruoConfirm({
+        title: 'Kullanıcıyı Engelle',
+        message: `@${clean} adlı kullanıcıyı engellemek istediğinize emin misiniz?`,
+        actionText: 'Evet, Engelle',
+        onConfirm: () => {
+          try {
+            const blocked = JSON.parse(localStorage.getItem('miruo_blocked_users') || '[]');
+            if (!blocked.includes(clean.toLowerCase())) {
+              blocked.push(clean.toLowerCase());
+              localStorage.setItem('miruo_blocked_users', JSON.stringify(blocked));
+            }
+          } catch (err) {}
+          executeRemoveFriend(currentPublicUser);
+          showToast(`@${clean} engellendi.`);
         }
       });
-      if (slotChanged) {
-        saveUserAffinityTree(currentTree);
-        renderAffinityTree('tabProfileAffinityContainer', 'tabProfileAffinityBranchesSvg', 'tabProfileAffinityNodesLayer', true);
-      }
-      showToast(`${currentPublicUser.name || clean} engellendi.`);
-      closePublicUserProfile();
     });
   }
 
@@ -13982,20 +14047,23 @@ function initAffinityEvents() {
     addInstantTap(publicProfileFriendToggleBtn, (e) => {
       e.stopPropagation();
       if (!currentPublicUser) return;
-      const clean = (currentPublicUser.username || '').toLowerCase().replace(/^@/, '');
-      const isFriend = Array.isArray(state.friends) && state.friends.some(f => (f.username || '').toLowerCase().replace(/^@/, '') === clean);
+      const clean = (currentPublicUser.username || currentPublicUser.name || 'kullanici').replace(/^@/, '');
+      const cleanLower = clean.toLowerCase();
+      const isFriend = Array.isArray(state.friends) && state.friends.some(f => {
+        const fU = (f.username || '').toLowerCase().replace(/^@/, '').trim();
+        const fN = (f.name || '').toLowerCase().replace(/^@/, '').trim();
+        return fU === cleanLower || fN === cleanLower;
+      });
+
       if (isFriend) {
-        const confirmed = window.confirm(`@${clean} adlı kişiyi arkadaş listenizden çıkarmak istediğinize emin misiniz?`);
-        if (!confirmed) return;
-        state.friends = state.friends.filter(f => (f.username || '').toLowerCase().replace(/^@/, '') !== clean);
-        localStorage.setItem('miruo_friends', JSON.stringify(state.friends));
-        if (typeof renderFriendsTab === 'function') renderFriendsTab();
-        if (typeof renderFriendsList === 'function') renderFriendsList();
-        if (typeof renderProfileTab === 'function') renderProfileTab();
-        const toggleText = document.getElementById('publicProfileFriendToggleText');
-        if (toggleText) toggleText.textContent = 'Arkadaş Ekle';
-        closePublicUserProfile();
-        showToast(`@${clean} arkadaş listenizden çıkarıldı.`);
+        showMiruoConfirm({
+          title: 'Arkadaşlıktan Çıkar',
+          message: `@${clean} adlı kişiyi arkadaş listenizden çıkarmak istediğinize emin misiniz?`,
+          actionText: 'Evet, Çıkar',
+          onConfirm: () => {
+            executeRemoveFriend(currentPublicUser);
+          }
+        });
       } else {
         state.friends.unshift({
           name: currentPublicUser.name || clean,
