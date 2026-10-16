@@ -1458,15 +1458,15 @@ const server = http.createServer(async (req, res) => {
   }
 
   // DOWNLOAD ENDPOINTS (Mac, Windows, iOS, Android)
-  if (urlObj.pathname === '/download/mac' || urlObj.pathname === '/download/mac-zip') {
+  if (urlObj.pathname === '/download/mac' || urlObj.pathname === '/download/mac-dmg') {
+    const dmgPath = path.join(__dirname, 'downloads', 'Miruo.dmg');
     const zipPath = path.join(__dirname, 'downloads', 'Miruo-macOS.zip');
-    const dmgPath = path.join(__dirname, 'downloads', 'Miruo-macOS-Installer.dmg');
-    const fileToServe = fs.existsSync(zipPath) ? zipPath : dmgPath;
-    if (fs.existsSync(fileToServe)) {
+    const fileToServe = fs.existsSync(dmgPath) ? dmgPath : (fs.existsSync(zipPath) ? zipPath : null);
+    if (fileToServe) {
       const filename = path.basename(fileToServe);
       const stat = fs.statSync(fileToServe);
       res.writeHead(200, {
-        'Content-Type': filename.endsWith('.zip') ? 'application/zip' : 'application/x-apple-diskimage',
+        'Content-Type': filename.endsWith('.dmg') ? 'application/x-apple-diskimage' : 'application/zip',
         'Content-Disposition': `attachment; filename="${filename}"`,
         'Content-Length': stat.size
       });

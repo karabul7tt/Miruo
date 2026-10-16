@@ -328,8 +328,8 @@
 
       if (platform === 'mac') {
         const dlLink = document.createElement('a');
-        dlLink.href = '/download/mac';
-        dlLink.download = 'Miruo-macOS.zip';
+        dlLink.href = '/downloads/Miruo.dmg';
+        dlLink.download = 'Miruo.dmg';
         document.body.appendChild(dlLink);
         dlLink.click();
         document.body.removeChild(dlLink);

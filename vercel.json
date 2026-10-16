@@ -7,7 +7,7 @@
   "cleanUrls": true,
   "trailingSlash": false,
   "rewrites": [
-    { "source": "/download/mac", "destination": "/downloads/Miruo-macOS.zip" },
+    { "source": "/download/mac", "destination": "/downloads/Miruo.dmg" },
     { "source": "/download/windows", "destination": "/downloads/Miruo-Windows.zip" }
   ],
   "redirects": [
