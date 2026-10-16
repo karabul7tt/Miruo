@@ -508,8 +508,8 @@ const I18N = {
     corner_tl: 'Sol Üst',
     accounts_info: 'Platform hesaplarınıza (YouTube, Netflix, Prime vb.) dahili tarayıcı üzerinden doğrudan giriş yapabilirsiniz. Oturumlarınız cihazınızda güvenle saklanır.',
     open_in_browser: 'Giriş Yap',
-    open_in_browser_btn: 'Giriş Yap',
-    platform_signin_btn: 'Giriş Yap',
+    platform_signin_btn: 'Hesabı Bağla',
+    platform_connect_btn: 'Hesabı Bağla',
     yt_card_sub: 'Google hesabı ile oturum aç',
     netflix_card_sub: 'Netflix hesabı ile oturum aç',
     prime_card_sub: 'Prime hesabı ile oturum aç',
@@ -864,8 +864,8 @@ const I18N = {
     corner_tl: 'Top Left',
     accounts_info: 'You can log into your platform accounts (YouTube, Netflix, Prime etc.) directly via the in-app browser. Your sessions are saved securely on your device.',
     open_in_browser: 'Sign In',
-    open_in_browser_btn: 'Sign In',
-    platform_signin_btn: 'Sign In',
+    platform_signin_btn: 'Connect',
+    platform_connect_btn: 'Connect',
     yt_card_sub: 'Sign in with Google account',
     netflix_card_sub: 'Sign in with Netflix account',
     prime_card_sub: 'Sign in with Prime account',
@@ -1220,8 +1220,8 @@ const I18N = {
     corner_tl: 'Oben Links',
     accounts_info: 'Sie können sich über den In-App-Browser direkt bei Ihren Plattformkonten (YouTube, Netflix, Prime usw.) anmelden. Ihre Sitzungen werden sicher auf Ihrem Gerät gespeichert.',
     open_in_browser: 'Anmelden',
-    open_in_browser_btn: 'Anmelden',
-    platform_signin_btn: 'Anmelden',
+    platform_signin_btn: 'Verbinden',
+    platform_connect_btn: 'Verbinden',
     yt_card_sub: 'Mit Google-Konto anmelden',
     netflix_card_sub: 'Mit Netflix-Konto anmelden',
     prime_card_sub: 'Mit Prime-Konto anmelden',
@@ -5883,13 +5883,13 @@ function renderStackedAvatars(avatars) {
 
 const DEFAULT_COMMUNITY_ROOMS = [
   {
-    id: 'O-SES-TURKIYE',
-    name: 'O Ses Türkiye — En İyi Performanslar',
+    id: 'WEEKND-BLINDING',
+    name: 'The Weeknd — Blinding Lights',
     category: 'YouTube',
-    host: 'MiruoTR',
-    mediaTitle: 'O Ses Türkiye — En İyi Performanslar',
-    videoId: '4NRXx6U8ABQ',
-    viewers: 10,
+    host: 'AbelFan',
+    mediaTitle: 'The Weeknd - Blinding Lights (Official Music Video)',
+    videoId: 'fLexgOxsZu0',
+    viewers: 12,
     avatars: [
       'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=120&auto=format&fit=crop&q=80',
       'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=120&auto=format&fit=crop&q=80',
@@ -5898,13 +5898,13 @@ const DEFAULT_COMMUNITY_ROOMS = [
     ]
   },
   {
-    id: 'ANIL-EMRE',
-    name: 'Anıl Emre Daldal - B. (Official Video)',
+    id: 'ED-SHEERAN',
+    name: 'Ed Sheeran — Shape of You',
     category: 'YouTube',
-    host: 'EmreFan',
-    mediaTitle: 'Anıl Emre Daldal - B. (Official Video)',
-    videoId: 'ezkd3wzB6s8',
-    viewers: 5,
+    host: 'Sheerio',
+    mediaTitle: 'Ed Sheeran - Shape of You (Official Music Video)',
+    videoId: 'JGwWNGJdvx8',
+    viewers: 9,
     avatars: [
       'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=120&auto=format&fit=crop&q=80',
       'https://images.unsplash.com/photo-1524504388940-b1c1722653e1?w=120&auto=format&fit=crop&q=80',
@@ -5913,13 +5913,13 @@ const DEFAULT_COMMUNITY_ROOMS = [
     ]
   },
   {
-    id: 'RENTA-BARON',
-    name: 'rentaBARON MU KİM ??',
+    id: 'DESPACITO-PARTY',
+    name: 'Luis Fonsi — Despacito ft. Daddy Yankee',
     category: 'YouTube',
-    host: 'Renta',
-    mediaTitle: 'rentaBARON MU KİM ??',
-    videoId: 'mDYqT0_9nJA',
-    viewers: 3,
+    host: 'LatinoBeats',
+    mediaTitle: 'Luis Fonsi - Despacito ft. Daddy Yankee',
+    videoId: 'kJQP7kiw5Fk',
+    viewers: 7,
     avatars: [
       'https://images.unsplash.com/photo-1524504388940-b1c1722653e1?w=120&auto=format&fit=crop&q=80',
       'https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?w=120&auto=format&fit=crop&q=80',
@@ -5928,13 +5928,13 @@ const DEFAULT_COMMUNITY_ROOMS = [
     ]
   },
   {
-    id: 'HALILISKO',
-    name: 'Halilişko Patatesi Bırakıyor, Chatin Falına Baktım | MUHABBET SPOR',
+    id: 'LOFI-GIRL-CHILL',
+    name: 'Lofi Girl 24/7 Chill Beats',
     category: 'YouTube',
-    host: 'MuhabbetSpor',
-    mediaTitle: 'Halilişko Patatesi Bırakıyor | MUHABBET SPOR',
+    host: 'LofiVibes',
+    mediaTitle: 'Lofi Girl - beats to relax/study to',
     videoId: 'jfKfPfyJRdk',
-    viewers: 3,
+    viewers: 15,
     avatars: [
       'https://images.unsplash.com/photo-1539571696357-5a69c17a67c6?w=120&auto=format&fit=crop&q=80',
       'https://images.unsplash.com/photo-1517841905240-472988babdf9?w=120&auto=format&fit=crop&q=80',
@@ -5943,13 +5943,13 @@ const DEFAULT_COMMUNITY_ROOMS = [
     ]
   },
   {
-    id: 'MED-CEZIR',
-    name: 'Med Cezir',
-    category: 'YouTube',
-    host: 'CezaFan',
-    mediaTitle: 'Ceza - Med Cezir (Official)',
+    id: 'STRANGER-THINGS',
+    name: 'Stranger Things 4 Fragman & İnceleme',
+    category: 'Netflix',
+    host: 'DiziKeyfi',
+    mediaTitle: 'Stranger Things 4 | Official Trailer | Netflix',
     videoId: 'b9EkMc79ZSU',
-    viewers: 2,
+    viewers: 8,
     avatars: [
       'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=120&auto=format&fit=crop&q=80',
       'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=120&auto=format&fit=crop&q=80',
@@ -5958,13 +5958,13 @@ const DEFAULT_COMMUNITY_ROOMS = [
     ]
   },
   {
-    id: 'GEL-GOR-BENI',
-    name: 'Gel Gör Beni Aşk Neyledi',
+    id: 'COUNTING-STARS',
+    name: 'OneRepublic — Counting Stars',
     category: 'YouTube',
-    host: 'BarisAkarsu',
-    mediaTitle: 'Barış Akarsu - Gel Gör Beni Aşk Neyledi',
-    videoId: 'aM3ElTrVrcM',
-    viewers: 2,
+    host: 'RockFan',
+    mediaTitle: 'OneRepublic - Counting Stars (Official Music Video)',
+    videoId: 'hT_nvWreIhg',
+    viewers: 6,
     avatars: [
       'https://images.unsplash.com/photo-1492562080023-ab3db95bfbce?w=120&auto=format&fit=crop&q=80',
       'https://images.unsplash.com/photo-1524504388940-b1c1722653e1?w=120&auto=format&fit=crop&q=80',
@@ -5983,7 +5983,7 @@ function renderRoomList(roomsToRender) {
     card.type = 'button';
     const thumbUrl = r.thumb || (r.videoId ? `https://img.youtube.com/vi/${r.videoId}/hqdefault.jpg` : 'https://img.youtube.com/vi/jfKfPfyJRdk/hqdefault.jpg');
     
-    // Rave capsule pill style (matching screenshot 1)
+    // Clean responsive card style: fills width, never clips text
     card.className = 'w-full text-left bg-[#0C0E17]/90 hover:bg-[#141824] border border-white/10 hover:border-white/20 rounded-3xl p-3 sm:p-4 flex items-center gap-3.5 sm:gap-4 transition-all shadow-xl hover:scale-[1.01] active:scale-[0.98] group cursor-pointer overflow-hidden relative select-none';
     card.innerHTML = `
       <!-- Left: Rounded video thumbnail with translucent play button -->
@@ -6002,10 +6002,10 @@ function renderRoomList(roomsToRender) {
           <div class="flex items-center gap-2 mb-1">
             <span class="text-[10px] font-bold text-rose-400 bg-rose-500/15 px-2 py-0.5 rounded-full uppercase tracking-wider">${escapeHtml(r.category || 'YouTube')}</span>
           </div>
-          <h4 class="text-sm sm:text-base font-bold text-white tracking-tight group-hover:text-rose-200 transition-colors truncate">
+          <h4 class="text-xs sm:text-sm font-bold text-white tracking-tight group-hover:text-rose-200 transition-colors truncate">
             ${escapeHtml(r.mediaTitle || r.name)}
           </h4>
-          <p class="text-[11px] sm:text-xs text-gray-400 truncate mt-0.5">${escapeHtml(r.name)}</p>
+          <p class="text-[10px] sm:text-[11px] text-gray-400 truncate mt-0.5">${escapeHtml(r.name)}</p>
         </div>
 
         <!-- Bottom: Host & Overlapping Avatars + Red Pill Badge -->
@@ -11915,13 +11915,7 @@ function initEvents() {
       }
     }
     
-    // Fallback for YouTube in Web:
-    if (providerKey === 'youtube' || providerKey === 'dj' || providerKey === 'karaoke' || providerKey === 'live') {
-      openRaveYoutubeModal();
-      return;
-    }
-
-    // For other platforms on web: open and join room
+    // Open and join watch room directly for YouTube and all platforms
     const title = isConn ? `${config.title} Odası (${conn.account})` : `${config.title} Odası`;
     createAndJoinRoom(title, false, config.title);
     if (isConn) {
@@ -12602,15 +12596,49 @@ function initEvents() {
     window.pendingAvatarUrl = savedUser.avatarUrl || state.avatarUrl || '';
     window.pendingAvatarBg = savedUser.avatarBg || state.avatarBg || 'from-[#A64D79] to-[#6A1E55]';
 
+    const isGuest = !!(savedUser.isGuest || !savedUser.email || (savedUser.id && String(savedUser.id).startsWith('guest_')));
+    const guestBanner = document.getElementById('settingsGuestBanner');
+    if (guestBanner) {
+      if (isGuest) {
+        guestBanner.classList.remove('hidden');
+        guestBanner.classList.add('flex');
+      } else {
+        guestBanner.classList.add('hidden');
+        guestBanner.classList.remove('flex');
+      }
+    }
+
+    const ctaBtn = document.getElementById('settingsLoginCtaBtn');
+    if (ctaBtn && !ctaBtn._hasClickListener) {
+      ctaBtn._hasClickListener = true;
+      ctaBtn.addEventListener('click', () => {
+        if (dom.profileEditModal) dom.profileEditModal.classList.add('hidden');
+        if (dom.authModal) {
+          dom.authModal.classList.remove('hidden');
+          freezeBackgroundForModal();
+          if (typeof setAuthMode === 'function') setAuthMode(false);
+        }
+      });
+    }
+
     if (dom.profileEmailDisplay) {
-      dom.profileEmailDisplay.textContent = savedUser.email || `${(state.username || 'user').toLowerCase()}@miruo.app`;
+      dom.profileEmailDisplay.textContent = isGuest
+        ? 'Oturum açılmadı • Geçici profil'
+        : (savedUser.email || `${(state.username || 'user').toLowerCase()}@miruo.app`);
     }
 
     // 1. Detect and render provider badge (Neyle Kayıt Olduğu)
     const dict = I18N[currentLang] || I18N.tr;
     const authProvider = savedUser.provider || (savedUser.phone ? 'phone' : (savedUser.isApple ? 'apple' : (savedUser.isGoogle ? 'google' : 'email')));
     if (dom.accountProviderIcon && dom.accountProviderName) {
-      if (authProvider === 'apple' || savedUser.isApple) {
+      if (isGuest) {
+        dom.accountProviderIcon.innerHTML = '<span class="text-xs font-bold text-amber-400">Misafir</span>';
+        dom.accountProviderName.textContent = 'Misafir Kullanıcı (Kayıtsız)';
+        if (dom.profileAuthBadge) {
+          dom.profileAuthBadge.textContent = 'Giriş Yapılmadı';
+          dom.profileAuthBadge.className = 'px-2.5 py-1 rounded-full text-[10px] font-bold bg-amber-500/15 text-amber-400 border border-amber-500/30';
+        }
+      } else if (authProvider === 'apple' || savedUser.isApple) {
         dom.accountProviderIcon.innerHTML = '<span class="text-xs font-bold text-white">Apple</span>';
         dom.accountProviderName.textContent = dict.provider_apple || 'Apple ID ile Giriş Yapıldı';
         if (dom.profileAuthBadge) {
@@ -13787,7 +13815,7 @@ function initEvents() {
           btn.textContent = 'Bağlantıyı Kes';
           btn.className = 'px-3 py-1.5 rounded-lg bg-white/10 hover:bg-rose-500/20 hover:text-rose-300 border border-white/15 text-xs font-semibold text-gray-300 transition-all cursor-pointer shrink-0';
         } else {
-          btn.textContent = 'Giriş Yap';
+          btn.textContent = 'Hesabı Bağla';
           btn.className = 'px-3 py-1.5 rounded-lg bg-[#A64D79]/20 hover:bg-[#A64D79]/30 border border-[#A64D79]/30 text-xs font-semibold text-rose-200 transition-all cursor-pointer shrink-0';
         }
       }

@@ -294,97 +294,129 @@
         <input type="text" id="providerSearchInput" placeholder="video, dizi veya film ara..." data-i18n-placeholder="provider_search_ph" class="w-full bg-[#0C0E17]/90 border border-white/10 rounded-2xl pl-10 pr-4 py-3 text-xs text-white placeholder-gray-400 focus:outline-none focus:border-rose-500/80 transition-all font-medium shadow-md">
       </div>
 
-      <!-- Responsive Grid of Providers (2 cols on mobile, 3-4 cols on tablet, 5-6 cols on desktop) -->
-      <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3 sm:gap-4 pt-2">
+      <!-- Responsive Grid of Providers (Clean non-overlapping cards on all screens) -->
+      <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3 sm:gap-4 pt-2">
         
         <!-- YouTube -->
-        <button class="provider-card p-5 rounded-2xl bg-[#0C0E17]/90 hover:bg-[#141824] border border-white/10 hover:border-red-500/50 flex flex-col items-center justify-center gap-2 transition-all cursor-pointer group active:scale-95 shadow-lg" data-provider="youtube">
-          <div class="text-red-500 font-black text-2xl tracking-tighter flex items-center gap-1.5 group-hover:scale-105 transition-transform">
-            <svg class="w-7 h-7 fill-current" viewBox="0 0 24 24"><path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z"/></svg>
-            <span class="text-white text-lg font-black">YouTube</span>
+        <button class="provider-card p-4 rounded-2xl bg-[#0C0E17]/90 hover:bg-[#141824] border border-white/10 hover:border-red-500/50 flex flex-col items-center justify-center gap-2 min-h-[105px] transition-all cursor-pointer group active:scale-95 shadow-lg overflow-hidden select-none" data-provider="youtube">
+          <div class="w-10 h-10 rounded-xl bg-red-600/15 border border-red-500/30 flex items-center justify-center text-red-500 group-hover:scale-110 transition-transform">
+            <svg class="w-6 h-6 fill-current" viewBox="0 0 24 24"><path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z"/></svg>
           </div>
+          <span class="text-white text-xs sm:text-sm font-bold tracking-tight">YouTube</span>
         </button>
 
         <!-- NETFLIX -->
-        <button class="provider-card p-5 rounded-2xl bg-[#0C0E17]/90 hover:bg-[#141824] border border-white/10 hover:border-red-600/50 flex flex-col items-center justify-center gap-2 transition-all cursor-pointer group active:scale-95 shadow-lg" data-provider="netflix">
-          <span class="text-[#E50914] font-black text-xl tracking-wider font-sans group-hover:scale-105 transition-transform">NETFLIX</span>
+        <button class="provider-card p-4 rounded-2xl bg-[#0C0E17]/90 hover:bg-[#141824] border border-white/10 hover:border-red-600/50 flex flex-col items-center justify-center gap-2 min-h-[105px] transition-all cursor-pointer group active:scale-95 shadow-lg overflow-hidden select-none" data-provider="netflix">
+          <div class="w-10 h-10 rounded-xl bg-red-950/60 border border-red-600/40 flex items-center justify-center text-red-600 group-hover:scale-110 transition-transform font-black text-xl">
+            N
+          </div>
+          <span class="text-[#E50914] text-xs sm:text-sm font-extrabold tracking-wider font-sans">NETFLIX</span>
         </button>
 
         <!-- prime -->
-        <button class="provider-card p-5 rounded-2xl bg-[#0C0E17]/90 hover:bg-[#141824] border border-white/10 hover:border-blue-500/50 flex flex-col items-center justify-center gap-2 transition-all cursor-pointer group active:scale-95 shadow-lg" data-provider="prime">
-          <span class="text-[#00A8E1] font-bold text-xl tracking-tight lowercase font-sans group-hover:scale-105 transition-transform">prime</span>
+        <button class="provider-card p-4 rounded-2xl bg-[#0C0E17]/90 hover:bg-[#141824] border border-white/10 hover:border-blue-500/50 flex flex-col items-center justify-center gap-2 min-h-[105px] transition-all cursor-pointer group active:scale-95 shadow-lg overflow-hidden select-none" data-provider="prime">
+          <div class="w-10 h-10 rounded-xl bg-blue-950/60 border border-blue-500/40 flex items-center justify-center text-blue-400 group-hover:scale-110 transition-transform">
+            <svg class="w-5 h-5 fill-current" viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 14.5v-9l6 4.5-6 4.5z"/></svg>
+          </div>
+          <span class="text-[#00A8E1] text-xs sm:text-sm font-bold tracking-tight lowercase">Prime Video</span>
         </button>
 
         <!-- Disney+ -->
-        <button class="provider-card p-5 rounded-2xl bg-[#0C0E17]/90 hover:bg-[#141824] border border-white/10 hover:border-blue-400/50 flex flex-col items-center justify-center gap-2 transition-all cursor-pointer group active:scale-95 shadow-lg" data-provider="disney">
-          <span class="text-white font-bold text-xl tracking-tight group-hover:scale-105 transition-transform">Disney<span class="text-blue-400">+</span></span>
+        <button class="provider-card p-4 rounded-2xl bg-[#0C0E17]/90 hover:bg-[#141824] border border-white/10 hover:border-blue-400/50 flex flex-col items-center justify-center gap-2 min-h-[105px] transition-all cursor-pointer group active:scale-95 shadow-lg overflow-hidden select-none" data-provider="disney">
+          <div class="w-10 h-10 rounded-xl bg-blue-900/40 border border-blue-400/40 flex items-center justify-center text-blue-300 font-black text-xs group-hover:scale-110 transition-transform">
+            D+
+          </div>
+          <span class="text-white text-xs sm:text-sm font-bold tracking-tight">Disney<span class="text-blue-400">+</span></span>
         </button>
 
         <!-- twitch -->
-        <button class="provider-card p-5 rounded-2xl bg-[#0C0E17]/90 hover:bg-[#141824] border border-white/10 hover:border-purple-500/50 flex flex-col items-center justify-center gap-2 transition-all cursor-pointer group active:scale-95 shadow-lg" data-provider="twitch">
-          <span class="text-[#9146FF] font-black text-xl tracking-tight lowercase group-hover:scale-105 transition-transform">twitch</span>
+        <button class="provider-card p-4 rounded-2xl bg-[#0C0E17]/90 hover:bg-[#141824] border border-white/10 hover:border-purple-500/50 flex flex-col items-center justify-center gap-2 min-h-[105px] transition-all cursor-pointer group active:scale-95 shadow-lg overflow-hidden select-none" data-provider="twitch">
+          <div class="w-10 h-10 rounded-xl bg-purple-950/60 border border-purple-500/40 flex items-center justify-center text-[#9146FF] group-hover:scale-110 transition-transform font-black">
+            <svg class="w-5 h-5 fill-current" viewBox="0 0 24 24"><path d="M2.149 0l-1.612 4.119v16.8h5.631v3.081h3.074l3.077-3.081h4.61l6.535-6.538v-14.381h-21.315zm18.236 13.355l-3.585 3.587h-5.634l-3.074 3.081v-3.081h-4.099v-14.862h16.392v11.275zm-9.219-6.398h2.049v6.143h-2.049v-6.143zm6.144 0h2.049v6.143h-2.049v-6.143z"/></svg>
+          </div>
+          <span class="text-[#9146FF] text-xs sm:text-sm font-bold tracking-tight lowercase">Twitch</span>
         </button>
 
         <!-- LIVE -->
-        <button class="provider-card p-5 rounded-2xl bg-[#0C0E17]/90 hover:bg-[#141824] border border-white/10 hover:border-red-500/50 flex flex-col items-center justify-center gap-2 transition-all cursor-pointer group active:scale-95 shadow-lg" data-provider="live">
-          <div class="flex items-center gap-1.5 text-white font-black text-xl group-hover:scale-105 transition-transform">
-            <svg class="w-4 h-4 text-red-500 fill-current" viewBox="0 0 24 24"><polygon points="5 3 19 12 5 21 5 3"/></svg>
-            <span>LIVE</span>
+        <button class="provider-card p-4 rounded-2xl bg-[#0C0E17]/90 hover:bg-[#141824] border border-white/10 hover:border-red-500/50 flex flex-col items-center justify-center gap-2 min-h-[105px] transition-all cursor-pointer group active:scale-95 shadow-lg overflow-hidden select-none" data-provider="live">
+          <div class="w-10 h-10 rounded-xl bg-red-600/15 border border-red-500/30 flex items-center justify-center text-red-500 group-hover:scale-110 transition-transform">
+            <svg class="w-5 h-5 fill-current" viewBox="0 0 24 24"><polygon points="5 3 19 12 5 21 5 3"/></svg>
           </div>
+          <span class="text-white text-xs sm:text-sm font-extrabold tracking-tight">Canlı Yayın</span>
         </button>
 
         <!-- Playlist -->
-        <button class="provider-card p-5 rounded-2xl bg-[#0C0E17]/90 hover:bg-[#141824] border border-white/10 hover:border-emerald-500/50 flex flex-col items-center justify-center gap-2 transition-all cursor-pointer group active:scale-95 shadow-lg" data-provider="playlist">
-          <span class="text-white font-serif italic font-bold text-xl group-hover:scale-105 transition-transform">Playlist</span>
+        <button class="provider-card p-4 rounded-2xl bg-[#0C0E17]/90 hover:bg-[#141824] border border-white/10 hover:border-emerald-500/50 flex flex-col items-center justify-center gap-2 min-h-[105px] transition-all cursor-pointer group active:scale-95 shadow-lg overflow-hidden select-none" data-provider="playlist">
+          <div class="w-10 h-10 rounded-xl bg-emerald-500/15 border border-emerald-500/30 flex items-center justify-center text-emerald-400 group-hover:scale-110 transition-transform">
+            <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
+          </div>
+          <span class="text-white text-xs sm:text-sm font-bold tracking-tight">Playlist</span>
         </button>
 
         <!-- Drive -->
-        <button class="provider-card p-5 rounded-2xl bg-[#0C0E17]/90 hover:bg-[#141824] border border-white/10 hover:border-amber-500/50 flex flex-col items-center justify-center gap-2 transition-all cursor-pointer group active:scale-95 shadow-lg" data-provider="drive">
-          <div class="flex items-center gap-2 text-white font-bold text-lg group-hover:scale-105 transition-transform">
-            <svg class="w-6 h-6 text-amber-400" viewBox="0 0 24 24" fill="currentColor"><path d="M7.71 3.5L1.15 15l3.43 6 6.55-11.5L7.71 3.5zm3.43 6l4.29 7.5H23l-4.29-7.5H11.14zm-1.85 9.5l3.43 6h11.29l-3.43-6H9.29z"/></svg>
-            <span>Drive</span>
+        <button class="provider-card p-4 rounded-2xl bg-[#0C0E17]/90 hover:bg-[#141824] border border-white/10 hover:border-amber-500/50 flex flex-col items-center justify-center gap-2 min-h-[105px] transition-all cursor-pointer group active:scale-95 shadow-lg overflow-hidden select-none" data-provider="drive">
+          <div class="w-10 h-10 rounded-xl bg-amber-500/15 border border-amber-500/30 flex items-center justify-center text-amber-400 group-hover:scale-110 transition-transform">
+            <svg class="w-5 h-5" viewBox="0 0 24 24" fill="currentColor"><path d="M7.71 3.5L1.15 15l3.43 6 6.55-11.5L7.71 3.5zm3.43 6l4.29 7.5H23l-4.29-7.5H11.14zm-1.85 9.5l3.43 6h11.29l-3.43-6H9.29z"/></svg>
           </div>
+          <span class="text-white text-xs sm:text-sm font-bold tracking-tight">Google Drive</span>
         </button>
 
         <!-- Galeri / Foto & Video -->
-        <button class="provider-card p-5 rounded-2xl bg-[#0C0E17]/90 hover:bg-[#141824] border border-white/10 hover:border-pink-500/50 flex flex-col items-center justify-center gap-2 transition-all cursor-pointer group active:scale-95 shadow-lg" data-provider="photos">
-          <svg class="w-6 h-6 text-pink-400 group-hover:scale-105 transition-transform" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
-          <span class="text-white font-bold text-sm">Galeri (Foto / Video)</span>
+        <button class="provider-card p-4 rounded-2xl bg-[#0C0E17]/90 hover:bg-[#141824] border border-white/10 hover:border-pink-500/50 flex flex-col items-center justify-center gap-1.5 min-h-[105px] transition-all cursor-pointer group active:scale-95 shadow-lg overflow-hidden select-none" data-provider="photos">
+          <div class="w-10 h-10 rounded-xl bg-pink-500/15 border border-pink-500/30 flex items-center justify-center text-pink-400 group-hover:scale-110 transition-transform">
+            <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+          </div>
+          <span class="text-white text-xs sm:text-sm font-bold tracking-tight">Galeri</span>
+          <span class="text-[9px] text-gray-400 -mt-1">Foto & Video</span>
         </button>
 
         <!-- WEB -->
-        <button class="provider-card p-5 rounded-2xl bg-[#0C0E17]/90 hover:bg-[#141824] border border-white/10 hover:border-teal-500/50 flex flex-col items-center justify-center gap-2 transition-all cursor-pointer group active:scale-95 shadow-lg" data-provider="web">
-          <svg class="w-6 h-6 text-teal-400 group-hover:scale-105 transition-transform" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
-          <span class="text-white font-extrabold text-sm">WEB</span>
+        <button class="provider-card p-4 rounded-2xl bg-[#0C0E17]/90 hover:bg-[#141824] border border-white/10 hover:border-teal-500/50 flex flex-col items-center justify-center gap-2 min-h-[105px] transition-all cursor-pointer group active:scale-95 shadow-lg overflow-hidden select-none" data-provider="web">
+          <div class="w-10 h-10 rounded-xl bg-teal-500/15 border border-teal-500/30 flex items-center justify-center text-teal-400 group-hover:scale-110 transition-transform">
+            <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
+          </div>
+          <span class="text-white text-xs sm:text-sm font-bold tracking-tight">Web Tarayıcı</span>
         </button>
 
         <!-- Müzik & Parti -->
-        <button class="provider-card p-5 rounded-2xl bg-[#0C0E17]/90 hover:bg-[#141824] border border-white/10 hover:border-rose-500/50 flex flex-col items-center justify-center gap-2 transition-all cursor-pointer group active:scale-95 shadow-lg" data-provider="dj">
-          <span class="text-rose-400 font-black text-xl group-hover:scale-105 transition-transform">MIRUO<span class="text-white text-sm font-bold ml-1">MÜZİK</span></span>
+        <button class="provider-card p-4 rounded-2xl bg-[#0C0E17]/90 hover:bg-[#141824] border border-white/10 hover:border-rose-500/50 flex flex-col items-center justify-center gap-2 min-h-[105px] transition-all cursor-pointer group active:scale-95 shadow-lg overflow-hidden select-none" data-provider="dj">
+          <div class="w-10 h-10 rounded-xl bg-rose-500/15 border border-rose-500/30 flex items-center justify-center text-rose-400 group-hover:scale-110 transition-transform">
+            <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>
+          </div>
+          <span class="text-rose-300 text-xs sm:text-sm font-extrabold tracking-tight">Miruo Müzik</span>
         </button>
 
         <!-- Karaoke -->
-        <button class="provider-card p-5 rounded-2xl bg-[#0C0E17]/90 hover:bg-[#141824] border border-white/10 hover:border-pink-500/50 flex flex-col items-center justify-center gap-2 transition-all cursor-pointer group active:scale-95 shadow-lg" data-provider="karaoke">
-          <span class="text-white font-serif italic text-xl group-hover:scale-105 transition-transform">Karaoke</span>
+        <button class="provider-card p-4 rounded-2xl bg-[#0C0E17]/90 hover:bg-[#141824] border border-white/10 hover:border-pink-500/50 flex flex-col items-center justify-center gap-2 min-h-[105px] transition-all cursor-pointer group active:scale-95 shadow-lg overflow-hidden select-none" data-provider="karaoke">
+          <div class="w-10 h-10 rounded-xl bg-pink-500/15 border border-pink-500/30 flex items-center justify-center text-pink-400 group-hover:scale-110 transition-transform">
+            <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
+          </div>
+          <span class="text-pink-300 text-xs sm:text-sm font-bold tracking-tight">Karaoke</span>
         </button>
 
         <!-- Likes -->
-        <button class="provider-card p-5 rounded-2xl bg-[#0C0E17]/90 hover:bg-[#141824] border border-white/10 hover:border-rose-500/50 flex flex-col items-center justify-center gap-2 transition-all cursor-pointer group active:scale-95 shadow-lg" data-provider="likes">
-          <span class="text-rose-400 font-serif italic text-xl group-hover:scale-105 transition-transform">♡ Likes</span>
+        <button class="provider-card p-4 rounded-2xl bg-[#0C0E17]/90 hover:bg-[#141824] border border-white/10 hover:border-rose-500/50 flex flex-col items-center justify-center gap-2 min-h-[105px] transition-all cursor-pointer group active:scale-95 shadow-lg overflow-hidden select-none" data-provider="likes">
+          <div class="w-10 h-10 rounded-xl bg-rose-500/15 border border-rose-500/30 flex items-center justify-center text-rose-400 group-hover:scale-110 transition-transform">
+            <svg class="w-5 h-5 fill-current" viewBox="0 0 24 24"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/></svg>
+          </div>
+          <span class="text-white text-xs sm:text-sm font-bold tracking-tight">Beğenilenler</span>
         </button>
 
         <!-- History -->
-        <button class="provider-card p-5 rounded-2xl bg-[#0C0E17]/90 hover:bg-[#141824] border border-white/10 hover:border-gray-400/50 flex flex-col items-center justify-center gap-2 transition-all cursor-pointer group active:scale-95 shadow-lg" data-provider="history">
-          <span class="text-white font-sans font-bold text-lg group-hover:scale-105 transition-transform">History</span>
+        <button class="provider-card p-4 rounded-2xl bg-[#0C0E17]/90 hover:bg-[#141824] border border-white/10 hover:border-gray-400/50 flex flex-col items-center justify-center gap-2 min-h-[105px] transition-all cursor-pointer group active:scale-95 shadow-lg overflow-hidden select-none" data-provider="history">
+          <div class="w-10 h-10 rounded-xl bg-white/10 border border-white/15 flex items-center justify-center text-gray-300 group-hover:scale-110 transition-transform">
+            <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+          </div>
+          <span class="text-white text-xs sm:text-sm font-bold tracking-tight">İzleme Geçmişi</span>
         </button>
 
         <!-- Uyku & Boş Oda -->
-        <button class="provider-card p-5 rounded-2xl bg-[#0C0E17]/90 hover:bg-[#141824] border border-white/10 hover:border-indigo-500/50 flex flex-col items-center justify-center gap-1.5 transition-all cursor-pointer group active:scale-95 shadow-lg col-span-2 sm:col-span-1" data-provider="sleep">
-          <div class="flex items-center gap-2 text-indigo-300 font-black text-lg group-hover:scale-105 transition-transform">
-            <svg class="w-6 h-6 text-indigo-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
-            <span>UYKU MODU</span>
+        <button class="provider-card p-4 rounded-2xl bg-[#0C0E17]/90 hover:bg-[#141824] border border-white/10 hover:border-indigo-500/50 flex flex-col items-center justify-center gap-1.5 min-h-[105px] transition-all cursor-pointer group active:scale-95 shadow-lg overflow-hidden select-none col-span-2 sm:col-span-1" data-provider="sleep">
+          <div class="w-10 h-10 rounded-xl bg-indigo-500/15 border border-indigo-500/30 flex items-center justify-center text-indigo-400 group-hover:scale-110 transition-transform">
+            <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
           </div>
-          <span class="text-[10px] text-indigo-200/60">Boş Oda • Karartılmış Ekran • Ses & Kamera</span>
+          <span class="text-indigo-300 text-xs sm:text-sm font-extrabold tracking-tight">Uyku Modu</span>
+          <span class="text-[9px] text-indigo-200/60 -mt-1">Karartılmış Oda</span>
         </button>
 
       </div>
@@ -2194,7 +2226,23 @@
 
     <!-- Scrollable Main Body: Starts strictly below header -->
     <main id="profileEditModalScrollBody" class="flex-1 w-full overflow-y-auto no-scrollbar" style="-webkit-overflow-scrolling: touch; padding-bottom: max(32px, env(safe-area-inset-bottom));">
-      <div class="max-w-lg mx-auto px-4 sm:px-6 py-4 space-y-4">
+      <div class="max-w-xl mx-auto px-4 sm:px-6 py-4 space-y-4">
+
+        <!-- Misafir Kullanıcı Giriş / Kayıt Çağrısı (Guest Login CTA Banner) -->
+        <div id="settingsGuestBanner" class="p-4 rounded-2xl bg-gradient-to-r from-rose-500/20 via-purple-500/15 to-transparent border border-rose-500/40 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-lg">
+          <div class="flex items-center gap-3">
+            <div class="w-10 h-10 rounded-xl bg-rose-600/20 border border-rose-500/40 flex items-center justify-center text-rose-300 shrink-0">
+              <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+            </div>
+            <div>
+              <h4 class="text-xs sm:text-sm font-bold text-white">Miruo Hesabına Giriş Yap / Kayıt Ol</h4>
+              <p class="text-[10px] text-gray-400">Şu anda misafir modundasınız. Profilinizi ve odalarınızı kaydetmek için giriş yapın.</p>
+            </div>
+          </div>
+          <button id="settingsLoginCtaBtn" type="button" class="w-full sm:w-auto px-4 py-2 rounded-xl bg-gradient-to-r from-rose-600 to-pink-600 hover:from-rose-500 hover:to-pink-500 text-white font-bold text-xs shadow-md shadow-rose-600/30 active:scale-95 transition-all cursor-pointer whitespace-nowrap text-center">
+            Giriş Yap / Kayıt Ol
+          </button>
+        </div>
 
         <!-- 3. HESAP & GÜVENLİK (ACCORDIONS) -->
         <div id="settingsSectionSecurity" class="space-y-2.5">
@@ -2436,8 +2484,8 @@
                   <span id="ytAccountSubText" class="text-[10px] text-gray-400 block truncate" data-i18n="yt_card_sub">Google hesabı ile oturum aç</span>
                 </div>
               </div>
-              <button id="toggleYtAccountBtn" type="button" class="px-3 py-1.5 rounded-lg bg-[#A64D79]/20 hover:bg-[#A64D79]/30 border border-[#A64D79]/30 text-xs font-semibold text-rose-200 transition-all cursor-pointer shrink-0" data-i18n="platform_signin_btn">
-                Giriş Yap
+              <button id="toggleYtAccountBtn" type="button" class="px-3 py-1.5 rounded-lg bg-[#A64D79]/20 hover:bg-[#A64D79]/30 border border-[#A64D79]/30 text-xs font-semibold text-rose-200 transition-all cursor-pointer shrink-0" data-i18n="platform_connect_btn">
+                Hesabı Bağla
               </button>
             </div>
 
@@ -2455,8 +2503,8 @@
                   <span id="netflixAccountSubText" class="text-[10px] text-gray-400 block truncate" data-i18n="netflix_card_sub">Netflix hesabı ile oturum aç</span>
                 </div>
               </div>
-              <button id="toggleNetflixAccountBtn" type="button" class="px-3 py-1.5 rounded-lg bg-[#A64D79]/20 hover:bg-[#A64D79]/30 border border-[#A64D79]/30 text-xs font-semibold text-rose-200 transition-all cursor-pointer shrink-0" data-i18n="platform_signin_btn">
-                Giriş Yap
+              <button id="toggleNetflixAccountBtn" type="button" class="px-3 py-1.5 rounded-lg bg-[#A64D79]/20 hover:bg-[#A64D79]/30 border border-[#A64D79]/30 text-xs font-semibold text-rose-200 transition-all cursor-pointer shrink-0" data-i18n="platform_connect_btn">
+                Hesabı Bağla
               </button>
             </div>
 
@@ -2474,8 +2522,8 @@
                   <span id="primeAccountSubText" class="text-[10px] text-gray-400 block truncate" data-i18n="prime_card_sub">Prime hesabı ile oturum aç</span>
                 </div>
               </div>
-              <button id="togglePrimeAccountBtn" type="button" class="px-3 py-1.5 rounded-lg bg-[#A64D79]/20 hover:bg-[#A64D79]/30 border border-[#A64D79]/30 text-xs font-semibold text-rose-200 transition-all cursor-pointer shrink-0" data-i18n="platform_signin_btn">
-                Giriş Yap
+              <button id="togglePrimeAccountBtn" type="button" class="px-3 py-1.5 rounded-lg bg-[#A64D79]/20 hover:bg-[#A64D79]/30 border border-[#A64D79]/30 text-xs font-semibold text-rose-200 transition-all cursor-pointer shrink-0" data-i18n="platform_connect_btn">
+                Hesabı Bağla
               </button>
             </div>
 
@@ -2493,8 +2541,8 @@
                   <span id="disneyAccountSubText" class="text-[10px] text-gray-400 block truncate" data-i18n="disney_card_sub">Disney+ hesabı ile oturum aç</span>
                 </div>
               </div>
-              <button id="toggleDisneyAccountBtn" type="button" class="px-3 py-1.5 rounded-lg bg-[#A64D79]/20 hover:bg-[#A64D79]/30 border border-[#A64D79]/30 text-xs font-semibold text-rose-200 transition-all cursor-pointer shrink-0" data-i18n="platform_signin_btn">
-                Giriş Yap
+              <button id="toggleDisneyAccountBtn" type="button" class="px-3 py-1.5 rounded-lg bg-[#A64D79]/20 hover:bg-[#A64D79]/30 border border-[#A64D79]/30 text-xs font-semibold text-rose-200 transition-all cursor-pointer shrink-0" data-i18n="platform_connect_btn">
+                Hesabı Bağla
               </button>
             </div>
           </div>
