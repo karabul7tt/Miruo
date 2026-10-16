@@ -11870,6 +11870,66 @@ function initEvents() {
     history: { title: 'Geçmiş', url: 'https://m.youtube.com/feed/history' }
   };
 
+  // Desktop (Electron) in-app browser: the platform's real screen with a Back button,
+  // like the native in-app browser on the phone. "Odada Oynat" sends the open page to the room.
+  function openDesktopPlatformBrowser(providerKey, url, platformTitle) {
+    const old = document.getElementById('desktopBrowserOverlay');
+    if (old) old.remove();
+
+    const isMac = window.miruoDesktop && window.miruoDesktop.platform === 'darwin';
+    const startUrl = String(url).replace('//m.youtube.com', '//www.youtube.com');
+    const ua = navigator.userAgent.replace(/\s(Electron|Miruo)[^\s]*/g, '');
+    const btnCss = 'display:flex;align-items:center;gap:6px;padding:8px 14px;border-radius:999px;border:1px solid rgba(255,255,255,.15);background:rgba(255,255,255,.08);color:#fff;font:600 13px system-ui,sans-serif;cursor:pointer;-webkit-app-region:no-drag;';
+
+    const ov = document.createElement('div');
+    ov.id = 'desktopBrowserOverlay';
+    ov.style.cssText = 'position:fixed;inset:0;z-index:2147483000;background:#000;display:flex;flex-direction:column;';
+    ov.innerHTML = `
+      <div style="display:flex;align-items:center;gap:10px;padding:10px 16px 10px ${isMac ? 84 : 16}px;background:#0B0D14;border-bottom:1px solid rgba(255,255,255,.1);-webkit-app-region:drag;">
+        <button id="dbBackBtn" type="button" style="${btnCss}">← Geri</button>
+        <button id="dbPrevBtn" type="button" title="Önceki sayfa" style="${btnCss}">‹</button>
+        <span id="dbTitle" style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#e5e7eb;font:700 14px system-ui,sans-serif;text-align:center;">${platformTitle}</span>
+        <button id="dbPlayBtn" type="button" style="${btnCss}background:linear-gradient(90deg,#e11d48,#a64d79);border-color:transparent;">▶ Odada Oynat</button>
+      </div>
+      <webview id="dbWebview" src="${startUrl}" partition="persist:miruo-browser" useragent="${ua}" allowpopups style="flex:1;width:100%;border:0;background:#000;"></webview>`;
+    document.body.appendChild(ov);
+
+    const wv = ov.querySelector('#dbWebview');
+    const titleEl = ov.querySelector('#dbTitle');
+    const playBtn = ov.querySelector('#dbPlayBtn');
+    const isYt = providerKey === 'youtube';
+    const canPlay = () => {
+      let cur = '';
+      try { cur = wv.getURL(); } catch (e) { return false; }
+      return isYt ? !!extractYtId(cur) : /^https?:/i.test(cur);
+    };
+    const refresh = () => {
+      let t = '';
+      try { t = (wv.getTitle() || '').replace(/\s*-\s*YouTube$/i, ''); } catch (e) {}
+      if (t) titleEl.textContent = t;
+      playBtn.style.opacity = canPlay() ? '1' : '0.45';
+    };
+    ['did-navigate', 'did-navigate-in-page', 'page-title-updated', 'dom-ready'].forEach(ev => wv.addEventListener(ev, refresh));
+    refresh();
+
+    const close = () => { document.removeEventListener('keydown', onKey, true); ov.remove(); };
+    const onKey = (e) => { if (e.key === 'Escape') close(); };
+    document.addEventListener('keydown', onKey, true);
+
+    ov.querySelector('#dbBackBtn').addEventListener('click', close);
+    ov.querySelector('#dbPrevBtn').addEventListener('click', () => { try { if (wv.canGoBack()) wv.goBack(); } catch (e) {} });
+    playBtn.addEventListener('click', () => {
+      if (!canPlay()) {
+        showToast(isYt ? 'Önce izlemek istediğin videoyu aç' : 'Önce bir sayfa aç');
+        return;
+      }
+      let cur = '', t = '';
+      try { cur = wv.getURL(); t = (wv.getTitle() || '').replace(/\s*-\s*YouTube$/i, ''); } catch (e) {}
+      close();
+      selectAndPlayYoutubeVideo(cur, t || platformTitle, platformTitle);
+    });
+  }
+
   function launchPlatform(providerKey) {
     if (providerKey === 'photos' || providerKey === 'gallery') {
       triggerRoomGalleryPicker();
@@ -11923,6 +11983,23 @@ function initEvents() {
         });
         return;
       }
+    }
+
+    // Mac / Windows / Web: same flow as the phone's native in-app browser.
+    // Picking a platform opens that platform's own screen (with a Back button) and the room
+    // is created/updated when a video is chosen - never an empty room.
+    const isDesktopApp = !!(window.miruoDesktop && window.miruoDesktop.isDesktop);
+    if (isDesktopApp && /^https?:/i.test(targetUrl || '')) {
+      openDesktopPlatformBrowser(providerKey, targetUrl, config.title);
+      return;
+    }
+    if (providerKey === 'youtube') {
+      openRaveYoutubeModal();
+      return;
+    }
+    if (state.isInRoom && state.roomId) {
+      loadWebStream(targetUrl, config.title, config.title);
+      return;
     }
     
     // Open and join watch room directly for YouTube and all platforms

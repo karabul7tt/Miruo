@@ -105,7 +105,8 @@ function createWindow(port) {
       contextIsolation: true,
       allowsRunningInsecureContent: false,
       webSecurity: true,
-      preload: path.join(__dirname, 'preload.js')
+      preload: path.join(__dirname, 'preload.js'),
+      webviewTag: true
     }
   });
 
@@ -137,6 +138,15 @@ function createWindow(port) {
 }
 
 // App lifecycle
+app.on('web-contents-created', (_event, contents) => {
+  if (contents.getType() === 'webview') {
+    contents.setWindowOpenHandler(({ url }) => {
+      if (/^https?:/i.test(url)) contents.loadURL(url);
+      return { action: 'deny' };
+    });
+  }
+});
+
 app.whenReady().then(() => {
   startLocalServer((port) => {
     createWindow(port);
