@@ -339,6 +339,16 @@ function applySupabaseSessionUser(sbUser) {
   if (typeof updateUserUI === 'function') {
     updateUserUI(user);
   }
+  const authEl = (dom && dom.authModal) || document.getElementById('authModal');
+  if (authEl) {
+    authEl.classList.add('hidden');
+    if (typeof unfreezeBackgroundAfterModal === 'function') {
+      unfreezeBackgroundAfterModal(true);
+    }
+  }
+  if (typeof showToast === 'function') {
+    showToast(`Hoş geldin, ${user.fullName || user.username || 'Kullanıcı'}!`);
+  }
 }
 
 initSupabase();

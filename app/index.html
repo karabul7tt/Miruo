@@ -53,17 +53,6 @@
     try {
       var savedLang = localStorage.getItem('miruo_lang');
       if (savedLang) document.documentElement.lang = savedLang;
-    } catch (e) {}
-
-    // OAuth redirect fallback: if Supabase redirects to http://localhost:3000, bounce to native miruo:// scheme
-    try {
-      if (window.location.hash.includes('access_token') || window.location.search.includes('code=')) {
-        if (window.location.protocol.startsWith('http') && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')) {
-          var nativeOAuthUrl = 'miruo://auth/callback' + window.location.search + window.location.hash;
-          window.location.href = nativeOAuthUrl;
-        }
-      }
-    } catch (e) {}
   </script>
 </head>
 <body class="bg-black text-slate-100 font-sans overflow-x-hidden min-h-screen flex flex-col">
