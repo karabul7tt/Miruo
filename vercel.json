@@ -7,8 +7,8 @@
   "cleanUrls": true,
   "trailingSlash": false,
   "rewrites": [
-    { "source": "/download/mac", "destination": "/downloads/Miruo-macOS-Installer.dmg" },
-    { "source": "/download/windows", "destination": "/downloads/Miruo-Windows-Setup.exe" }
+    { "source": "/download/mac", "destination": "/downloads/Miruo-macOS.zip" },
+    { "source": "/download/windows", "destination": "/downloads/Miruo-Windows.zip" }
   ],
   "redirects": [
     { "source": "/download/ios", "destination": "https://apps.apple.com/app/miruo/id6738928411", "permanent": false },

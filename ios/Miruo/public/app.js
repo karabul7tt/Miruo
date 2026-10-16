@@ -148,11 +148,21 @@ function initSupabase() {
         }
       }).catch(err => console.warn('[Miruo] getSession warning:', err));
 
-      // Handle OAuth URL tokens if present on page load
+      // Handle OAuth & Password Recovery URL tokens if present on page load
+      const isRecovery = window.location.hash.includes('type=recovery') || window.location.search.includes('type=recovery');
       if (window.location.hash.includes('access_token') || window.location.search.includes('code=')) {
         authenticateFromUrl(window.location.href).then(session => {
           if (session && session.user) {
-            applySupabaseSessionUser(session.user);
+            if (isRecovery) {
+              if (typeof openResetModal === 'function') {
+                resetState.email = session.user.email || '';
+                openResetModal();
+                if (typeof setResetStep === 'function') setResetStep(3);
+                showToast('Bağlantı doğrulandı. Lütfen yeni şifrenizi belirleyin.');
+              }
+            } else {
+              applySupabaseSessionUser(session.user);
+            }
             if (window.history && window.history.replaceState) {
               window.history.replaceState(null, '', window.location.pathname);
             }
@@ -160,10 +170,21 @@ function initSupabase() {
         }).catch(e => console.warn('[Miruo] Initial URL auth error:', e));
       }
 
-      // Listen for auth state changes (OAuth callback, login, logout)
+      // Listen for auth state changes (OAuth callback, login, recovery, logout)
       supabaseClient.auth.onAuthStateChange((event, session) => {
         console.log('[Miruo] Supabase auth state change event:', event);
-        if (session && session.user) {
+        if (event === 'PASSWORD_RECOVERY') {
+          if (session && session.user) {
+            if (typeof openResetModal === 'function') {
+              resetState.email = session.user.email || '';
+              openResetModal();
+              if (typeof setResetStep === 'function') setResetStep(3);
+              showToast('Lütfen yeni şifrenizi belirleyin.');
+            }
+          }
+          return;
+        }
+        if (session && session.user && !isRecovery) {
           applySupabaseSessionUser(session.user);
         }
       });
@@ -180,12 +201,71 @@ window.selectedSignUpAvatarData = null;
 window.selectedSignUpAvatarBg = 'from-rose-500 to-indigo-600';
 window.selectedSignUpAvatarChar = 'M';
 
+function persistUserToLocalRegistry(user, oldUsername = '') {
+  if (!user) return;
+  try {
+    const cleanU = (user.username || '').replace(/^@/, '').trim();
+    const cleanOld = (oldUsername || '').replace(/^@/, '').trim().toLowerCase();
+    const cleanEmail = (user.email || '').trim().toLowerCase();
+    const realFullName = (user.fullName && !user.fullName.startsWith('@'))
+      ? user.fullName.trim()
+      : ((user.name && !user.name.startsWith('@')) ? user.name.trim() : '');
+
+    const regUsers = JSON.parse(localStorage.getItem('miruo_registered_users') || '[]');
+    let idx = regUsers.findIndex(u =>
+      (user.id && u.id && u.id === user.id) ||
+      (cleanEmail && u.email && u.email.toLowerCase() === cleanEmail) ||
+      (cleanOld && u.username && u.username.toLowerCase().replace(/^@/, '') === cleanOld) ||
+      (cleanU && u.username && u.username.toLowerCase().replace(/^@/, '') === cleanU.toLowerCase())
+    );
+
+    if (idx !== -1) {
+      if (user.id) regUsers[idx].id = user.id;
+      if (cleanEmail) regUsers[idx].email = cleanEmail;
+      if (cleanU) regUsers[idx].username = cleanU;
+      if (realFullName) regUsers[idx].fullName = realFullName;
+      if (user.password) regUsers[idx].password = user.password;
+      if (user.avatarUrl !== undefined) regUsers[idx].avatarUrl = user.avatarUrl;
+      if (user.avatarBg) regUsers[idx].avatarBg = user.avatarBg;
+    } else if (cleanEmail || cleanU) {
+      regUsers.push({
+        id: user.id || ('user_' + Math.random().toString(36).substring(2, 8)),
+        email: cleanEmail,
+        username: cleanU,
+        fullName: realFullName || cleanU,
+        password: user.password || '',
+        avatarUrl: user.avatarUrl || '',
+        avatarBg: user.avatarBg || 'from-rose-500 to-[#A64D79]'
+      });
+    }
+    localStorage.setItem('miruo_registered_users', JSON.stringify(regUsers));
+
+    if (cleanEmail) {
+      const byEmail = JSON.parse(localStorage.getItem('miruo_profiles_by_email') || '{}');
+      const prev = byEmail[cleanEmail] || {};
+      byEmail[cleanEmail] = {
+        id: user.id || prev.id || '',
+        email: cleanEmail,
+        username: cleanU || prev.username || '',
+        fullName: realFullName || prev.fullName || cleanU || '',
+        avatarUrl: user.avatarUrl !== undefined ? user.avatarUrl : (prev.avatarUrl || ''),
+        avatarBg: user.avatarBg || prev.avatarBg || 'from-rose-500 to-[#A64D79]'
+      };
+      localStorage.setItem('miruo_profiles_by_email', JSON.stringify(byEmail));
+    }
+  } catch (e) {
+    console.warn('[Miruo persistUserToLocalRegistry warning]:', e);
+  }
+}
+
 function syncUserProfileToSupabase(user) {
-  if (!user || !supabaseClient) return;
+  if (!user) return;
+  persistUserToLocalRegistry(user);
+  if (!supabaseClient) return;
   try {
     const rawUsername = (user.username || user.name || '').replace(/^@/, '').trim();
-    const fullName = user.fullName || user.name || rawUsername;
-    const avatarUrl = user.avatarUrl || window.pendingAvatarUrl || '';
+    const fullName = (user.fullName && !user.fullName.startsWith('@')) ? user.fullName : ((user.name && !user.name.startsWith('@')) ? user.name : rawUsername);
+    const avatarUrl = user.avatarUrl !== undefined ? user.avatarUrl : (window.pendingAvatarUrl || '');
     const avatarBg = user.avatarBg || window.pendingAvatarBg || '';
 
     if (supabaseClient.auth) {
@@ -217,25 +297,41 @@ function syncUserProfileToSupabase(user) {
 function applySupabaseSessionUser(sbUser) {
   if (!sbUser) return;
   const existingLocal = JSON.parse(localStorage.getItem('miruo_user') || '{}');
+  const regUsers = JSON.parse(localStorage.getItem('miruo_registered_users') || '[]');
+  const byEmail = JSON.parse(localStorage.getItem('miruo_profiles_by_email') || '{}');
+  const cleanSbEmail = (sbUser.email || '').toLowerCase();
+  const emailProfile = (cleanSbEmail && byEmail[cleanSbEmail]) || {};
+  const localReg = regUsers.find(u => 
+    (u.id && u.id === sbUser.id) || 
+    (u.email && cleanSbEmail && u.email.toLowerCase() === cleanSbEmail)
+  ) || {};
+
   const meta = sbUser.user_metadata || {};
-  const fullName = existingLocal.fullName || meta.full_name || meta.name || sbUser.email?.split('@')[0] || 'Kullanıcı';
-  const rawUsername = existingLocal.username || meta.username || sbUser.email?.split('@')[0] || 'kullanici';
+  const fullName = (existingLocal.fullName && !existingLocal.fullName.startsWith('@') ? existingLocal.fullName : '') ||
+                   (emailProfile.fullName && !emailProfile.fullName.startsWith('@') ? emailProfile.fullName : '') ||
+                   (localReg.fullName && !localReg.fullName.startsWith('@') ? localReg.fullName : '') ||
+                   (meta.full_name && !meta.full_name.startsWith('@') ? meta.full_name : '') ||
+                   (meta.name && !meta.name.startsWith('@') ? meta.name : '') ||
+                   existingLocal.fullName || emailProfile.fullName || localReg.fullName || sbUser.email?.split('@')[0] || 'Kullanıcı';
+  const rawUsername = emailProfile.username || localReg.username || existingLocal.username || meta.username || sbUser.email?.split('@')[0] || 'kullanici';
   const cleanUsername = rawUsername.replace(/^@/, '').trim();
-  const avatarUrl = window.pendingAvatarUrl || existingLocal.avatarUrl || meta.avatar_url || meta.picture || '';
-  const avatarBg = window.pendingAvatarBg || existingLocal.avatarBg || meta.avatar_bg || 'from-[#A64D79] to-[#6A1E55]';
+  const avatarUrl = window.pendingAvatarUrl || existingLocal.avatarUrl || emailProfile.avatarUrl || localReg.avatarUrl || meta.avatar_url || meta.picture || '';
+  const avatarBg = window.pendingAvatarBg || existingLocal.avatarBg || emailProfile.avatarBg || localReg.avatarBg || meta.avatar_bg || 'from-rose-500 to-[#A64D79]';
 
   const user = {
     id: sbUser.id,
     name: fullName,
     fullName: fullName,
     username: cleanUsername,
-    email: sbUser.email || existingLocal.email || '',
+    email: sbUser.email || existingLocal.email || emailProfile.email || localReg.email || '',
     avatarUrl: avatarUrl,
     avatarChar: (fullName || cleanUsername || 'M').charAt(0).toUpperCase(),
     avatarBg: avatarBg,
-    defaultRoom: existingLocal.defaultRoom || 'ODA-77'
+    defaultRoom: existingLocal.defaultRoom || localReg.defaultRoom || 'ODA-77'
   };
   localStorage.setItem('miruo_user', JSON.stringify(user));
+  localStorage.setItem('miruo_custom_username', cleanUsername);
+  persistUserToLocalRegistry(user);
   state.userId = user.id;
   state.username = user.username;
   state.avatarUrl = user.avatarUrl;
@@ -293,6 +389,7 @@ window.handleNativeImagePicked = function(base64Data, target) {
     state.avatarUrl = base64Data;
     state.avatarBg = '';
     localStorage.setItem('miruo_user', JSON.stringify(savedUser));
+    persistUserToLocalRegistry(savedUser);
 
     try {
       fetch('/api/auth/update-profile', {
@@ -300,6 +397,7 @@ window.handleNativeImagePicked = function(base64Data, target) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           userId: savedUser.id || state.userId,
+          email: savedUser.email || '',
           username: (savedUser.username || state.username || '').replace(/^@/, ''),
           fullName: savedUser.fullName || savedUser.name || '',
           avatarUrl: base64Data
@@ -309,6 +407,7 @@ window.handleNativeImagePicked = function(base64Data, target) {
     syncUserProfileToSupabase(savedUser);
 
     updateUserUI(savedUser);
+    if (typeof renderProfileTab === 'function') renderProfileTab();
     showToast('Profil fotoğrafı güncellendi');
   } else if (target === 'chat') {
     sendChatMessage('', base64Data);
@@ -322,6 +421,23 @@ window.handleNativeImagePicked = function(base64Data, target) {
       previewEl.innerHTML = `<img src="${base64Data}" class="w-full h-full object-cover rounded-full" alt="Avatar">`;
     }
     showToast('Kayıt fotoğrafı seçildi');
+  } else {
+    // Stage / Gallery media sharing - always displays photo in room stage
+    displayPhotoOnStage(base64Data, 'Fotoğraf', true);
+  }
+};
+
+window.handleNativeVideoPicked = function(videoUrl, fileName) {
+  if (!videoUrl) return;
+  playVideoOnStage(videoUrl, fileName || 'Video', true);
+};
+
+window.handleNativeAppBackgroundState = function(isInBackground) {
+  state.isAppInBackground = !!isInBackground;
+  if (isInBackground) {
+    if (state.isScreenSharing) {
+      startScreenShareKeepAlive();
+    }
   }
 };
 
@@ -332,6 +448,9 @@ const I18N = {
   tr: {
     app_title: 'Miruo — Birlikte Gör & İzle',
     tagline: 'Birlikte İzle & Konuş',
+    auth_tagline: 'Birlikte izlemenin en samimi yolu',
+    reset_new_password_label: 'Yeni Şifre',
+    reset_confirm_password_label: 'Şifreyi Tekrar Gir',
     nav_settings: 'Ayarlar',
     nav_friends: 'Arkadaşlar',
     nav_profile: 'Profil',
@@ -366,6 +485,9 @@ const I18N = {
     provider_email_badge: 'Giriş yapıldı',
     save_changes: 'Kaydet',
     logout: 'Çıkış Yap',
+    confirm_logout_title: 'Çıkış Yap',
+    confirm_logout_msg: 'Hesabınızdan çıkış yapmak istediğinize emin misiniz?',
+    confirm_logout_action: 'Evet, Çıkış Yap',
     select_photo: 'Fotoğraf Seç',
     upload_photo: 'Fotoğraf Yükle',
     remove_photo: 'Kaldır',
@@ -429,8 +551,8 @@ const I18N = {
     remember_me: 'Oturumu açık tut',
     forgot_password: 'Şifremi Unuttum?',
     phone_label: 'Telefon Numarası',
-    phone_sub_info: 'Giriş yapmak için telefonunuza 6 haneli SMS onay kodu gönderilecektir.',
-    sms_code_label: 'SMS Onay Kodu (6 Hane):',
+    phone_sub_info: 'Giriş yapmak için telefonunuza SMS onay kodu gönderilecektir.',
+    sms_code_label: 'SMS Onay Kodu:',
     back_btn: '← Geri',
     resend_code_btn: 'Tekrar Kod Gönder',
     login_btn: 'Giriş Yap',
@@ -448,7 +570,7 @@ const I18N = {
     account_security_section: 'Hesap & Güvenlik',
     change_email_title: 'E-posta Adresini Değiştir',
     change_email_sub: 'Yeni e-posta adresi bağlayın',
-    change_email_info: 'Yeni e-posta adresine 6 haneli doğrulama bağlantısı iletilecektir.',
+    change_email_info: 'Yeni e-posta adresine doğrulama bağlantısı iletilecektir.',
     change_email_ph: 'Yeni e-posta adresi girin',
     update_btn: 'Güncelle',
     change_password_title: 'Şifre Değiştir',
@@ -528,7 +650,7 @@ const I18N = {
     role_admin_label: 'Yönetici',
     role_dj_label: 'Video Açabilir',
     role_member_label: 'İzleyici',
-    online_count_suffix: 'Çevrimiçi',
+    online_count_suffix: 'Çevrimiçi Arkadaş',
     status_online: 'Çevrimiçi',
     status_offline: 'Çevrimdışı',
     status_in_room: 'Şu an odada',
@@ -664,7 +786,7 @@ const I18N = {
     mic_toggle_title: 'Mikrofon Aç/Kapat',
     cam_toggle_title: 'Kamera Aç/Kapat (Görüntülü Konuşma)',
     chat_toggle_title: 'Sohbeti Aç / Gizle',
-    online_count_badge: 'Çevrimiçi',
+    online_count_badge: 'Çevrimiçi Arkadaş',
     leave_room_btn: 'Ayrıl',
     leave_room_title: 'Odadan Ayrıl',
     toast_left_room: 'Odadan ayrıldınız',
@@ -681,6 +803,9 @@ const I18N = {
   en: {
     app_title: 'Miruo — Watch & See Together',
     tagline: 'Watch & Talk Together',
+    auth_tagline: 'The closest way to watch together',
+    reset_new_password_label: 'New Password',
+    reset_confirm_password_label: 'Confirm Password',
     nav_settings: 'Settings',
     nav_friends: 'Friends',
     nav_profile: 'Profile',
@@ -715,6 +840,9 @@ const I18N = {
     provider_email_badge: 'Logged in',
     save_changes: 'Save',
     logout: 'Log Out',
+    confirm_logout_title: 'Log Out',
+    confirm_logout_msg: 'Are you sure you want to log out of your account?',
+    confirm_logout_action: 'Yes, Log Out',
     select_photo: 'Choose Photo',
     upload_photo: 'Upload Photo',
     remove_photo: 'Remove',
@@ -1030,6 +1158,9 @@ const I18N = {
   de: {
     app_title: 'Miruo — Zusammen Sehen & Schauen',
     tagline: 'Gemeinsam schauen & sprechen',
+    auth_tagline: 'Die intimste Art gemeinsam zu schauen',
+    reset_new_password_label: 'Neues Passwort',
+    reset_confirm_password_label: 'Passwort bestätigen',
     nav_settings: 'Einstellungen',
     nav_friends: 'Freunde',
     nav_profile: 'Profil',
@@ -1064,6 +1195,9 @@ const I18N = {
     provider_email_badge: 'Angemeldet',
     save_changes: 'Speichern',
     logout: 'Abmelden',
+    confirm_logout_title: 'Abmelden',
+    confirm_logout_msg: 'Möchten Sie sich wirklich von Ihrem Konto abmelden?',
+    confirm_logout_action: 'Ja, Abmelden',
     select_photo: 'Foto wählen',
     upload_photo: 'Foto hochladen',
     remove_photo: 'Entfernen',
@@ -1398,6 +1532,16 @@ function applyLanguage(lang) {
     }
   });
 
+  // Explicitly update header and auth brand taglines under MIRUO
+  const navTagline = document.getElementById('navTaglineText');
+  if (navTagline && dict.tagline) {
+    navTagline.textContent = dict.tagline;
+  }
+  const authTagline = document.getElementById('authTaglineText');
+  if (authTagline && (dict.auth_tagline || dict.tagline)) {
+    authTagline.textContent = dict.auth_tagline || dict.tagline;
+  }
+
   // Update placeholders with [data-i18n-placeholder]
   document.querySelectorAll('[data-i18n-placeholder]').forEach(el => {
     const key = el.getAttribute('data-i18n-placeholder');
@@ -1476,7 +1620,7 @@ function applyLanguage(lang) {
     const friendsArr = (state && state.friends) ? state.friends : [];
     const onlineFriends = friendsArr.filter(f => f.status === 'online' || f.status === 'in_room');
     const onlineSuffix = dict.online_count_suffix || (currentLang === 'tr' ? 'Çevrimiçi' : 'Online');
-    tabFriendsOnlineCountEl.textContent = `• ${onlineFriends.length} ${onlineSuffix}`;
+    tabFriendsOnlineCountEl.textContent = `${onlineFriends.length} ${onlineSuffix}`;
   }
 
   // Refresh friends tab & list dynamically
@@ -1615,6 +1759,21 @@ const dom = {
   exitSleepBtn: document.getElementById('exitSleepBtn'),
   ambientGlow: document.getElementById('ambientGlow'),
 
+  // Sleep & Night Mode Elements
+  sleepModePlaceholder: document.getElementById('sleepModePlaceholder'),
+  sleepModeClock: document.getElementById('sleepModeClock'),
+  toggleSleepModeBtn: document.getElementById('toggleSleepModeBtn'),
+  sleepModeBtnText: document.getElementById('sleepModeBtnText'),
+  raveToggleSleepModeBtn: document.getElementById('raveToggleSleepModeBtn'),
+  toggleScreenDimmerBtn: document.getElementById('toggleScreenDimmerBtn'),
+  sleepScreenDimmer: document.getElementById('sleepScreenDimmer'),
+  sleepDimmerClock: document.getElementById('sleepDimmerClock'),
+  toggleSleepAmbienceBtn: document.getElementById('toggleSleepAmbienceBtn'),
+  sleepAmbienceIcon: document.getElementById('sleepAmbienceIcon'),
+  sleepAmbienceText: document.getElementById('sleepAmbienceText'),
+  sleepModePickVideoBtn: document.getElementById('sleepModePickVideoBtn'),
+  exitSleepStageBtn: document.getElementById('exitSleepStageBtn'),
+
   // Tabs & Multi-Platform Switchers
   tabYoutube: document.getElementById('tabYoutube'),
   tabNetflix: document.getElementById('tabNetflix'),
@@ -1649,6 +1808,10 @@ const dom = {
 
   // Stage, Fullscreen & Viewports
   stageContainer: document.getElementById('stageContainer'),
+  photoStageContainer: document.getElementById('photoStageContainer'),
+  stagePhotoImage: document.getElementById('stagePhotoImage'),
+  closePhotoStageBtn: document.getElementById('closePhotoStageBtn'),
+  roomMediaFileInput: document.getElementById('roomMediaFileInput'),
   stageFloatingFullscreenBtn: document.getElementById('stageFloatingFullscreenBtn'),
   stageExitFullscreenFloatingBtn: document.getElementById('stageExitFullscreenFloatingBtn'),
   stageFullscreenIcon: document.getElementById('stageFullscreenIcon'),
@@ -1717,6 +1880,24 @@ const dom = {
   toggleCamBtn: document.getElementById('toggleCamBtn'),
   camBtnText: document.getElementById('camBtnText'),
   camIcon: document.getElementById('camIcon'),
+  raveRoomSettingsBtn: document.getElementById('raveRoomSettingsBtn'),
+  raveRoomSettingsMenu: document.getElementById('raveRoomSettingsMenu'),
+  closeRaveRoomSettingsMenuBtn: document.getElementById('closeRaveRoomSettingsMenuBtn'),
+  raveResyncBtn: document.getElementById('raveResyncBtn'),
+  raveCopyRoomLinkBtn: document.getElementById('raveCopyRoomLinkBtn'),
+  raveOpenParticipantsBtn: document.getElementById('raveOpenParticipantsBtn'),
+  roomConnectionStatusBadge: document.getElementById('roomConnectionStatusBadge'),
+  roomConnectionStatusText: document.getElementById('roomConnectionStatusText'),
+  webPlayerFallbackCard: document.getElementById('webPlayerFallbackCard'),
+  webPlayerFallbackTitle: document.getElementById('webPlayerFallbackTitle'),
+  webPlayerFallbackDesc: document.getElementById('webPlayerFallbackDesc'),
+  webFallbackScreenShareBtn: document.getElementById('webFallbackScreenShareBtn'),
+  webFallbackOpenNewTabBtn: document.getElementById('webFallbackOpenNewTabBtn'),
+  drmGuideModal: document.getElementById('drmGuideModal'),
+  closeDrmGuideModalBtn: document.getElementById('closeDrmGuideModalBtn'),
+  tabProfileSignOutBtn: document.getElementById('tabProfileSignOutBtn'),
+  profileSegmentDetailsBtn: document.getElementById('profileSegmentDetailsBtn'),
+  profileSegmentFriendsBtn: document.getElementById('profileSegmentFriendsBtn'),
 
   // Header User Profile Elements
   userProfileBtn: document.getElementById('userProfileBtn'),
@@ -1772,6 +1953,11 @@ const dom = {
   roomEpisodesList: document.getElementById('roomEpisodesList'),
   episodesOpenPlatformsBtn: document.getElementById('episodesOpenPlatformsBtn'),
 
+  // Liked Videos Modal
+  likedVideosModal: document.getElementById('likedVideosModal'),
+  closeLikedVideosModalBtn: document.getElementById('closeLikedVideosModalBtn'),
+  likedVideosList: document.getElementById('likedVideosList'),
+
   // Phone Login & Auth Method Switcher
   authMethodEmailBtn: document.getElementById('authMethodEmailBtn'),
   authMethodPhoneBtn: document.getElementById('authMethodPhoneBtn'),
@@ -1800,7 +1986,8 @@ const dom = {
   settingsForgotPasswordLink: document.getElementById('settingsForgotPasswordLink'),
 
   // Kimler Katılabilir (Room Access Modal) Elements
-  roomAccessBtn: document.getElementById('roomAccessBtn'),
+  roomAccessBtn: document.getElementById('openRoomPrivacyBtn') || document.getElementById('roomAccessBtn'),
+  openRoomPrivacyBtn: document.getElementById('openRoomPrivacyBtn'),
   roomAccessModal: document.getElementById('roomAccessModal'),
   closeRoomAccessModalBtn: document.getElementById('closeRoomAccessModalBtn'),
   roomAccessModalCode: document.getElementById('roomAccessModalCode'),
@@ -1953,6 +2140,17 @@ const dom = {
   privacyStatusIcon: document.getElementById('privacyStatusIcon'),
   privacyStatusText: document.getElementById('privacyStatusText'),
   nowPlayingProviderBadge: document.getElementById('nowPlayingProviderBadge'),
+  nowPlayingAccountBadge: document.getElementById('nowPlayingAccountBadge'),
+  platformAccountConnectModal: document.getElementById('platformAccountConnectModal'),
+  connectPlatformModalIcon: document.getElementById('connectPlatformModalIcon'),
+  connectPlatformModalTitle: document.getElementById('connectPlatformModalTitle'),
+  closeConnectPlatformModalBtn: document.getElementById('closeConnectPlatformModalBtn'),
+  openPlatformDirectLoginBtn: document.getElementById('openPlatformDirectLoginBtn'),
+  openPlatformDirectLoginBtnText: document.getElementById('openPlatformDirectLoginBtnText'),
+  connectPlatformAccountInput: document.getElementById('connectPlatformAccountInput'),
+  connectAutoStartCheckbox: document.getElementById('connectAutoStartCheckbox'),
+  cancelConnectPlatformBtn: document.getElementById('cancelConnectPlatformBtn'),
+  saveConnectPlatformBtn: document.getElementById('saveConnectPlatformBtn'),
   webPlayerFrame: document.getElementById('webPlayerFrame'),
   nowPlayingShareBtn: document.getElementById('nowPlayingShareBtn'),
   roomTopShareBtn: document.getElementById('roomTopShareBtn'),
@@ -2104,6 +2302,10 @@ function freezeBackgroundForModal() {
   activeModalCount++;
   document.body.classList.add('modal-open-freeze');
   if (dom.exploreLobbySection) dom.exploreLobbySection.classList.add('hidden');
+  if (dom.providerPickerSection) {
+    dom.providerPickerSection.classList.add('hidden');
+    dom.providerPickerSection.classList.remove('flex');
+  }
   if (dom.mainHeader) dom.mainHeader.classList.add('hidden');
   if (dom.mobileBottomNav) dom.mobileBottomNav.classList.add('hidden');
   if (dom.friendsTabSection) dom.friendsTabSection.classList.add('hidden');
@@ -2122,22 +2324,70 @@ function unfreezeBackgroundAfterModal(force = false) {
     document.body.classList.remove('modal-open-freeze');
     if (!state.isInRoom) {
       const profileTab = document.getElementById('profileTabSection');
+      if (dom.providerPickerSection) {
+        dom.providerPickerSection.classList.add('hidden');
+        dom.providerPickerSection.classList.remove('flex');
+      }
       if (state.currentTab === 'profile') {
         if (profileTab) {
           profileTab.classList.remove('hidden');
           profileTab.classList.add('flex');
         }
-        if (dom.exploreLobbySection) dom.exploreLobbySection.classList.add('hidden');
-        if (dom.friendsTabSection) dom.friendsTabSection.classList.add('hidden');
+        if (dom.exploreLobbySection) {
+          dom.exploreLobbySection.classList.add('hidden');
+          dom.exploreLobbySection.classList.remove('flex');
+        }
+        if (dom.friendsTabSection) {
+          dom.friendsTabSection.classList.add('hidden');
+          dom.friendsTabSection.classList.remove('flex');
+        }
         if (typeof startProfileStarCanvas === 'function') startProfileStarCanvas();
       } else if (state.currentTab === 'friends') {
-        if (dom.friendsTabSection) dom.friendsTabSection.classList.remove('hidden');
-        if (dom.exploreLobbySection) dom.exploreLobbySection.classList.add('hidden');
-        if (profileTab) profileTab.classList.add('hidden');
+        if (dom.friendsTabSection) {
+          dom.friendsTabSection.classList.remove('hidden');
+          dom.friendsTabSection.classList.add('flex');
+        }
+        if (dom.exploreLobbySection) {
+          dom.exploreLobbySection.classList.add('hidden');
+          dom.exploreLobbySection.classList.remove('flex');
+        }
+        if (profileTab) {
+          profileTab.classList.add('hidden');
+          profileTab.classList.remove('flex');
+        }
+      } else if (state.currentTab === 'provider_picker') {
+        if (dom.providerPickerSection) {
+          dom.providerPickerSection.classList.remove('hidden');
+          dom.providerPickerSection.classList.add('flex');
+        }
+        if (dom.exploreLobbySection) {
+          dom.exploreLobbySection.classList.add('hidden');
+          dom.exploreLobbySection.classList.remove('flex');
+        }
+        if (dom.friendsTabSection) {
+          dom.friendsTabSection.classList.add('hidden');
+          dom.friendsTabSection.classList.remove('flex');
+        }
+        if (profileTab) {
+          profileTab.classList.add('hidden');
+          profileTab.classList.remove('flex');
+        }
+        if (dom.mainHeader) dom.mainHeader.classList.add('hidden');
+        if (dom.mobileBottomNav) dom.mobileBottomNav.classList.add('hidden');
+        return;
       } else {
-        if (dom.exploreLobbySection) dom.exploreLobbySection.classList.remove('hidden');
-        if (dom.friendsTabSection) dom.friendsTabSection.classList.add('hidden');
-        if (profileTab) profileTab.classList.add('hidden');
+        if (dom.exploreLobbySection) {
+          dom.exploreLobbySection.classList.remove('hidden');
+          dom.exploreLobbySection.classList.add('flex');
+        }
+        if (dom.friendsTabSection) {
+          dom.friendsTabSection.classList.add('hidden');
+          dom.friendsTabSection.classList.remove('flex');
+        }
+        if (profileTab) {
+          profileTab.classList.add('hidden');
+          profileTab.classList.remove('flex');
+        }
       }
       if (dom.mainHeader) dom.mainHeader.classList.remove('hidden');
       if (dom.mobileBottomNav) dom.mobileBottomNav.classList.remove('hidden');
@@ -2159,8 +2409,32 @@ function addInstantTap(el, handler) {
 // 1. SIGNALING SYSTEM (WebSocket & Fallback)
 // ==========================================
 let ws = null;
+let reconnectAttempts = 0;
+let reconnectTimer = null;
+
+function showRoomConnectionStatus(isReconnecting, text = 'Yeniden bağlanılıyor...') {
+  if (!dom.roomConnectionStatusBadge) return;
+  // User requested: "şuan aktifim zaten yeniden bağlanıyor falan yazıyor buda gereksiz"
+  // Keep connection badge completely hidden
+  dom.roomConnectionStatusBadge.classList.add('hidden');
+  dom.roomConnectionStatusBadge.classList.remove('flex');
+}
+
+function scheduleWsReconnect() {
+  if (reconnectTimer) clearTimeout(reconnectTimer);
+  if (!state.roomId || state.isIntentionalLeave) return;
+  reconnectAttempts++;
+  const delay = Math.min(1000 * Math.pow(1.5, Math.min(reconnectAttempts, 5)), 6000);
+  showRoomConnectionStatus(true, `Bağlantı koptu, yeniden bağlanılıyor... (${reconnectAttempts})`);
+  reconnectTimer = setTimeout(() => {
+    if (state.roomId && !state.isIntentionalLeave) {
+      connectSignaling();
+    }
+  }, delay);
+}
 
 function connectSignaling() {
+  state.isIntentionalLeave = false;
   if (ws) {
     try { ws.close(); } catch (e) {}
     ws = null;
@@ -2177,6 +2451,14 @@ function connectSignaling() {
 
     ws.onopen = () => {
       console.log('Sinyal sunucusuna bağlanıldı.');
+      reconnectAttempts = 0;
+      showRoomConnectionStatus(false);
+      if (state.roomId) {
+        sendSignal({ type: 'join', roomId: state.roomId, userId: state.userId, username: state.username });
+        setTimeout(() => {
+          sendP2PData('sync', { action: 'request_sync', sentAt: Date.now() });
+        }, 500);
+      }
     };
 
     ws.onmessage = (event) => {
@@ -2195,6 +2477,9 @@ function connectSignaling() {
 
     ws.onclose = () => {
       console.log('WS bağlantısı kapandı.');
+      if (state.roomId && !state.isIntentionalLeave) {
+        scheduleWsReconnect();
+      }
     };
   } catch (err) {
     connectFallbackSSE();
@@ -2329,6 +2614,19 @@ function handleSignalMessage(msg) {
     case 'video-changed':
       handleRemoteVideoChanged(msg.user, msg.title, msg.videoId);
       break;
+
+    case 'privacy-change':
+      if (typeof handleRemotePrivacyChange === 'function') handleRemotePrivacyChange(msg.isPrivate);
+      break;
+
+    case 'photo-share':
+      displayPhotoOnStage(msg.dataUrl, msg.title, false);
+      if (msg.sender) showToast(`${msg.sender} bir fotoğraf paylaştı!`);
+      break;
+
+    case 'photo-close':
+      closePhotoStage(false);
+      break;
   }
 }
 
@@ -2391,6 +2689,36 @@ function setupWebRTC() {
   state.pc.ondatachannel = (event) => {
     state.dataChannel = event.channel;
     setupDataChannelEvents(state.dataChannel);
+  };
+
+  // WebRTC Connection State & Auto-Recovery
+  state.pc.onconnectionstatechange = () => {
+    const cs = state.pc.connectionState;
+    console.log('[WebRTC] Bağlantı durumu:', cs);
+    if (cs === 'disconnected' || cs === 'failed') {
+      showRoomConnectionStatus(true, 'Yayın bağlantısı zayıfladı, toparlanıyor...');
+      if (state.pc && typeof state.pc.restartIce === 'function') {
+        try { state.pc.restartIce(); } catch (e) {}
+      } else if (state.isHost) {
+        initiateWebRTC(true);
+      }
+    } else if (cs === 'connected') {
+      showRoomConnectionStatus(false);
+      showToast('Oda ve yayın bağlantısı aktif');
+    }
+  };
+
+  state.pc.oniceconnectionstatechange = () => {
+    const ics = state.pc.iceConnectionState;
+    console.log('[WebRTC] ICE durumu:', ics);
+    if (ics === 'failed' || ics === 'disconnected') {
+      showRoomConnectionStatus(true, 'Yayın yeniden senkronize ediliyor...');
+      if (state.pc && typeof state.pc.restartIce === 'function') {
+        try { state.pc.restartIce(); } catch (e) {}
+      }
+    } else if (ics === 'connected' || ics === 'completed') {
+      showRoomConnectionStatus(false);
+    }
   };
 }
 
@@ -2476,6 +2804,16 @@ function setupDataChannelEvents(channel) {
       if (data.type === 'video_suggestion') handleIncomingVideoSuggestion(data);
       if (data.type === 'queue_update') handleRemoteQueueUpdate(data.queue);
       if (data.type === 'video_changed') handleRemoteVideoChanged(data.user, data.title, data.videoId);
+      if (data.type === 'photo_share') {
+        displayPhotoOnStage(data.dataUrl, data.title, false);
+        if (data.sender) showToast(`${data.sender} bir fotoğraf paylaştı!`);
+      }
+      if (data.type === 'photo_close') {
+        closePhotoStage(false);
+      }
+      if (data.type === 'privacy_change') {
+        if (typeof handleRemotePrivacyChange === 'function') handleRemotePrivacyChange(data.isPrivate);
+      }
     } catch (err) {}
   };
 }
@@ -2490,7 +2828,10 @@ function sendP2PData(type, payload) {
     if (type === 'touch') sendSignal({ type: 'touch-event', x: payload.x, y: payload.y });
     if (type === 'reaction') sendSignal({ type: 'reaction-event', emoji: payload.emoji });
     if (type === 'sleep') sendSignal({ type: 'sleep-mode', enabled: payload.enabled });
+    if (type === 'photo_share') sendSignal({ type: 'photo-share', dataUrl: payload.dataUrl, title: payload.title, sender: payload.sender });
+    if (type === 'photo_close') sendSignal({ type: 'photo-close' });
     if (type === 'perm_change') sendSignal({ type: 'perm-change', mode: payload.mode, hostName: payload.hostName });
+    if (type === 'privacy_change') sendSignal({ type: 'privacy-change', isPrivate: payload.isPrivate });
     if (type === 'request_dj') sendSignal({ type: 'request-dj', fromUser: payload.fromUser });
     if (type === 'grant_dj') sendSignal({ type: 'grant-dj', toUser: payload.toUser });
     if (type === 'chat') sendSignal({ type: 'chat-message', sender: payload.sender, text: payload.text, time: payload.time, imageUrl: payload.imageUrl, avatarUrl: payload.avatarUrl });
@@ -2616,6 +2957,7 @@ function loadYoutubeVideo(urlOrId) {
   state.currentVideoId = videoId;
   state.currentProvider = 'YouTube';
   if (dom.nowPlayingProviderBadge) dom.nowPlayingProviderBadge.textContent = 'YouTube';
+  if (typeof updateNowPlayingLikeState === 'function') updateNowPlayingLikeState();
   switchActiveTab('youtube');
 
   dom.emptyStatePlaceholder.classList.add('hidden');
@@ -2630,16 +2972,24 @@ function loadYoutubeVideo(urlOrId) {
     dom.ravePlayerOverlay.classList.remove('opacity-90');
   }
 
+  if (dom.ytPlayerContainer) {
+    const oldFrame = dom.ytPlayerContainer.querySelector('iframe');
+    if (oldFrame) {
+      try { oldFrame.src = 'about:blank'; } catch (_) {}
+    }
+    dom.ytPlayerContainer.innerHTML = '';
+  }
+
   // Direct responsive embed iframe that plays 100% reliably in WKWebView
   // Only append origin if it is http/https (WKWebView file:// origin causes YouTube Error 150/153)
   const isHttpOrigin = window.location.origin && (window.location.origin.startsWith('http://') || window.location.origin.startsWith('https://'));
   const originParam = isHttpOrigin ? `&origin=${encodeURIComponent(window.location.origin)}` : '';
   dom.ytPlayerContainer.innerHTML = `
     <iframe id="miruoYtIframe" 
-            src="https://www.youtube.com/embed/${videoId}?autoplay=1&playsinline=1&enablejsapi=1&controls=1&disablekb=1&fs=0&rel=0&modestbranding=1&iv_load_policy=3${originParam}" 
+            src="https://www.youtube.com/embed/${videoId}?autoplay=1&playsinline=1&enablejsapi=1&controls=0&disablekb=1&fs=0&rel=0&modestbranding=1&iv_load_policy=3${originParam}" 
             allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" 
             allowfullscreen 
-            class="w-full h-full border-0 pointer-events-auto">
+            class="w-full h-full border-0 pointer-events-none select-none">
     </iframe>
   `;
 
@@ -2662,11 +3012,11 @@ function loadYoutubeVideo(urlOrId) {
   fetch(`https://noembed.com/embed?url=https://www.youtube.com/watch?v=${videoId}`)
     .then(r => r.json())
     .then(d => {
-      const vTitle = d.title || 'YouTube Videosu';
-      const vAuthor = d.author_name || 'YouTube';
+      const vTitle = d.title || 'Video';
+      const vAuthor = d.author_name || '';
       if (dom.raveOverlayTitle) dom.raveOverlayTitle.textContent = vTitle;
       const stageSubtitle = document.getElementById('stageSubtitleText');
-      if (stageSubtitle) stageSubtitle.textContent = `${vAuthor}'da YouTube`;
+      if (stageSubtitle) stageSubtitle.textContent = vAuthor || 'Miruo';
       if (dom.nowPlayingTitle) dom.nowPlayingTitle.textContent = vTitle;
       const miniTitle = document.getElementById('miniPlayerTitle');
       if (miniTitle) miniTitle.textContent = vTitle;
@@ -2692,6 +3042,7 @@ function loadTwitchStream(channelOrUrl, title) {
   state.currentProvider = 'Twitch';
   if (dom.nowPlayingProviderBadge) dom.nowPlayingProviderBadge.textContent = 'Twitch';
   if (dom.nowPlayingTitle) dom.nowPlayingTitle.textContent = title || 'Twitch Canlı Yayını';
+  if (typeof updateNowPlayingLikeState === 'function') updateNowPlayingLikeState();
   
   let channel = channelOrUrl || '';
   if (channel.includes('twitch.tv/')) {
@@ -2712,17 +3063,77 @@ function loadTwitchStream(channelOrUrl, title) {
 function loadDirectVideo(url, title) {
   state.activeMode = 'direct';
   state.currentProvider = 'Web Video';
+  state.currentVideoId = url;
+  state.currentVideoTitle = title || 'Video İçeriği';
   if (dom.nowPlayingProviderBadge) dom.nowPlayingProviderBadge.textContent = 'Web Video';
   if (dom.nowPlayingTitle) dom.nowPlayingTitle.textContent = title || 'Video İçeriği';
+  if (typeof updateNowPlayingLikeState === 'function') updateNowPlayingLikeState();
   
   dom.emptyStatePlaceholder.classList.add('hidden');
   dom.ytPlayerContainer.classList.add('hidden');
   if (dom.webPlayerFrame) dom.webPlayerFrame.classList.add('hidden');
+  hideIframeFallback();
   
   dom.nativeVideoPlayer.classList.remove('hidden');
-  dom.nativeVideoPlayer.src = url;
-  dom.nativeVideoPlayer.play().catch(e => console.log('Autoplay deferred:', e));
+
+  if (url && (url.includes('.m3u8') || url.includes('/hls/'))) {
+    if (dom.nativeVideoPlayer.canPlayType('application/vnd.apple.mpegurl')) {
+      // Native Apple HLS (iOS Safari & WKWebView)
+      dom.nativeVideoPlayer.src = url;
+      dom.nativeVideoPlayer.play().catch(e => console.log('Autoplay deferred:', e));
+    } else if (window.Hls && window.Hls.isSupported()) {
+      // Desktop HLS.js
+      if (window.activeHlsInstance) {
+        try { window.activeHlsInstance.destroy(); } catch (_) {}
+      }
+      const hls = new window.Hls({ enableWorker: true });
+      hls.loadSource(url);
+      hls.attachMedia(dom.nativeVideoPlayer);
+      hls.on(window.Hls.Events.MANIFEST_PARSED, () => {
+        dom.nativeVideoPlayer.play().catch(e => console.log('Autoplay deferred:', e));
+      });
+      window.activeHlsInstance = hls;
+    } else {
+      dom.nativeVideoPlayer.src = url;
+      dom.nativeVideoPlayer.play().catch(e => console.log('Autoplay deferred:', e));
+    }
+  } else {
+    dom.nativeVideoPlayer.src = url;
+    dom.nativeVideoPlayer.play().catch(e => console.log('Autoplay deferred:', e));
+  }
   showToast('Video başlatıldı!');
+}
+
+function normalizeEmbedUrl(url) {
+  if (!url) return url;
+  // 1. Google Drive auto-transform to embeddable preview format
+  if (url.includes('drive.google.com/file/d/')) {
+    const match = url.match(/drive\.google\.com\/file\/d\/([a-zA-Z0-9_-]+)/);
+    if (match && match[1]) {
+      return `https://drive.google.com/file/d/${match[1]}/preview`;
+    }
+  }
+  return url;
+}
+
+function showIframeFallback(url, provider) {
+  if (!dom.webPlayerFallbackCard) return;
+  dom.webPlayerFallbackCard.classList.remove('hidden');
+  dom.webPlayerFallbackCard.classList.add('flex');
+  if (dom.webPlayerFallbackTitle) {
+    dom.webPlayerFallbackTitle.textContent = `${provider || 'Platform'} Yayını`;
+  }
+  if (dom.webPlayerFallbackDesc) {
+    dom.webPlayerFallbackDesc.textContent = `${provider || 'Bu platform'}, tarayıcı güvenlik politikası (X-Frame-Options) nedeniyle pencere içine doğrudan gömülmeyi engelliyor. Odanızdaki arkadaşlarınızla kesintisiz izlemek için 'Sekme Paylaşımı' modunu başlatabilirsiniz.`;
+  }
+  state.lastFallbackUrl = url;
+}
+
+function hideIframeFallback() {
+  if (dom.webPlayerFallbackCard) {
+    dom.webPlayerFallbackCard.classList.add('hidden');
+    dom.webPlayerFallbackCard.classList.remove('flex');
+  }
 }
 
 function loadWebStream(url, title, provider = 'Web') {
@@ -2734,9 +3145,19 @@ function loadWebStream(url, title, provider = 'Web') {
   dom.emptyStatePlaceholder.classList.add('hidden');
   dom.ytPlayerContainer.classList.add('hidden');
   dom.nativeVideoPlayer.classList.add('hidden');
-  if (dom.webPlayerFrame) {
+  hideIframeFallback();
+
+  const finalUrl = normalizeEmbedUrl(url);
+
+  // Check if provider is known to strictly block iframes on Web
+  const isStrictlyBlocked = (url && (url.includes('photos.google.com') || url.includes('netflix.com') || url.includes('primevideo.com') || url.includes('disneyplus.com')));
+
+  if (isStrictlyBlocked) {
+    showIframeFallback(finalUrl, provider);
+  } else if (dom.webPlayerFrame) {
     dom.webPlayerFrame.classList.remove('hidden');
-    dom.webPlayerFrame.src = url;
+    dom.webPlayerFrame.src = finalUrl;
+    dom.webPlayerFrame.onerror = () => showIframeFallback(finalUrl, provider);
   }
   showToast(`${provider} içeriği odaya aktarıldı!`);
 }
@@ -2787,6 +3208,14 @@ function handleRemoteSync(payload) {
 
   // 1. Peer or resuming client requested full synchronization
   if (payload.action === 'request_sync') {
+    if (state.activeMode === 'photo' && state.currentPhotoStageData) {
+      sendP2PData('photo_share', {
+        dataUrl: state.currentPhotoStageData.dataUrl,
+        title: state.currentPhotoStageData.title,
+        sender: state.username
+      });
+      return;
+    }
     if (state.currentVideoId) {
       sendP2PData('sync', {
         action: 'full_sync',
@@ -3112,6 +3541,271 @@ document.addEventListener('visibilitychange', () => {
 window.addEventListener('focus', handleAppForegroundResume);
 window.addEventListener('pageshow', handleAppForegroundResume);
 
+// Screen Sharing (Continuous background transmission support)
+let screenShareKeepAliveAudio = null;
+
+function startScreenShareKeepAlive() {
+  try {
+    const AudioCtx = window.AudioContext || window.webkitAudioContext;
+    if (AudioCtx && !screenShareKeepAliveAudio) {
+      screenShareKeepAliveAudio = new AudioCtx();
+      if (screenShareKeepAliveAudio.state === 'suspended') {
+        screenShareKeepAliveAudio.resume();
+      }
+      const osc = screenShareKeepAliveAudio.createOscillator();
+      const gain = screenShareKeepAliveAudio.createGain();
+      gain.gain.value = 0.0001; // inaudible carrier keeps WebKit active in background
+      osc.connect(gain);
+      gain.connect(screenShareKeepAliveAudio.destination);
+      osc.start();
+    }
+  } catch (e) {
+    console.warn('[ScreenShareKeepAlive] error:', e);
+  }
+}
+
+function stopScreenShareKeepAlive() {
+  if (screenShareKeepAliveAudio) {
+    try { screenShareKeepAliveAudio.close(); } catch (_) {}
+    screenShareKeepAliveAudio = null;
+  }
+}
+
+// Stage Photo & Video Sharing from Native Device Gallery
+function triggerRoomGalleryPicker() {
+  if (dom.videoChooserModal) {
+    dom.videoChooserModal.classList.add('hidden');
+    dom.videoChooserModal.classList.remove('flex');
+  }
+  if (dom.createRoomModal) {
+    dom.createRoomModal.classList.add('hidden');
+    dom.createRoomModal.classList.remove('flex');
+  }
+
+  // If user is not yet inside a room, create and join room immediately
+  if (!state.isInRoom || !state.roomId) {
+    if (typeof createAndJoinRoom === 'function') {
+      createAndJoinRoom('Galeri Odası', false, 'Galeri');
+    }
+  }
+
+  // If inside native iOS Miruo app
+  if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.pickImage) {
+    window.webkit.messageHandlers.pickImage.postMessage({ target: 'stage_media' });
+    return;
+  }
+  // HTML5 Gallery File Picker fallback
+  let input = document.getElementById('roomMediaFileInput');
+  if (!input) {
+    input = document.createElement('input');
+    input.type = 'file';
+    input.id = 'roomMediaFileInput';
+    input.accept = 'image/*,video/*';
+    input.className = 'hidden';
+    document.body.appendChild(input);
+  }
+  input.onchange = handleRoomMediaFileSelected;
+  input.value = '';
+  input.click();
+}
+window.triggerRoomGalleryPicker = triggerRoomGalleryPicker;
+
+function handleRoomMediaFileSelected(e) {
+  const file = e.target.files && e.target.files[0];
+  if (!file) return;
+  processSelectedStageMedia(file);
+}
+
+function processSelectedStageMedia(file) {
+  if (!file) return;
+  const isImage = file.type && file.type.startsWith('image');
+  const isVideo = file.type && file.type.startsWith('video');
+
+  if (isImage) {
+    const reader = new FileReader();
+    reader.onload = (evt) => {
+      const dataUrl = evt.target.result;
+      displayPhotoOnStage(dataUrl, file.name || 'Fotoğraf', true);
+    };
+    reader.readAsDataURL(file);
+  } else if (isVideo) {
+    const videoUrl = URL.createObjectURL(file);
+    playVideoOnStage(videoUrl, file.name || 'Yerel Video', true);
+  }
+}
+
+function displayPhotoOnStage(dataUrl, title = 'Fotoğraf', isLocal = true) {
+  if (!dataUrl) return;
+
+  // 1. If not yet in a room, create and join a photo room
+  if (!state.isInRoom || !state.roomId) {
+    if (typeof createAndJoinRoom === 'function') {
+      createAndJoinRoom('Galeri Odası', false, 'Galeri');
+    }
+  }
+
+  // If in sleep mode, exit it to show the shared photo
+  if (state.isSleepMode) {
+    applySleepMode(false, false);
+  }
+
+  // 2. Hide explore lobby and modals, transition view directly to Room Workspace
+  if (dom.exploreLobbySection) {
+    dom.exploreLobbySection.classList.add('hidden');
+    dom.exploreLobbySection.classList.remove('flex');
+  }
+  if (dom.providerPickerSection) {
+    dom.providerPickerSection.classList.add('hidden');
+    dom.providerPickerSection.classList.remove('flex');
+  }
+  if (dom.createRoomModal) {
+    dom.createRoomModal.classList.add('hidden');
+    dom.createRoomModal.classList.remove('flex');
+  }
+  if (dom.videoChooserModal) {
+    dom.videoChooserModal.classList.add('hidden');
+    dom.videoChooserModal.classList.remove('flex');
+  }
+  if (typeof switchToMyRoom === 'function') {
+    switchToMyRoom();
+  }
+
+  // 3. Pause active videos (YouTube, HTML5, Web)
+  if (state.ytPlayer && typeof state.ytPlayer.pauseVideo === 'function') {
+    try { state.ytPlayer.pauseVideo(); } catch (_) {}
+  }
+  if (dom.nativeVideoPlayer) {
+    try { dom.nativeVideoPlayer.pause(); } catch (_) {}
+    dom.nativeVideoPlayer.classList.add('hidden');
+  }
+  if (dom.ytPlayerContainer) dom.ytPlayerContainer.classList.add('hidden');
+  if (dom.webPlayerFrame) dom.webPlayerFrame.classList.add('hidden');
+  if (dom.remoteScreenPlayer) dom.remoteScreenPlayer.classList.add('hidden');
+  if (dom.sleepModePlaceholder) dom.sleepModePlaceholder.classList.add('hidden');
+  if (dom.emptyStatePlaceholder) dom.emptyStatePlaceholder.classList.add('hidden');
+  if (dom.audioOnlyPlaceholder) dom.audioOnlyPlaceholder.classList.add('hidden');
+
+  // 4. Render Photo Stage with guaranteed visibility
+  const photoStage = document.getElementById('photoStageContainer');
+  const photoImg = document.getElementById('stagePhotoImage');
+  const photoTitle = document.getElementById('photoStageTitle');
+  if (photoStage && photoImg) {
+    photoImg.src = dataUrl;
+    if (photoTitle) photoTitle.textContent = title;
+    photoStage.classList.remove('hidden');
+    photoStage.style.display = 'flex';
+    photoStage.style.zIndex = '35';
+  }
+
+  // 5. Update Now Playing Bar to show Photo from Gallery
+  if (dom.nowPlayingTitle) dom.nowPlayingTitle.textContent = title;
+  if (dom.nowPlayingPrefixText) dom.nowPlayingPrefixText.textContent = '';
+  if (dom.nowPlayingSuffixText) dom.nowPlayingSuffixText.textContent = 'görüntüleniyor';
+  if (dom.nowPlayingProviderBadge) {
+    dom.nowPlayingProviderBadge.textContent = 'Galeri';
+    dom.nowPlayingProviderBadge.className = 'px-1.5 py-0.2 rounded bg-pink-500/20 text-pink-300 font-semibold';
+  }
+
+  state.currentVideoTitle = title;
+  state.currentProvider = 'Galeri';
+  state.activeMode = 'photo';
+  state.isPlaying = false; // Static photo stays on screen
+  state.currentPhotoStageData = { dataUrl, title };
+
+  if (isLocal) {
+    sendP2PData('photo_share', { dataUrl, title, sender: state.username });
+    showToast('Fotoğraf odada paylaşıldı.');
+  }
+}
+
+function closePhotoStage(isLocal = true) {
+  const photoStage = document.getElementById('photoStageContainer');
+  if (photoStage) {
+    photoStage.classList.add('hidden');
+    photoStage.style.display = 'none';
+  }
+  state.currentPhotoStageData = null;
+  if (state.activeMode === 'photo') {
+    state.activeMode = 'youtube';
+    if (dom.emptyStatePlaceholder) dom.emptyStatePlaceholder.classList.remove('hidden');
+  }
+  if (isLocal) {
+    sendP2PData('photo_close', {});
+    showToast('Fotoğraf kapatıldı.');
+  }
+}
+window.displayPhotoOnStage = displayPhotoOnStage;
+window.closePhotoStage = closePhotoStage;
+
+function playVideoOnStage(videoUrl, title = 'Video', isLocal = true) {
+  if (!videoUrl) return;
+
+  // Ensure user is in room
+  if (!state.isInRoom || !state.roomId) {
+    if (typeof createAndJoinRoom === 'function') {
+      createAndJoinRoom('Galeri Odası', false, 'Galeri');
+    }
+  }
+
+  // If in sleep mode, exit it to show the played video
+  if (state.isSleepMode) {
+    applySleepMode(false, false);
+  }
+
+  if (dom.exploreLobbySection) {
+    dom.exploreLobbySection.classList.add('hidden');
+    dom.exploreLobbySection.classList.remove('flex');
+  }
+  if (dom.createRoomModal) {
+    dom.createRoomModal.classList.add('hidden');
+    dom.createRoomModal.classList.remove('flex');
+  }
+  if (dom.videoChooserModal) {
+    dom.videoChooserModal.classList.add('hidden');
+    dom.videoChooserModal.classList.remove('flex');
+  }
+  if (typeof switchToMyRoom === 'function') {
+    switchToMyRoom();
+  }
+
+  const photoStage = document.getElementById('photoStageContainer');
+  if (photoStage) {
+    photoStage.classList.add('hidden');
+    photoStage.style.display = 'none';
+  }
+  if (dom.ytPlayerContainer) dom.ytPlayerContainer.classList.add('hidden');
+  if (dom.webPlayerFrame) dom.webPlayerFrame.classList.add('hidden');
+  if (dom.remoteScreenPlayer) dom.remoteScreenPlayer.classList.add('hidden');
+  if (dom.sleepModePlaceholder) dom.sleepModePlaceholder.classList.add('hidden');
+  if (dom.emptyStatePlaceholder) dom.emptyStatePlaceholder.classList.add('hidden');
+  if (dom.audioOnlyPlaceholder) dom.audioOnlyPlaceholder.classList.add('hidden');
+
+  if (dom.nativeVideoPlayer) {
+    dom.nativeVideoPlayer.src = videoUrl;
+    dom.nativeVideoPlayer.classList.remove('hidden');
+    dom.nativeVideoPlayer.play().catch(() => {});
+  }
+
+  if (dom.nowPlayingTitle) dom.nowPlayingTitle.textContent = title;
+  if (dom.nowPlayingPrefixText) dom.nowPlayingPrefixText.textContent = 'Şimdi';
+  if (dom.nowPlayingSuffixText) dom.nowPlayingSuffixText.textContent = 'oynatılıyor';
+  if (dom.nowPlayingProviderBadge) {
+    dom.nowPlayingProviderBadge.textContent = 'Galeri';
+    dom.nowPlayingProviderBadge.className = 'px-1.5 py-0.2 rounded bg-indigo-500/20 text-indigo-300 font-semibold';
+  }
+
+  state.currentVideoTitle = title;
+  state.currentProvider = 'Galeri';
+  state.activeMode = 'direct';
+  state.isPlaying = true;
+  state.currentPhotoStageData = null;
+
+  if (isLocal) {
+    showToast(`Video oynatılıyor: ${title}`);
+  }
+}
+window.playVideoOnStage = playVideoOnStage;
+
 // Screen Sharing (Netflix / Dizi / Browser)
 async function startScreenSharing() {
   try {
@@ -3125,10 +3819,12 @@ async function startScreenSharing() {
     state.activeMode = 'screenshare';
 
     dom.nativeVideoPlayer.srcObject = stream;
-    dom.nativeVideoPlayer.play();
+    dom.nativeVideoPlayer.play().catch(() => {});
     dom.nativeVideoPlayer.classList.remove('hidden');
     dom.ytPlayerContainer.classList.add('hidden');
     dom.emptyStatePlaceholder.classList.add('hidden');
+    const photoStage = document.getElementById('photoStageContainer');
+    if (photoStage) photoStage.classList.add('hidden');
 
     dom.startScreenShareBtn.classList.add('hidden');
     dom.stopScreenShareBtn.classList.remove('hidden');
@@ -3142,11 +3838,26 @@ async function startScreenSharing() {
       initiateWebRTC(true);
     }
 
-    stream.getVideoTracks()[0].onended = () => {
-      stopScreenSharing();
-    };
+    // Keep background audio active so iOS doesn't suspend capture when switching apps
+    startScreenShareKeepAlive();
 
-    showToast('Ekran yayını başlatıldı! (Netflix vb.)');
+    const vTrack = stream.getVideoTracks()[0];
+    if (vTrack) {
+      vTrack.onended = () => {
+        if (state.isScreenSharing) {
+          console.log('[ScreenShare] Video track ended.');
+          stopScreenSharing();
+        }
+      };
+      vTrack.onmute = () => {
+        console.log('[ScreenShare] Video track muted (app backgrounded) - keeping stream session active.');
+      };
+      vTrack.onunmute = () => {
+        console.log('[ScreenShare] Video track unmuted - resumed.');
+      };
+    }
+
+    showToast('Ekran yayını başlatıldı! Uygulamayı alta atsanız da yayın devam eder.');
   } catch (err) {
     console.error('Ekran paylaşımı hatası:', err);
     showToast('Ekran paylaşımı iptal edildi veya reddedildi.');
@@ -3154,6 +3865,7 @@ async function startScreenSharing() {
 }
 
 function stopScreenSharing() {
+  stopScreenShareKeepAlive();
   if (state.screenStream) {
     state.screenStream.getTracks().forEach(t => t.stop());
     state.screenStream = null;
@@ -3182,16 +3894,23 @@ function enterStageFullscreenDimensions() {
 
   dom.stageContainer.classList.add('is-fullscreen-pseudo');
   dom.stageContainer.classList.remove('aspect-video');
-  dom.stageContainer.style.setProperty('height', '100vh', 'important');
+  dom.stageContainer.style.setProperty('height', '100dvh', 'important');
   dom.stageContainer.style.setProperty('width', '100vw', 'important');
   dom.stageContainer.style.setProperty('position', 'fixed', 'important');
   dom.stageContainer.style.setProperty('inset', '0', 'important');
   dom.stageContainer.style.setProperty('z-index', '999990', 'important');
   dom.stageContainer.style.setProperty('aspect-ratio', 'auto', 'important');
   document.body.classList.add('stage-is-fullscreen');
+  document.documentElement.classList.add('stage-is-fullscreen');
 
   const hasNativeFs = !!(document.fullscreenElement || document.webkitFullscreenElement);
-  if (!hasNativeFs) {
+  const isIOSDevice = /iPad|iPhone|iPod/.test(navigator.userAgent) || 
+                      (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1) || 
+                      !!window.webkit?.messageHandlers ||
+                      (window.innerWidth < 768 && 'ontouchstart' in window);
+
+  // On iOS / mobile touch, pseudo-fullscreen (fixed inset 0) is rock solid without Safari fullscreen banner or keyboard jumps
+  if (!hasNativeFs && !isIOSDevice) {
     if (dom.stageContainer.requestFullscreen) {
       dom.stageContainer.requestFullscreen().catch(() => {});
     } else if (dom.stageContainer.webkitRequestFullscreen) {
@@ -3227,6 +3946,7 @@ function exitStageFullscreenDimensions() {
   dom.stageContainer.style.removeProperty('z-index');
   dom.stageContainer.style.removeProperty('aspect-ratio');
   document.body.classList.remove('stage-is-fullscreen');
+  document.documentElement.classList.remove('stage-is-fullscreen');
   document.body.classList.remove('fs-chat-active');
   dom.stageContainer.classList.remove('fs-chat-active');
 
@@ -3288,6 +4008,11 @@ function updateFullscreenUI() {
   
   if (dom.stageFullscreenIcon) dom.stageFullscreenIcon.innerHTML = isFs ? exitSvg : enterSvg;
   if (dom.dockFullscreenIcon) dom.dockFullscreenIcon.innerHTML = isFs ? exitSvg : enterSvg;
+  
+  // Single Exit Fullscreen button - Hide top-right stage button during fullscreen so only ONE button exists
+  if (dom.stageFloatingFullscreenBtn) {
+    dom.stageFloatingFullscreenBtn.classList.toggle('hidden', isFs);
+  }
   if (dom.stageExitFullscreenFloatingBtn) {
     dom.stageExitFullscreenFloatingBtn.classList.toggle('hidden', !isFs);
   }
@@ -3358,6 +4083,9 @@ function setFsChatVisibility(open) {
   state.isChatVisible = !!open;
   const isFs = isStageFullscreen();
   applyFsChatFullscreenSettings(isFs);
+  window.dispatchEvent(new Event('resize'));
+  setTimeout(() => window.dispatchEvent(new Event('resize')), 100);
+  setTimeout(() => window.dispatchEvent(new Event('resize')), 300);
 }
 
 // Video Display / Audio-Only Mode Manager
@@ -3421,6 +4149,14 @@ function applyVideoDisplay() {
 
 // Leave Room Gracefully
 function leaveRoom() {
+  state.isIntentionalLeave = true;
+  if (reconnectTimer) {
+    clearTimeout(reconnectTimer);
+    reconnectTimer = null;
+  }
+  reconnectAttempts = 0;
+  showRoomConnectionStatus(false);
+
   if (syncHeartbeatInterval) {
     clearInterval(syncHeartbeatInterval);
     syncHeartbeatInterval = null;
@@ -3460,6 +4196,10 @@ function leaveRoom() {
     dom.webPlayerFrame.classList.add('hidden');
   }
 
+  if (state.isSleepMode) {
+    applySleepMode(false, false);
+  }
+
   if (state.isScreenSharing) {
     stopScreenSharing();
   }
@@ -3495,6 +4235,7 @@ function leaveRoom() {
 
   exitStageFullscreenDimensions();
   document.body.classList.remove('in-room-mode');
+  document.documentElement.classList.remove('in-room-mode');
   document.body.classList.remove('has-mini-player');
   state.isMiniPlayer = false;
 
@@ -3526,20 +4267,29 @@ function loadPipSettings() {
   applyPipPositioning();
 }
 
-function savePipSettings() {
+function savePipSettings(forceCorner = false) {
   localStorage.setItem('miruo_pip_settings', JSON.stringify(pipSettings));
-  applyPipPositioning();
+  applyPipPositioning(forceCorner);
   showToast('Kamera yerleşimi güncellendi');
 }
 
-function applyPipPositioning() {
+function applyPipPositioning(forceCorner = false) {
   const cornerClass = `pip-pos-${pipSettings.corner}`;
   const corners = ['pip-pos-bottom-right', 'pip-pos-bottom-left', 'pip-pos-top-right', 'pip-pos-top-left'];
   
   [dom.partnerPipCard, dom.selfPipCard].forEach(card => {
     if (!card) return;
-    corners.forEach(c => card.classList.remove(c));
-    card.classList.add(cornerClass);
+    if (forceCorner) {
+      card.classList.remove('pip-custom-pos');
+      card.style.removeProperty('left');
+      card.style.removeProperty('top');
+      card.style.removeProperty('right');
+      card.style.removeProperty('bottom');
+    }
+    if (!card.classList.contains('pip-custom-pos')) {
+      corners.forEach(c => card.classList.remove(c));
+      card.classList.add(cornerClass);
+    }
   });
 
   document.querySelectorAll('.pip-corner-btn').forEach(btn => {
@@ -3554,10 +4304,65 @@ function applyPipPositioning() {
   }
 }
 
+function clampPipCardsToStage() {
+  const stage = dom.stageContainer || document.getElementById('stageContainer');
+  if (!stage) return;
+
+  if (state.isCamOn && dom.selfPipCard) {
+    dom.selfPipCard.classList.remove('hidden', 'pip-hidden-fullscreen');
+  }
+
+  const stageRect = stage.getBoundingClientRect();
+  const stageW = stage.clientWidth || stageRect.width || 0;
+  const stageH = stage.clientHeight || stageRect.height || 0;
+  if (stageW < 40 || stageH < 40) return;
+
+  [dom.selfPipCard, dom.partnerPipCard].forEach(card => {
+    if (!card || card.classList.contains('hidden')) return;
+    if (card.classList.contains('pip-custom-pos') || card.style.left || card.style.top) {
+      const cardRect = card.getBoundingClientRect();
+      const cardW = card.offsetWidth || cardRect.width || 96;
+      const cardH = card.offsetHeight || cardRect.height || 96;
+      let curLeft = parseFloat(card.style.left);
+      let curTop = parseFloat(card.style.top);
+      if (isNaN(curLeft)) curLeft = cardRect.left - stageRect.left;
+      if (isNaN(curTop)) curTop = cardRect.top - stageRect.top;
+
+      const maxLeft = Math.max(8, stageW - cardW - 8);
+      const maxTop = Math.max(8, stageH - cardH - 8);
+      const clampedLeft = Math.max(8, Math.min(curLeft, maxLeft));
+      const clampedTop = Math.max(8, Math.min(curTop, maxTop));
+
+      card.style.setProperty('right', 'auto', 'important');
+      card.style.setProperty('bottom', 'auto', 'important');
+      card.style.setProperty('left', `${clampedLeft}px`, 'important');
+      card.style.setProperty('top', `${clampedTop}px`, 'important');
+    }
+  });
+}
+
+window.addEventListener('resize', () => {
+  clampPipCardsToStage();
+  setTimeout(clampPipCardsToStage, 120);
+  setTimeout(clampPipCardsToStage, 350);
+});
+
+window.addEventListener('orientationchange', () => {
+  clampPipCardsToStage();
+  setTimeout(clampPipCardsToStage, 120);
+  setTimeout(clampPipCardsToStage, 380);
+});
+
 function applyPipFullscreenSettings(isFullscreen) {
-  const hide = isFullscreen && !pipSettings.showInFullscreen;
-  if (dom.partnerPipCard) dom.partnerPipCard.classList.toggle('pip-hidden-fullscreen', hide);
-  if (dom.selfPipCard) dom.selfPipCard.classList.toggle('pip-hidden-fullscreen', hide);
+  if (dom.partnerPipCard) dom.partnerPipCard.classList.remove('pip-hidden-fullscreen');
+  if (dom.selfPipCard) {
+    dom.selfPipCard.classList.remove('pip-hidden-fullscreen');
+    if (state.isCamOn) {
+      dom.selfPipCard.classList.remove('hidden');
+    }
+  }
+  clampPipCardsToStage();
+  setTimeout(clampPipCardsToStage, 100);
 }
 
 // In-Room Multi-Platform Switcher (YouTube <-> Netflix <-> Prime <-> Spotify <-> Screen Share)
@@ -3709,38 +4514,335 @@ function spawnFloatingReaction(emoji, isLocal = true) {
   return;
 }
 
-function applySleepMode(enabled, isLocal = true) {
-  state.isSleepMode = enabled;
-  if (enabled) {
-    dom.sleepOverlay.style.opacity = '1';
-    dom.sleepOverlay.style.pointerEvents = 'auto';
-    dom.ambientGlow.style.opacity = '0.05';
-    showToast('İyi uykular...');
-  } else {
-    dom.sleepOverlay.style.opacity = '0';
-    dom.sleepOverlay.style.pointerEvents = 'none';
-    dom.ambientGlow.style.opacity = '0.3';
-  }
+let sleepClockInterval = null;
+let sleepWakeLockSentinel = null;
+let sleepAmbienceCtx = null;
+let sleepAmbienceGain = null;
+let sleepAmbienceSource = null;
+let sleepAmbienceLfo = null;
+let sleepAmbienceLfoGain = null;
 
-  if (isLocal) {
-    sendP2PData('sleep', { enabled });
+function updateSleepClock() {
+  const now = new Date();
+  const hours = String(now.getHours()).padStart(2, '0');
+  const minutes = String(now.getMinutes()).padStart(2, '0');
+  const timeStr = `${hours}:${minutes}`;
+  if (dom.sleepModeClock) dom.sleepModeClock.textContent = timeStr;
+  if (dom.sleepDimmerClock) dom.sleepDimmerClock.textContent = timeStr;
+}
+
+function startSleepRainAmbience() {
+  try {
+    const AudioCtx = window.AudioContext || window.webkitAudioContext;
+    if (!AudioCtx) return;
+    if (!sleepAmbienceCtx) {
+      sleepAmbienceCtx = new AudioCtx();
+    }
+    if (sleepAmbienceCtx.state === 'suspended') {
+      sleepAmbienceCtx.resume();
+    }
+
+    // Generate 6 seconds of deep, soothing Brownian/red noise buffer (warm, slow, zero hiss)
+    const sampleRate = sleepAmbienceCtx.sampleRate;
+    const bufferSize = sampleRate * 6;
+    const noiseBuffer = sleepAmbienceCtx.createBuffer(1, bufferSize, sampleRate);
+    const output = noiseBuffer.getChannelData(0);
+    let lastOut = 0.0;
+    for (let i = 0; i < bufferSize; i++) {
+      const white = Math.random() * 2 - 1;
+      lastOut = (lastOut + (0.015 * white)) / 1.018;
+      output[i] = lastOut * 2.8;
+    }
+
+    sleepAmbienceSource = sleepAmbienceCtx.createBufferSource();
+    sleepAmbienceSource.buffer = noiseBuffer;
+    sleepAmbienceSource.loop = true;
+
+    // 1. Deep lowpass filter around 280Hz for soft, muffled, cozy distant rain
+    const filter = sleepAmbienceCtx.createBiquadFilter();
+    filter.type = 'lowpass';
+    filter.frequency.value = 280;
+    filter.Q.value = 0.7;
+
+    // 2. High-shelf cut filter at 850Hz to ensure zero high-frequency harshness
+    const shelf = sleepAmbienceCtx.createBiquadFilter();
+    shelf.type = 'highshelf';
+    shelf.frequency.value = 850;
+    shelf.gain.value = -30;
+
+    // 3. Gentle gain node: whisper-soft (0.065 max, relaxing background)
+    sleepAmbienceGain = sleepAmbienceCtx.createGain();
+    sleepAmbienceGain.gain.setValueAtTime(0.001, sleepAmbienceCtx.currentTime);
+    sleepAmbienceGain.gain.exponentialRampToValueAtTime(0.065, sleepAmbienceCtx.currentTime + 2.5);
+
+    // 4. Slow gentle hypnotic LFO (~16s cycle) simulating distant calm rain rhythm
+    try {
+      const lfo = sleepAmbienceCtx.createOscillator();
+      const lfoGain = sleepAmbienceCtx.createGain();
+      lfo.frequency.value = 0.06;
+      lfoGain.gain.value = 0.012;
+      lfo.connect(lfoGain);
+      lfoGain.connect(sleepAmbienceGain.gain);
+      lfo.start();
+      sleepAmbienceLfo = lfo;
+      sleepAmbienceLfoGain = lfoGain;
+    } catch (_) {}
+
+    sleepAmbienceSource.connect(filter);
+    filter.connect(shelf);
+    shelf.connect(sleepAmbienceGain);
+    sleepAmbienceGain.connect(sleepAmbienceCtx.destination);
+
+    sleepAmbienceSource.start();
+    state.isSleepAmbiencePlaying = true;
+    if (dom.sleepAmbienceText) dom.sleepAmbienceText.textContent = 'Sakin Yağmur (Açık)';
+    if (dom.toggleSleepAmbienceBtn) {
+      dom.toggleSleepAmbienceBtn.classList.add('bg-indigo-600/30', 'text-indigo-200', 'border-indigo-500/40');
+      dom.toggleSleepAmbienceBtn.classList.remove('bg-white/5', 'text-gray-300');
+    }
+  } catch (err) {
+    console.warn('[SleepAmbience] error:', err);
   }
 }
 
-// Draggable PIP Functionality (Camera freely draggable & flingable anywhere over video stage with finger)
+function stopSleepRainAmbience() {
+  try {
+    if (sleepAmbienceLfo) {
+      try { sleepAmbienceLfo.stop(); } catch (_) {}
+      sleepAmbienceLfo = null;
+    }
+    if (sleepAmbienceLfoGain) {
+      try { sleepAmbienceLfoGain.disconnect(); } catch (_) {}
+      sleepAmbienceLfoGain = null;
+    }
+    if (sleepAmbienceGain && sleepAmbienceCtx) {
+      sleepAmbienceGain.gain.exponentialRampToValueAtTime(0.001, sleepAmbienceCtx.currentTime + 0.8);
+      setTimeout(() => {
+        if (sleepAmbienceSource) {
+          try { sleepAmbienceSource.stop(); } catch (_) {}
+          sleepAmbienceSource.disconnect();
+          sleepAmbienceSource = null;
+        }
+      }, 900);
+    } else if (sleepAmbienceSource) {
+      try { sleepAmbienceSource.stop(); } catch (_) {}
+      sleepAmbienceSource = null;
+    }
+  } catch (_) {}
+  state.isSleepAmbiencePlaying = false;
+  if (dom.sleepAmbienceText) dom.sleepAmbienceText.textContent = 'Sakin Yağmur Sesi';
+  if (dom.toggleSleepAmbienceBtn) {
+    dom.toggleSleepAmbienceBtn.classList.remove('bg-indigo-600/30', 'text-indigo-200', 'border-indigo-500/40');
+    dom.toggleSleepAmbienceBtn.classList.add('bg-white/5', 'text-gray-300');
+  }
+}
+
+function toggleSleepAmbience() {
+  if (state.isSleepAmbiencePlaying) {
+    stopSleepRainAmbience();
+    showToast('Yağmur sesi kapatıldı');
+  } else {
+    startSleepRainAmbience();
+    showToast('Sakin yağmur ambiyansı başlatıldı');
+  }
+}
+
+function toggleScreenDimmer(show) {
+  const shouldShow = (typeof show === 'boolean') ? show : (dom.sleepScreenDimmer ? dom.sleepScreenDimmer.classList.contains('hidden') : false);
+  state.isScreenDimmed = shouldShow;
+  if (dom.sleepScreenDimmer) {
+    if (shouldShow) {
+      dom.sleepScreenDimmer.classList.remove('hidden');
+      updateSleepClock();
+    } else {
+      dom.sleepScreenDimmer.classList.add('hidden');
+    }
+  }
+}
+
+async function requestScreenWakeLock() {
+  if ('wakeLock' in navigator) {
+    try {
+      sleepWakeLockSentinel = await navigator.wakeLock.request('screen');
+    } catch (_) {}
+  }
+}
+
+function releaseScreenWakeLock() {
+  if (sleepWakeLockSentinel) {
+    try {
+      sleepWakeLockSentinel.release();
+    } catch (_) {}
+    sleepWakeLockSentinel = null;
+  }
+}
+
+function applySleepMode(enabled, isLocal = true) {
+  state.isSleepMode = !!enabled;
+
+  if (enabled) {
+    // 1. Pause active videos (YouTube, HTML5, Web)
+    if (state.ytPlayer && typeof state.ytPlayer.pauseVideo === 'function') {
+      try { state.ytPlayer.pauseVideo(); } catch (_) {}
+    }
+    if (typeof sendYtCommand === 'function') {
+      try { sendYtCommand('pauseVideo'); } catch (_) {}
+    }
+    if (dom.nativeVideoPlayer) {
+      try { dom.nativeVideoPlayer.pause(); } catch (_) {}
+    }
+    state.isPlaying = false;
+    if (typeof updatePlayPauseUI === 'function') updatePlayPauseUI(false);
+
+    // 2. Hide media video frames AND photo stage, reveal OLED Sleep Mode Stage
+    if (dom.ytPlayerContainer) dom.ytPlayerContainer.classList.add('hidden');
+    if (dom.nativeVideoPlayer) dom.nativeVideoPlayer.classList.add('hidden');
+    if (dom.webPlayerFrame) dom.webPlayerFrame.classList.add('hidden');
+    if (dom.remoteScreenPlayer) dom.remoteScreenPlayer.classList.add('hidden');
+    if (dom.emptyStatePlaceholder) dom.emptyStatePlaceholder.classList.add('hidden');
+    if (dom.audioOnlyPlaceholder) dom.audioOnlyPlaceholder.classList.add('hidden');
+
+    const photoStage = document.getElementById('photoStageContainer');
+    if (photoStage) {
+      photoStage.classList.add('hidden');
+      photoStage.style.display = 'none';
+    }
+
+    if (dom.sleepModePlaceholder) {
+      dom.sleepModePlaceholder.classList.remove('hidden');
+      dom.sleepModePlaceholder.style.display = 'flex';
+      dom.sleepModePlaceholder.style.zIndex = '45';
+    }
+
+    // 3. Update Now Playing details to Sleep Mode
+    if (dom.nowPlayingTitle) dom.nowPlayingTitle.textContent = 'Birlikte Uyku Modu';
+    if (dom.nowPlayingPrefixText) dom.nowPlayingPrefixText.textContent = '';
+    if (dom.nowPlayingSuffixText) dom.nowPlayingSuffixText.textContent = 'devrede';
+    if (dom.nowPlayingProviderBadge) {
+      dom.nowPlayingProviderBadge.textContent = 'Uyku Modu';
+      dom.nowPlayingProviderBadge.className = 'px-1.5 py-0.2 rounded bg-indigo-500/20 text-indigo-300 font-semibold';
+    }
+
+    // 4. Update Sleep button UI to normalized compact active state
+    if (dom.toggleSleepModeBtn) {
+      dom.toggleSleepModeBtn.className = 'flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-indigo-500/25 hover:bg-indigo-500/35 border border-indigo-500/40 text-xs text-indigo-200 hover:text-white font-medium transition-all cursor-pointer';
+    }
+    if (dom.sleepModeBtnText) {
+      dom.sleepModeBtnText.textContent = 'Uykudan Çık';
+    }
+
+    // 5. Start live digital clock updates
+    updateSleepClock();
+    if (sleepClockInterval) clearInterval(sleepClockInterval);
+    sleepClockInterval = setInterval(updateSleepClock, 1000);
+
+    // 6. Request screen wake lock so WebRTC audio/video call stays connected all night
+    requestScreenWakeLock();
+
+    // 7. Ensure PiP webcam and audio stay visible & clamped to stage
+    if (typeof clampPipCardsToStage === 'function') {
+      clampPipCardsToStage();
+    }
+
+    // 8. Legacy backward compatibility
+    if (dom.sleepOverlay) {
+      dom.sleepOverlay.style.opacity = '1';
+      dom.sleepOverlay.style.pointerEvents = 'auto';
+    }
+    if (dom.ambientGlow) dom.ambientGlow.style.opacity = '0.05';
+
+    if (isLocal) {
+      showToast('Uyku Modu açıldı');
+      sendP2PData('sleep', { enabled: true });
+    }
+  } else {
+    // Disable sleep mode
+    if (dom.sleepModePlaceholder) {
+      dom.sleepModePlaceholder.classList.add('hidden');
+      dom.sleepModePlaceholder.style.display = 'none';
+    }
+    toggleScreenDimmer(false);
+    stopSleepRainAmbience();
+    releaseScreenWakeLock();
+
+    if (sleepClockInterval) {
+      clearInterval(sleepClockInterval);
+      sleepClockInterval = null;
+    }
+
+    // Restore media frames, photo or empty placeholder
+    if (state.activeMode === 'photo' && state.currentPhotoStageData) {
+      const photoStage = document.getElementById('photoStageContainer');
+      if (photoStage) {
+        photoStage.classList.remove('hidden');
+        photoStage.style.display = 'flex';
+        photoStage.style.zIndex = '35';
+      }
+    } else if (state.currentVideoId) {
+      if (dom.ytPlayerContainer) dom.ytPlayerContainer.classList.remove('hidden');
+    } else {
+      if (dom.emptyStatePlaceholder) dom.emptyStatePlaceholder.classList.remove('hidden');
+    }
+
+    if (dom.nowPlayingTitle) dom.nowPlayingTitle.textContent = state.currentVideoTitle || 'Video';
+    if (dom.nowPlayingPrefixText) dom.nowPlayingPrefixText.textContent = 'Şimdi';
+    if (dom.nowPlayingSuffixText) dom.nowPlayingSuffixText.textContent = 'oynatılıyor';
+    if (dom.nowPlayingProviderBadge) {
+      dom.nowPlayingProviderBadge.textContent = state.currentProvider || 'YouTube';
+      dom.nowPlayingProviderBadge.className = 'px-1.5 py-0.2 rounded bg-rose-500/20 text-rose-300 font-semibold';
+    }
+
+    if (dom.toggleSleepModeBtn) {
+      dom.toggleSleepModeBtn.className = 'flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-indigo-500/15 hover:bg-indigo-500/25 active:scale-95 border border-indigo-500/30 text-xs text-indigo-300 hover:text-white font-medium transition-all cursor-pointer';
+    }
+    if (dom.sleepModeBtnText) {
+      dom.sleepModeBtnText.textContent = 'Uyku Modu';
+    }
+
+    if (dom.sleepOverlay) {
+      dom.sleepOverlay.style.opacity = '0';
+      dom.sleepOverlay.style.pointerEvents = 'none';
+    }
+    if (dom.ambientGlow) dom.ambientGlow.style.opacity = '0.3';
+
+    if (isLocal) {
+      showToast('Uyku modundan çıkıldı.');
+      sendP2PData('sleep', { enabled: false });
+    }
+  }
+}
+
+// Draggable PIP Functionality (Smooth touch hold/drag on mobile & mouse drag on PC, in both normal & fullscreen modes)
 function makeDraggable(el) {
   if (!el) return;
-  let isDown = false;
-  let startX = 0;
-  let startY = 0;
+  let isDragging = false;
+  let longPressTimer = null;
+  let startTouchX = 0;
+  let startTouchY = 0;
   let startElX = 0;
   let startElY = 0;
-  let moveHistory = [];
+  let activeTouchId = null;
 
-  function onPointerDown(clientX, clientY) {
-    isDown = true;
+  function getDragParent() {
+    return document.getElementById('stageContainer') || el.offsetParent || el.parentElement || document.body;
+  }
+
+  function cancelLongPress() {
+    if (longPressTimer) {
+      clearTimeout(longPressTimer);
+      longPressTimer = null;
+    }
+  }
+
+  function startDrag(clientX, clientY) {
+    if (isDragging) return;
+    isDragging = true;
+    cancelLongPress();
     el.style.transition = 'none';
-    const parent = el.offsetParent || el.parentElement || document.body;
+    el.classList.remove('pip-pos-bottom-right', 'pip-pos-bottom-left', 'pip-pos-top-right', 'pip-pos-top-left');
+    el.classList.add('pip-custom-pos', 'pip-dragging', 'pip-active-drag');
+
+    const parent = getDragParent();
     const parentRect = parent.getBoundingClientRect();
     const elRect = el.getBoundingClientRect();
 
@@ -3749,30 +4851,24 @@ function makeDraggable(el) {
 
     el.style.setProperty('right', 'auto', 'important');
     el.style.setProperty('bottom', 'auto', 'important');
-    el.style.left = startElX + 'px';
-    el.style.top = startElY + 'px';
+    el.style.setProperty('left', `${startElX}px`, 'important');
+    el.style.setProperty('top', `${startElY}px`, 'important');
 
-    startX = clientX;
-    startY = clientY;
-    moveHistory = [{ x: clientX, y: clientY, t: performance.now() }];
-    el.classList.add('pip-dragging');
+    startTouchX = clientX;
+    startTouchY = clientY;
+
+    if (navigator.vibrate) {
+      try { navigator.vibrate(25); } catch (_) {}
+    }
   }
 
-  function onPointerMove(clientX, clientY, e) {
-    if (!isDown) return;
-    if (e && e.cancelable) e.preventDefault();
-
-    const now = performance.now();
-    moveHistory.push({ x: clientX, y: clientY, t: now });
-    while (moveHistory.length > 1 && now - moveHistory[0].t > 150) {
-      moveHistory.shift();
-    }
-
-    const parent = el.offsetParent || el.parentElement || document.body;
+  function updateDrag(clientX, clientY) {
+    if (!isDragging) return;
+    const parent = getDragParent();
     const parentRect = parent.getBoundingClientRect();
 
-    const deltaX = clientX - startX;
-    const deltaY = clientY - startY;
+    const deltaX = clientX - startTouchX;
+    const deltaY = clientY - startTouchY;
 
     let newX = startElX + deltaX;
     let newY = startElY + deltaY;
@@ -3783,125 +4879,115 @@ function makeDraggable(el) {
     newX = Math.max(8, Math.min(newX, Math.max(8, maxW)));
     newY = Math.max(8, Math.min(newY, Math.max(8, maxH)));
 
-    el.style.left = newX + 'px';
-    el.style.top = newY + 'px';
-  }
-
-  function onPointerUp() {
-    if (!isDown) return;
-    isDown = false;
-    el.classList.remove('pip-dragging');
-
-    const parent = el.offsetParent || el.parentElement || document.body;
-    const parentRect = parent.getBoundingClientRect();
-    const currentLeft = parseFloat(el.style.left) || 0;
-    const currentTop = parseFloat(el.style.top) || 0;
-    const w = el.offsetWidth;
-    const h = el.offsetHeight;
-    const pad = 12;
-    const maxW = Math.max(pad, parentRect.width - w - pad);
-    const maxH = Math.max(pad, parentRect.height - h - pad);
-
-    let vx = 0;
-    let vy = 0;
-    if (moveHistory.length >= 2) {
-      const first = moveHistory[0];
-      const last = moveHistory[moveHistory.length - 1];
-      const dt = Math.max(10, last.t - first.t);
-      vx = (last.x - first.x) / dt;
-      vy = (last.y - first.y) / dt;
-    }
-
-    const projectedX = currentLeft + vx * 220;
-    const projectedY = currentTop + vy * 220;
-
-    let targetX = pad;
-    // Fling left or right based on velocity or drag release position
-    if (vx > 0.18) {
-      targetX = maxW; // Thrown to the right
-    } else if (vx < -0.18) {
-      targetX = pad;  // Thrown to the left
-    } else {
-      // Released without strong flick: snap to closest side
-      targetX = (currentLeft + w / 2 > parentRect.width / 2) ? maxW : pad;
-    }
-
-    let targetY = Math.max(pad, Math.min(projectedY, maxH));
-
-    el.style.transition = 'left 0.38s cubic-bezier(0.18, 0.89, 0.32, 1.28), top 0.38s cubic-bezier(0.18, 0.89, 0.32, 1.28)';
     el.style.setProperty('right', 'auto', 'important');
     el.style.setProperty('bottom', 'auto', 'important');
-    el.style.left = targetX + 'px';
-    el.style.top = targetY + 'px';
-
-    setTimeout(() => {
-      if (!isDown) el.style.transition = 'none';
-    }, 400);
+    el.style.setProperty('left', `${newX}px`, 'important');
+    el.style.setProperty('top', `${newY}px`, 'important');
   }
 
-  // Pointer Events API (supports mouse, touch, Apple Pencil with pointer capture)
+  function endDrag() {
+    cancelLongPress();
+    if (!isDragging) return;
+    isDragging = false;
+    activeTouchId = null;
+    el.classList.remove('pip-dragging', 'pip-active-drag');
+    el.style.transition = 'none';
+  }
+
+  // Native Mobile Touch Events
+  el.addEventListener('touchstart', (e) => {
+    if (e.target && e.target.closest('button')) return;
+    if (!e.touches || e.touches.length === 0) return;
+    const touch = e.touches[0];
+    activeTouchId = touch.identifier;
+
+    cancelLongPress();
+    const initX = touch.clientX;
+    const initY = touch.clientY;
+    startTouchX = initX;
+    startTouchY = initY;
+
+    // Hold feedback (~120ms) or immediate drag on move
+    longPressTimer = setTimeout(() => {
+      startDrag(initX, initY);
+    }, 120);
+  }, { passive: true });
+
+  el.addEventListener('touchmove', (e) => {
+    if (!e.touches || e.touches.length === 0) return;
+    const touch = Array.from(e.touches).find(t => t.identifier === activeTouchId) || e.touches[0];
+    if (!touch) return;
+
+    if (!isDragging) {
+      const dist = Math.hypot(touch.clientX - startTouchX, touch.clientY - startTouchY);
+      if (dist > 3) {
+        startDrag(startTouchX, startTouchY);
+      }
+    }
+
+    if (isDragging) {
+      if (e.cancelable) e.preventDefault();
+      if (e.stopPropagation) e.stopPropagation();
+      updateDrag(touch.clientX, touch.clientY);
+    }
+  }, { passive: false });
+
+  window.addEventListener('touchmove', (e) => {
+    if (!isDragging) return;
+    const touch = Array.from(e.touches).find(t => t.identifier === activeTouchId) || (e.touches && e.touches[0]);
+    if (!touch) return;
+    if (e.cancelable) e.preventDefault();
+    if (e.stopPropagation) e.stopPropagation();
+    updateDrag(touch.clientX, touch.clientY);
+  }, { passive: false });
+
+  el.addEventListener('touchend', endDrag);
+  el.addEventListener('touchcancel', endDrag);
+  window.addEventListener('touchend', endDrag);
+  window.addEventListener('touchcancel', endDrag);
+
+  // Desktop Pointer & Mouse Handlers
   el.addEventListener('pointerdown', (e) => {
+    if (e.pointerType === 'touch') return;
     if (e.button && e.button !== 0) return;
     if (e.target && e.target.closest('button')) return;
+    if (e.preventDefault) e.preventDefault();
     if (el.setPointerCapture) {
       try { el.setPointerCapture(e.pointerId); } catch (_) {}
     }
-    onPointerDown(e.clientX, e.clientY);
+    startDrag(e.clientX, e.clientY);
   });
 
-  el.addEventListener('pointermove', (e) => {
-    if (!isDown) return;
-    onPointerMove(e.clientX, e.clientY, e);
-  });
   window.addEventListener('pointermove', (e) => {
-    if (!isDown) return;
-    onPointerMove(e.clientX, e.clientY, e);
+    if (e.pointerType === 'touch') return;
+    if (!isDragging) return;
+    updateDrag(e.clientX, e.clientY);
   });
 
-  el.addEventListener('pointerup', (e) => {
-    if (!isDown) return;
-    if (el.releasePointerCapture) {
-      try { el.releasePointerCapture(e.pointerId); } catch (_) {}
-    }
-    onPointerUp();
-  });
   window.addEventListener('pointerup', (e) => {
-    if (!isDown) return;
+    if (e.pointerType === 'touch') return;
+    if (!isDragging) return;
     if (el.releasePointerCapture) {
       try { el.releasePointerCapture(e.pointerId); } catch (_) {}
     }
-    onPointerUp();
+    endDrag();
   });
 
-  el.addEventListener('pointercancel', (e) => {
-    if (el.releasePointerCapture) {
-      try { el.releasePointerCapture(e.pointerId); } catch (_) {}
-    }
-    onPointerUp();
-  });
-
-  // Touch event fallback
-  el.addEventListener('touchstart', (e) => {
+  el.addEventListener('mousedown', (e) => {
+    if (e.button && e.button !== 0) return;
     if (e.target && e.target.closest('button')) return;
-    if (e.touches.length === 1) {
-      const touch = e.touches[0];
-      onPointerDown(touch.clientX, touch.clientY);
-    }
-  }, { passive: false });
-
-  document.addEventListener('touchmove', (e) => {
-    if (!isDown) return;
-    if (e.touches.length > 0) {
-      const touch = e.touches[0];
-      onPointerMove(touch.clientX, touch.clientY, e);
-    }
-  }, { passive: false });
-
-  document.addEventListener('touchend', () => {
-    onPointerUp();
+    if (e.preventDefault) e.preventDefault();
+    startDrag(e.clientX, e.clientY);
   });
-  document.addEventListener('touchcancel', () => {
-    onPointerUp();
+
+  window.addEventListener('mousemove', (e) => {
+    if (!isDragging) return;
+    updateDrag(e.clientX, e.clientY);
+  });
+
+  window.addEventListener('mouseup', () => {
+    if (!isDragging) return;
+    endDrag();
   });
 }
 
@@ -4083,8 +5169,9 @@ async function toggleCam() {
       }
 
       if (dom.selfPipCard) {
-        dom.selfPipCard.classList.remove('hidden');
+        dom.selfPipCard.classList.remove('hidden', 'pip-hidden-fullscreen');
       }
+      clampPipCardsToStage();
 
       updateCamButtonUI(true);
 
@@ -4115,11 +5202,12 @@ async function toggleCam() {
     console.warn('Kamera donanımı bulunamadı veya simülatörde çalışıyor, canlı önizleme açılıyor:', e);
     state.isCamOn = true;
     if (dom.selfPipCard) {
-      dom.selfPipCard.classList.remove('hidden');
+      dom.selfPipCard.classList.remove('hidden', 'pip-hidden-fullscreen');
     }
     if (dom.selfVideoPlaceholder) {
       dom.selfVideoPlaceholder.classList.remove('hidden');
     }
+    clampPipCardsToStage();
     updateCamButtonUI(true);
     broadcastMyMediaStatus();
     renderParticipantsList();
@@ -4174,6 +5262,15 @@ function setChatVisibility(visible) {
       dom.fsChatOverlay.classList.toggle('hidden', !visible);
     }
     if (visible) {
+      if (dom.fsChatOverlay) {
+        dom.fsChatOverlay.style.removeProperty('left');
+        dom.fsChatOverlay.style.removeProperty('top');
+        dom.fsChatOverlay.style.removeProperty('right');
+        dom.fsChatOverlay.style.removeProperty('bottom');
+        dom.fsChatOverlay.style.removeProperty('width');
+        dom.fsChatOverlay.style.removeProperty('height');
+        dom.fsChatOverlay.style.removeProperty('max-height');
+      }
       if (dom.stageContainer) dom.stageContainer.classList.add('fs-chat-active');
       document.body.classList.add('fs-chat-active');
     } else {
@@ -4215,7 +5312,7 @@ function renderVideoGrid() {
 
   // 1. Self Tile
   const selfTile = document.createElement('div');
-  selfTile.className = 'relative w-28 h-28 sm:w-32 sm:h-32 rounded-2xl overflow-hidden bg-black/60 border border-white/10 shadow-lg shrink-0 flex flex-col items-center justify-center';
+  selfTile.className = 'relative w-20 h-20 sm:w-22 sm:h-22 rounded-xl overflow-hidden bg-black/70 border border-white/10 shadow-md shrink-0 flex flex-col items-center justify-center';
 
   const dictGrid = I18N[currentLang] || I18N.tr;
 
@@ -4228,20 +5325,20 @@ function renderVideoGrid() {
     v.srcObject = state.localStream;
     selfTile.appendChild(v);
   } else {
-    const pulseRing = state.isMicOn ? 'ring-2 ring-emerald-400 ring-offset-2 ring-offset-black animate-pulse' : '';
+    const pulseRing = state.isMicOn ? 'ring-1.5 ring-emerald-400 ring-offset-1 ring-offset-black animate-pulse' : '';
     const selfAv = state.avatarUrl 
       ? `<img src="${state.avatarUrl}" class="w-full h-full object-cover rounded-full" alt="PP">` 
       : (state.username || 'K').charAt(0).toUpperCase();
     selfTile.innerHTML = `
-      <div class="w-12 h-12 rounded-full overflow-hidden bg-gradient-to-tr from-rose-500 to-indigo-600 flex items-center justify-center text-white font-bold text-base shadow-md ${pulseRing}">
+      <div class="w-8 h-8 sm:w-9 sm:h-9 rounded-full overflow-hidden bg-gradient-to-tr from-rose-500 to-indigo-600 flex items-center justify-center text-white font-bold text-xs shadow-md ${pulseRing}">
         ${selfAv}
       </div>
-      <span class="text-[10px] text-gray-400 mt-1 font-medium">${dictGrid.cam_off_label || 'Kamera Kapalı'}</span>
+      <span class="text-[9px] text-gray-400 mt-0.5 font-medium leading-none">${dictGrid.cam_off_label || 'Kamera Kapalı'}</span>
     `;
   }
 
   const selfBadge = document.createElement('div');
-  selfBadge.className = 'absolute bottom-1.5 left-1.5 right-1.5 px-2 py-0.5 rounded-lg bg-black/60 backdrop-blur-md border border-white/10 flex items-center justify-between text-[10px] text-white';
+  selfBadge.className = 'absolute bottom-1 left-1 right-1 px-1.5 py-0.2 rounded-md bg-black/60 backdrop-blur-md border border-white/10 flex items-center justify-between text-[9px] text-white';
   selfBadge.innerHTML = `
     <span class="truncate font-semibold">${state.username || dictGrid.you_badge || 'Sen'} (${dictGrid.you_badge || 'Sen'})</span>
     <span class="${state.isMicOn ? 'text-emerald-400' : 'text-red-400'}">${state.isMicOn ? 'Açık' : 'Kapalı'}</span>
@@ -4270,7 +5367,7 @@ function renderVideoGrid() {
 
   otherMembers.forEach(m => {
     const tile = document.createElement('div');
-    tile.className = 'relative w-28 h-28 sm:w-32 sm:h-32 rounded-2xl overflow-hidden bg-black/60 border border-white/10 shadow-lg shrink-0 flex flex-col items-center justify-center';
+    tile.className = 'relative w-20 h-20 sm:w-22 sm:h-22 rounded-xl overflow-hidden bg-black/70 border border-white/10 shadow-md shrink-0 flex flex-col items-center justify-center';
 
     if (m.isCamOn && m.stream) {
       const v = document.createElement('video');
@@ -4280,20 +5377,20 @@ function renderVideoGrid() {
       v.srcObject = m.stream;
       tile.appendChild(v);
     } else {
-      const pulseRing = m.isMicOn ? 'ring-2 ring-emerald-400 ring-offset-2 ring-offset-black animate-pulse' : '';
+      const pulseRing = m.isMicOn ? 'ring-1.5 ring-emerald-400 ring-offset-1 ring-offset-black animate-pulse' : '';
       const avHtml = m.avatar
-        ? `<img src="${m.avatar}" class="w-12 h-12 rounded-full object-cover shadow-md ${pulseRing}" alt="PP">`
-        : `<div class="w-12 h-12 rounded-full bg-gradient-to-tr ${m.avatarColor || 'from-indigo-500 to-purple-600'} flex items-center justify-center text-white font-bold text-base shadow-md ${pulseRing}">
+        ? `<img src="${m.avatar}" class="w-8 h-8 sm:w-9 sm:h-9 rounded-full object-cover shadow-md ${pulseRing}" alt="PP">`
+        : `<div class="w-8 h-8 sm:w-9 sm:h-9 rounded-full bg-gradient-to-tr ${m.avatarColor || 'from-indigo-500 to-purple-600'} flex items-center justify-center text-white font-bold text-xs shadow-md ${pulseRing}">
              ${(m.username || 'K').charAt(0).toUpperCase()}
            </div>`;
       tile.innerHTML = `
         ${avHtml}
-        <span class="text-[10px] text-gray-400 mt-1 font-medium">${m.isCamOn ? (dictGrid.cam_live_label || 'Canlı') : (dictGrid.cam_off_label || 'Kamera Kapalı')}</span>
+        <span class="text-[9px] text-gray-400 mt-0.5 font-medium leading-none">${m.isCamOn ? (dictGrid.cam_live_label || 'Canlı') : (dictGrid.cam_off_label || 'Kamera Kapalı')}</span>
       `;
     }
 
     const badge = document.createElement('div');
-    badge.className = 'absolute bottom-1.5 left-1.5 right-1.5 px-2 py-0.5 rounded-lg bg-black/60 backdrop-blur-md border border-white/10 flex items-center justify-between text-[10px] text-white';
+    badge.className = 'absolute bottom-1 left-1 right-1 px-1.5 py-0.2 rounded-md bg-black/60 backdrop-blur-md border border-white/10 flex items-center justify-between text-[9px] text-white';
     badge.innerHTML = `
       <span class="truncate font-semibold">${m.username}</span>
       <span class="${m.isMicOn ? 'text-emerald-400' : 'text-red-400'}">${m.isMicOn ? 'Açık' : 'Kapalı'}</span>
@@ -4458,6 +5555,7 @@ function appendBotChatMessage(bot, message) {
 function switchToExplore() {
   state.currentTab = 'explore';
   document.body.classList.remove('in-room-mode');
+  document.documentElement.classList.remove('in-room-mode');
   if (!state.isMiniPlayer) {
     document.body.classList.remove('has-mini-player');
     if (dom.roomWorkspaceSection) {
@@ -4513,8 +5611,15 @@ function switchToExplore() {
 }
 
 function switchToProviderPicker() {
-  document.body.classList.remove('in-room-mode');
+  state.currentTab = 'provider_picker';
+  document.body.classList.remove('in-room-mode', 'modal-open-freeze');
+  document.documentElement.classList.remove('in-room-mode');
+  if (typeof stopProfileStarCanvas === 'function') stopProfileStarCanvas();
   stopBotsForActiveRoom();
+  if (dom.profileEditModal) {
+    dom.profileEditModal.classList.add('hidden');
+    dom.profileEditModal.classList.remove('flex');
+  }
   const mainWorkspace = document.querySelector('main');
   if (mainWorkspace) {
     mainWorkspace.classList.add('pt-0');
@@ -4552,6 +5657,7 @@ function switchToProviderPicker() {
 function switchToMyRoom() {
   // Add in-room-mode class for full-height responsive layout
   document.body.classList.add('in-room-mode');
+  document.documentElement.classList.add('in-room-mode');
   state.isInRoom = true;
   // Hide explore header, provider picker, friends, profile and bottom nav when inside a room!
   const mainWorkspace = document.querySelector('main');
@@ -4598,6 +5704,7 @@ function switchToMyRoom() {
   }
   if (dom.activeRoomTitle) dom.activeRoomTitle.textContent = state.roomId;
   if (dom.raveInviteLinkText) dom.raveInviteLinkText.textContent = getMiruoRoomUrl(state.roomId);
+  if (typeof updateNowPlayingAccountBadge === 'function') updateNowPlayingAccountBadge(state.connectedAccount);
   updatePermissionUI();
   renderParticipantsList();
   broadcastMyMediaStatus();
@@ -4629,12 +5736,21 @@ function createAndJoinRoom(title, isPrivate = false, category = 'YouTube', video
   state.controlMode = 'host_only';
   state.hasDjPermission = true;
 
+  const accounts = typeof getConnectedAccounts === 'function' ? getConnectedAccounts() : {};
+  const catKey = (category || '').toLowerCase();
+  const matchedKey = Object.keys(accounts).find(k => catKey.includes(k));
+  const activeConn = (matchedKey && accounts[matchedKey]?.connected) ? accounts[matchedKey].account : '';
+  state.connectedAccount = activeConn;
+  state.isPrivateRoom = !!isPrivate;
+  updateRoomPrivacyUI(isPrivate);
+
   requestRoomCode({
     name: title || `${category} Partisi`,
     isPrivate: isPrivate,
     host: state.username,
     category: category,
-    videoId: videoId
+    videoId: videoId,
+    connectedAccount: activeConn
   }).then(code => {
     state.roomId = code;
     if (dom.activeRoomTitle) dom.activeRoomTitle.textContent = state.roomId;
@@ -4642,6 +5758,13 @@ function createAndJoinRoom(title, isPrivate = false, category = 'YouTube', video
     if (dom.raveInviteLinkText) dom.raveInviteLinkText.textContent = getMiruoRoomUrl(state.roomId);
     switchToMyRoom();
     connectSignaling();
+    if (activeConn) {
+      setTimeout(() => {
+        if (typeof updateNowPlayingAccountBadge === 'function') updateNowPlayingAccountBadge(activeConn);
+        const ann = `🎬 Bu oda ev sahibinin (${activeConn}) hesabı üzerinden birlikte izleniyor.`;
+        if (typeof renderChatMessage === 'function') renderChatMessage('SİSTEM', ann, true);
+      }, 300);
+    }
     if (videoId) {
       setTimeout(() => loadYoutubeVideo(videoId), 400);
     } else if (category === 'YouTube' || category === 'youtube') {
@@ -4661,10 +5784,18 @@ function joinRoomByCode(rawCode) {
       state.isHost = false;
       state.roomId = d.room.id;
       state.hostName = d.room.host;
+      state.connectedAccount = d.room.connectedAccount || '';
       if (dom.activeRoomTitle) dom.activeRoomTitle.textContent = state.roomId;
       if (dom.currentRoomDisplay) dom.currentRoomDisplay.textContent = state.roomId;
       switchToMyRoom();
       connectSignaling();
+      if (state.connectedAccount) {
+        setTimeout(() => {
+          if (typeof updateNowPlayingAccountBadge === 'function') updateNowPlayingAccountBadge(state.connectedAccount);
+          const ann = `🎬 Bu oda ev sahibinin (${state.connectedAccount}) hesabı üzerinden birlikte izleniyor.`;
+          if (typeof renderChatMessage === 'function') renderChatMessage('SİSTEM', ann, true);
+        }, 300);
+      }
       showToast(`${d.room.name || state.roomId} odasına katıldın`);
     })
     .catch(() => showToast('Sunucuya ulaşılamadı, bağlantını kontrol et'));
@@ -4922,6 +6053,45 @@ function loadPublicRooms() {
     });
 }
 
+function updateRoomPrivacyUI(isPrivate) {
+  state.isPrivateRoom = !!isPrivate;
+  const pDict = I18N[currentLang] || I18N.tr;
+  const pText = dom.privacyStatusText || document.getElementById('privacyStatusText');
+  const pIcon = dom.privacyStatusIcon || document.getElementById('privacyStatusIcon');
+  if (pText) {
+    pText.textContent = isPrivate ? (pDict.privacy_private || 'Özel Oda') : (pDict.privacy_public || 'Açık Oda');
+  }
+  if (pIcon) {
+    pIcon.innerHTML = isPrivate
+      ? '<svg class="w-3 h-3 inline text-purple-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>'
+      : '<svg class="w-3 h-3 inline text-emerald-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1 4-10z"/></svg>';
+  }
+  
+  // Sync radio in roomAccessModal
+  const publicRadio = document.querySelector('input[name="roomAccessRule"][value="public"]');
+  const inviteRadio = document.querySelector('input[name="roomAccessRule"][value="invite"]');
+  if (isPrivate && inviteRadio) inviteRadio.checked = true;
+  else if (!isPrivate && publicRadio) publicRadio.checked = true;
+
+  // Sync privacy choice checkmarks in roomShareModal
+  document.querySelectorAll('.privacy-choice-btn').forEach(b => {
+    const isTarget = isPrivate ? (b.dataset.privacy === 'invite') : (b.dataset.privacy === 'public');
+    const chk = b.querySelector('.privacy-check');
+    if (chk) chk.classList.toggle('hidden', !isTarget);
+  });
+}
+window.updateRoomPrivacyUI = updateRoomPrivacyUI;
+
+function handleRemotePrivacyChange(isPrivate) {
+  updateRoomPrivacyUI(isPrivate);
+  const pDict = I18N[currentLang] || I18N.tr;
+  const msg = isPrivate
+    ? (pDict.room_privacy_private_toast || 'Oda gizliliği "Özel Oda" olarak güncellendi')
+    : (pDict.room_privacy_public_toast || 'Oda gizliliği "Herkese Açık" yapıldı');
+  showToast(msg);
+}
+window.handleRemotePrivacyChange = handleRemotePrivacyChange;
+
 // ==========================================
 // 5.8 ROOM HOST, DJ PERMISSIONS & FRIENDS SYSTEM
 // ==========================================
@@ -5130,12 +6300,26 @@ function fallbackCopyText(text) {
 }
 
 function copyToClipboard(text) {
+  if (!text) return Promise.resolve(false);
+
+  // 1. Native iOS WKWebView messageHandler bridge (Guarantees iOS native pasteboard copy!)
+  if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.copyToClipboard) {
+    try {
+      window.webkit.messageHandlers.copyToClipboard.postMessage(text);
+    } catch (e) {
+      console.warn('Native copyToClipboard error:', e);
+    }
+  }
+
+  // 2. Modern Clipboard API
   if (navigator.clipboard && navigator.clipboard.writeText) {
     return navigator.clipboard.writeText(text).catch(() => {
       fallbackCopyText(text);
       return true;
     });
   }
+
+  // 3. Fallback textarea copy
   fallbackCopyText(text);
   return Promise.resolve(true);
 }
@@ -5786,7 +6970,7 @@ function renderFriendsTab(filterText = '') {
 
   const onlineFriends = state.friends.filter(isOnlineFn);
   const onlineSuffix = dict.online_count_suffix || (currentLang === 'tr' ? 'Çevrimiçi' : 'Online');
-  if (onlineCountDisplay) onlineCountDisplay.textContent = `• ${onlineFriends.length} ${onlineSuffix}`;
+  if (onlineCountDisplay) onlineCountDisplay.textContent = `${onlineFriends.length} ${onlineSuffix}`;
 
   if (listToRender.length === 0) {
     container.innerHTML = `
@@ -6250,9 +7434,11 @@ function switchToProfileTab() {
 
 function renderProfileTab() {
   const savedUser = JSON.parse(localStorage.getItem('miruo_user') || '{}');
-  const customUsername = localStorage.getItem('miruo_custom_username') || savedUser.username || state.username || 'kullanici';
+  const customUsername = savedUser.username || localStorage.getItem('miruo_custom_username') || state.username || 'kullanici';
   const cleanUsername = customUsername.replace(/^@/, '');
   const displayHandle = '@' + cleanUsername;
+  const realFullName = (savedUser.fullName && !savedUser.fullName.startsWith('@') ? savedUser.fullName.trim() : '') ||
+                       (savedUser.name && !savedUser.name.startsWith('@') && savedUser.name !== 'Misafir' ? savedUser.name.trim() : '');
 
   const nameEl = document.getElementById('tabProfileFullName');
   const userEl = document.getElementById('tabProfileUsername');
@@ -6261,25 +7447,38 @@ function renderProfileTab() {
   const providerTitleEl = document.getElementById('tabProfileProviderTitle');
   const emailSubEl = document.getElementById('tabProfileEmailSub');
 
-  if (nameEl) nameEl.textContent = displayHandle;
-  if (userEl) userEl.textContent = '';
+  if (nameEl) {
+    nameEl.textContent = realFullName || displayHandle;
+  }
+  if (userEl) {
+    if (realFullName && realFullName.toLowerCase() !== displayHandle.toLowerCase()) {
+      userEl.textContent = displayHandle;
+      userEl.classList.remove('hidden');
+    } else {
+      userEl.textContent = '';
+      userEl.classList.add('hidden');
+    }
+  }
   if (friendsCountEl) friendsCountEl.textContent = (state.friends || []).length;
 
+  const activeAvatarUrl = savedUser.avatarUrl || state.avatarUrl || '';
+  const activeAvatarBg = savedUser.avatarBg || state.avatarBg || 'from-rose-500 to-[#A64D79]';
+
   if (avatarEl) {
-    if (savedUser.avatarUrl) {
-      avatarEl.innerHTML = `<img src="${savedUser.avatarUrl}" class="w-full h-full object-cover">`;
+    if (activeAvatarUrl) {
+      avatarEl.innerHTML = `<img src="${activeAvatarUrl}" class="w-full h-full object-cover">`;
     } else {
-      avatarEl.textContent = (cleanUsername.charAt(0) || 'M').toUpperCase();
-      avatarEl.className = `w-24 h-24 rounded-full bg-gradient-to-tr ${savedUser.avatarBg || 'from-rose-500 to-[#A64D79]'} flex items-center justify-center text-3xl font-black text-white shadow-2xl overflow-hidden border-2 border-rose-400/40 ring-4 ring-rose-500/10`;
+      avatarEl.textContent = ((realFullName || cleanUsername).charAt(0) || 'M').toUpperCase();
+      avatarEl.className = `w-24 h-24 rounded-full bg-gradient-to-tr ${activeAvatarBg} flex items-center justify-center text-3xl font-black text-white shadow-2xl overflow-hidden border-2 border-rose-400/40 ring-4 ring-rose-500/10`;
     }
   }
 
   const centerAvEl = document.getElementById('tabProfileCenterAvatar');
   if (centerAvEl) {
-    if (savedUser.avatarUrl) {
-      centerAvEl.innerHTML = `<img src="${savedUser.avatarUrl}" class="w-full h-full object-cover">`;
+    if (activeAvatarUrl) {
+      centerAvEl.innerHTML = `<img src="${activeAvatarUrl}" class="w-full h-full object-cover">`;
     } else {
-      centerAvEl.textContent = (cleanUsername.charAt(0) || 'M').toUpperCase();
+      centerAvEl.textContent = ((realFullName || cleanUsername).charAt(0) || 'M').toUpperCase();
     }
   }
 
@@ -7919,7 +9118,18 @@ function renderParticipantsList() {
         if (e && e.stopPropagation) e.stopPropagation();
         const uId = kickBtn.getAttribute('data-user-id');
         const uName = kickBtn.getAttribute('data-username');
-        kickParticipant(uId, uName);
+        if (typeof showMiruoConfirm === 'function') {
+          showMiruoConfirm({
+            title: 'Odadan Çıkar',
+            message: `${uName || 'Bu kullanıcıyı'} odadan çıkarmak istediğinize emin misiniz?`,
+            actionText: 'Evet, Çıkar',
+            onConfirm: () => {
+              kickParticipant(uId, uName);
+            }
+          });
+        } else {
+          kickParticipant(uId, uName);
+        }
       });
     }
 
@@ -8016,7 +9226,7 @@ function renderChatMessage(sender, text, isSelf, timeStr, imageUrl = null, avata
 }
 
 function escapeHtml(str) {
-  return str.replace(/[&<>'"]/g, 
+  return String(str == null ? '' : str).replace(/[&<>'"]/g, 
     tag => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[tag] || tag)
   );
 }
@@ -8126,13 +9336,31 @@ function setAuthMode(signUp) {
     if (dom.authRememberRow) dom.authRememberRow.classList.add('hidden');
     if (dom.authTabSignUp) dom.authTabSignUp.className = "flex-1 py-2.5 rounded-xl text-xs font-bold bg-[#18181B] text-white shadow-sm transition-all text-center cursor-pointer";
     if (dom.authTabSignIn) dom.authTabSignIn.className = "flex-1 py-2.5 rounded-xl text-xs font-semibold text-gray-500 hover:text-gray-900 transition-all text-center cursor-pointer";
-    if (dom.authPasswordInput) dom.authPasswordInput.setAttribute('autocomplete', 'new-password');
+    if (dom.authContactInput) {
+      dom.authContactInput.setAttribute('autocomplete', 'email');
+      dom.authContactInput.setAttribute('name', 'email');
+    }
+    if (dom.authPasswordInput) {
+      dom.authPasswordInput.setAttribute('autocomplete', 'new-password');
+      dom.authPasswordInput.setAttribute('name', 'password');
+    }
+    if (dom.authPasswordConfirmInput) {
+      dom.authPasswordConfirmInput.setAttribute('autocomplete', 'new-password');
+      dom.authPasswordConfirmInput.setAttribute('name', 'confirm-password');
+    }
   } else {
     if (dom.signUpNameField) dom.signUpNameField.classList.add('hidden');
     if (dom.signUpAvatarSection) dom.signUpAvatarSection.classList.add('hidden');
     if (dom.signUpPasswordConfirmField) dom.signUpPasswordConfirmField.classList.add('hidden');
     if (dom.authRememberRow) dom.authRememberRow.classList.remove('hidden');
-    if (dom.authPasswordInput) dom.authPasswordInput.setAttribute('autocomplete', 'current-password');
+    if (dom.authContactInput) {
+      dom.authContactInput.setAttribute('autocomplete', 'username');
+      dom.authContactInput.setAttribute('name', 'username');
+    }
+    if (dom.authPasswordInput) {
+      dom.authPasswordInput.setAttribute('autocomplete', 'current-password');
+      dom.authPasswordInput.setAttribute('name', 'password');
+    }
     if (dom.authTabSignIn) dom.authTabSignIn.className = "flex-1 py-2.5 rounded-xl text-xs font-bold bg-[#18181B] text-white shadow-sm transition-all text-center cursor-pointer";
     if (dom.authTabSignUp) dom.authTabSignUp.className = "flex-1 py-2.5 rounded-xl text-xs font-semibold text-gray-500 hover:text-gray-900 transition-all text-center cursor-pointer";
   }
@@ -8197,7 +9425,7 @@ function loadUserSession() {
   const hash = (window.location.hash || '').replace('#', '');
   const initialView = localStorage.getItem('miruo_initial_view');
   let roomFromUrl = urlParams.get('room');
-  if (!roomFromUrl && window.location.pathname.includes('/oda/')) {
+  if (!roomFromUrl && window.location.pathname && window.location.pathname.includes('/oda/')) {
     roomFromUrl = window.location.pathname.split('/oda/')[1].split('/')[0].split('?')[0];
   }
   if (!roomFromUrl && hash) {
@@ -8267,14 +9495,37 @@ function loadUserSession() {
   }
 
   const customUsername = localStorage.getItem('miruo_custom_username');
-  if (customUsername && user) {
-    const cleanCustom = customUsername.replace(/^@/, '');
-    user.username = cleanCustom;
-    user.name = '@' + cleanCustom;
-    user.fullName = '@' + cleanCustom;
+  if (user) {
+    const cleanEmail = (user.email || '').trim().toLowerCase();
+    if (cleanEmail) {
+      try {
+        const byEmail = JSON.parse(localStorage.getItem('miruo_profiles_by_email') || '{}');
+        const emailProf = byEmail[cleanEmail];
+        if (emailProf) {
+          if (!user.username && emailProf.username) user.username = emailProf.username;
+          if ((!user.fullName || user.fullName.startsWith('@')) && emailProf.fullName) {
+            user.fullName = emailProf.fullName;
+            user.name = emailProf.fullName;
+          }
+          if (!user.avatarUrl && emailProf.avatarUrl) user.avatarUrl = emailProf.avatarUrl;
+          if (!user.avatarBg && emailProf.avatarBg) user.avatarBg = emailProf.avatarBg;
+        }
+      } catch (e) {}
+    }
+    if (customUsername && !user.username) {
+      user.username = customUsername.replace(/^@/, '');
+    }
+    if (user.username) {
+      user.username = user.username.replace(/^@/, '');
+    }
+    if (!user.fullName || user.fullName === '@' + user.username) {
+      if (user.name && !user.name.startsWith('@') && user.name !== 'Misafir') {
+        user.fullName = user.name;
+      }
+    }
   }
   state.userId = user.id || state.userId;
-  state.username = (customUsername || (user && (user.username || user.name)) || 'kullanici').replace(/^@/, '');
+  state.username = ((user && user.username) || customUsername || (user && user.name) || 'kullanici').replace(/^@/, '');
   state.roomId = (roomFromUrl || user.defaultRoom || 'ODA-77').toUpperCase();
   state.avatarUrl = user.avatarUrl || '';
   state.avatarBg = user.avatarBg || '';
@@ -8469,10 +9720,12 @@ function loadUserSession() {
 }
 
 function updateUserUI(user) {
-  const customUsername = localStorage.getItem('miruo_custom_username') || user.username || user.name || state.username || 'kullanici';
+  const customUsername = user.username || localStorage.getItem('miruo_custom_username') || user.name || state.username || 'kullanici';
   const cleanUsername = customUsername.replace(/^@/, '');
   const displayHandle = '@' + cleanUsername;
-  const displayName = displayHandle;
+  const realFullName = (user.fullName && !user.fullName.startsWith('@') ? user.fullName.trim() : '') ||
+                       (user.name && !user.name.startsWith('@') && user.name !== 'Misafir' ? user.name.trim() : '');
+  const displayName = realFullName || displayHandle;
   state.username = cleanUsername;
   state.avatarUrl = user.avatarUrl || state.avatarUrl || '';
   state.avatarBg = user.avatarBg || state.avatarBg || '';
@@ -8490,7 +9743,7 @@ function updateUserUI(user) {
       dom.userProfileBtn.innerHTML = `<img src="${user.avatarUrl}" class="w-full h-full object-cover rounded-full" alt="Avatar">`;
       dom.userProfileBtn.className = 'w-8 h-8 rounded-full overflow-hidden flex items-center justify-center cursor-pointer border border-white/20 shadow-sm';
     } else {
-      dom.userProfileBtn.innerHTML = `<span id="userAvatarHeader">${(user.avatarChar || cleanUsername || 'M').charAt(0).toUpperCase()}</span>`;
+      dom.userProfileBtn.innerHTML = `<span id="userAvatarHeader">${(user.avatarChar || realFullName || cleanUsername || 'M').charAt(0).toUpperCase()}</span>`;
       dom.userProfileBtn.className = `w-8 h-8 rounded-full bg-gradient-to-tr ${user.avatarBg || 'from-rose-500 to-indigo-600'} flex items-center justify-center text-xs font-bold text-white shadow-sm cursor-pointer`;
     }
   }
@@ -8502,7 +9755,7 @@ function updateUserUI(user) {
       mobileNavAvatar.innerHTML = `<img src="${user.avatarUrl}" class="w-full h-full object-cover rounded-full" alt="Avatar">`;
       mobileNavAvatar.className = 'w-6 h-6 rounded-full overflow-hidden flex items-center justify-center text-[10px] font-bold text-white shadow-xs border border-white/20';
     } else {
-      const char = (user.avatarChar || displayName || 'M').charAt(0).toUpperCase();
+      const char = (user.avatarChar || realFullName || cleanUsername || 'M').charAt(0).toUpperCase();
       mobileNavAvatar.innerHTML = char;
       mobileNavAvatar.className = `w-6 h-6 rounded-full bg-gradient-to-tr ${user.avatarBg || 'from-rose-500 to-indigo-600'} flex items-center justify-center text-[10px] font-bold text-white shadow-xs overflow-hidden border border-white/20`;
     }
@@ -8513,7 +9766,7 @@ function updateUserUI(user) {
       dom.editAvatarPreview.innerHTML = `<img src="${user.avatarUrl}" class="w-full h-full object-cover rounded-full" alt="Preview">`;
       dom.editAvatarPreview.className = 'w-22 h-22 rounded-2xl overflow-hidden flex items-center justify-center border-2 border-white/20 shadow-md';
     } else {
-      dom.editAvatarPreview.innerHTML = (user.avatarChar || displayName || 'M').charAt(0).toUpperCase();
+      dom.editAvatarPreview.innerHTML = (user.avatarChar || realFullName || cleanUsername || 'M').charAt(0).toUpperCase();
       dom.editAvatarPreview.className = `w-22 h-22 rounded-2xl bg-gradient-to-tr ${user.avatarBg || 'from-rose-500 to-indigo-600'} flex items-center justify-center text-3xl font-bold text-white border-2 border-white/20 shadow-md`;
     }
   }
@@ -8524,14 +9777,14 @@ function updateUserUI(user) {
     if (user.avatarUrl) {
       dom.selfPipAvatarInitial.innerHTML = `<img src="${user.avatarUrl}" class="w-full h-full object-cover rounded-full" alt="Avatar">`;
     } else {
-      dom.selfPipAvatarInitial.textContent = (user.avatarChar || displayName || 'M').charAt(0).toUpperCase();
+      dom.selfPipAvatarInitial.textContent = (user.avatarChar || realFullName || cleanUsername || 'M').charAt(0).toUpperCase();
     }
   }
   if (dom.nowPlayingAvatar) {
     if (user.avatarUrl) {
       dom.nowPlayingAvatar.innerHTML = `<img src="${user.avatarUrl}" class="w-full h-full object-cover rounded-full" alt="Avatar">`;
     } else {
-      dom.nowPlayingAvatar.innerHTML = (user.avatarChar || displayName || 'M').charAt(0).toUpperCase();
+      dom.nowPlayingAvatar.innerHTML = (user.avatarChar || realFullName || cleanUsername || 'M').charAt(0).toUpperCase();
     }
   }
   const stageAvatarCircle = document.getElementById('stageAvatarCircle');
@@ -8539,22 +9792,50 @@ function updateUserUI(user) {
     if (user.avatarUrl) {
       stageAvatarCircle.innerHTML = `<img src="${user.avatarUrl}" class="w-full h-full object-cover rounded-full" alt="Avatar">`;
     } else {
-      stageAvatarCircle.innerHTML = (user.avatarChar || displayName || 'M').charAt(0).toUpperCase();
+      stageAvatarCircle.innerHTML = (user.avatarChar || realFullName || cleanUsername || 'M').charAt(0).toUpperCase();
     }
   }
 
-  // Update Username Display Everywhere
+  // Update Username & Full Name Display Everywhere
   if (dom.tabMyFriendCodeDisplay) dom.tabMyFriendCodeDisplay.textContent = displayHandle;
   if (dom.myFriendCodeDisplay) dom.myFriendCodeDisplay.textContent = displayHandle;
-  if (dom.editProfileFullNameInput) dom.editProfileFullNameInput.value = user.fullName || user.name || '';
+  if (dom.editProfileFullNameInput) dom.editProfileFullNameInput.value = realFullName || cleanUsername;
   if (dom.editProfileUsernameInput) dom.editProfileUsernameInput.value = cleanUsername;
   if (dom.editProfileNameInput) dom.editProfileNameInput.value = cleanUsername;
-  if (dom.profileEmailDisplay) dom.profileEmailDisplay.textContent = user.email || 'user@miruo.app';
+  if (dom.profileEmailDisplay) dom.profileEmailDisplay.textContent = user.email || `${cleanUsername.toLowerCase()}@miruo.app`;
+  const tabEmailSub = document.getElementById('tabProfileEmailSub');
+  if (tabEmailSub && user.email) tabEmailSub.textContent = user.email;
   if (dom.currentRoomDisplay) dom.currentRoomDisplay.textContent = state.roomId;
+  if (typeof renderProfileTab === 'function') renderProfileTab();
 }
 
+function confirmAndLogoutUser() {
+  const dict = I18N[currentLang] || I18N.tr;
+  if (typeof showMiruoConfirm === 'function') {
+    showMiruoConfirm({
+      title: dict.confirm_logout_title || 'Çıkış Yap',
+      message: dict.confirm_logout_msg || 'Hesabınızdan çıkış yapmak istediğinize emin misiniz?',
+      actionText: dict.confirm_logout_action || 'Evet, Çıkış Yap',
+      onConfirm: () => {
+        logoutUser();
+      }
+    });
+  } else if (window.confirm(dict.confirm_logout_msg || 'Hesabınızdan çıkış yapmak istediğinize emin misiniz?')) {
+    logoutUser();
+  }
+}
+window.confirmAndLogoutUser = confirmAndLogoutUser;
+
 async function logoutUser() {
+  try {
+    const currentSaved = JSON.parse(localStorage.getItem('miruo_user') || 'null');
+    if (currentSaved) {
+      persistUserToLocalRegistry(currentSaved);
+    }
+  } catch (e) {}
+
   localStorage.removeItem('miruo_user');
+  localStorage.removeItem('miruo_custom_username');
   sessionStorage.clear();
 
   if (supabaseClient && supabaseClient.auth) {
@@ -8569,6 +9850,7 @@ async function logoutUser() {
   state.username = null;
   state.avatarUrl = '';
   state.avatarBg = '';
+  window.pendingAvatarUrl = '';
 
   // Close profile modal if open
   if (dom.profileEditModal) {
@@ -8601,6 +9883,7 @@ function minimizeRoomToMiniPlayer() {
   state.isMiniPlayer = true;
   document.body.classList.add('has-mini-player');
   document.body.classList.remove('in-room-mode');
+  document.documentElement.classList.remove('in-room-mode');
 
   // Keep roomWorkspaceSection in DOM for video playback, but CSS collapses everything except stageContainer
   if (dom.roomWorkspaceSection) {
@@ -8651,6 +9934,7 @@ function restoreRoomFromMiniPlayer() {
   state.isMiniPlayer = false;
   document.body.classList.remove('has-mini-player');
   document.body.classList.add('in-room-mode');
+  document.documentElement.classList.add('in-room-mode');
 
   const mainWorkspace = document.querySelector('main');
   if (mainWorkspace) {
@@ -8830,7 +10114,92 @@ function initFsChatDragAndResize() {
 }
 window.initFsChatDragAndResize = initFsChatDragAndResize;
 
+// ==========================================
+// MOBILE KEYBOARD PROTECTION & ANTI-SCROLL SYSTEM
+// "odadayken klavyeye basınca aşağı kaymasın ekran, dik tam ekranken bunu yapıyor düzelt"
+// ==========================================
+function initMobileKeyboardProtection() {
+  const lockViewportAtZero = () => {
+    const isRoomOrFs = document.body.classList.contains('in-room-mode') || 
+                       document.body.classList.contains('stage-is-fullscreen');
+    if (!isRoomOrFs) return;
+    if (window.scrollY !== 0 || window.scrollX !== 0) {
+      window.scrollTo(0, 0);
+    }
+    if (document.body.scrollTop !== 0) document.body.scrollTop = 0;
+    if (document.documentElement.scrollTop !== 0) document.documentElement.scrollTop = 0;
+  };
+
+  window.addEventListener('scroll', lockViewportAtZero, { passive: true });
+
+  document.addEventListener('focusin', (e) => {
+    const isRoomOrFs = document.body.classList.contains('in-room-mode') || 
+                       document.body.classList.contains('stage-is-fullscreen');
+    if (!isRoomOrFs) return;
+    if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA')) {
+      requestAnimationFrame(lockViewportAtZero);
+      setTimeout(lockViewportAtZero, 40);
+      setTimeout(lockViewportAtZero, 120);
+      setTimeout(lockViewportAtZero, 300);
+    }
+  });
+
+  document.addEventListener('focusout', (e) => {
+    const isRoomOrFs = document.body.classList.contains('in-room-mode') || 
+                       document.body.classList.contains('stage-is-fullscreen');
+    if (!isRoomOrFs) return;
+    setTimeout(lockViewportAtZero, 100);
+    const fsChat = dom.fsChatOverlay || document.getElementById('fsChatOverlay');
+    if (fsChat && window.innerHeight > window.innerWidth) {
+      fsChat.style.removeProperty('bottom');
+      fsChat.style.removeProperty('max-height');
+    }
+  });
+
+  if (window.visualViewport) {
+    const onViewportChange = () => {
+      const isRoomOrFs = document.body.classList.contains('in-room-mode') || 
+                         document.body.classList.contains('stage-is-fullscreen');
+      if (!isRoomOrFs) return;
+
+      lockViewportAtZero();
+
+      const vv = window.visualViewport;
+      const isPortrait = window.innerHeight > window.innerWidth;
+      const keyboardHeight = Math.max(0, window.innerHeight - vv.height - (vv.offsetTop || 0));
+      const isKeyboardOpen = keyboardHeight > 70;
+
+      // 1. Portrait Fullscreen Live Chat: Lift chat overlay bottom directly above virtual keyboard
+      const fsChat = dom.fsChatOverlay || document.getElementById('fsChatOverlay');
+      const isFs = isStageFullscreen();
+      if (fsChat && !fsChat.classList.contains('hidden') && isPortrait && isFs) {
+        if (isKeyboardOpen) {
+          fsChat.style.bottom = `${keyboardHeight}px`;
+          fsChat.style.maxHeight = `${Math.min(vv.height - 100, window.innerHeight * 0.50)}px`;
+        } else {
+          fsChat.style.removeProperty('bottom');
+          fsChat.style.removeProperty('max-height');
+        }
+      }
+
+      // 2. Portrait In-Room View: Contract body height to visualViewport to avoid scrolling
+      if (isPortrait && !isFs && document.body.classList.contains('in-room-mode')) {
+        if (isKeyboardOpen) {
+          document.body.style.height = `${vv.height}px`;
+        } else {
+          document.body.style.removeProperty('height');
+        }
+      }
+    };
+
+    window.visualViewport.addEventListener('resize', onViewportChange);
+    window.visualViewport.addEventListener('scroll', lockViewportAtZero);
+  }
+}
+window.initMobileKeyboardProtection = initMobileKeyboardProtection;
+
 function initEvents() {
+  initMobileKeyboardProtection();
   // Welcome / Onboarding Avatar Selection
   document.querySelectorAll('.welcome-avatar-btn').forEach(btn => {
     btn.addEventListener('click', () => {
@@ -9339,17 +10708,26 @@ function initEvents() {
       } catch (err) {
         console.warn('[Miruo] Supabase resetPasswordForEmail info:', err);
       }
+      try {
+        await supabaseClient.auth.signInWithOtp({
+          email: emailVal,
+          options: {
+            shouldCreateUser: false
+          }
+        });
+      } catch (err) {
+        console.warn('[Miruo] Supabase signInWithOtp info:', err);
+      }
     }
 
     if (dom.resetSendCodeBtn) {
       dom.resetSendCodeBtn.disabled = false;
-      dom.resetSendCodeBtn.innerHTML = '<span>6 Haneli Kodu Gönder</span> <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12h14"/><path d="M12 5l7 7-7 7"/></svg>';
+      dom.resetSendCodeBtn.innerHTML = '<span>Kodu Gönder</span> <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12h14"/><path d="M12 5l7 7-7 7"/></svg>';
     }
 
-    showToast(`6 Haneli Kurtarma Kodu: [ ${generatedCode} ] iletildi!`);
+    showToast('Kurtarma kodu e-posta adresinize gönderildi.');
     setResetStep(2);
     startResetTimer();
-    showResetAlert(2, `Test / Hızlı Kod: ${generatedCode} (Kutulara yapıştırabilir veya yazabilirsiniz)`, true);
   }
 
   if (dom.resetSendCodeBtn) {
@@ -9369,10 +10747,22 @@ function initEvents() {
     });
   }
 
-  // 6 OTP Digit Inputs Management
+  // OTP Digit Inputs Management (Full iOS one-time-code AutoFill support)
   otpInputs.forEach((inp, idx) => {
     inp.addEventListener('input', (e) => {
       const val = e.target.value.replace(/[^0-9]/g, '');
+      if (val.length > 1) {
+        // iOS Safari / WKWebView one-time-code autofill filled multiple digits
+        for (let i = 0; i < otpInputs.length; i++) {
+          otpInputs[i].value = val[i] || '';
+        }
+        const lastIdx = Math.min(val.length, otpInputs.length) - 1;
+        if (lastIdx >= 0) otpInputs[lastIdx].focus();
+        if (val.length >= 6) {
+          setTimeout(handleVerifyOtp, 150);
+        }
+        return;
+      }
       e.target.value = val ? val[0] : '';
       if (val && idx < otpInputs.length - 1) {
         otpInputs[idx + 1].focus();
@@ -9408,7 +10798,7 @@ function initEvents() {
     hideResetAlert(2);
     const enteredCode = otpInputs.map(inp => inp.value).join('');
     if (enteredCode.length < 6) {
-      showResetAlert(2, 'Lütfen 6 haneli kodun tamamını girin.');
+      showResetAlert(2, 'Lütfen doğrulama kodunu eksiksiz girin.');
       return;
     }
 
@@ -9567,8 +10957,22 @@ function initEvents() {
       dom.resetSaveNewPasswordBtn.innerHTML = '<span>Şifreyi Güncelle & Giriş Yap</span>';
     }
 
-    showToast('Şifreniz başarıyla güncellendi!');
-    setResetStep(4);
+    closeResetModal();
+    if (dom.authModal) {
+      isSignUpMode = false;
+      if (typeof setAuthMode === 'function') {
+        setAuthMode(false);
+      }
+      if (dom.authContactInput) {
+        dom.authContactInput.value = resetState.email;
+      }
+      if (dom.authPasswordInput) {
+        dom.authPasswordInput.value = '';
+        dom.authPasswordInput.focus();
+      }
+      dom.authModal.classList.remove('hidden');
+    }
+    showToast('✓ Şifreniz başarıyla güncellendi! Yeni şifrenizle giriş yapabilirsiniz.');
   }
 
   if (dom.resetSaveNewPasswordBtn) {
@@ -9678,7 +11082,7 @@ function initEvents() {
       startPhoneOtpTimer();
 
       const hint = data.code ? ` (Test Kodu: ${data.code})` : '';
-      showAuthAlert(`${fullPhone} numarasına 6 haneli onay kodu iletildi!${hint}`, true);
+      showAuthAlert(`${fullPhone} numarasına onay kodu iletildi!${hint}`, true);
 
       const digitInputs = document.querySelectorAll('.phone-digit-box');
       if (digitInputs.length > 0) {
@@ -9700,7 +11104,7 @@ function initEvents() {
     const code = digitInputs.map(d => d.value.trim()).join('');
 
     if (code.length !== 6) {
-      showAuthAlert("Lütfen 6 haneli onay kodunu eksiksiz girin.");
+      showAuthAlert("Lütfen onay kodunu eksiksiz girin.");
       const firstEmpty = digitInputs.find(d => !d.value.trim());
       if (firstEmpty) firstEmpty.focus();
       return;
@@ -9738,7 +11142,7 @@ function initEvents() {
       }
 
       if (!resp.ok || !data.success) {
-        showAuthAlert(data.message || "Girdiğiniz 6 haneli onay kodu hatalı veya süresi dolmuş.");
+        showAuthAlert(data.message || "Girdiğiniz onay kodu hatalı veya süresi dolmuş.");
         return;
       }
 
@@ -9881,7 +11285,7 @@ function initEvents() {
     if (dom.signUpAvatarSection) dom.signUpAvatarSection.classList.add('hidden');
 
     if (dom.emailOtpSentNotice) {
-      dom.emailOtpSentNotice.textContent = `${pendingReg.email} adresinize 6 haneli doğrulama kodu gönderildi.`;
+      dom.emailOtpSentNotice.textContent = `${pendingReg.email} adresinize doğrulama kodu gönderildi.`;
     }
 
     startEmailOtpTimer();
@@ -9905,7 +11309,7 @@ function initEvents() {
     const enteredCode = digitInputs.map(d => d.value.trim()).join('');
 
     if (enteredCode.length !== 6) {
-      showAuthAlert("Lütfen 6 haneli doğrulama kodunu eksiksiz girin.");
+      showAuthAlert("Lütfen doğrulama kodunu eksiksiz girin.");
       const firstEmpty = digitInputs.find(d => !d.value.trim());
       if (firstEmpty) firstEmpty.focus();
       return;
@@ -9919,7 +11323,7 @@ function initEvents() {
     }
 
     if (enteredCode !== pending.code) {
-      showAuthAlert("Girdiğiniz 6 haneli kod hatalı! Lütfen kontrol edip tekrar deneyin.");
+      showAuthAlert("Girdiğiniz kod hatalı! Lütfen kontrol edip tekrar deneyin.");
       return;
     }
 
@@ -9957,7 +11361,8 @@ function initEvents() {
           username: pending.username,
           email: pending.email,
           password: pending.password,
-          avatarUrl: pending.avatarUrl
+          avatarUrl: pending.avatarUrl || '',
+          avatarBg: selectedSignUpAvatarBg
         })
       });
     } catch (e) {}
@@ -9965,13 +11370,16 @@ function initEvents() {
     // Save account to local registered users registry
     try {
       const regList = JSON.parse(localStorage.getItem('miruo_registered_users') || '[]');
+      const cleanUName = pending.username.replace(/^@/, '');
       const exists = regList.some(u => u.email.toLowerCase() === pending.email.toLowerCase());
       if (!exists) {
         regList.push({
           email: pending.email.toLowerCase(),
-          username: pending.username,
-          fullName: pending.fullName,
-          password: pending.password
+          username: cleanUName,
+          fullName: pending.fullName || cleanUName,
+          password: pending.password,
+          avatarUrl: pending.avatarUrl || '',
+          avatarBg: selectedSignUpAvatarBg
         });
         localStorage.setItem('miruo_registered_users', JSON.stringify(regList));
       }
@@ -10169,6 +11577,7 @@ function initEvents() {
 
         const isEmail = cleanContact.includes('@');
         const registeredUsers = JSON.parse(localStorage.getItem('miruo_registered_users') || '[]');
+        const byEmailMap = JSON.parse(localStorage.getItem('miruo_profiles_by_email') || '{}');
 
         // Check local registered accounts by email or clean username
         let localMatch = registeredUsers.find(u => {
@@ -10188,9 +11597,10 @@ function initEvents() {
               id: storedUser.id,
               email: storedUser.email || '',
               username: storedUser.username || cleanContact,
-              fullName: '@' + (storedUser.username || cleanContact),
+              fullName: (storedUser.fullName && !storedUser.fullName.startsWith('@')) ? storedUser.fullName : (storedUser.name || storedUser.username || cleanContact),
               password: passwordVal,
-              avatarUrl: storedUser.avatarUrl || ''
+              avatarUrl: storedUser.avatarUrl || '',
+              avatarBg: storedUser.avatarBg || ''
             };
           }
         }
@@ -10228,7 +11638,8 @@ function initEvents() {
                 email: supaAuth.user.email,
                 fullName: supaAuth.user.user_metadata?.full_name || supaAuth.user.user_metadata?.name,
                 username: supaAuth.user.user_metadata?.username,
-                avatarUrl: supaAuth.user.user_metadata?.avatar_url
+                avatarUrl: supaAuth.user.user_metadata?.avatar_url,
+                avatarBg: supaAuth.user.user_metadata?.avatar_bg
               };
             }
           } catch (e) {}
@@ -10243,7 +11654,8 @@ function initEvents() {
               email: localMatch.email,
               fullName: localMatch.fullName,
               username: localMatch.username,
-              avatarUrl: localMatch.avatarUrl
+              avatarUrl: localMatch.avatarUrl,
+              avatarBg: localMatch.avatarBg
             };
           } else {
             dom.authSubmitBtn.innerText = prevBtnText;
@@ -10261,36 +11673,52 @@ function initEvents() {
           return;
         }
 
-        // Successfully authenticated: always preserve exact saved custom username
-        const customSaved = localStorage.getItem('miruo_custom_username');
-        const finalUsername = (userData.username || (localMatch && localMatch.username) || customSaved || cleanContact.split('@')[0]).replace(/^@/, '');
+        dom.authSubmitBtn.innerText = prevBtnText;
+        dom.authSubmitBtn.disabled = false;
+
+        // Successfully authenticated: always preserve exact saved custom username, real full name, email, and avatar
+        const resolvedEmail = (userData.email || (localMatch && localMatch.email) || (isEmail ? cleanContact : '')).toLowerCase();
+        const emailProf = (resolvedEmail && byEmailMap[resolvedEmail]) || {};
+        const prevSavedUser = JSON.parse(localStorage.getItem('miruo_user') || '{}');
+
+        const finalUsername = (
+          emailProf.username ||
+          (localMatch && localMatch.username) ||
+          userData.username ||
+          localStorage.getItem('miruo_custom_username') ||
+          cleanContact.split('@')[0]
+        ).replace(/^@/, '');
+
+        const finalFullName =
+          (emailProf.fullName && !emailProf.fullName.startsWith('@') ? emailProf.fullName : '') ||
+          (localMatch && localMatch.fullName && !localMatch.fullName.startsWith('@') ? localMatch.fullName : '') ||
+          (userData.fullName && !userData.fullName.startsWith('@') ? userData.fullName : '') ||
+          (prevSavedUser.fullName && !prevSavedUser.fullName.startsWith('@') ? prevSavedUser.fullName : '') ||
+          finalUsername;
+
+        const finalAvatarUrl = emailProf.avatarUrl || (localMatch && localMatch.avatarUrl) || userData.avatarUrl || prevSavedUser.avatarUrl || '';
+        const finalAvatarBg = emailProf.avatarBg || (localMatch && localMatch.avatarBg) || userData.avatarBg || prevSavedUser.avatarBg || 'from-rose-500 to-[#A64D79]';
+
         const user = {
-          id: userData.id || (localMatch && localMatch.id) || ('user_' + Math.random().toString(36).substring(2, 8)),
-          name: '@' + finalUsername,
-          fullName: '@' + finalUsername,
+          id: userData.id || (localMatch && localMatch.id) || emailProf.id || ('user_' + Math.random().toString(36).substring(2, 8)),
+          name: finalFullName,
+          fullName: finalFullName,
           username: finalUsername,
-          email: userData.email || (localMatch && localMatch.email) || (isEmail ? cleanContact : ''),
-          avatarUrl: userData.avatarUrl || (localMatch && localMatch.avatarUrl) || '',
-          avatarChar: finalUsername.charAt(0).toUpperCase()
+          email: resolvedEmail || userData.email || '',
+          password: passwordVal,
+          avatarUrl: finalAvatarUrl,
+          avatarBg: finalAvatarBg,
+          avatarChar: (finalFullName || finalUsername).charAt(0).toUpperCase()
         };
 
         localStorage.setItem('miruo_user', JSON.stringify(user));
         localStorage.setItem('miruo_custom_username', finalUsername);
+        persistUserToLocalRegistry(user);
         state.userId = user.id;
         state.username = finalUsername;
         state.avatarUrl = user.avatarUrl;
+        state.avatarBg = user.avatarBg;
         syncUserProfileToSupabase(user);
-
-        // Update local registered user record to sync final username
-        try {
-          const regUsers = JSON.parse(localStorage.getItem('miruo_registered_users') || '[]');
-          const idx = regUsers.findIndex(u => (u.id && u.id === user.id) || (u.email && user.email && u.email.toLowerCase() === user.email.toLowerCase()) || (u.username && u.username.toLowerCase() === finalUsername.toLowerCase()));
-          if (idx !== -1) {
-            regUsers[idx].username = finalUsername;
-            regUsers[idx].fullName = '@' + finalUsername;
-            localStorage.setItem('miruo_registered_users', JSON.stringify(regUsers));
-          }
-        } catch (e) {}
 
         showAuthAlert("Giriş başarılı! Hoş geldin.", true);
         setTimeout(() => {
@@ -10369,7 +11797,7 @@ function initEvents() {
     live: { title: 'Canlı Yayın', url: 'https://m.youtube.com/live' },
     playlist: { title: 'Playlist', url: 'https://music.youtube.com' },
     drive: { title: 'Google Drive', url: 'https://drive.google.com' },
-    photos: { title: 'Google Photos', url: 'https://photos.google.com' },
+    photos: { title: 'Galeri', url: '' },
     web: { title: 'Web Tarayıcı', url: 'https://www.google.com' },
     dj: { title: 'Miruo Müzik', url: 'https://m.youtube.com/results?search_query=remix+party+live+music' },
     karaoke: { title: 'Karaoke', url: 'https://m.youtube.com/results?search_query=karaoke+turkce' },
@@ -10378,20 +11806,56 @@ function initEvents() {
   };
 
   function launchPlatform(providerKey) {
+    if (providerKey === 'photos' || providerKey === 'gallery') {
+      triggerRoomGalleryPicker();
+      return;
+    }
     const config = PLATFORM_CONFIGS[providerKey] || { title: providerKey.toUpperCase(), url: 'https://www.google.com' };
+    const accounts = typeof getConnectedAccounts === 'function' ? getConnectedAccounts() : {};
+    const conn = accounts[providerKey] || {};
+    const isConn = conn.connected && conn.account;
+
+    let targetUrl = config.url;
+    if (isConn) {
+      if (providerKey === 'youtube') targetUrl = 'https://m.youtube.com/feed/subscriptions';
+      else if (providerKey === 'netflix') targetUrl = 'https://www.netflix.com/browse';
+      else if (providerKey === 'prime') targetUrl = 'https://www.primevideo.com/storefront/home';
+      else if (providerKey === 'disney') targetUrl = 'https://www.disneyplus.com/home';
+      state.connectedAccount = conn.account;
+      if (typeof updateNowPlayingAccountBadge === 'function') updateNowPlayingAccountBadge(conn.account);
+    }
     
+    const hasActiveVideo = !!(state.isInRoom && state.roomId && state.currentVideoId && dom.roomWorkspaceSection && !dom.roomWorkspaceSection.classList.contains('hidden'));
+
+    if (providerKey === 'likes') {
+      const likes = (typeof getLikedVideos === 'function') ? getLikedVideos() : [];
+      if (likes.length > 0 && typeof openLikedVideosModal === 'function') {
+        openLikedVideosModal();
+        return;
+      } else {
+        showToast('Henüz beğenilen video yok. Bir video izlerken kalp butonuna basarak listenize ekleyebilirsiniz!');
+        return;
+      }
+    }
+
     // In iOS App: presents full-featured native in-app browser with top search bar!
     if (window.webkit && window.webkit.messageHandlers && (window.webkit.messageHandlers.openPlatform || window.webkit.messageHandlers.openYouTube)) {
       if (window.webkit.messageHandlers.openPlatform) {
         window.webkit.messageHandlers.openPlatform.postMessage({
           provider: providerKey,
-          url: config.url,
+          url: targetUrl,
           title: config.title,
-          lang: currentLang
+          lang: currentLang,
+          account: isConn ? conn.account : '',
+          hasActiveVideo: hasActiveVideo
         });
         return;
       } else if (window.webkit.messageHandlers.openYouTube && providerKey === 'youtube') {
-        window.webkit.messageHandlers.openYouTube.postMessage({ lang: currentLang });
+        window.webkit.messageHandlers.openYouTube.postMessage({ 
+          lang: currentLang,
+          account: isConn ? conn.account : '',
+          hasActiveVideo: hasActiveVideo
+        });
         return;
       }
     }
@@ -10403,9 +11867,24 @@ function initEvents() {
     }
 
     // For other platforms on web: open and join room
-    const title = `${config.title} Odası`;
+    const title = isConn ? `${config.title} Odası (${conn.account})` : `${config.title} Odası`;
     createAndJoinRoom(title, false, config.title);
-    showToast(`${config.title} odası açıldı!`);
+    if (isConn) {
+      showToast(`${config.title} (${conn.account}) hesabı üzerinden oda açıldı!`);
+    } else {
+      showToast(`${config.title} odası açıldı!`);
+      if ((providerKey === 'netflix' || providerKey === 'prime' || providerKey === 'disney') && dom.drmGuideModal) {
+        setTimeout(() => {
+          dom.drmGuideModal.classList.remove('hidden');
+        }, 600);
+      }
+    }
+
+    if (providerKey === 'drive' || providerKey === 'photos' || providerKey === 'web' || providerKey === 'kick' || providerKey === 'twitch') {
+      setTimeout(() => {
+        loadWebStream(targetUrl, config.title, config.title);
+      }, 500);
+    }
   }
 
   // YouTube Direct Interface Launch
@@ -10698,27 +12177,31 @@ function initEvents() {
     const count = state.roomQueue ? state.roomQueue.length : 0;
     if (dom.roomQueueCount) dom.roomQueueCount.textContent = count;
 
-    if (dom.roomQueueList) {
+    const qModal = dom.roomQueueModal || document.getElementById('roomQueueModal');
+    const qList = dom.roomQueueList || document.getElementById('roomQueueList');
+
+    if (qList) {
       const dictQueue = I18N[currentLang] || I18N.tr;
       if (!state.roomQueue || state.roomQueue.length === 0) {
         const emptyMsg = dictQueue.queue_empty || (currentLang === 'tr' ? 'Sırada bekleyen video yok' : 'No videos waiting in queue');
-        dom.roomQueueList.innerHTML = `<div class="py-8 text-center text-xs text-gray-400" data-i18n="queue_empty">${emptyMsg}</div>`;
+        qList.innerHTML = `<div class="py-8 text-center text-xs text-gray-400" data-i18n="queue_empty">${emptyMsg}</div>`;
       } else {
         const canManage = state.isHost || state.userRole === 'owner' || state.userRole === 'admin' || state.userRole === 'dj' || state.controlMode === 'everyone' || state.hasDjPermission;
-        dom.roomQueueList.innerHTML = state.roomQueue.map((item, idx) => {
+        qList.innerHTML = state.roomQueue.map((item, idx) => {
           const addedByLabel = currentLang === 'en'
-            ? `Added by ${escapeHtml(item.addedBy)}`
+            ? `Added by ${escapeHtml(item.addedBy || 'Sen')}`
             : (currentLang === 'de'
-              ? `Hinzugefügt von ${escapeHtml(item.addedBy)}`
-              : `${escapeHtml(item.addedBy)} ekledi`);
+              ? `Hinzugefügt von ${escapeHtml(item.addedBy || 'Sen')}`
+              : `${escapeHtml(item.addedBy || 'Sen')} ekledi`);
           const playTitle = dictQueue.action_play_now || (currentLang === 'tr' ? 'Şimdi Oynat' : 'Play Now');
           const removeTitle = dictQueue.kick_btn || (currentLang === 'tr' ? 'Kaldır' : 'Remove');
+          const thumbUrl = item.thumb || item.thumbnail || ((item.id && item.id.length === 11) ? `https://i.ytimg.com/vi/${item.id}/hqdefault.jpg` : 'logo.png');
           return `
           <div class="flex items-center justify-between p-2.5 rounded-2xl bg-white/5 border border-white/10 gap-3 group">
             <span class="text-xs font-mono font-bold text-purple-400 w-4">${idx + 1}</span>
-            <img src="${escapeHtml(item.thumb)}" class="w-14 h-9 rounded-lg object-cover bg-black flex-shrink-0" alt="Thumb">
+            <img src="${escapeHtml(thumbUrl)}" class="w-14 h-9 rounded-lg object-cover bg-black flex-shrink-0" alt="Thumb" onerror="this.src='logo.png'">
             <div class="flex-1 min-w-0">
-              <h5 class="text-xs font-bold text-white truncate">${escapeHtml(item.title)}</h5>
+              <h5 class="text-xs font-bold text-white truncate">${escapeHtml(item.title || 'Video')}</h5>
               <span class="text-[10px] text-gray-400">${addedByLabel}</span>
             </div>
             ${canManage ? `
@@ -10735,7 +12218,7 @@ function initEvents() {
         `;
         }).join('');
 
-        dom.roomQueueList.querySelectorAll('.queue-play-now-btn').forEach(btn => {
+        qList.querySelectorAll('.queue-play-now-btn').forEach(btn => {
           btn.addEventListener('click', (e) => {
             e.stopPropagation();
             const idx = parseInt(btn.dataset.idx, 10);
@@ -10745,12 +12228,16 @@ function initEvents() {
               sendP2PData('queue_update', { queue: state.roomQueue });
               sendSignal({ type: 'queue-update', queue: state.roomQueue });
               selectAndPlayYoutubeVideo(item.id, item.title);
-              if (dom.roomQueueModal) dom.roomQueueModal.classList.add('hidden');
+              if (qModal) {
+                qModal.classList.add('hidden');
+                qModal.classList.remove('flex');
+                qModal.style.removeProperty('display');
+              }
             }
           });
         });
 
-        dom.roomQueueList.querySelectorAll('.queue-remove-btn').forEach(btn => {
+        qList.querySelectorAll('.queue-remove-btn').forEach(btn => {
           btn.addEventListener('click', (e) => {
             e.stopPropagation();
             const idx = parseInt(btn.dataset.idx, 10);
@@ -10767,6 +12254,23 @@ function initEvents() {
     }
   }
 
+  function seekRelative(seconds) {
+    const target = Math.max(0, Math.min((state.currentTime || 0) + seconds, state.duration || 99999));
+    state.currentTime = target;
+    if (state.activeMode === 'youtube') {
+      sendYtCommand('seekTo', [target, true]);
+    } else if (dom.nativeVideoPlayer) {
+      dom.nativeVideoPlayer.currentTime = target;
+    }
+    if (dom.seekSlider && state.duration > 0) {
+      dom.seekSlider.value = (target / state.duration) * 100;
+    }
+    if (!state.isRemoteAction) {
+      sendP2PData('sync', { action: 'seek', time: target, sentAt: Date.now() });
+    }
+  }
+  window.seekRelative = seekRelative;
+
   function handleNextTrack() {
     if (state.roomQueue && state.roomQueue.length > 0) {
       const nextItem = state.roomQueue.shift();
@@ -10779,8 +12283,9 @@ function initEvents() {
       renderChatMessage('SİSTEM', ann, true);
       sendP2PData('chat', { sender: 'SİSTEM', text: ann, time: getNowTimeString() });
     } else {
-      showToast('Sırada video yok. Yeni video seçin');
-      openVideoChooser();
+      // Direct video forward advance (+15s)
+      seekRelative(15);
+      showToast('15 sn ilerletildi');
     }
   }
 
@@ -10799,27 +12304,37 @@ function initEvents() {
         renderChatMessage('SİSTEM', ann, true);
         sendP2PData('chat', { sender: 'SİSTEM', text: ann, time: getNowTimeString() });
       } else {
-        const roomTitle = title ? `${title.substring(0, 24)} Partisi` : 'YouTube Partisi';
-        createAndJoinRoom(roomTitle, false, 'YouTube', cleanYtId);
+        const roomTitle = title ? `${title.substring(0, 24)} Partisi` : 'İzleme Odası';
+        createAndJoinRoom(roomTitle, state.isPrivateRoom, 'YouTube', cleanYtId);
         showToast(`"${title}" ile oda başlatıldı!`);
       }
     } else {
       const platformName = provider || 'Web';
       const playNonYtContent = () => {
+        const isDirectStream = (
+          /\.(mp4|webm|m3u8|mov|mkv)(\?.*)?$/i.test(videoIdOrUrl) ||
+          videoIdOrUrl.includes('.m3u8') ||
+          videoIdOrUrl.includes('.mp4') ||
+          videoIdOrUrl.includes('/hls/') ||
+          videoIdOrUrl.includes('/stream/') ||
+          videoIdOrUrl.includes('googlevideo.com')
+        );
         if (platformName.toLowerCase().includes('twitch') || videoIdOrUrl.includes('twitch.tv')) {
           loadTwitchStream(videoIdOrUrl, title);
-        } else if (/\.(mp4|webm|m3u8|mov)(\?.*)?$/i.test(videoIdOrUrl)) {
+        } else if (isDirectStream) {
           loadDirectVideo(videoIdOrUrl, title);
         } else {
           loadWebStream(videoIdOrUrl, title, platformName);
         }
+        sendP2PData('video_changed', { user: state.username, title: title || platformName, videoId: videoIdOrUrl });
+        sendSignal({ type: 'video-changed', user: state.username, title: title || platformName, videoId: videoIdOrUrl });
       };
 
       if (state.roomId && dom.roomWorkspaceSection && !dom.roomWorkspaceSection.classList.contains('hidden')) {
         playNonYtContent();
       } else {
         const roomTitle = title ? `${title.substring(0, 24)} Partisi` : `${platformName} Partisi`;
-        createAndJoinRoom(roomTitle, false, platformName);
+        createAndJoinRoom(roomTitle, state.isPrivateRoom, platformName);
         setTimeout(playNonYtContent, 500);
       }
     }
@@ -10833,12 +12348,45 @@ function initEvents() {
   }
 
   // Global Bridge for Native iOS WebView
-  window.MiruoBridge = {
-    loadVideo: function(videoIdOrUrl, title, provider) {
-      if (videoIdOrUrl) {
-        selectAndPlayYoutubeVideo(videoIdOrUrl, title || 'Video İçeriği', provider || 'YouTube');
-      }
+  if (!window.MiruoBridge) window.MiruoBridge = {};
+  window.MiruoBridge.loadVideo = function(videoIdOrUrl, title, provider, connectedAccount) {
+    if (connectedAccount) {
+      state.connectedAccount = connectedAccount;
+      if (typeof updateNowPlayingAccountBadge === 'function') updateNowPlayingAccountBadge(connectedAccount);
     }
+    if (videoIdOrUrl) {
+      selectAndPlayYoutubeVideo(videoIdOrUrl, title || 'Video İçeriği', provider || 'YouTube');
+    }
+  };
+
+  window.MiruoBridge.addToQueue = function(videoIdOrUrl, title) {
+    if (!videoIdOrUrl) return;
+    const cleanId = extractYtId(videoIdOrUrl) || videoIdOrUrl;
+    const itemTitle = title || 'Sıradaki Video';
+
+    // If not yet in an active video session in room, play immediately!
+    const hasActiveVideo = !!(state.isInRoom && state.roomId && state.currentVideoId && dom.roomWorkspaceSection && !dom.roomWorkspaceSection.classList.contains('hidden'));
+    if (!hasActiveVideo) {
+      selectAndPlayYoutubeVideo(cleanId, itemTitle, 'YouTube');
+      return;
+    }
+
+    if (!state.roomQueue) state.roomQueue = [];
+    const thumbUrl = (cleanId && cleanId.length === 11) ? `https://i.ytimg.com/vi/${cleanId}/hqdefault.jpg` : 'logo.png';
+    const queueItem = {
+      id: cleanId,
+      videoId: cleanId,
+      title: itemTitle,
+      thumb: thumbUrl,
+      thumbnail: thumbUrl,
+      addedBy: state.username || 'Sen'
+    };
+    state.roomQueue.push(queueItem);
+    updateRoomQueueUI();
+    sendP2PData('queue_update', { queue: state.roomQueue });
+    sendSignal({ type: 'queue-update', queue: state.roomQueue });
+    showToast(`✓ Video sıraya eklendi (${state.roomQueue.length})`);
+    renderChatMessage('SİSTEM', `Sıraya eklendi: "${itemTitle}"`, true);
   };
 
   if (dom.closeRaveYoutubeBtn) {
@@ -11661,10 +13209,14 @@ function initEvents() {
         dom.saveProfileBtn.innerHTML = prevBtnHtml;
       }
 
-      // Apply changes to user profile
+      // Apply changes to user profile (preserve fullName, username, email, and avatar!)
+      const resolvedFullName = (fullNameVal && !fullNameVal.startsWith('@'))
+        ? fullNameVal
+        : ((savedUser.fullName && !savedUser.fullName.startsWith('@')) ? savedUser.fullName : cleanUsername);
       savedUser.username = cleanUsername;
-      savedUser.name = '@' + cleanUsername;
-      savedUser.fullName = '@' + cleanUsername;
+      savedUser.name = resolvedFullName;
+      savedUser.fullName = resolvedFullName;
+      savedUser.avatarChar = (resolvedFullName || cleanUsername).charAt(0).toUpperCase();
       state.username = cleanUsername;
 
       if (window.pendingAvatarUrl) {
@@ -11686,35 +13238,7 @@ function initEvents() {
 
       localStorage.setItem('miruo_user', JSON.stringify(savedUser));
       localStorage.setItem('miruo_custom_username', cleanUsername);
-
-      // CRITICAL: Update miruo_registered_users so re-logging in or reload maintains exact updated username!
-      try {
-        const regUsers = JSON.parse(localStorage.getItem('miruo_registered_users') || '[]');
-        let updated = false;
-        for (let i = 0; i < regUsers.length; i++) {
-          if ((savedUser.id && regUsers[i].id === savedUser.id) ||
-              (savedUser.email && regUsers[i].email && regUsers[i].email.toLowerCase() === savedUser.email.toLowerCase()) ||
-              (regUsers[i].username && regUsers[i].username.toLowerCase().replace(/^@/, '') === currentActiveUsername)) {
-            regUsers[i].username = cleanUsername;
-            regUsers[i].fullName = '@' + cleanUsername;
-            if (savedUser.avatarUrl) regUsers[i].avatarUrl = savedUser.avatarUrl;
-            updated = true;
-            break;
-          }
-        }
-        if (!updated && (savedUser.id || savedUser.email)) {
-          regUsers.push({
-            id: savedUser.id || ('user_' + Math.random().toString(36).substring(2, 8)),
-            email: savedUser.email || '',
-            username: cleanUsername,
-            fullName: '@' + cleanUsername,
-            avatarUrl: savedUser.avatarUrl || ''
-          });
-        }
-        localStorage.setItem('miruo_registered_users', JSON.stringify(regUsers));
-      } catch (e) {
-        console.warn('[Miruo RegUsers Sync Error]:', e);
-      }
+      persistUserToLocalRegistry(savedUser, currentActiveUsername);
 
       // 1. Sync to backend users.json
       try {
@@ -11723,9 +13247,12 @@ function initEvents() {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             userId: savedUser.id || state.userId,
+            email: savedUser.email || '',
+            oldUsername: currentActiveUsername,
             username: cleanUsername,
-            fullName: savedUser.fullName || cleanUsername,
-            avatarUrl: savedUser.avatarUrl || ''
+            fullName: resolvedFullName,
+            avatarUrl: savedUser.avatarUrl || '',
+            avatarBg: savedUser.avatarBg || ''
           })
         }).catch(e => console.warn('[Update Profile Backend Error]:', e));
       } catch (e) {}
@@ -11736,10 +13263,11 @@ function initEvents() {
       // 3. Immediately update UI everywhere on the page!
       updateUserUI(savedUser);
 
+      if (dom.editProfileFullNameInput) dom.editProfileFullNameInput.value = resolvedFullName;
       if (dom.editProfileUsernameInput) dom.editProfileUsernameInput.value = cleanUsername;
 
       if (statusEl) {
-        statusEl.textContent = `Kullanıcı adı @${cleanUsername} olarak kaydedildi!`;
+        statusEl.textContent = `Profil ve kullanıcı adı (@${cleanUsername}) kaydedildi!`;
         statusEl.className = 'text-[11px] font-semibold text-emerald-400 pt-0.5 block';
       }
 
@@ -11758,7 +13286,7 @@ function initEvents() {
 
   // Logout
   if (dom.logoutBtn) {
-    dom.logoutBtn.addEventListener('click', logoutUser);
+    dom.logoutBtn.addEventListener('click', confirmAndLogoutUser);
   }
 
   // Delete Account (Item 21: hesabı gerçekten sil)
@@ -11852,6 +13380,16 @@ function initEvents() {
     const inputEl = dom.roomAccessLinkInput || document.getElementById('roomAccessLinkInput');
     if (codeEl) codeEl.textContent = state.roomId || 'ODA-77';
     if (inputEl) inputEl.value = getMiruoRoomUrl(state.roomId);
+
+    // Pre-check the radio based on current room privacy
+    const publicRadio = document.querySelector('input[name="roomAccessRule"][value="public"]');
+    const inviteRadio = document.querySelector('input[name="roomAccessRule"][value="invite"]');
+    if (state.isPrivateRoom) {
+      if (inviteRadio) inviteRadio.checked = true;
+    } else {
+      if (publicRadio) publicRadio.checked = true;
+    }
+
     if (modal) {
       modal.classList.remove('hidden');
       modal.classList.add('flex');
@@ -11861,6 +13399,10 @@ function initEvents() {
 
   if (dom.roomAccessBtn) {
     dom.roomAccessBtn.addEventListener('click', openRoomAccessModal);
+  }
+  const openPrivacyBadgeBtn = document.getElementById('openRoomPrivacyBtn');
+  if (openPrivacyBadgeBtn && openPrivacyBadgeBtn !== dom.roomAccessBtn) {
+    openPrivacyBadgeBtn.addEventListener('click', openRoomAccessModal);
   }
   if (dom.closeRoomAccessModalBtn) {
     dom.closeRoomAccessModalBtn.addEventListener('click', () => {
@@ -11874,12 +13416,15 @@ function initEvents() {
   if (dom.saveRoomAccessBtn) {
     dom.saveRoomAccessBtn.addEventListener('click', () => {
       const selectedRule = document.querySelector('input[name="roomAccessRule"]:checked')?.value || 'public';
+      const isPrivate = (selectedRule === 'invite');
+      state.isPrivateRoom = isPrivate;
+      updateRoomPrivacyUI(isPrivate);
+      sendP2PData('privacy_change', { isPrivate });
+      sendSignal({ type: 'privacy-change', isPrivate });
       const dict = I18N[currentLang] || I18N.tr;
-      if (selectedRule === 'invite') {
-        state.isPrivate = true;
+      if (isPrivate) {
         showToast(currentLang === 'en' ? 'Room Privacy: Invite Only' : (currentLang === 'de' ? 'Raum-Privatsphäre: Nur mit Einladung' : 'Oda Gizliliği: Sadece Davetliler'));
       } else {
-        state.isPrivate = false;
         showToast(currentLang === 'en' ? 'Room Privacy: Everyone (Public)' : (currentLang === 'de' ? 'Raum-Privatsphäre: Öffentlich' : 'Oda Gizliliği: Herkese Açık'));
       }
       if (dom.roomAccessModal) dom.roomAccessModal.classList.add('hidden');
@@ -11889,7 +13434,7 @@ function initEvents() {
     dom.copyRoomAccessLinkBtn.addEventListener('click', () => {
       const url = getMiruoRoomUrl(state.roomId);
       const dict = I18N[currentLang] || I18N.tr;
-      navigator.clipboard?.writeText(url).then(() => {
+      copyToClipboard(url).then(() => {
         showToast(dict.invite_copied || 'Oda linki kopyalandı!');
         dom.copyRoomAccessLinkBtn.textContent = currentLang === 'en' ? 'Copied!' : (currentLang === 'de' ? 'Kopiert!' : 'Kopyalandı!');
         setTimeout(() => {
@@ -11963,6 +13508,13 @@ function initEvents() {
     });
   }
 
+  if (dom.closePhotoStageBtn) {
+    addInstantTap(dom.closePhotoStageBtn, (e) => {
+      if (e && e.stopPropagation) e.stopPropagation();
+      closePhotoStage(true);
+    });
+  }
+
   if (dom.stageContainer) {
     dom.stageContainer.addEventListener('dblclick', (e) => {
       if (e.target.closest('#partnerPipCard') || e.target.closest('#selfPipCard') || e.target.closest('button')) return;
@@ -12004,9 +13556,42 @@ function initEvents() {
 
   // ==========================================
   // CONNECTED PLATFORMS & ACCOUNTS MANAGER
-  // "Bir hesabı bağladığımda ayarlarda bağlı hesap görünmeli ve yanında 'Bağlandı' yazmalı."
+  // "Gerçekten bağlasın ve beraber izlenicekse o hesaptan başlasın"
   // ==========================================
   const CONNECTED_ACCOUNTS_KEY = 'miruo_connected_accounts';
+
+  const PLATFORM_AUTH_CONFIGS = {
+    youtube: {
+      name: 'YouTube / Google',
+      iconSvg: '<svg class="w-5 h-5 text-red-500 fill-current" viewBox="0 0 24 24"><path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z"/></svg>',
+      loginUrl: 'https://accounts.google.com/ServiceLogin?service=youtube',
+      watchUrl: 'https://m.youtube.com/feed/subscriptions',
+      placeholder: 'ornek@gmail.com'
+    },
+    netflix: {
+      name: 'Netflix',
+      iconSvg: '<svg class="w-5 h-5 text-red-600 fill-current" viewBox="0 0 24 24"><path d="M5.398 0v24c1.815-.224 3.73-.559 5.398-.895V0H5.398zm7.804 0v16.197l5.398 6.721V0h-5.398z"/></svg>',
+      loginUrl: 'https://www.netflix.com/login',
+      watchUrl: 'https://www.netflix.com/browse',
+      placeholder: 'netflix@hesabiniz.com'
+    },
+    prime: {
+      name: 'Prime Video',
+      iconSvg: '<svg class="w-5 h-5 text-blue-400 fill-current" viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 14.5v-9l6 4.5-6 4.5z"/></svg>',
+      loginUrl: 'https://www.primevideo.com/auth-redirect/',
+      watchUrl: 'https://www.primevideo.com/storefront/home',
+      placeholder: 'prime@hesabiniz.com'
+    },
+    disney: {
+      name: 'Disney+',
+      iconSvg: '<div class="w-6 h-6 rounded bg-blue-900/60 text-blue-300 font-black text-xs flex items-center justify-center">D+</div>',
+      loginUrl: 'https://www.disneyplus.com/login',
+      watchUrl: 'https://www.disneyplus.com/home',
+      placeholder: 'disney@hesabiniz.com'
+    }
+  };
+
+  let currentConnectingProvider = null;
 
   function getConnectedAccounts() {
     try {
@@ -12014,48 +13599,117 @@ function initEvents() {
       if (raw) return JSON.parse(raw);
     } catch (e) {}
     return {
-      youtube: { connected: false, account: '' },
-      netflix: { connected: false, account: '' },
-      prime: { connected: false, account: '' },
-      disney: { connected: false, account: '' }
+      youtube: { connected: false, account: '', autoStart: true },
+      netflix: { connected: false, account: '', autoStart: true },
+      prime: { connected: false, account: '', autoStart: true },
+      disney: { connected: false, account: '', autoStart: true }
     };
   }
+  window.getConnectedAccounts = getConnectedAccounts;
 
   function saveConnectedAccounts(accounts) {
     localStorage.setItem(CONNECTED_ACCOUNTS_KEY, JSON.stringify(accounts));
     renderConnectedAccountsUI();
+    const catKey = (state.currentProvider || 'youtube').toLowerCase();
+    const matched = Object.keys(accounts).find(k => catKey.includes(k));
+    if (matched && accounts[matched]?.connected && accounts[matched]?.account) {
+      state.connectedAccount = accounts[matched].account;
+    } else if (matched && !accounts[matched]?.connected) {
+      state.connectedAccount = '';
+    }
+    updateNowPlayingAccountBadge(state.connectedAccount);
+  }
+  window.saveConnectedAccounts = saveConnectedAccounts;
+
+  function updateNowPlayingAccountBadge(account) {
+    const badge = dom.nowPlayingAccountBadge || document.getElementById('nowPlayingAccountBadge');
+    if (!badge) return;
+    if (account) {
+      badge.innerHTML = `
+        <svg class="w-2.5 h-2.5 text-emerald-400 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+        <span class="truncate max-w-[130px] sm:max-w-none font-bold">${account} devrede</span>
+      `;
+      badge.classList.remove('hidden');
+      badge.classList.add('inline-flex');
+      badge.title = `Bu oda ${account} hesabı üzerinden birlikte izleniyor`;
+    } else {
+      badge.classList.add('hidden');
+      badge.classList.remove('inline-flex');
+      badge.innerHTML = '';
+    }
+  }
+  window.updateNowPlayingAccountBadge = updateNowPlayingAccountBadge;
+
+  function startDirectPlatformLogin(provider) {
+    const pDef = PLATFORM_AUTH_CONFIGS[provider];
+    if (!pDef) return;
+
+    // 1. In iOS Native App: Opens the native in-app browser directly to that site's official login page!
+    if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.openPlatform) {
+      window.webkit.messageHandlers.openPlatform.postMessage({
+        provider: provider,
+        url: pDef.loginUrl,
+        title: `${pDef.name} Giriş`,
+        action: 'connect',
+        lang: currentLang
+      });
+      return;
+    }
+
+    // 2. On Web Desktop: Open login in a new tab
+    try {
+      window.open(pDef.loginUrl, '_blank');
+    } catch (e) {}
   }
 
   function toggleAccountConnection(provider) {
     const accounts = getConnectedAccounts();
     const current = accounts[provider] || { connected: false, account: '' };
-    const savedUser = JSON.parse(localStorage.getItem('miruo_user') || '{}');
-    const userEmail = savedUser.email || `${(state.username || 'kullanici').toLowerCase()}@miruo.app`;
-
-    const providerNames = {
-      youtube: 'YouTube / Google',
-      netflix: 'Netflix',
-      prime: 'Prime Video',
-      disney: 'Disney+'
-    };
-    const pName = providerNames[provider] || provider;
+    const pDef = PLATFORM_AUTH_CONFIGS[provider] || { name: provider };
 
     if (current.connected) {
-      if (window.confirm(`${pName} hesabı bağlantısını kesmek istediğinize emin misiniz?`)) {
-        accounts[provider] = { connected: false, account: '' };
-        saveConnectedAccounts(accounts);
-        showToast(`${pName} bağlantısı kaldırıldı.`);
+      accounts[provider] = { connected: false, account: '', autoStart: false };
+      if (typeof platformAccounts === 'object' && platformAccounts) {
+        platformAccounts[provider] = null;
+        try { localStorage.setItem('miruo_platform_accounts', JSON.stringify(platformAccounts)); } catch (_) {}
       }
+      state.connectedAccount = '';
+      updateNowPlayingAccountBadge('');
+      saveConnectedAccounts(accounts);
+
+      // Clear real cookies and web session for this platform in iOS WKWebsiteDataStore
+      if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.clearPlatformSession) {
+        try {
+          window.webkit.messageHandlers.clearPlatformSession.postMessage({ provider: provider });
+        } catch (e) {
+          console.warn('[Miruo] clearPlatformSession warning:', e);
+        }
+      }
+
+      showToast(`${pDef.name} hesabı bağlantısı ve oturumu kaldırıldı.`);
     } else {
+      // Directly throw the user onto the platform site's login page!
+      startDirectPlatformLogin(provider);
+    }
+  }
+
+  // Global Bridge for Native iOS WebView to report account connection
+  if (!window.MiruoBridge) window.MiruoBridge = {};
+  window.MiruoBridge.onAccountConnected = function(provider, account) {
+    if (provider) {
+      const accounts = getConnectedAccounts();
+      const pDef = PLATFORM_AUTH_CONFIGS[provider] || { name: provider };
+      const finalAcc = account || (pDef.name + " Hesabı");
       accounts[provider] = {
         connected: true,
-        account: userEmail,
+        account: finalAcc,
+        autoStart: true,
         connectedAt: Date.now()
       };
       saveConnectedAccounts(accounts);
-      showToast(`${pName} hesabı bağlandı!`);
+      showToast(`✓ ${pDef.name} hesabı (${finalAcc}) başarıyla bağlandı! Artık beraber izleme bu hesaptan başlayacak.`);
     }
-  }
+  };
 
   function renderConnectedAccountsUI() {
     const accounts = getConnectedAccounts();
@@ -12100,7 +13754,7 @@ function initEvents() {
 
       if (sub) {
         if (acc.connected && acc.account) {
-          sub.textContent = `Bağlı hesap: ${acc.account}`;
+          sub.textContent = `Bağlı hesap: ${acc.account} (Birlikte izlemede devrede)`;
           sub.className = 'text-[10px] text-emerald-400 font-medium block truncate';
         } else {
           sub.textContent = cfg.defaultSub;
@@ -12112,6 +13766,10 @@ function initEvents() {
 
   window.renderConnectedAccountsUI = renderConnectedAccountsUI;
   window.toggleAccountConnection = toggleAccountConnection;
+  window.openConnectPlatformModal = function(provider) {
+    if (typeof startDirectPlatformLogin === 'function') startDirectPlatformLogin(provider);
+  };
+  window.closeConnectPlatformModal = function() {};
 
   // Platform Account Connect / Disconnect Buttons
   if (dom.toggleYtAccountBtn) {
@@ -12138,6 +13796,8 @@ function initEvents() {
     });
   }
 
+
+
   // Initial render on boot
   renderConnectedAccountsUI();
 
@@ -12145,7 +13805,7 @@ function initEvents() {
   document.querySelectorAll('.pip-corner-btn').forEach(btn => {
     btn.addEventListener('click', () => {
       pipSettings.corner = btn.dataset.corner || 'bottom-right';
-      savePipSettings();
+      savePipSettings(true);
     });
   });
 
@@ -12179,8 +13839,25 @@ function initEvents() {
   if (dom.startScreenShareBtn) dom.startScreenShareBtn.addEventListener('click', startScreenSharing);
   if (dom.stopScreenShareBtn) dom.stopScreenShareBtn.addEventListener('click', stopScreenSharing);
 
-  // Play / Pause Toggle
+  // Play / Pause Toggle & Advance Controls
   if (dom.mainPlayPauseBtn) dom.mainPlayPauseBtn.addEventListener('click', togglePlayPause);
+
+  const stageSeekBackBtn = document.getElementById('stageSeekBackBtn');
+  if (stageSeekBackBtn) {
+    addInstantTap(stageSeekBackBtn, (e) => {
+      if (e && e.stopPropagation) e.stopPropagation();
+      if (typeof seekRelative === 'function') seekRelative(-10);
+      showToast('10 sn geri sarıldı');
+    });
+  }
+
+  const stageAdvanceNextBtn = document.getElementById('stageAdvanceNextBtn');
+  if (stageAdvanceNextBtn) {
+    addInstantTap(stageAdvanceNextBtn, (e) => {
+      if (e && e.stopPropagation) e.stopPropagation();
+      handleNextTrack();
+    });
+  }
 
   // Seek Slider (Miruo Custom Unified Scrubber)
   if (dom.seekSlider) {
@@ -12220,9 +13897,179 @@ function initEvents() {
     });
   });
 
+  // Player Settings & Playback Rate Functions
+  function toggleRaveRoomSettingsMenu(show) {
+    if (!dom.raveRoomSettingsMenu) return;
+    const isHidden = dom.raveRoomSettingsMenu.classList.contains('hidden');
+    const target = (typeof show === 'boolean') ? show : isHidden;
+    if (target) {
+      dom.raveRoomSettingsMenu.classList.remove('hidden');
+    } else {
+      dom.raveRoomSettingsMenu.classList.add('hidden');
+    }
+  }
+
+  function setPlayerPlaybackRate(rate) {
+    rate = parseFloat(rate) || 1.0;
+    state.playbackRate = rate;
+    if (state.activeMode === 'youtube') {
+      sendYtCommand('setPlaybackRate', [rate]);
+    } else if (dom.nativeVideoPlayer) {
+      dom.nativeVideoPlayer.playbackRate = rate;
+    }
+    document.querySelectorAll('.player-speed-btn').forEach(btn => {
+      const bSpeed = parseFloat(btn.dataset.speed);
+      if (Math.abs(bSpeed - rate) < 0.05) {
+        btn.className = 'player-speed-btn py-1 rounded-lg bg-rose-500/30 text-rose-300 border border-rose-500/40 transition-all text-[11px] cursor-pointer font-black';
+      } else {
+        btn.className = 'player-speed-btn py-1 rounded-lg bg-white/5 hover:bg-rose-500/20 hover:text-rose-300 transition-all text-[11px] cursor-pointer';
+      }
+    });
+    showToast(`Oynatma Hızı: ${rate}x`);
+  }
+
+  function triggerResyncWithHost() {
+    if (state.isHost) {
+      showToast('Oda sahibi sizsiniz. Senkronizasyon yenilendi.');
+      if (state.activeMode === 'youtube' && state.currentVideoId) {
+        sendP2PData('sync', {
+          action: 'full_sync',
+          videoId: state.currentVideoId,
+          time: state.currentTime,
+          isPlaying: state.isPlaying,
+          sentAt: Date.now()
+        });
+      }
+    } else {
+      showToast('Host ile yeniden senkronize ediliyor...');
+      sendP2PData('sync', { action: 'request_sync', sentAt: Date.now() });
+    }
+    toggleRaveRoomSettingsMenu(false);
+  }
+
+  if (dom.raveRoomSettingsBtn) {
+    dom.raveRoomSettingsBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      toggleRaveRoomSettingsMenu();
+    });
+  }
+
+  if (dom.closeRaveRoomSettingsMenuBtn) {
+    dom.closeRaveRoomSettingsMenuBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      toggleRaveRoomSettingsMenu(false);
+    });
+  }
+
+  document.querySelectorAll('.player-speed-btn').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      setPlayerPlaybackRate(btn.dataset.speed);
+    });
+  });
+
+  if (dom.raveResyncBtn) {
+    dom.raveResyncBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      triggerResyncWithHost();
+    });
+  }
+
+  if (dom.raveCopyRoomLinkBtn) {
+    dom.raveCopyRoomLinkBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const url = getMiruoRoomUrl(state.roomId || 'MIRUO-DEMO');
+      copyToClipboard(url).then(() => {
+        showToast('Oda davet linki kopyalandı!');
+      }).catch(() => {
+        showToast('Oda davet linki kopyalandı!');
+      });
+      toggleRaveRoomSettingsMenu(false);
+    });
+  }
+
+  if (dom.raveOpenParticipantsBtn) {
+    dom.raveOpenParticipantsBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      toggleRaveRoomSettingsMenu(false);
+      if (typeof openRoomParticipantsModal === 'function') {
+        openRoomParticipantsModal();
+      }
+    });
+  }
+
+  // Web Stream Fallback Buttons
+  if (dom.webFallbackScreenShareBtn) {
+    dom.webFallbackScreenShareBtn.addEventListener('click', () => {
+      hideIframeFallback();
+      startScreenSharing();
+    });
+  }
+
+  if (dom.webFallbackOpenNewTabBtn) {
+    dom.webFallbackOpenNewTabBtn.addEventListener('click', () => {
+      if (state.lastFallbackUrl) {
+        window.open(state.lastFallbackUrl, '_blank');
+      }
+    });
+  }
+
+  // DRM Guide Modal
+  if (dom.closeDrmGuideModalBtn) {
+    dom.closeDrmGuideModalBtn.addEventListener('click', () => {
+      if (dom.drmGuideModal) dom.drmGuideModal.classList.add('hidden');
+    });
+  }
+
+  // Profile Section Dead Buttons Wire-up
+  if (dom.tabProfileSignOutBtn) {
+    dom.tabProfileSignOutBtn.addEventListener('click', confirmAndLogoutUser);
+  }
+
+  if (dom.profileSegmentDetailsBtn) {
+    dom.profileSegmentDetailsBtn.addEventListener('click', () => {
+      const card = document.getElementById('profileAffinityCard');
+      if (card) card.classList.remove('hidden');
+    });
+  }
+
+  if (dom.profileSegmentFriendsBtn) {
+    dom.profileSegmentFriendsBtn.addEventListener('click', () => {
+      if (typeof switchMainTab === 'function') switchMainTab('tabFriends');
+    });
+  }
+
   // Sleep Mode
   if (dom.toggleSleepBtn) dom.toggleSleepBtn.addEventListener('click', () => applySleepMode(!state.isSleepMode, true));
   if (dom.exitSleepBtn) dom.exitSleepBtn.addEventListener('click', () => applySleepMode(false, true));
+
+  if (dom.toggleSleepModeBtn) {
+    addInstantTap(dom.toggleSleepModeBtn, () => applySleepMode(!state.isSleepMode, true));
+  }
+  if (dom.raveToggleSleepModeBtn) {
+    addInstantTap(dom.raveToggleSleepModeBtn, () => {
+      if (dom.raveRoomSettingsMenu) dom.raveRoomSettingsMenu.classList.add('hidden');
+      applySleepMode(!state.isSleepMode, true);
+    });
+  }
+  if (dom.toggleScreenDimmerBtn) {
+    addInstantTap(dom.toggleScreenDimmerBtn, () => toggleScreenDimmer(true));
+  }
+  if (dom.sleepScreenDimmer) {
+    addInstantTap(dom.sleepScreenDimmer, () => toggleScreenDimmer(false));
+  }
+  if (dom.toggleSleepAmbienceBtn) {
+    addInstantTap(dom.toggleSleepAmbienceBtn, toggleSleepAmbience);
+  }
+  if (dom.sleepModePickVideoBtn) {
+    addInstantTap(dom.sleepModePickVideoBtn, () => {
+      if (state.isSleepMode) applySleepMode(false, true);
+      openVideoChooser();
+    });
+  }
+  if (dom.exitSleepStageBtn) {
+    addInstantTap(dom.exitSleepStageBtn, () => applySleepMode(false, true));
+  }
 
   // Audio / Video Toggles
   if (dom.toggleMicBtn) dom.toggleMicBtn.addEventListener('click', toggleMic);
@@ -12235,10 +14082,6 @@ function initEvents() {
 
   const navLogo = document.getElementById('navLogoBtn');
   if (navLogo) navLogo.addEventListener('click', switchToExplore);
-
-  if (dom.backToLobbyBtn) {
-    dom.backToLobbyBtn.addEventListener('click', leaveRoom);
-  }
 
   if (dom.quickEnterPrivateRoomBtn) {
     dom.quickEnterPrivateRoomBtn.addEventListener('click', () => {
@@ -12261,7 +14104,7 @@ function initEvents() {
     document.querySelectorAll('.platform-choice').forEach(choice => {
       const cat = (choice.dataset.category || '').toLowerCase();
       const target = platform.toLowerCase();
-      const isMatch = cat === target || (target.includes('prime') && cat.includes('prime')) || (target.includes('ekran') && cat.includes('ekran'));
+      const isMatch = cat === target || (target.includes('prime') && cat.includes('prime')) || (target.includes('ekran') && cat.includes('ekran')) || (target.includes('uyku') && cat.includes('uyku'));
       if (isMatch) {
         choice.className = 'platform-choice active p-2 rounded-xl border-2 border-rose-500 bg-rose-500/15 flex flex-col items-center text-center gap-1 cursor-pointer transition-all';
         selectedPlatform = choice.dataset.category || platform;
@@ -12272,7 +14115,7 @@ function initEvents() {
 
     if (dom.newRoomTitleInput) {
       dom.newRoomTitleInput.value = '';
-      dom.newRoomTitleInput.placeholder = `Örn: ${selectedPlatform} Partisi veya Gece Sohbeti`;
+      dom.newRoomTitleInput.placeholder = selectedPlatform === 'Uyku Modu' ? 'Birlikte Uyku Odası' : `Örn: ${selectedPlatform} Partisi veya Gece Sohbeti`;
     }
 
     if (dom.createRoomModal) {
@@ -12304,6 +14147,7 @@ function initEvents() {
       else if (platformKey === 'screenshare') platformName = 'Ekran Paylaş';
       else if (platformKey === 'music') platformName = 'Spotify';
       else if (platformKey === 'direct') platformName = 'Yerel Video';
+      else if (platformKey === 'sleep' || platformKey === 'uyku') platformName = 'Uyku Modu';
       openCreateRoomModal(platformName);
     });
   });
@@ -12340,10 +14184,18 @@ function initEvents() {
   }
 
 
-  // Provider Grid Cards (14 Platforms)
+  // Provider Grid Cards (14 Platforms + Sleep Mode + Galeri)
   document.querySelectorAll('.provider-card').forEach(card => {
     addInstantTap(card, () => {
       const provider = card.dataset.provider;
+      if (provider === 'sleep') {
+        openCreateRoomModal('Uyku Modu');
+        return;
+      }
+      if (provider === 'photos' || provider === 'gallery') {
+        triggerRoomGalleryPicker();
+        return;
+      }
       launchPlatform(provider);
     });
   });
@@ -12436,21 +14288,18 @@ function initEvents() {
         else if (privacyVal === 'invite') privacyLabel = pDict.privacy_private || 'Sadece Davet İle';
         if (selectedPrivacyLabel) selectedPrivacyLabel.textContent = privacyLabel;
 
+        const isPrivate = (privacyVal === 'invite');
+        state.isPrivateRoom = isPrivate;
+        updateRoomPrivacyUI(isPrivate);
+        sendP2PData('privacy_change', { isPrivate });
+        sendSignal({ type: 'privacy-change', isPrivate });
+
         if (privacyVal === 'public') {
-          state.isPrivateRoom = false;
           if (selectedPrivacyIcon) selectedPrivacyIcon.innerHTML = '<svg class="w-4 h-4 text-emerald-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1 4-10z"/></svg>';
-          if (dom.privacyStatusText) dom.privacyStatusText.textContent = pDict.privacy_public || 'Açık Oda';
-          if (dom.privacyStatusIcon) dom.privacyStatusIcon.innerHTML = '<svg class="w-3 h-3 inline text-emerald-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1 4-10z"/></svg>';
         } else if (privacyVal === 'friends') {
-          state.isPrivateRoom = false;
           if (selectedPrivacyIcon) selectedPrivacyIcon.innerHTML = '<svg class="w-4 h-4 text-blue-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>';
-          if (dom.privacyStatusText) dom.privacyStatusText.textContent = pDict.privacy_friends || 'Arkadaşlar';
-          if (dom.privacyStatusIcon) dom.privacyStatusIcon.innerHTML = '<svg class="w-3 h-3 inline text-blue-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>';
         } else {
-          state.isPrivateRoom = true;
           if (selectedPrivacyIcon) selectedPrivacyIcon.innerHTML = '<svg class="w-4 h-4 text-amber-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>';
-          if (dom.privacyStatusText) dom.privacyStatusText.textContent = pDict.privacy_private || 'Özel (Davetli)';
-          if (dom.privacyStatusIcon) dom.privacyStatusIcon.innerHTML = '<svg class="w-3 h-3 inline text-amber-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>';
         }
 
         // Update active checkmarks
@@ -12476,10 +14325,9 @@ function initEvents() {
     const inviteUrl = getMiruoRoomUrl(state.roomId);
     const linkText = dom.raveInviteLinkText || document.getElementById('raveInviteLinkText');
     if (linkText) linkText.textContent = inviteUrl;
-    if (navigator.clipboard && navigator.clipboard.writeText) {
-      navigator.clipboard.writeText(inviteUrl);
-    }
-    showToast(`Miruo oda linki kopyalandı!\n${inviteUrl}`);
+    copyToClipboard(inviteUrl).then(() => {
+      showToast(`Miruo oda linki kopyalandı!\n${inviteUrl}`);
+    });
   };
   if (dom.copyRaveInviteBtn) dom.copyRaveInviteBtn.addEventListener('click', handleCopyInvite);
   const copyBtn = document.getElementById('copyRaveInviteBtn');
@@ -12499,7 +14347,13 @@ function initEvents() {
       } else if (channel === 'telegram') {
         window.open(`https://t.me/share/url?url=${encodeURIComponent(inviteUrl)}&text=${encodeURIComponent(`Miruo ile birlikte izle! (Oda: ${(state.roomId || 'ODA-77').toUpperCase()})`)}`, '_blank');
       } else if (channel === 'system') {
-        if (navigator.share) {
+        if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.nativeShare) {
+          window.webkit.messageHandlers.nativeShare.postMessage({
+            title: 'Miruo — Birlikte İzle',
+            text: shareText,
+            url: inviteUrl
+          });
+        } else if (navigator.share) {
           navigator.share({
             title: 'Miruo — Birlikte İzle',
             text: shareText,
@@ -12512,13 +14366,178 @@ function initEvents() {
     });
   });
 
+  // ==========================================
+  // LIKED VIDEOS & FAVORITES SYSTEM
+  // ==========================================
+  function getLikedVideos() {
+    try {
+      return JSON.parse(localStorage.getItem('miruo_liked_videos') || '[]');
+    } catch (e) {
+      return [];
+    }
+  }
+  window.getLikedVideos = getLikedVideos;
+
+  function saveLikedVideos(list) {
+    try {
+      localStorage.setItem('miruo_liked_videos', JSON.stringify(list));
+    } catch (e) {}
+  }
+  window.saveLikedVideos = saveLikedVideos;
+
+  function updateNowPlayingLikeState() {
+    if (!dom.nowPlayingHeartBtn) return;
+    const currId = state.currentVideoId || state.roomId || '';
+    const likes = getLikedVideos();
+    const isLiked = !!(currId && likes.some(item => item.id === currId));
+    const svg = dom.nowPlayingHeartBtn.querySelector('svg');
+    if (isLiked) {
+      dom.nowPlayingHeartBtn.classList.remove('text-gray-300', 'bg-white/5');
+      dom.nowPlayingHeartBtn.classList.add('text-rose-500', 'bg-rose-500/20');
+      if (svg) svg.setAttribute('fill', 'currentColor');
+      dom.nowPlayingHeartBtn.setAttribute('title', 'Beğenildi');
+    } else {
+      dom.nowPlayingHeartBtn.classList.remove('text-rose-500', 'bg-rose-500/20');
+      dom.nowPlayingHeartBtn.classList.add('text-gray-300', 'bg-white/5');
+      if (svg) svg.setAttribute('fill', 'none');
+      dom.nowPlayingHeartBtn.setAttribute('title', 'Beğen');
+    }
+  }
+  window.updateNowPlayingLikeState = updateNowPlayingLikeState;
+
+  function renderLikedVideosList() {
+    const listEl = dom.likedVideosList || document.getElementById('likedVideosList');
+    if (!listEl) return;
+    const likes = getLikedVideos();
+    if (likes.length === 0) {
+      listEl.innerHTML = `
+        <div class="py-12 px-4 text-center">
+          <div class="w-12 h-12 rounded-2xl bg-white/5 flex items-center justify-center text-gray-500 mx-auto mb-3">
+            <svg class="w-6 h-6 fill-none stroke-current" viewBox="0 0 24 24" stroke-width="2"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
+          </div>
+          <p class="text-sm font-semibold text-gray-300">Henüz beğenilen video yok</p>
+          <p class="text-xs text-gray-500 mt-1">İzlediğiniz videolardaki kalp butonuna basarak buraya ekleyebilirsiniz.</p>
+        </div>
+      `;
+      return;
+    }
+
+    listEl.innerHTML = likes.map((item) => {
+      const thumb = item.thumbnail || (item.id ? `https://i.ytimg.com/vi/${item.id}/hqdefault.jpg` : 'logo.png');
+      return `
+        <div class="liked-video-item flex items-center justify-between gap-3 p-3 rounded-2xl bg-white/5 hover:bg-white/10 active:scale-[0.98] border border-white/5 transition-all cursor-pointer group" data-video-id="${item.id}" data-title="${encodeURIComponent(item.title || '')}" data-provider="${item.provider || 'YouTube'}">
+          <div class="flex items-center gap-3 min-w-0 flex-1">
+            <div class="relative w-16 h-11 rounded-xl overflow-hidden bg-black/50 shrink-0 border border-white/10">
+              <img src="${thumb}" alt="Thumbnail" class="w-full h-full object-cover group-hover:scale-105 transition-transform" onerror="this.src='logo.png'">
+            </div>
+            <div class="min-w-0 flex-1">
+              <div class="flex items-center gap-1.5">
+                <span class="text-[9px] font-black uppercase tracking-wider px-1.5 py-0.2 rounded bg-rose-500/20 text-rose-300">${item.provider || 'Video'}</span>
+                <span class="text-[10px] text-gray-400 font-mono">${item.likedAt ? new Date(item.likedAt).toLocaleDateString() : ''}</span>
+              </div>
+              <h4 class="text-xs font-bold text-white truncate group-hover:text-rose-300 transition-colors mt-0.5">${item.title || 'Video'}</h4>
+            </div>
+          </div>
+          <button type="button" class="remove-liked-video-btn w-8 h-8 rounded-full bg-white/5 hover:bg-rose-500/20 text-gray-400 hover:text-rose-400 flex items-center justify-center transition-colors cursor-pointer shrink-0" data-remove-id="${item.id}" title="Listeden Kaldır">
+            <svg class="w-4 h-4 fill-current" viewBox="0 0 24 24"><path d="M6 18L18 6M6 6l12 12"/></svg>
+          </button>
+        </div>
+      `;
+    }).join('');
+
+    listEl.querySelectorAll('.liked-video-item').forEach(el => {
+      el.addEventListener('click', (e) => {
+        if (e.target.closest('.remove-liked-video-btn')) return;
+        const vId = el.dataset.videoId;
+        const vTitle = decodeURIComponent(el.dataset.title || '');
+        const vProv = el.dataset.provider || 'YouTube';
+        closeLikedVideosModal();
+        if (state.isInRoom && state.roomId && dom.roomWorkspaceSection && !dom.roomWorkspaceSection.classList.contains('hidden')) {
+          if (vProv === 'Direct' || vId.startsWith('http')) {
+            loadDirectVideo(vId, vTitle);
+          } else {
+            selectAndPlayYoutubeVideo(vId, vTitle, vProv);
+          }
+          showToast(`Beğenilen video başlatıldı: ${vTitle}`);
+        } else {
+          createAndJoinRoom(vTitle || `${vProv} Odası`, false, vProv, vId);
+          showToast(`Beğenilen video ile oda açıldı: ${vTitle}`);
+        }
+      });
+    });
+
+    listEl.querySelectorAll('.remove-liked-video-btn').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const removeId = btn.dataset.removeId;
+        let curLikes = getLikedVideos();
+        curLikes = curLikes.filter(item => item.id !== removeId);
+        saveLikedVideos(curLikes);
+        updateNowPlayingLikeState();
+        renderLikedVideosList();
+        showToast('Beğenilenlerden kaldırıldı');
+      });
+    });
+  }
+  window.renderLikedVideosList = renderLikedVideosList;
+
+  function openLikedVideosModal() {
+    const modal = dom.likedVideosModal || document.getElementById('likedVideosModal');
+    if (modal) {
+      modal.classList.remove('hidden');
+      modal.classList.add('flex');
+      renderLikedVideosList();
+    }
+  }
+  window.openLikedVideosModal = openLikedVideosModal;
+
+  function closeLikedVideosModal() {
+    const modal = dom.likedVideosModal || document.getElementById('likedVideosModal');
+    if (modal) {
+      modal.classList.add('hidden');
+      modal.classList.remove('flex');
+    }
+  }
+  window.closeLikedVideosModal = closeLikedVideosModal;
+
+  if (dom.closeLikedVideosModalBtn) {
+    addInstantTap(dom.closeLikedVideosModalBtn, closeLikedVideosModal);
+  }
+  const likedModalElement = dom.likedVideosModal || document.getElementById('likedVideosModal');
+  if (likedModalElement) {
+    likedModalElement.addEventListener('click', (e) => {
+      if (e.target === likedModalElement) closeLikedVideosModal();
+    });
+  }
+
   // Now Playing Heart & Next Buttons
   if (dom.nowPlayingHeartBtn) {
-    dom.nowPlayingHeartBtn.addEventListener('click', () => {
-      const isLiked = dom.nowPlayingHeartBtn.textContent === '♥';
-      dom.nowPlayingHeartBtn.textContent = isLiked ? '♡' : '♥';
-      dom.nowPlayingHeartBtn.className = isLiked ? 'hover:text-rose-500 text-lg transition-colors cursor-pointer text-gray-300' : 'text-rose-500 text-lg transition-colors cursor-pointer';
-      showToast(isLiked ? 'Beğeni kaldırıldı' : 'Video beğenildi!');
+    addInstantTap(dom.nowPlayingHeartBtn, (e) => {
+      if (e && e.stopPropagation) e.stopPropagation();
+      const currId = state.currentVideoId || state.roomId || ('video_' + Date.now());
+      let likes = getLikedVideos();
+      const idx = likes.findIndex(item => item.id === currId);
+      if (idx >= 0) {
+        likes.splice(idx, 1);
+        saveLikedVideos(likes);
+        updateNowPlayingLikeState();
+        showToast('Beğeni kaldırıldı');
+      } else {
+        const title = (dom.nowPlayingTitle && dom.nowPlayingTitle.textContent.trim()) || state.videoTitle || 'Miruo Video';
+        const thumb = state.currentThumbnail || (state.currentVideoId ? `https://i.ytimg.com/vi/${state.currentVideoId}/hqdefault.jpg` : '');
+        likes.unshift({
+          id: currId,
+          title: title,
+          provider: state.platform || state.currentProvider || 'YouTube',
+          thumbnail: thumb,
+          likedAt: Date.now()
+        });
+        saveLikedVideos(likes);
+        updateNowPlayingLikeState();
+        showToast('Video beğenilenlere eklendi! ❤️');
+        spawnFloatingReaction('❤️', true);
+        sendP2PData('reaction', { emoji: '❤️' });
+      }
     });
   }
   if (dom.nowPlayingNextBtn) {
@@ -12618,11 +14637,12 @@ function initEvents() {
     });
   }
 
-  // Stage Video / Platform Chooser Modal (Episodes First, Advanced Hub via footer)
+  // Stage Video / Platform Chooser Modal
   const openVideoChooser = () => {
-    renderRoomEpisodesList();
-    if (dom.roomEpisodesModal) dom.roomEpisodesModal.classList.remove('hidden');
-    else if (dom.roomPlatformChooserModal) dom.roomPlatformChooserModal.classList.remove('hidden');
+    // "vıdeo seç dıyınce direk o artı tusunda oldugu gıbı atsın mesela ılk vıdeo yt seçtyisem yt ekranına atsın gerı üstte geri tusu olsun ona basınca seçım ekranına atsın sen bu şekilde video falan önerme"
+    if (dom.roomEpisodesModal) dom.roomEpisodesModal.classList.add('hidden');
+    const lastProvider = state.currentProvider?.toLowerCase() || 'youtube';
+    launchPlatform(lastProvider);
   };
   window.openVideoChooser = openVideoChooser;
 
@@ -12648,11 +14668,6 @@ function initEvents() {
       if (dom.roomEpisodesModal) dom.roomEpisodesModal.classList.add('hidden');
       if (dom.roomPlatformChooserModal) dom.roomPlatformChooserModal.classList.remove('hidden');
     });
-  }
-
-  // Sole room video selection button (Bottom toolbar)
-  if (dom.roomChangeVideoBottomBtn) {
-    addInstantTap(dom.roomChangeVideoBottomBtn, openVideoChooser);
   }
 
   // Hero: Normal YouTube Ekranı
@@ -12704,18 +14719,45 @@ function initEvents() {
 
   // Queue Modal & Suggestions UI Bindings
   const openRoomQueueModal = () => {
-    updateRoomQueueUI();
-    if (dom.roomQueueModal) dom.roomQueueModal.classList.remove('hidden');
+    try {
+      updateRoomQueueUI();
+    } catch (err) {
+      console.warn('Queue UI update warning:', err);
+    }
+    const qModal = dom.roomQueueModal || document.getElementById('roomQueueModal');
+    if (qModal) {
+      qModal.classList.remove('hidden');
+      qModal.classList.add('flex');
+      qModal.style.setProperty('display', 'flex', 'important');
+      qModal.style.setProperty('z-index', '1000005', 'important');
+    }
   };
   window.openRoomQueueModal = openRoomQueueModal;
   if (dom.roomQueueBadgeBtn) {
-    addInstantTap(dom.roomQueueBadgeBtn, () => {
+    addInstantTap(dom.roomQueueBadgeBtn, (e) => {
+      if (e && e.stopPropagation) e.stopPropagation();
       openRoomQueueModal();
     });
   }
   if (dom.closeQueueModalBtn) {
-    addInstantTap(dom.closeQueueModalBtn, () => {
-      if (dom.roomQueueModal) dom.roomQueueModal.classList.add('hidden');
+    addInstantTap(dom.closeQueueModalBtn, (e) => {
+      if (e && e.stopPropagation) e.stopPropagation();
+      const qModal = dom.roomQueueModal || document.getElementById('roomQueueModal');
+      if (qModal) {
+        qModal.classList.add('hidden');
+        qModal.classList.remove('flex');
+        qModal.style.removeProperty('display');
+      }
+    });
+  }
+  const qModalEl = dom.roomQueueModal || document.getElementById('roomQueueModal');
+  if (qModalEl) {
+    qModalEl.addEventListener('click', (e) => {
+      if (e.target === qModalEl) {
+        qModalEl.classList.add('hidden');
+        qModalEl.classList.remove('flex');
+        qModalEl.style.removeProperty('display');
+      }
     });
   }
   if (dom.closeRaveActionSheetBtn) {
@@ -12825,6 +14867,19 @@ function initEvents() {
 
   function applyPlatformToActiveRoom(platform) {
     const p = (platform || '').toLowerCase();
+    const accounts = typeof getConnectedAccounts === 'function' ? getConnectedAccounts() : {};
+    const matched = Object.keys(accounts).find(k => p.includes(k));
+    if (matched && accounts[matched]?.connected && accounts[matched]?.account) {
+      state.connectedAccount = accounts[matched].account;
+      if (typeof updateNowPlayingAccountBadge === 'function') {
+        updateNowPlayingAccountBadge(state.connectedAccount);
+      }
+    }
+    if (p.includes('uyku') || p.includes('sleep') || p.includes('boş') || p.includes('bos')) {
+      applySleepMode(true, true);
+      showToast('Birlikte Uyku Odası hazır');
+      return;
+    }
     if (p.includes('youtube')) {
       switchActiveTab('youtube');
       if (dom.youtubeUrlInput) dom.youtubeUrlInput.focus();
@@ -12837,9 +14892,12 @@ function initEvents() {
         dom.youtubeUrlInput.placeholder = 'Spotify veya YouTube Music linki yapıştırın...';
         dom.youtubeUrlInput.focus();
       }
+    } else if (p.includes('galeri') || p.includes('foto') || p.includes('photo')) {
+      triggerRoomGalleryPicker();
+      showToast('Galeri açılıyor...');
+      return;
     } else if (p.includes('video') || p.includes('direct')) {
-      switchActiveTab('direct');
-      if (dom.localVideoFileInput) dom.localVideoFileInput.click();
+      triggerRoomGalleryPicker();
     }
   }
 
@@ -12855,7 +14913,9 @@ function generateUniqueRoomCode(isPrivate = false) {
 
   if (dom.submitCreateRoomBtn) {
     dom.submitCreateRoomBtn.addEventListener('click', () => {
-      const title = (dom.newRoomTitleInput && dom.newRoomTitleInput.value.trim()) || `${selectedPlatform} Partisi`;
+      let defaultTitle = `${selectedPlatform} Partisi`;
+      if (selectedPlatform === 'Uyku Modu') defaultTitle = 'Birlikte Uyku Odası';
+      const title = (dom.newRoomTitleInput && dom.newRoomTitleInput.value.trim()) || defaultTitle;
       const fallbackId = generateUniqueRoomCode(newRoomIsPrivate);
 
       // Creator is always Host
@@ -12863,6 +14923,8 @@ function generateUniqueRoomCode(isPrivate = false) {
       state.hostName = state.username;
       state.controlMode = 'host_only';
       state.hasDjPermission = true;
+      state.isPrivateRoom = !!newRoomIsPrivate;
+      updateRoomPrivacyUI(newRoomIsPrivate);
 
       closeCreateRoomModal();
 
@@ -13125,7 +15187,7 @@ function generateUniqueRoomCode(isPrivate = false) {
   if (dom.copyInviteFromParticipantsBtn) {
     dom.copyInviteFromParticipantsBtn.addEventListener('click', () => {
       const inviteUrl = `${window.location.origin}/?room=${encodeURIComponent(state.roomId)}`;
-      navigator.clipboard.writeText(inviteUrl).then(() => {
+      copyToClipboard(inviteUrl).then(() => {
         showToast('Oda davet linki kopyalandı!');
       });
     });
@@ -13772,12 +15834,12 @@ function resetControlsHideTimer() {
   clearTimeout(controlsHideTimeout);
 
   const isFs = isStageFullscreen();
-  // Auto-hide when in room and in fullscreen or landscape or video actively playing
-  if (isFs || state.isPlaying || window.innerWidth > window.innerHeight) {
+  // Auto-hide ONLY when explicitly in Fullscreen mode! In normal mode, buttons must never disappear.
+  if (isFs) {
     controlsHideTimeout = setTimeout(() => {
       elementsToControl.forEach(el => el.classList.add('fs-controls-hidden'));
       if (dom.stageContainer) dom.stageContainer.style.cursor = 'none';
-    }, 2500);
+    }, 3000);
   }
 }
 
@@ -13793,6 +15855,29 @@ function initStageAutoHideEvents() {
   dom.stageContainer.addEventListener('click', (e) => {
     if (e.target.closest('button') || e.target.closest('input') || e.target.closest('#partnerPipCard') || e.target.closest('#selfPipCard')) {
       resetControlsHideTimer();
+      return;
+    }
+    const isFs = isStageFullscreen();
+    if (!isFs) {
+      // Normal portrait mode: tapping stage toggles player overlay controls cleanly without hiding navigation buttons!
+      resetControlsHideTimer();
+      if (dom.ravePlayerOverlay) {
+        const isOverlayVisible = !dom.ravePlayerOverlay.classList.contains('opacity-0');
+        if (isOverlayVisible) {
+          dom.ravePlayerOverlay.classList.add('opacity-0', 'pointer-events-none');
+          dom.ravePlayerOverlay.classList.remove('opacity-100');
+        } else {
+          dom.ravePlayerOverlay.classList.remove('opacity-0', 'pointer-events-none');
+          dom.ravePlayerOverlay.classList.add('opacity-100');
+          clearTimeout(controlsHideTimeout);
+          controlsHideTimeout = setTimeout(() => {
+            if (dom.ravePlayerOverlay) {
+              dom.ravePlayerOverlay.classList.add('opacity-0', 'pointer-events-none');
+              dom.ravePlayerOverlay.classList.remove('opacity-100');
+            }
+          }, 3500);
+        }
+      }
       return;
     }
     const isHidden = dom.stageFloatingFullscreenBtn && dom.stageFloatingFullscreenBtn.classList.contains('fs-controls-hidden');
@@ -14097,9 +16182,12 @@ function initAffinityEvents() {
     }
   });
 
-  // Real-time Shared Watch-Time Incrementer during playback
+  // Real-time Shared Watch-Time Incrementer during playback or sleep mode
   setInterval(() => {
-    if (state.currentRoom && state.isPlaying) {
+    const inActiveRoom = !!(state.roomId || state.currentRoom);
+    const isActivelySharing = state.isPlaying || state.isSleepMode;
+    if (inActiveRoom && isActivelySharing) {
+      // 1. WebRTC & Signaling room participants
       const currentPartKeys = Object.keys(state.participants || {});
       currentPartKeys.forEach(pKey => {
         const p = state.participants[pKey];
@@ -14109,6 +16197,14 @@ function initAffinityEvents() {
       });
       if (state.peerId && state.hostName && state.hostName !== 'Sen') {
         addSharedWatchMinutes(state.hostName, 0.5);
+      }
+      // 2. Active room bots or simulated partners
+      if (typeof activeRoomBots !== 'undefined' && Array.isArray(activeRoomBots)) {
+        activeRoomBots.forEach(b => {
+          if (b && b.name) {
+            addSharedWatchMinutes(b.name, 0.5);
+          }
+        });
       }
     }
   }, 30000);

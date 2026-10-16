@@ -78,6 +78,9 @@ class ViewController: UIViewController, WKNavigationDelegate, WKUIDelegate, WKSc
         userContentController.add(self, name: "pickImage")
         userContentController.add(self, name: "startAppleSignIn")
         userContentController.add(self, name: "startOAuthSignIn")
+        userContentController.add(self, name: "copyToClipboard")
+        userContentController.add(self, name: "clearPlatformSession")
+        userContentController.add(self, name: "nativeShare")
         
         let authFixScriptSource = """
         (function() {
@@ -402,14 +405,18 @@ class ViewController: UIViewController, WKNavigationDelegate, WKUIDelegate, WKSc
         if message.name == "openYouTube" {
             let dict = message.body as? [String: Any]
             let lang = dict?["lang"] as? String ?? currentAppLang
-            openInAppPlatformBrowser(provider: "youtube", initialUrl: "https://m.youtube.com/feed/trending", title: "YouTube", lang: lang)
+            let hasActiveVideo = dict?["hasActiveVideo"] as? Bool ?? false
+            openInAppPlatformBrowser(provider: "youtube", initialUrl: "https://m.youtube.com/feed/trending", title: "YouTube", lang: lang, hasActiveVideo: hasActiveVideo)
         } else if message.name == "openPlatform" {
             if let dict = message.body as? [String: Any] {
                 let provider = dict["provider"] as? String ?? "youtube"
                 let url = dict["url"] as? String ?? "https://m.youtube.com/feed/trending"
                 let title = dict["title"] as? String ?? (currentAppLang == "en" ? "Browser" : (currentAppLang == "de" ? "Browser" : "Tarayıcı"))
                 let lang = dict["lang"] as? String ?? currentAppLang
-                openInAppPlatformBrowser(provider: provider, initialUrl: url, title: title, lang: lang)
+                let isConnectMode = (dict["action"] as? String == "connect") || (dict["mode"] as? String == "connect")
+                let account = dict["account"] as? String ?? ""
+                let hasActiveVideo = dict["hasActiveVideo"] as? Bool ?? false
+                openInAppPlatformBrowser(provider: provider, initialUrl: url, title: title, lang: lang, isConnectMode: isConnectMode, connectedAccount: account, hasActiveVideo: hasActiveVideo)
             }
         } else if message.name == "pickImage" {
             var target = "avatar"
@@ -428,6 +435,101 @@ class ViewController: UIViewController, WKNavigationDelegate, WKUIDelegate, WKSc
                let url = URL(string: urlString) {
                 let scheme = (dict["callbackScheme"] as? String) ?? "miruo"
                 startNativeOAuthSignIn(url: url, callbackScheme: scheme)
+            }
+        } else if message.name == "copyToClipboard" {
+            var copyStr = ""
+            if let str = message.body as? String {
+                copyStr = str
+            } else if let dict = message.body as? [String: Any], let str = dict["text"] as? String {
+                copyStr = str
+            }
+            if !copyStr.isEmpty {
+                UIPasteboard.general.string = copyStr
+                let generator = UINotificationFeedbackGenerator()
+                generator.notificationOccurred(.success)
+            }
+        } else if message.name == "clearPlatformSession" {
+            var provider = ""
+            if let dict = message.body as? [String: Any], let p = dict["provider"] as? String {
+                provider = p
+            } else if let s = message.body as? String {
+                provider = s
+            }
+            if !provider.isEmpty {
+                clearPlatformCookies(for: provider)
+            }
+        } else if message.name == "nativeShare" {
+            if let dict = message.body as? [String: Any] {
+                let text = dict["text"] as? String ?? ""
+                var items: [Any] = []
+                if !text.isEmpty { items.append(text) }
+                if let urlStr = dict["url"] as? String, let url = URL(string: urlStr) {
+                    items.append(url)
+                }
+                if !items.isEmpty {
+                    let activityVC = UIActivityViewController(activityItems: items, applicationActivities: nil)
+                    if let popover = activityVC.popoverPresentationController {
+                        popover.sourceView = self.view
+                        popover.sourceRect = CGRect(x: self.view.bounds.midX, y: self.view.bounds.midY, width: 0, height: 0)
+                        popover.permittedArrowDirections = []
+                    }
+                    self.present(activityVC, animated: true, completion: nil)
+                }
+            }
+        }
+    }
+
+    private func clearPlatformCookies(for provider: String) {
+        let domains: [String]
+        switch provider.lowercased() {
+        case "youtube":
+            domains = ["youtube.com", "google.com", "googlevideo.com", "ytimg.com", "ggpht.com", "youtu.be"]
+        case "netflix":
+            domains = ["netflix.com", "nflxso.net", "nflxext.com", "nflximg.net", "nflxvideo.net"]
+        case "prime":
+            domains = ["primevideo.com", "amazon.com", "amazon.co.uk", "amazon.de", "amazon.com.tr", "media-amazon.com", "aiv-cdn.net"]
+        case "disney":
+            domains = ["disneyplus.com", "disney.com", "bamgrid.com", "dssott.com"]
+        case "twitch":
+            domains = ["twitch.tv", "jtvnw.net", "ttvnw.net"]
+        case "kick":
+            domains = ["kick.com"]
+        default:
+            domains = [provider.lowercased()]
+        }
+
+        // 1. Delete from HTTPCookieStorage.shared
+        if let sharedCookies = HTTPCookieStorage.shared.cookies {
+            for cookie in sharedCookies {
+                let cDom = cookie.domain.lowercased()
+                if domains.contains(where: { cDom.contains($0) }) {
+                    HTTPCookieStorage.shared.deleteCookie(cookie)
+                }
+            }
+        }
+
+        // 2. Delete from WKWebsiteDataStore.default().httpCookieStore
+        let dataStore = WKWebsiteDataStore.default()
+        dataStore.httpCookieStore.getAllCookies { cookies in
+            for cookie in cookies {
+                let cDom = cookie.domain.lowercased()
+                if domains.contains(where: { cDom.contains($0) }) {
+                    dataStore.httpCookieStore.delete(cookie, completionHandler: nil)
+                }
+            }
+        }
+
+        // 3. Remove WKWebsiteDataStore records (localStorage, indexedDB, cache, sessionStorage, cookies) for matching domains
+        let allTypes = WKWebsiteDataStore.allWebsiteDataTypes()
+        dataStore.fetchDataRecords(ofTypes: allTypes) { records in
+            let matchingRecords = records.filter { record in
+                let name = record.displayName.lowercased()
+                return domains.contains(where: { name.contains($0) })
+            }
+            if !matchingRecords.isEmpty {
+                dataStore.removeData(ofTypes: allTypes, for: matchingRecords) {
+                    print("[Miruo] Cleared platform session data for \(provider)")
+                }
             }
         }
     }
@@ -493,6 +595,20 @@ class ViewController: UIViewController, WKNavigationDelegate, WKUIDelegate, WKSc
         }
     }
     
+    func handleAppBackground() {
+        let js = "if (typeof handleNativeAppBackgroundState === 'function') { handleNativeAppBackgroundState(true); }"
+        DispatchQueue.main.async { [weak self] in
+            self?.webView.evaluateJavaScript(js, completionHandler: nil)
+        }
+    }
+
+    func handleAppForeground() {
+        let js = "if (typeof handleNativeAppBackgroundState === 'function') { handleNativeAppBackgroundState(false); }"
+        DispatchQueue.main.async { [weak self] in
+            self?.webView.evaluateJavaScript(js, completionHandler: nil)
+        }
+    }
+
     private func openNativeImagePicker() {
         DispatchQueue.main.async { [weak self] in
             guard let self = self else { return }
@@ -503,7 +619,11 @@ class ViewController: UIViewController, WKNavigationDelegate, WKUIDelegate, WKSc
             
             if #available(iOS 14, *) {
                 var config = PHPickerConfiguration()
-                config.filter = .images
+                if self.currentImagePickTarget == "stage_media" || self.currentImagePickTarget == "gallery" {
+                    config.filter = .any(of: [.images, .videos])
+                } else {
+                    config.filter = .images
+                }
                 config.selectionLimit = 1
                 let picker = PHPickerViewController(configuration: config)
                 picker.delegate = self
@@ -511,23 +631,46 @@ class ViewController: UIViewController, WKNavigationDelegate, WKUIDelegate, WKSc
                 topController.present(picker, animated: true)
             } else {
                 let picker = UIImagePickerController()
-                picker.sourceType = .photoLibrary
+                if self.currentImagePickTarget == "stage_media" || self.currentImagePickTarget == "gallery" {
+                    picker.mediaTypes = ["public.image", "public.movie"]
+                } else {
+                    picker.sourceType = .photoLibrary
+                }
                 picker.delegate = self
                 topController.present(picker, animated: true)
             }
         }
     }
     
-    private func openInAppPlatformBrowser(provider: String, initialUrl: String, title: String, lang: String? = nil) {
+    private func openInAppPlatformBrowser(provider: String, initialUrl: String, title: String, lang: String? = nil, isConnectMode: Bool = false, connectedAccount: String = "", hasActiveVideo: Bool = false) {
         let browserVC = PlatformBrowserViewController()
         browserVC.provider = provider
         browserVC.initialUrl = initialUrl
         browserVC.browserTitle = title
         browserVC.currentLang = lang ?? currentAppLang
-        browserVC.onVideoSelected = { [weak self] videoIdOrUrl in
-            let escapedId = videoIdOrUrl.replacingOccurrences(of: "'", with: "\\'")
-            let js = "window.MiruoBridge && window.MiruoBridge.loadVideo('\(escapedId)');"
+        browserVC.isConnectMode = isConnectMode
+        browserVC.connectedAccount = connectedAccount
+        browserVC.hasActiveVideo = hasActiveVideo
+        browserVC.onAccountConnected = { [weak self] prov, acc in
+            let escapedProv = prov.replacingOccurrences(of: "'", with: "\\'")
+            let escapedAcc = acc.replacingOccurrences(of: "'", with: "\\'")
+            let js = "window.MiruoBridge && window.MiruoBridge.onAccountConnected && window.MiruoBridge.onAccountConnected('\(escapedProv)', '\(escapedAcc)');"
             self?.webView.evaluateJavaScript(js, completionHandler: nil)
+        }
+        browserVC.onOpenProviderPicker = { [weak self] in
+            let js = "if (typeof switchToProviderPicker === 'function') { switchToProviderPicker(); } else if (typeof openVideoChooser === 'function') { openVideoChooser(); }"
+            self?.webView.evaluateJavaScript(js, completionHandler: nil)
+        }
+        browserVC.onVideoSelected = { [weak self] videoIdOrUrl, action in
+            let escapedId = videoIdOrUrl.replacingOccurrences(of: "'", with: "\\'")
+            let escapedAcc = connectedAccount.replacingOccurrences(of: "'", with: "\\'")
+            if action == "queue" {
+                let js = "window.MiruoBridge && window.MiruoBridge.addToQueue && window.MiruoBridge.addToQueue('\(escapedId)');"
+                self?.webView.evaluateJavaScript(js, completionHandler: nil)
+            } else {
+                let js = "window.MiruoBridge && window.MiruoBridge.loadVideo('\(escapedId)', undefined, '\(provider)', '\(escapedAcc)');"
+                self?.webView.evaluateJavaScript(js, completionHandler: nil)
+            }
         }
         let nav = UINavigationController(rootViewController: browserVC)
         nav.modalPresentationStyle = .pageSheet
@@ -672,6 +815,25 @@ class ViewController: UIViewController, WKNavigationDelegate, WKUIDelegate, WKSc
         showErrorUI(message: error.localizedDescription)
     }
     
+    func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction, decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
+        guard let url = navigationAction.request.url else {
+            decisionHandler(.allow)
+            return
+        }
+        if let scheme = url.scheme?.lowercased(), scheme != "http" && scheme != "https" && scheme != "about" && scheme != "file" {
+            if scheme == "sms" || scheme == "mailto" || scheme == "whatsapp" {
+                if UIApplication.shared.canOpenURL(url) {
+                    UIApplication.shared.open(url, options: [:], completionHandler: nil)
+                }
+                decisionHandler(.cancel)
+                return
+            }
+            decisionHandler(.cancel)
+            return
+        }
+        decisionHandler(.allow)
+    }
+    
     // WKUIDelegate: WebRTC Camera & Microphone capture authorization (iOS 15+)
     @available(iOS 15.0, *)
     func webView(
@@ -705,7 +867,12 @@ class PlatformBrowserViewController: UIViewController, WKNavigationDelegate, WKU
     var initialUrl: String = "https://m.youtube.com/feed/trending"
     var browserTitle: String = "YouTube"
     var currentLang: String = "tr"
-    var onVideoSelected: ((String) -> Void)?
+    var isConnectMode: Bool = false
+    var connectedAccount: String = ""
+    var hasActiveVideo: Bool = false
+    var onAccountConnected: ((String, String) -> Void)?
+    var onOpenProviderPicker: (() -> Void)?
+    var onVideoSelected: ((String, String) -> Void)?
     
     private var webView: WKWebView!
     private var searchBar: UISearchBar!
@@ -740,16 +907,16 @@ class PlatformBrowserViewController: UIViewController, WKNavigationDelegate, WKU
         navigationController?.navigationBar.isTranslucent = false
         navigationController?.navigationBar.tintColor = .white
         
-        let backItem = UIBarButtonItem(title: "←", style: .plain, target: self, action: #selector(backTapped))
-        backItem.setTitleTextAttributes([.font: UIFont.boldSystemFont(ofSize: 20)], for: .normal)
+        let platformPickItem = UIBarButtonItem(title: "← Platform", style: .plain, target: self, action: #selector(openPlatformPickerTapped))
+        platformPickItem.setTitleTextAttributes([.font: UIFont.systemFont(ofSize: 13, weight: .bold), .foregroundColor: UIColor.systemPink], for: .normal)
         
-        let forwardItem = UIBarButtonItem(title: "→", style: .plain, target: self, action: #selector(forwardTapped))
-        forwardItem.setTitleTextAttributes([.font: UIFont.boldSystemFont(ofSize: 20)], for: .normal)
+        let backItem = UIBarButtonItem(title: "‹", style: .plain, target: self, action: #selector(backTapped))
+        backItem.setTitleTextAttributes([.font: UIFont.boldSystemFont(ofSize: 22)], for: .normal)
         
-        let reloadItem = UIBarButtonItem(title: "⟳", style: .plain, target: self, action: #selector(reloadTapped))
-        reloadItem.setTitleTextAttributes([.font: UIFont.boldSystemFont(ofSize: 18)], for: .normal)
+        let forwardItem = UIBarButtonItem(title: "›", style: .plain, target: self, action: #selector(forwardTapped))
+        forwardItem.setTitleTextAttributes([.font: UIFont.boldSystemFont(ofSize: 22)], for: .normal)
         
-        navigationItem.leftBarButtonItems = [backItem, forwardItem, reloadItem]
+        navigationItem.leftBarButtonItems = isConnectMode ? [backItem, forwardItem] : [platformPickItem, backItem, forwardItem]
         
         let closeItem = UIBarButtonItem(title: "✕", style: .done, target: self, action: #selector(closeTapped))
         closeItem.setTitleTextAttributes([.font: UIFont.boldSystemFont(ofSize: 18), .foregroundColor: UIColor.systemRed], for: .normal)
@@ -950,6 +1117,17 @@ class PlatformBrowserViewController: UIViewController, WKNavigationDelegate, WKU
     }
     
     private func setupBottomBar() {
+        if isConnectMode {
+            // In connect mode: full-screen webview without bottom bar (no manual return button!)
+            NSLayoutConstraint.activate([
+                webView.topAnchor.constraint(equalTo: progressView.bottomAnchor),
+                webView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+                webView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+                webView.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor)
+            ])
+            return
+        }
+        
         let bottomBar = UIView()
         bottomBar.translatesAutoresizingMaskIntoConstraints = false
         bottomBar.backgroundColor = UIColor(red: 0.08, green: 0.09, blue: 0.14, alpha: 0.98)
@@ -961,9 +1139,9 @@ class PlatformBrowserViewController: UIViewController, WKNavigationDelegate, WKU
         syncBtn.translatesAutoresizingMaskIntoConstraints = false
         let btnTitle = currentLang == "en" ? "Stream Video to Room" : (currentLang == "de" ? "Video in den Raum übertragen" : "Bu Videoyu Odaya Aktar ve İzle")
         syncBtn.setTitle(btnTitle, for: .normal)
+        syncBtn.backgroundColor = UIColor(red: 0.88, green: 0.12, blue: 0.28, alpha: 1.0)
         syncBtn.setTitleColor(.white, for: .normal)
         syncBtn.titleLabel?.font = UIFont.boldSystemFont(ofSize: 13)
-        syncBtn.backgroundColor = UIColor(red: 0.88, green: 0.12, blue: 0.28, alpha: 1.0)
         syncBtn.layer.cornerRadius = 14
         syncBtn.addTarget(self, action: #selector(syncCurrentContentTapped), for: .touchUpInside)
         bottomBar.addSubview(syncBtn)
@@ -1026,11 +1204,19 @@ class PlatformBrowserViewController: UIViewController, WKNavigationDelegate, WKU
         }
     }
     
+    @objc private func openPlatformPickerTapped() {
+        webView.evaluateJavaScript("try { var v = document.querySelectorAll('video, audio'); v.forEach(function(el){ el.pause(); el.src = ''; }); } catch(e) {}")
+        webView.load(URLRequest(url: URL(string: "about:blank")!))
+        dismiss(animated: true) { [weak self] in
+            self?.onOpenProviderPicker?()
+        }
+    }
+    
     @objc private func backTapped() {
         if webView.canGoBack {
             webView.goBack()
         } else {
-            dismiss(animated: true)
+            openPlatformPickerTapped()
         }
     }
     
@@ -1045,24 +1231,210 @@ class PlatformBrowserViewController: UIViewController, WKNavigationDelegate, WKU
     }
     
     @objc private func closeTapped() {
+        webView.evaluateJavaScript("try { var v = document.querySelectorAll('video, audio'); v.forEach(function(el){ el.pause(); el.src = ''; }); } catch(e) {}")
+        webView.load(URLRequest(url: URL(string: "about:blank")!))
         dismiss(animated: true)
+    }
+    
+    private func handleSelectedVideo(_ videoId: String) {
+        // Prevent background audio overlap: stop video element in browser immediately!
+        self.webView.evaluateJavaScript("try { var v = document.querySelectorAll('video, audio'); v.forEach(function(el){ el.pause(); el.src = ''; }); } catch(e) {}")
+        
+        // If room currently has no active video, play immediately without asking!
+        if !hasActiveVideo {
+            self.webView.load(URLRequest(url: URL(string: "about:blank")!))
+            self.dismiss(animated: true) { [weak self] in
+                self?.onVideoSelected?(videoId, "play")
+            }
+            return
+        }
+        
+        let alert = UIAlertController(title: "Video Seçildi", message: "Ne yapmak istersiniz?", preferredStyle: .actionSheet)
+        alert.addAction(UIAlertAction(title: "Hemen Oynat", style: .default, handler: { [weak self] _ in
+            self?.webView.load(URLRequest(url: URL(string: "about:blank")!))
+            self?.dismiss(animated: true) {
+                self?.onVideoSelected?(videoId, "play")
+            }
+        }))
+        alert.addAction(UIAlertAction(title: "Sıraya Ekle", style: .default, handler: { [weak self] _ in
+            self?.onVideoSelected?(videoId, "queue")
+            let generator = UINotificationFeedbackGenerator()
+            generator.notificationOccurred(.success)
+        }))
+        alert.addAction(UIAlertAction(title: "İptal", style: .cancel, handler: nil))
+        
+        if let popover = alert.popoverPresentationController {
+            popover.sourceView = self.view
+            popover.sourceRect = CGRect(x: self.view.bounds.midX, y: self.view.bounds.midY, width: 0, height: 0)
+            popover.permittedArrowDirections = []
+        }
+        present(alert, animated: true)
     }
     
     @objc private func syncCurrentContentTapped() {
         guard let currentUrl = webView.url else { return }
-        let urlStr = currentUrl.absoluteString
-        let videoId = extractYouTubeId(urlString: urlStr) ?? urlStr
-        dismiss(animated: true) { [weak self] in
-            self?.onVideoSelected?(videoId)
+        let currentUrlStr = currentUrl.absoluteString
+        
+        // 1. YouTube direct check
+        if let ytId = extractYouTubeId(urlString: currentUrlStr) {
+            handleSelectedVideo(ytId)
+            return
+        }
+        
+        // 2. Extract media stream or player iframe URL from free movie/streaming sites
+        let extractJs = """
+        (function() {
+            // A. Direct <video> tags
+            var vids = document.querySelectorAll('video');
+            for (var i = 0; i < vids.length; i++) {
+                var v = vids[i];
+                var s = v.currentSrc || v.src;
+                if (s && s.indexOf('blob:') !== 0 && s.length > 8) {
+                    return s;
+                }
+                var sources = v.querySelectorAll('source');
+                for (var j = 0; j < sources.length; j++) {
+                    var ss = sources[j].src;
+                    if (ss && ss.indexOf('blob:') !== 0 && ss.length > 8) {
+                        return ss;
+                    }
+                }
+            }
+            // B. Scan iframes for embedded players
+            var iframes = document.querySelectorAll('iframe');
+            for (var k = 0; k < iframes.length; k++) {
+                var ifr = iframes[k];
+                try {
+                    var doc = ifr.contentDocument || ifr.contentWindow.document;
+                    if (doc) {
+                        var iv = doc.querySelector('video');
+                        if (iv && (iv.currentSrc || iv.src)) {
+                            var isrc = iv.currentSrc || iv.src;
+                            if (isrc.indexOf('blob:') !== 0) return isrc;
+                        }
+                    }
+                } catch(e) {}
+                var src = ifr.src || '';
+                if (src && (src.indexOf('.m3u8') !== -1 || src.indexOf('.mp4') !== -1 || src.indexOf('/embed') !== -1 || src.indexOf('/player') !== -1 || src.indexOf('vidmoly') !== -1 || src.indexOf('filemoon') !== -1 || src.indexOf('streamtape') !== -1 || src.indexOf('dood') !== -1 || src.indexOf('play') !== -1)) {
+                    return src;
+                }
+            }
+            // C. Resource timing entries
+            if (window.performance && performance.getEntriesByType) {
+                var entries = performance.getEntriesByType('resource');
+                for (var r = entries.length - 1; r >= 0; r--) {
+                    var rname = entries[r].name || '';
+                    if (rname.indexOf('.m3u8') !== -1 || rname.indexOf('.mp4') !== -1 || rname.indexOf('/hls/') !== -1) {
+                        return rname;
+                    }
+                }
+            }
+            return window.location.href;
+        })()
+        """
+        
+        webView.evaluateJavaScript(extractJs) { [weak self] res, _ in
+            guard let self = self else { return }
+            let finalUrl = (res as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
+            let videoId = (finalUrl != nil && !finalUrl!.isEmpty) ? finalUrl! : currentUrlStr
+            self.handleSelectedVideo(videoId)
+        }
+    }
+    
+    private var hasReportedAutoLogin = false
+
+    private func checkAndHandleAutoLogin() {
+        guard !isBeingDismissed, !hasReportedAutoLogin else { return }
+        guard isConnectMode || connectedAccount.isEmpty else { return }
+        guard let currentUrl = webView.url?.absoluteString else { return }
+        let lower = currentUrl.lowercased()
+        
+        // 1. If still on signin, password, login, or service login page, do NOT connect yet!
+        if lower.contains("servicelogin") || lower.contains("/signin") || lower.contains("identifier") || lower.contains("/v3/signin") || lower.contains("/login") || lower.contains("openid") || lower.contains("challenge") || lower.contains("auth-redirect") || lower.contains("/ap/") {
+            return
+        }
+        
+        // 2. Check cookies & URL to ensure genuine authenticated session
+        WKWebsiteDataStore.default().httpCookieStore.getAllCookies { [weak self] cookies in
+            guard let self = self, !self.isBeingDismissed, !self.hasReportedAutoLogin else { return }
+            
+            var isActuallyAuthenticated = false
+            
+            switch self.provider {
+            case "youtube":
+                let isYtDomain = lower.contains("youtube.com") && !lower.contains("accounts.google")
+                let hasYtAuthCookie = cookies.contains { c in
+                    (c.domain.contains("youtube.com") || c.domain.contains(".google.com")) && 
+                    (c.name == "LOGIN_INFO" || c.name == "SID" || c.name == "SSID" || c.name == "SAPISID")
+                }
+                isActuallyAuthenticated = isYtDomain && hasYtAuthCookie
+                
+            case "netflix":
+                let isNfDomain = lower.contains("netflix.com")
+                let hasNfAuthCookie = cookies.contains { c in
+                    c.domain.contains("netflix.com") && (c.name == "NetflixId" || c.name == "SecureNetflixId")
+                }
+                let isNfBrowse = lower.contains("/browse") || lower.contains("/profiles")
+                isActuallyAuthenticated = isNfDomain && (hasNfAuthCookie || isNfBrowse)
+                
+            case "prime":
+                let isPrimeDomain = lower.contains("primevideo.com") || lower.contains("amazon.")
+                let notInAuth = !lower.contains("/ap/") && !lower.contains("auth-redirect") && !lower.contains("/signin")
+                let hasPrimeAuthCookie = cookies.contains { c in
+                    (c.domain.contains("primevideo.com") || c.domain.contains("amazon.")) && 
+                    (c.name == "at-main" || c.name == "session-token" || c.name == "ubid-main" || c.name == "at-acbtr")
+                }
+                let isPrimeStore = lower.contains("/storefront") || lower.contains("/detail") || lower.contains("/region/") || lower.contains("/movie/") || lower.contains("/tv/")
+                isActuallyAuthenticated = isPrimeDomain && notInAuth && (hasPrimeAuthCookie || isPrimeStore)
+                
+            case "disney":
+                let isDisneyDomain = lower.contains("disneyplus.com")
+                let hasDisneyAuthCookie = cookies.contains { c in
+                    c.domain.contains("disneyplus.com") && (c.name == "disney_user_session" || c.name == "idp_token")
+                }
+                let isDisneyHome = lower.contains("/home") || lower.contains("/browse")
+                isActuallyAuthenticated = isDisneyDomain && (hasDisneyAuthCookie || isDisneyHome)
+                
+            default:
+                isActuallyAuthenticated = false
+            }
+            
+            guard isActuallyAuthenticated else { return }
+            self.hasReportedAutoLogin = true
+            
+            // Extract detected email/username via DOM
+            self.webView.evaluateJavaScript("""
+                (function() {
+                    try {
+                        var text = document.body ? document.body.innerText : '';
+                        var m = text.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}/);
+                        if (m) return m[0];
+                    } catch(e) {}
+                    return '';
+                })()
+            """) { [weak self] (result, _) in
+                guard let self = self, !self.isBeingDismissed else { return }
+                let detectedEmail = (result as? String) ?? ""
+                let finalAcc = !detectedEmail.isEmpty ? detectedEmail : "\(self.provider.capitalized) Hesabı (Aktif)"
+                self.connectedAccount = finalAcc
+                
+                if self.isConnectMode {
+                    // Opened from Settings -> Auto-dismiss and notify Miruo
+                    self.dismiss(animated: true) {
+                        self.onAccountConnected?(self.provider, finalAcc)
+                    }
+                } else {
+                    // Opened inside Room -> Notify Miruo without closing browser so user can pick their video
+                    self.onAccountConnected?(self.provider, finalAcc)
+                }
+            }
         }
     }
     
     // WKScriptMessageHandler
     func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
         if message.name == "videoIntercepted", let videoId = message.body as? String, !videoId.isEmpty {
-            dismiss(animated: true) { [weak self] in
-                self?.onVideoSelected?(videoId)
-            }
+            handleSelectedVideo(videoId)
         }
     }
     
@@ -1074,6 +1446,13 @@ class PlatformBrowserViewController: UIViewController, WKNavigationDelegate, WKU
         }
         
         if let scheme = url.scheme?.lowercased(), scheme != "http" && scheme != "https" && scheme != "about" {
+            if scheme == "sms" || scheme == "mailto" || scheme == "whatsapp" {
+                if UIApplication.shared.canOpenURL(url) {
+                    UIApplication.shared.open(url, options: [:], completionHandler: nil)
+                }
+                decisionHandler(.cancel)
+                return
+            }
             // Block external app switching (e.g. youtube://, netflix://) so it never kicks the user out of Miruo
             decisionHandler(.cancel)
             return
@@ -1087,9 +1466,7 @@ class PlatformBrowserViewController: UIViewController, WKNavigationDelegate, WKU
         
         if let videoId = extractYouTubeId(urlString: urlStr) {
             decisionHandler(.cancel)
-            dismiss(animated: true) { [weak self] in
-                self?.onVideoSelected?(videoId)
-            }
+            handleSelectedVideo(videoId)
             return
         }
         
@@ -1098,6 +1475,12 @@ class PlatformBrowserViewController: UIViewController, WKNavigationDelegate, WKU
     
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
         if let current = webView.url?.absoluteString {
+            if isConnectMode {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { [weak self] in
+                    self?.checkAndHandleAutoLogin()
+                }
+            }
+
             if !searchBar.isFirstResponder {
                 if current.contains("results?search_query=") {
                     // keep search text
@@ -1278,6 +1661,26 @@ extension ViewController: PHPickerViewControllerDelegate, UIImagePickerControlle
         picker.dismiss(animated: true)
         guard let result = results.first else { return }
         let provider = result.itemProvider
+        
+        if provider.hasItemConformingToTypeIdentifier("public.movie") {
+            provider.loadFileRepresentation(forTypeIdentifier: "public.movie") { [weak self] url, error in
+                guard let url = url, let self = self else { return }
+                let tempDir = FileManager.default.temporaryDirectory
+                let destUrl = tempDir.appendingPathComponent(url.lastPathComponent)
+                try? FileManager.default.removeItem(at: destUrl)
+                do {
+                    try FileManager.default.copyItem(at: url, to: destUrl)
+                    let js = "if (typeof window.handleNativeVideoPicked === 'function') { window.handleNativeVideoPicked('\(destUrl.absoluteString)', '\(destUrl.lastPathComponent)'); }"
+                    DispatchQueue.main.async {
+                        self.webView.evaluateJavaScript(js, completionHandler: nil)
+                    }
+                } catch {
+                    print("[Miruo] Error copying video: \(error)")
+                }
+            }
+            return
+        }
+
         if provider.canLoadObject(ofClass: UIImage.self) {
             provider.loadObject(ofClass: UIImage.self) { [weak self] (object, error) in
                 if let image = object as? UIImage {
@@ -1303,6 +1706,13 @@ extension ViewController: PHPickerViewControllerDelegate, UIImagePickerControlle
     
     func imagePickerController(_ picker: UIImagePickerController, didFinishPickingMediaWithInfo info: [UIImagePickerController.InfoKey : Any]) {
         picker.dismiss(animated: true)
+        if let videoUrl = info[.mediaURL] as? URL {
+            let js = "if (typeof window.handleNativeVideoPicked === 'function') { window.handleNativeVideoPicked('\(videoUrl.absoluteString)', '\(videoUrl.lastPathComponent)'); }"
+            DispatchQueue.main.async { [weak self] in
+                self?.webView.evaluateJavaScript(js, completionHandler: nil)
+            }
+            return
+        }
         if let image = (info[.editedImage] as? UIImage) ?? (info[.originalImage] as? UIImage) {
             processAndSendPickedImage(image)
         }

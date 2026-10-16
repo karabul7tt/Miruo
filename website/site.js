@@ -304,122 +304,7 @@
     }
   });
 
-  // 4. CHROME-STYLE DOWNLOAD MODAL (FOR MAC & WINDOWS)
-  const downloadModal = document.getElementById('downloadModal');
-  const modalCloseBtn = document.getElementById('modalCloseBtn');
-  const modalIcon = document.getElementById('modalIcon');
-  const modalTitle = document.getElementById('modalTitle');
-  const modalSub = document.getElementById('modalSub');
-  const modalDirectLink = document.getElementById('modalDirectLink');
-  const modalStepsContainer = document.getElementById('modalStepsContainer');
 
-  function openDownloadModal(platform) {
-    if (!downloadModal) return;
-
-    if (platform === 'mac') {
-      modalIcon.innerHTML = `
-        <svg style="width:38px; height:38px; fill:#FFFFFF;" viewBox="0 0 170 170">
-          <path d="M150.37 130.25c-2.45 5.66-5.35 10.87-8.71 15.66-4.58 6.53-8.33 11.05-11.22 13.56-4.48 4.12-9.28 6.23-14.42 6.35-3.69 0-8.14-1.05-13.32-3.18-5.19-2.12-9.97-3.17-14.34-3.17-4.58 0-9.49 1.05-14.75 3.17-5.26 2.13-9.5 3.24-12.74 3.35-4.35.13-9.16-1.9-14.42-6.08-3.7-3.03-7.61-7.7-11.73-14-4.89-7.39-8.77-15.66-11.64-24.81-2.87-9.15-4.31-18.06-4.31-26.74 0-14.15 3.73-25.79 11.2-34.93 7.47-9.14 16.73-13.84 27.79-14.1 4.58 0 9.87 1.25 15.87 3.76 6 2.5 9.87 3.86 11.6 4.09 1.53-.23 5.43-1.6 11.71-4.09 6.28-2.51 11.53-3.71 15.75-3.6 11.64.63 21.05 5.09 28.23 13.38-10.23 6.18-15.24 14.86-15.03 26.04.2 8.78 3.5 16.14 9.88 22.08 6.39 5.95 14.07 9.38 23.05 10.29-1.9 5.86-4.14 11.51-6.72 16.94zm-30.82-108.97c0 7.37-2.73 14.28-8.19 20.73-5.46 6.45-12.1 10.27-19.92 11.46-.22-1.09-.33-2.12-.33-3.09 0-7.3 2.74-14.23 8.21-20.78 5.47-6.55 12.2-10.42 20.19-11.61.04 1.09.04 2.19.04 3.29z"/>
-        </svg>
-      `;
-      modalTitle.innerText = 'Miruo for Mac İndiriliyor...';
-      modalSub.innerText = 'İndirme işlemi birkaç saniye içinde otomatik başlayacak.';
-      modalDirectLink.href = '/download/mac';
-      modalDirectLink.innerText = 'İndirme başlamadıysa: Buraya tıklayın (.dmg)';
-
-      modalStepsContainer.innerHTML = `
-        <div class="step-card">
-          <div class="step-badge">1</div>
-          <div class="step-text">
-            <b>DMG Dosyasını Açın</b>
-            <p>İndirilenler klasörünüzdeki <code>Miruo-macOS-Installer.dmg</code> dosyasına çift tıklayın.</p>
-          </div>
-        </div>
-        <div class="step-card">
-          <div class="step-badge">2</div>
-          <div class="step-text">
-            <b>Uygulamalar'a Sürükleyin</b>
-            <p>Miruo baykuş simgesini <b>Applications</b> klasörüne sürükleyip bırakın.</p>
-          </div>
-        </div>
-        <div class="step-card">
-          <div class="step-badge">3</div>
-          <div class="step-text">
-            <b>Arkadaşlarınla İzle</b>
-            <p>Launchpad'den Miruo'yu açıp oda kodunu girin, sıfır gecikmeyle izlemeye başlayın!</p>
-          </div>
-        </div>
-      `;
-
-      // Trigger file download
-      const dlLink = document.createElement('a');
-      dlLink.href = '/download/mac';
-      dlLink.download = 'Miruo-macOS-Installer.dmg';
-      document.body.appendChild(dlLink);
-      dlLink.click();
-      document.body.removeChild(dlLink);
-
-    } else if (platform === 'windows') {
-      modalIcon.innerHTML = `
-        <svg style="width:36px; height:36px; fill:#FFFFFF;" viewBox="0 0 24 24">
-          <path d="M0 3.449L9.75 2.1v9.451H0m10.949-9.602L24 0v11.4H10.949M0 12.6h9.75v9.451L0 20.699M10.949 12.6H24V24l-12.951-1.8"/>
-        </svg>
-      `;
-      modalTitle.innerText = 'Miruo for Windows İndiriliyor...';
-      modalSub.innerText = 'İndirme işlemi birkaç saniye içinde otomatik başlayacak.';
-      modalDirectLink.href = '/download/windows';
-      modalDirectLink.innerText = 'İndirme başlamadıysa: Buraya tıklayın (.exe)';
-
-      modalStepsContainer.innerHTML = `
-        <div class="step-card">
-          <div class="step-badge">1</div>
-          <div class="step-text">
-            <b>Setup Dosyasını Açın</b>
-            <p>İndirilen <code>Miruo-Windows-Setup.exe</code> dosyasına tıklayıp çalıştırın.</p>
-          </div>
-        </div>
-        <div class="step-card">
-          <div class="step-badge">2</div>
-          <div class="step-text">
-            <b>Kurulumu Tamamlayın</b>
-            <p>Ekrana gelen yükleme sihirbazını onaylayarak kurulumu 5 saniyede tamamlayın.</p>
-          </div>
-        </div>
-        <div class="step-card">
-          <div class="step-badge">3</div>
-          <div class="step-text">
-            <b>Miruo'yu Başlatın</b>
-            <p>Masaüstündeki Miruo kısayoluna tıklayın ve arkadaşlarınla partiye dal!</p>
-          </div>
-        </div>
-      `;
-
-      // Trigger file download
-      const dlLink = document.createElement('a');
-      dlLink.href = '/download/windows';
-      dlLink.download = 'Miruo-Windows-Setup.exe';
-      document.body.appendChild(dlLink);
-      dlLink.click();
-      document.body.removeChild(dlLink);
-    }
-
-    downloadModal.classList.remove('hidden');
-  }
-
-  function closeDownloadModal() {
-    if (!downloadModal) return;
-    downloadModal.classList.add('hidden');
-  }
-
-  if (modalCloseBtn) {
-    modalCloseBtn.addEventListener('click', closeDownloadModal);
-  }
-
-  if (downloadModal) {
-    downloadModal.addEventListener('click', (e) => {
-      if (e.target === downloadModal) closeDownloadModal();
-    });
-  }
 
   // 5. PLATFORM ACTIONS:
   // - Apple/iPhone: DIRECT redirect to App Store (no modal!)
@@ -438,12 +323,27 @@
 
       if (platform === 'android') {
         window.open('https://play.google.com/store/apps/details?id=com.miruo.app', '_blank');
-        showToast('Google Play Store açılıyor...');
         return;
       }
 
-      if (platform === 'mac' || platform === 'windows') {
-        openDownloadModal(platform);
+      if (platform === 'mac') {
+        const dlLink = document.createElement('a');
+        dlLink.href = '/download/mac';
+        dlLink.download = 'Miruo-macOS.zip';
+        document.body.appendChild(dlLink);
+        dlLink.click();
+        document.body.removeChild(dlLink);
+        return;
+      }
+
+      if (platform === 'windows') {
+        const dlLink = document.createElement('a');
+        dlLink.href = '/download/windows';
+        dlLink.download = 'Miruo-Windows.zip';
+        document.body.appendChild(dlLink);
+        dlLink.click();
+        document.body.removeChild(dlLink);
+        return;
       }
     });
   });
@@ -1178,13 +1078,5 @@
   });
 
   // Expose
-  window.openDownloadModal = openDownloadModal;
   window.showToast = showToast;
-
-  // Auto open modal if requested via URL hash/query
-  if (window.location.hash === '#mac' || window.location.search.includes('download=mac')) {
-    setTimeout(() => openDownloadModal('mac'), 200);
-  } else if (window.location.hash === '#windows' || window.location.search.includes('download=windows')) {
-    setTimeout(() => openDownloadModal('windows'), 200);
-  }
 })();

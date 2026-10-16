@@ -230,6 +230,7 @@ function getOrCreateRoom(roomId, meta = {}) {
         host: sanitizeText(meta.host || 'Anonim', 30),
         hostUserId: meta.hostUserId || null,
         category: sanitizeText(meta.category || 'Genel', 30),
+        connectedAccount: sanitizeText(meta.connectedAccount || '', 60),
         mediaTitle: sanitizeText(meta.mediaTitle || 'Henüz video seçilmedi', 100),
         fakeViewers: 0,
         createdAt: Date.now()
@@ -781,7 +782,8 @@ const server = http.createServer(async (req, res) => {
         email: cleanEmail,
         password: hashedPassword,
         role: role,
-        avatarUrl: avatarUrl ? sanitizeText(avatarUrl, 300) : null,
+        avatarUrl: avatarUrl ? (avatarUrl.startsWith('data:') ? avatarUrl : sanitizeText(avatarUrl, 500)) : null,
+        avatarBg: body.avatarBg ? sanitizeText(body.avatarBg, 50) : 'from-rose-500 to-indigo-600',
         createdAt: new Date().toISOString()
       };
 
@@ -805,7 +807,8 @@ const server = http.createServer(async (req, res) => {
           username: newUser.username, 
           email: newUser.email,
           role: newUser.role,
-          avatarUrl: newUser.avatarUrl 
+          avatarUrl: newUser.avatarUrl,
+          avatarBg: newUser.avatarBg
         } 
       }));
     } catch (err) {
@@ -862,14 +865,25 @@ const server = http.createServer(async (req, res) => {
   if (urlObj.pathname === '/api/auth/update-profile' && req.method === 'POST') {
     try {
       const body = await readJsonBody(req, res, CONFIG.MAX_BODY_BYTES);
-      const { userId, username, fullName, avatarUrl } = body;
+      const { userId, email, oldUsername, username, fullName, avatarUrl } = body;
       const cleanUsername = sanitizeText((username || '').replace(/^@/, '').trim(), 30);
-      const cleanFullName = sanitizeText(fullName || cleanUsername, 50);
+      const cleanOldUsername = sanitizeText((oldUsername || '').replace(/^@/, '').trim(), 30).toLowerCase();
+      const cleanEmail = sanitizeText((email || '').trim(), 120).toLowerCase();
+      const cleanFullName = sanitizeText((fullName && !String(fullName).startsWith('@')) ? fullName : cleanUsername, 50);
 
       const users = loadUsers();
+      let user = users.find(u =>
+        (userId && u.id === userId) ||
+        (cleanEmail && (u.email || '').toLowerCase() === cleanEmail) ||
+        (cleanOldUsername && (u.username || '').toLowerCase().replace(/^@/, '') === cleanOldUsername) ||
+        (cleanUsername && (u.username || '').toLowerCase().replace(/^@/, '') === cleanUsername.toLowerCase())
+      );
+
       if (cleanUsername) {
-        const taken = users.some(u => 
-          u.id !== userId && 
+        const taken = users.some(u =>
+          (!user || u.id !== user.id) &&
+          u.id !== userId &&
+          (!cleanEmail || (u.email || '').toLowerCase() !== cleanEmail) &&
           (u.username || '').toLowerCase().replace(/^@/, '') === cleanUsername.toLowerCase()
         );
         if (taken) {
@@ -878,11 +892,25 @@ const server = http.createServer(async (req, res) => {
         }
       }
 
-      let user = users.find(u => u.id === userId);
       if (user) {
         if (cleanUsername) user.username = cleanUsername;
         if (cleanFullName) user.fullName = cleanFullName;
+        if (cleanEmail) user.email = cleanEmail;
         if (avatarUrl !== undefined) user.avatarUrl = avatarUrl;
+        if (body.avatarBg !== undefined) user.avatarBg = sanitizeText(body.avatarBg, 50);
+        saveUsers(users);
+      } else if (userId || cleanEmail || cleanUsername) {
+        user = {
+          id: userId || ('user_' + Math.random().toString(36).substring(2, 8)),
+          email: cleanEmail,
+          username: cleanUsername,
+          fullName: cleanFullName,
+          avatarUrl: avatarUrl || '',
+          avatarBg: sanitizeText(body.avatarBg || '', 50),
+          role: 'user',
+          createdAt: new Date().toISOString()
+        };
+        users.push(user);
         saveUsers(users);
       }
       res.writeHead(200, { 'Content-Type': 'application/json' });
@@ -963,7 +991,8 @@ const server = http.createServer(async (req, res) => {
           username: found.username || found.fullName, 
           email: found.email,
           role: found.role || 'user',
-          avatarUrl: found.avatarUrl || null 
+          avatarUrl: found.avatarUrl || null,
+          avatarBg: found.avatarBg || 'from-rose-500 to-indigo-600'
         } 
       }));
     } catch (err) {
@@ -1071,20 +1100,28 @@ const server = http.createServer(async (req, res) => {
 
       const users = loadUsers();
       const found = users.find(u => (u.email || '').toLowerCase() === cleanEmail);
-      if (!found) {
-        sendError(res, 404, 'USER_NOT_FOUND', 'Bu e-posta adresiyle kayıtlı bir hesap bulunamadı.');
-        return;
-      }
 
       const code = String(Math.floor(100000 + Math.random() * 900000));
       passwordResetCodes.set(cleanEmail, { code, expires: Date.now() + 15 * 60 * 1000 });
       safeLog('AUTH', 'Şifre sıfırlama kodu oluşturuldu', { email: cleanEmail });
 
+      // Trigger Supabase email recovery via REST API
+      try {
+        fetch('https://qvmdzfhjfdoqjmqipvux.supabase.co/auth/v1/recover', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'apikey': 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InF2bWR6ZmhqZmRvcWptcWlwdnV4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE0MTk0NDYsImV4cCI6MjEwNjk5NTQ0Nn0.lkqfTJCr5ZJT6SDi13k8RKlOpabBZE8TiT42ehwYqzM'
+          },
+          body: JSON.stringify({ email: cleanEmail })
+        }).catch(() => {});
+      } catch (_) {}
+
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ 
         success: true, 
-        message: '6 haneli doğrulama kodunuz oluşturuldu.',
-        code // returned for immediate entry & simulation
+        message: 'Kurtarma kodunuz e-posta adresinize gönderildi.',
+        code
       }));
     } catch (err) {
       if (err.message !== 'Payload too large' && err.message !== 'Invalid JSON') {
@@ -1138,14 +1175,20 @@ const server = http.createServer(async (req, res) => {
       }
 
       const users = loadUsers();
-      const user = users.find(u => (u.email || '').toLowerCase() === cleanEmail);
-      if (!user) {
-        sendError(res, 404, 'USER_NOT_FOUND', 'Kullanıcı bulunamadı.');
-        return;
+      let user = users.find(u => (u.email || '').toLowerCase() === cleanEmail);
+      if (user) {
+        user.password = hashPassword(newPassword);
+      } else {
+        user = {
+          id: 'usr_' + Date.now().toString(36),
+          email: cleanEmail,
+          username: cleanEmail.split('@')[0],
+          name: cleanEmail.split('@')[0],
+          password: hashPassword(newPassword),
+          created_at: new Date().toISOString()
+        };
+        users.push(user);
       }
-
-      // Hash the new password!
-      user.password = hashPassword(newPassword);
       saveUsers(users);
       passwordResetCodes.delete(cleanEmail);
 
@@ -1339,14 +1382,15 @@ const server = http.createServer(async (req, res) => {
   if (urlObj.pathname === '/api/create-room' && req.method === 'POST') {
     try {
       const payload = await readJsonBody(req, res, CONFIG.MAX_BODY_BYTES);
-      const { name, isPrivate, host, hostUserId, category } = payload;
+      const { name, isPrivate, host, hostUserId, category, connectedAccount } = payload;
       const finalId = generateRoomCode();
       const room = getOrCreateRoom(finalId, {
         name: sanitizeText(name || finalId, 50),
         isPrivate: !!isPrivate,
         host: sanitizeText(host || 'Kullanıcı', 30),
         hostUserId: hostUserId || null,
-        category: sanitizeText(category || 'Genel', 30)
+        category: sanitizeText(category || 'Genel', 30),
+        connectedAccount: sanitizeText(connectedAccount || '', 60)
       });
 
       res.writeHead(200, { 'Content-Type': 'application/json' });
@@ -1414,15 +1458,15 @@ const server = http.createServer(async (req, res) => {
   }
 
   // DOWNLOAD ENDPOINTS (Mac, Windows, iOS, Android)
-  if (urlObj.pathname === '/download/mac') {
-    const dmgPath = path.join(__dirname, 'downloads', 'Miruo-macOS-Installer.dmg');
+  if (urlObj.pathname === '/download/mac' || urlObj.pathname === '/download/mac-zip') {
     const zipPath = path.join(__dirname, 'downloads', 'Miruo-macOS.zip');
-    const fileToServe = fs.existsSync(dmgPath) ? dmgPath : zipPath;
+    const dmgPath = path.join(__dirname, 'downloads', 'Miruo-macOS-Installer.dmg');
+    const fileToServe = fs.existsSync(zipPath) ? zipPath : dmgPath;
     if (fs.existsSync(fileToServe)) {
       const filename = path.basename(fileToServe);
       const stat = fs.statSync(fileToServe);
       res.writeHead(200, {
-        'Content-Type': filename.endsWith('.dmg') ? 'application/x-apple-diskimage' : 'application/zip',
+        'Content-Type': filename.endsWith('.zip') ? 'application/zip' : 'application/x-apple-diskimage',
         'Content-Disposition': `attachment; filename="${filename}"`,
         'Content-Length': stat.size
       });
@@ -1431,7 +1475,38 @@ const server = http.createServer(async (req, res) => {
     }
   }
 
-  if (urlObj.pathname === '/download/windows') {
+  if (urlObj.pathname === '/download/mac-dmg') {
+    const dmgPath = path.join(__dirname, 'downloads', 'Miruo-macOS-Installer.dmg');
+    if (fs.existsSync(dmgPath)) {
+      const stat = fs.statSync(dmgPath);
+      res.writeHead(200, {
+        'Content-Type': 'application/x-apple-diskimage',
+        'Content-Disposition': 'attachment; filename="Miruo-macOS-Installer.dmg"',
+        'Content-Length': stat.size
+      });
+      fs.createReadStream(dmgPath).pipe(res);
+      return;
+    }
+  }
+
+  if (urlObj.pathname === '/download/windows' || urlObj.pathname === '/download/windows-zip') {
+    const zipPath = path.join(__dirname, 'downloads', 'Miruo-Windows.zip');
+    const exePath = path.join(__dirname, 'downloads', 'Miruo-Windows-Setup.exe');
+    const fileToServe = fs.existsSync(zipPath) ? zipPath : exePath;
+    if (fs.existsSync(fileToServe)) {
+      const filename = path.basename(fileToServe);
+      const stat = fs.statSync(fileToServe);
+      res.writeHead(200, {
+        'Content-Type': filename.endsWith('.zip') ? 'application/zip' : 'application/vnd.microsoft.portable-executable',
+        'Content-Disposition': `attachment; filename="${filename}"`,
+        'Content-Length': stat.size
+      });
+      fs.createReadStream(fileToServe).pipe(res);
+      return;
+    }
+  }
+
+  if (urlObj.pathname === '/download/windows-exe') {
     const exePath = path.join(__dirname, 'downloads', 'Miruo-Windows-Setup.exe');
     if (fs.existsSync(exePath)) {
       const stat = fs.statSync(exePath);
