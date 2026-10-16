@@ -46,12 +46,13 @@ function createWindow() {
     return { action: 'allow' };
   });
 
-  const localIndexPath = path.join(__dirname, 'public/index.html');
-  if (fs.existsSync(localIndexPath)) {
-    mainWindow.loadFile(localIndexPath);
-  } else {
-    mainWindow.loadURL('https://www.miruo.com.tr/app/');
-  }
+  mainWindow.loadURL('https://www.miruo.com.tr/app/').catch((err) => {
+    console.warn('[Miruo] Failed to load remote URL, falling back to local file:', err);
+    const localIndexPath = path.join(__dirname, 'public/index.html');
+    if (fs.existsSync(localIndexPath)) {
+      mainWindow.loadFile(localIndexPath);
+    }
+  });
 
   mainWindow.on('closed', () => {
     mainWindow = null;
