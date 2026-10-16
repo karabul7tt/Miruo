@@ -10472,6 +10472,25 @@ function initEvents() {
       return;
     }
 
+    // 1b. Native macOS Apple Sign In (via Touch ID / Fingerprint sensor)
+    if (!isGoogle && typeof window !== 'undefined' && window.miruoDesktop && typeof window.miruoDesktop.promptAppleTouchID === 'function') {
+      hideAuthAlert();
+      if (btn) btn.classList.add('opacity-60', 'pointer-events-none');
+      try {
+        const res = await window.miruoDesktop.promptAppleTouchID();
+        if (btn) btn.classList.remove('opacity-60', 'pointer-events-none');
+        if (res && res.success) {
+          window.handleNativeAppleSignInResponse(res);
+        } else if (res && !res.canceled) {
+          showAuthAlert(res.error || 'Giriş işlemi tamamlanamadı.', false);
+        }
+      } catch (err) {
+        console.warn('[Miruo] Desktop Touch ID error:', err);
+        if (btn) btn.classList.remove('opacity-60', 'pointer-events-none');
+      }
+      return;
+    }
+
     // 2. Native iOS Google OAuth (via ASWebAuthenticationSession)
     if (isGoogle && window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.startOAuthSignIn) {
       hideAuthAlert();
@@ -10500,10 +10519,17 @@ function initEvents() {
       return;
     }
 
-    // 3. Web Fallback (when not on native iOS WKWebView)
+    // 3. Web Fallback (when not on native iOS/macOS)
     const provId = isGoogle ? 'google' : 'apple';
     hideAuthAlert();
     if (btn) btn.classList.add('opacity-60', 'pointer-events-none');
+
+    // On web without Apple secret configured, guide user gracefully instead of navigating to 400 black screen
+    if (provId === 'apple') {
+      if (btn) btn.classList.remove('opacity-60', 'pointer-events-none');
+      showAuthAlert("Apple ile Giriş Mac ve iPhone uygulamalarında parmak izi / Face ID ile desteklenmektedir. Lütfen Google veya E-posta ile giriş yapın.", false);
+      return;
+    }
 
     if (supabaseClient && supabaseClient.auth) {
       try {
@@ -10519,17 +10545,6 @@ function initEvents() {
           showAuthAlert("Giriş başlatılamadı: " + (error.message || "Bilinmeyen hata"), false);
           return;
         } else if (data && data.url) {
-          if (provId === 'apple') {
-            try {
-              const probe = await fetch(data.url, { method: 'GET', redirect: 'manual' });
-              if (probe.status === 400) {
-                showAuthAlert("Apple ile Giriş web sürümünde henüz yapılandırılmamış. Lütfen Google veya E-posta ile giriş yapın ya da iOS uygulamasını kullanın.", false);
-                return;
-              }
-            } catch (probeErr) {
-              // proceed to navigation if probe is blocked by CORS/fetch
-            }
-          }
           window.location.href = data.url;
           return;
         }
