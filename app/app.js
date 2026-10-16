@@ -10514,6 +10514,10 @@ function initEvents() {
           }
         });
 
+        if (error) {
+          console.warn(`[Miruo] Supabase ${provider} OAuth error:`, error);
+          showAuthAlert("Giriş başlatılamadı: " + (error.message || "Bilinmeyen hata"), false);
+          return;
         } else if (data && data.url) {
           if (provId === 'apple') {
             try {

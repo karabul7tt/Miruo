@@ -1,10 +1,65 @@
 const { app, BrowserWindow, shell, session, Menu } = require('electron');
 const path = require('path');
 const fs = require('fs');
+const http = require('http');
 
 let mainWindow = null;
+let localServer = null;
+let localPort = 0;
 
-function createWindow() {
+function startLocalServer(callback) {
+  const publicDir = path.join(__dirname, 'public');
+  const mimeTypes = {
+    '.html': 'text/html; charset=utf-8',
+    '.js': 'application/javascript; charset=utf-8',
+    '.css': 'text/css; charset=utf-8',
+    '.json': 'application/json; charset=utf-8',
+    '.png': 'image/png',
+    '.svg': 'image/svg+xml',
+    '.ico': 'image/x-icon',
+    '.woff2': 'font/woff2'
+  };
+
+  localServer = http.createServer((req, res) => {
+    let reqPath = req.url.split('?')[0];
+    if (reqPath === '/' || reqPath === '/app' || reqPath === '/app/') reqPath = '/index.html';
+    const filePath = path.join(publicDir, reqPath);
+    if (!filePath.startsWith(publicDir)) {
+      res.writeHead(403);
+      return res.end();
+    }
+    fs.readFile(filePath, (err, data) => {
+      if (err) {
+        fs.readFile(path.join(publicDir, 'index.html'), (err2, fallback) => {
+          if (err2) {
+            res.writeHead(404);
+            return res.end('Not Found');
+          }
+          res.writeHead(200, {
+            'Content-Type': 'text/html; charset=utf-8',
+            'Access-Control-Allow-Origin': '*'
+          });
+          res.end(fallback);
+        });
+        return;
+      }
+      const ext = path.extname(filePath);
+      res.writeHead(200, {
+        'Content-Type': mimeTypes[ext] || 'application/octet-stream',
+        'Access-Control-Allow-Origin': '*'
+      });
+      res.end(data);
+    });
+  });
+
+  localServer.listen(0, '127.0.0.1', () => {
+    localPort = localServer.address().port;
+    console.log(`[Miruo Desktop] Embedded server listening on http://127.0.0.1:${localPort}`);
+    callback(localPort);
+  });
+}
+
+function createWindow(port) {
   mainWindow = new BrowserWindow({
     width: 1280,
     height: 820,
@@ -37,8 +92,7 @@ function createWindow() {
   // Handle external links by opening them in default system browser
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
     if (url.startsWith('http:') || url.startsWith('https:')) {
-      // YouTube, external links etc.
-      if (!url.includes('miruo.com.tr') && !url.includes('supabase.co')) {
+      if (!url.includes('127.0.0.1') && !url.includes('miruo.com.tr') && !url.includes('supabase.co')) {
         shell.openExternal(url);
         return { action: 'deny' };
       }
@@ -46,13 +100,7 @@ function createWindow() {
     return { action: 'allow' };
   });
 
-  mainWindow.loadURL('https://www.miruo.com.tr/app/').catch((err) => {
-    console.warn('[Miruo] Failed to load remote URL, falling back to local file:', err);
-    const localIndexPath = path.join(__dirname, 'public/index.html');
-    if (fs.existsSync(localIndexPath)) {
-      mainWindow.loadFile(localIndexPath);
-    }
-  });
+  mainWindow.loadURL(`http://127.0.0.1:${port}/index.html`);
 
   mainWindow.on('closed', () => {
     mainWindow = null;
@@ -61,7 +109,9 @@ function createWindow() {
 
 // App lifecycle
 app.whenReady().then(() => {
-  createWindow();
+  startLocalServer((port) => {
+    createWindow(port);
+  });
 
   // Mac Application Menu
   if (process.platform === 'darwin') {
