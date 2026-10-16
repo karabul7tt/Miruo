@@ -37,7 +37,13 @@
       ],
       "hardenedRuntime": true,
       "gatekeeperAssess": false,
-      "identity": "MEHMET KARABULUT (VR7K23PNPM)"
+      "identity": "MEHMET KARABULUT (VR7K23PNPM)",
+      "entitlements": "build/entitlements.mac.plist",
+      "entitlementsInherit": "build/entitlements.mac.plist",
+      "extendInfo": {
+        "NSCameraUsageDescription": "Miruo, odada arkadaşlarınızla görüntülü sohbet edebilmeniz için kameranızı kullanır.",
+        "NSMicrophoneUsageDescription": "Miruo, odada arkadaşlarınızla sesli sohbet edebilmeniz için mikrofonunuzu kullanır."
+      }
     },
     "win": {
       "icon": "build/icon.ico",

@@ -111,6 +111,11 @@ function createWindow(port) {
   });
 
   // Automatically grant camera, mic, and screen permissions
+  session.defaultSession.setPermissionCheckHandler((webContents, permission, requestingOrigin) => {
+    const allowed = ['media', 'camera', 'microphone', 'notifications', 'display-capture', 'fullscreen'];
+    return allowed.includes(permission);
+  });
+
   session.defaultSession.setPermissionRequestHandler((webContents, permission, callback) => {
     const allowed = ['media', 'camera', 'microphone', 'notifications', 'display-capture', 'fullscreen'];
     if (allowed.includes(permission)) {

@@ -864,7 +864,7 @@ const server = http.createServer(async (req, res) => {
   // UPDATE USER PROFILE
   if (urlObj.pathname === '/api/auth/update-profile' && req.method === 'POST') {
     try {
-      const body = await readJsonBody(req, res, CONFIG.MAX_BODY_BYTES);
+      const body = await readJsonBody(req, res, 2 * 1024 * 1024); // 2MB allowed for avatar photo update
       const { userId, email, oldUsername, username, fullName, avatarUrl } = body;
       const cleanUsername = sanitizeText((username || '').replace(/^@/, '').trim(), 30);
       const cleanOldUsername = sanitizeText((oldUsername || '').replace(/^@/, '').trim(), 30).toLowerCase();

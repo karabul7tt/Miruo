@@ -1,5 +1,6 @@
 # Build and DerivedData outputs
 build/
+!desktop-app/build/
 DerivedData/
 ios/build/
 *.build/
