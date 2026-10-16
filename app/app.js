@@ -564,6 +564,7 @@ const I18N = {
     auth_footer_action_login: 'Hesap Oluştur',
     auth_footer_register: 'Zaten bir hesabın var mı?',
     auth_footer_action_register: 'Giriş Yap',
+    guest_continue: 'Giriş yapmadan misafir olarak incele',
     settings_title: 'Ayarlar',
     settings_subtitle: 'Profil, Güvenlik & Tercihler',
     profile_info_section: 'Profil Bilgileri',
@@ -919,6 +920,7 @@ const I18N = {
     auth_footer_action_login: 'Create Account',
     auth_footer_register: 'Already have an account?',
     auth_footer_action_register: 'Sign In',
+    guest_continue: 'Continue as guest without signing in',
     settings_title: 'Settings',
     settings_subtitle: 'Profile, Security & Preferences',
     profile_info_section: 'Profile Information',
@@ -1274,6 +1276,7 @@ const I18N = {
     auth_footer_action_login: 'Konto erstellen',
     auth_footer_register: 'Bereits ein Konto?',
     auth_footer_action_register: 'Anmelden',
+    guest_continue: 'Als Gast ohne Anmeldung fortfahren',
     settings_title: 'Einstellungen',
     settings_subtitle: 'Profil, Sicherheit & Vorlieben',
     profile_info_section: 'Profilinformationen',
@@ -1666,9 +1669,9 @@ function updateAuthStringsForCurrentLang() {
       if (dom && dom.authFooterText) dom.authFooterText.textContent = dict.auth_footer_login;
       if (dom && dom.authFooterAction) dom.authFooterAction.textContent = dict.auth_footer_action_login;
     }
-  } else {
-    if (dom && dom.authContactLabel) dom.authContactLabel.textContent = dict.email_label;
-    if (dom && dom.authContactInput) dom.authContactInput.placeholder = dict.email_ph;
+  }
+  if (dom && dom.continueAsGuestBtn) {
+    dom.continueAsGuestBtn.textContent = dict.guest_continue || 'Giriş yapmadan misafir olarak incele';
   }
 }
 
@@ -1926,6 +1929,7 @@ const dom = {
   authFooterAction: document.getElementById('authFooterAction'),
   authFooterText: document.getElementById('authFooterText'),
   closeAuthModalBtn: document.getElementById('closeAuthModalBtn'),
+  continueAsGuestBtn: document.getElementById('continueAsGuestBtn'),
   openAuthModalBtn: document.getElementById('openAuthModalBtn'),
   forgotPasswordBtn: document.getElementById('forgotPasswordBtn'),
   authStatusAlert: document.getElementById('authStatusAlert'),
@@ -2387,6 +2391,9 @@ function unfreezeBackgroundAfterModal(force = false) {
         if (profileTab) {
           profileTab.classList.add('hidden');
           profileTab.classList.remove('flex');
+        }
+        if (typeof loadPublicRooms === 'function') {
+          loadPublicRooms();
         }
       }
       if (dom.mainHeader) dom.mainHeader.classList.remove('hidden');
@@ -9450,7 +9457,7 @@ function loadUserSession() {
     const guestNum = Math.floor(1000 + Math.random() * 9000);
     user = {
       id: 'user_' + Math.random().toString(36).substring(2, 8),
-      name: 'Misafir',
+      name: '',
       defaultRoom: 'ODA-' + guestNum,
       avatarChar: 'M'
     };
@@ -9461,10 +9468,12 @@ function loadUserSession() {
         setAuthMode(false);
       } else {
         dom.authModal.classList.add('hidden');
+        unfreezeBackgroundAfterModal(true);
       }
     }
   } else {
     if (dom.authModal) dom.authModal.classList.add('hidden');
+    unfreezeBackgroundAfterModal(true);
   }
 
   if (urlParams.get('profile') || hash === 'settings' || urlParams.get('modal') === 'settings') {
@@ -11195,7 +11204,10 @@ function initEvents() {
 
       setTimeout(() => {
         updateUserUI(user);
-        if (dom.authModal) dom.authModal.classList.add('hidden');
+        if (dom.authModal) {
+          dom.authModal.classList.add('hidden');
+          unfreezeBackgroundAfterModal(true);
+        }
         showToast(`Hoş geldin! Telefonla giriş yapıldı`);
       }, 350);
     } catch (err) {
@@ -11793,18 +11805,34 @@ function initEvents() {
 
   if (dom.closeAuthModalBtn) {
     addInstantTap(dom.closeAuthModalBtn, () => {
-      if (dom.authModal) dom.authModal.classList.add('hidden');
-      unfreezeBackgroundAfterModal();
-      if (!localStorage.getItem('miruo_user')) {
-        const customUsername = localStorage.getItem('miruo_custom_username');
-        const guestUser = {
-          id: state.userId || ('user_' + Math.random().toString(36).substring(2, 8)),
-          name: customUsername || state.username || 'Misafir',
-          username: (customUsername || state.username || 'misafir').toLowerCase().replace(/^@/, ''),
-          avatarChar: (customUsername || state.username || 'M').charAt(0).toUpperCase()
-        };
-        localStorage.setItem('miruo_user', JSON.stringify(guestUser));
+      const savedUser = localStorage.getItem('miruo_user');
+      if (savedUser) {
+        if (dom.authModal) dom.authModal.classList.add('hidden');
+        unfreezeBackgroundAfterModal(true);
+      } else {
+        showToast('Lütfen giriş yapın veya kayıt olun.');
       }
+    });
+  }
+
+  if (dom.continueAsGuestBtn) {
+    addInstantTap(dom.continueAsGuestBtn, () => {
+      const guestNum = Math.floor(1000 + Math.random() * 9000);
+      const guestUser = {
+        id: state.userId || ('user_' + Math.random().toString(36).substring(2, 8)),
+        name: 'Misafir ' + guestNum,
+        username: 'misafir_' + guestNum,
+        avatarChar: 'M',
+        defaultRoom: 'ODA-' + guestNum
+      };
+      localStorage.setItem('miruo_user', JSON.stringify(guestUser));
+      state.userId = guestUser.id;
+      state.username = guestUser.username;
+      updateUserUI(guestUser);
+      if (dom.authModal) dom.authModal.classList.add('hidden');
+      unfreezeBackgroundAfterModal(true);
+      if (typeof loadPublicRooms === 'function') loadPublicRooms();
+      showToast('Misafir olarak devam ediliyor.');
     });
   }
 
@@ -14846,9 +14874,8 @@ function initEvents() {
     });
   }
 
-  // Close ALL Modals on Backdrop Click (Prevents touch blocking overlays!)
+  // Close Modals on Backdrop Click (Except authModal which must never close accidentally)
   const allOverlayModals = [
-    dom.authModal,
     dom.createRoomModal,
     dom.youtubeConnectModal,
     dom.raveYoutubeModal,
@@ -14863,6 +14890,7 @@ function initEvents() {
       addInstantTap(modal, (e) => {
         if (e.target === modal) {
           modal.classList.add('hidden');
+          unfreezeBackgroundAfterModal();
         }
       });
     }

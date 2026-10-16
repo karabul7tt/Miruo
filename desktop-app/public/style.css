@@ -676,7 +676,7 @@ input, textarea {
   box-shadow: 0 0 0 3px rgba(166, 77, 121, 0.15);
 }
 
-/* Auth Modal 100% Opaque Fullscreen Protection */
+/* Auth Modal 100% Opaque Fullscreen Protection with Smooth Native Scroll */
 #authModal {
   position: fixed !important;
   top: 0 !important;
@@ -690,9 +690,20 @@ input, textarea {
   z-index: 99999 !important;
   padding: 0 !important;
   margin: 0 !important;
-  overscroll-behavior: none !important;
   overflow-y: auto !important;
+  overflow-x: hidden !important;
   -webkit-overflow-scrolling: touch !important;
+}
+
+#authModal::-webkit-scrollbar {
+  width: 6px;
+}
+#authModal::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.05);
+}
+#authModal::-webkit-scrollbar-thumb {
+  background: rgba(166, 77, 121, 0.6);
+  border-radius: 4px;
 }
 
 .owl3d {
