@@ -10514,10 +10514,18 @@ function initEvents() {
           }
         });
 
-        if (error) {
-          console.warn(`[Miruo] Supabase ${provider} OAuth error:`, error.message);
-          showAuthAlert("Giriş işlemi tamamlanamadı. Lütfen tekrar deneyin.", false);
         } else if (data && data.url) {
+          if (provId === 'apple') {
+            try {
+              const probe = await fetch(data.url, { method: 'GET', redirect: 'manual' });
+              if (probe.status === 400) {
+                showAuthAlert("Apple ile Giriş web sürümünde henüz yapılandırılmamış. Lütfen Google veya E-posta ile giriş yapın ya da iOS uygulamasını kullanın.", false);
+                return;
+              }
+            } catch (probeErr) {
+              // proceed to navigation if probe is blocked by CORS/fetch
+            }
+          }
           window.location.href = data.url;
           return;
         }
