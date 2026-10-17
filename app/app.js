@@ -6,6 +6,23 @@
  * - Virtual Living Room Interactive Touch & Reactions
  */
 
+// Sunucu adresi (config.js veya localStorage.miruo_api_base). Doluysa tüm /api/* istekleri,
+// WebSocket ve SSE bağlantıları bu sunucuya gider; böylece Mac / Windows / telefon / web
+// aynı hesapları ve aynı herkese açık odaları görür.
+const MIRUO_API_BASE = (localStorage.getItem('miruo_api_base') || window.MIRUO_API_BASE || '').replace(/\/+$/, '');
+if (MIRUO_API_BASE) {
+  const __origFetch = window.fetch.bind(window);
+  window.fetch = (input, init) => {
+    if (typeof input === 'string' && input.startsWith('/api/')) input = MIRUO_API_BASE + input;
+    return __origFetch(input, init);
+  };
+}
+// Mac/Windows uygulaması ya da file:// üzerinde sunucu adresi yoksa "tek cihaz" modu.
+const MIRUO_STANDALONE = !MIRUO_API_BASE && (
+  window.location.protocol === 'file:' || !window.location.host ||
+  !!(window.miruoDesktop && window.miruoDesktop.isDesktop)
+);
+
 // Supabase Auth Integration
 const DEFAULT_SUPABASE_URL = 'https://qvmdzfhjfdoqjmqipvux.supabase.co';
 const DEFAULT_SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InF2bWR6ZmhqZmRvcWptcWlwdnV4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE0MTk0NDYsImV4cCI6MjEwNjk5NTQ0Nn0.lkqfTJCr5ZJT6SDi13k8RKlOpabBZE8TiT42ehwYqzM';
@@ -2462,12 +2479,21 @@ function connectSignaling() {
     try { ws.close(); } catch (e) {}
     ws = null;
   }
-  if (window.location.protocol === 'file:' || !window.location.host) {
+  if (MIRUO_STANDALONE || window.location.protocol === 'file:' || !window.location.host) {
     console.log('Miruo Bağımsız Cihaz Modunda Çalışıyor');
+    if (!window._standaloneToastShown && typeof showToast === 'function') {
+      window._standaloneToastShown = true;
+      showToast('Sunucu bağlı değil: oda yalnızca bu cihazda çalışır, arkadaşların katılamaz.');
+    }
     return;
   }
-  const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-  const wsUrl = `${protocol}//${window.location.host}/?room=${encodeURIComponent(state.roomId)}&userId=${state.userId}`;
+  let wsUrl;
+  if (MIRUO_API_BASE) {
+    wsUrl = `${MIRUO_API_BASE.replace(/^http/i, 'ws')}/?room=${encodeURIComponent(state.roomId)}&userId=${state.userId}`;
+  } else {
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    wsUrl = `${protocol}//${window.location.host}/?room=${encodeURIComponent(state.roomId)}&userId=${state.userId}`;
+  }
 
   try {
     ws = new WebSocket(wsUrl);
@@ -2526,7 +2552,7 @@ function sendSignal(msg) {
 function connectFallbackSSE() {
   if (window._sseConnected) return;
   window._sseConnected = true;
-  const evtSource = new EventSource(`/api/events?room=${encodeURIComponent(state.roomId)}&userId=${state.userId}`);
+  const evtSource = new EventSource(`${MIRUO_API_BASE}/api/events?room=${encodeURIComponent(state.roomId)}&userId=${state.userId}`);
   evtSource.onmessage = (e) => {
     try {
       const msg = JSON.parse(e.data);
@@ -5837,6 +5863,16 @@ function createAndJoinRoom(title, isPrivate = false, category = 'YouTube', video
     connectedAccount: activeConn
   }).then(code => {
     state.roomId = code;
+    if (!isPrivate) {
+      saveMyPublicRoom({
+        id: code,
+        name: title || `${category} Partisi`,
+        category: category,
+        host: state.username,
+        videoId: videoId || '',
+        mediaTitle: title || ''
+      });
+    }
     if (dom.activeRoomTitle) dom.activeRoomTitle.textContent = state.roomId;
     if (dom.currentRoomDisplay) dom.currentRoomDisplay.textContent = state.roomId;
     if (dom.raveInviteLinkText) dom.raveInviteLinkText.textContent = getMiruoRoomUrl(state.roomId);
@@ -6121,19 +6157,50 @@ function renderRoomList(roomsToRender) {
   });
 }
 
+// Bu cihazdan açılan herkese açık odalar (sunucu yokken de Keşfet'te görünsün).
+function getMyPublicRooms() {
+  try {
+    const list = JSON.parse(localStorage.getItem('miruo_my_public_rooms') || '[]');
+    const fresh = list.filter(r => r && r.id && (Date.now() - (r.ts || 0)) < 6 * 3600 * 1000);
+    if (fresh.length !== list.length) localStorage.setItem('miruo_my_public_rooms', JSON.stringify(fresh));
+    return fresh;
+  } catch (_) { return []; }
+}
+function saveMyPublicRoom(room) {
+  try {
+    const list = getMyPublicRooms().filter(r => r.id !== room.id);
+    list.unshift({ ...room, ts: Date.now() });
+    localStorage.setItem('miruo_my_public_rooms', JSON.stringify(list.slice(0, 10)));
+  } catch (_) {}
+}
+function removeMyPublicRoom(id) {
+  try {
+    localStorage.setItem('miruo_my_public_rooms', JSON.stringify(getMyPublicRooms().filter(r => r.id !== id)));
+  } catch (_) {}
+}
+
 function loadPublicRooms() {
+  const withMine = (serverRooms) => {
+    const ids = new Set(serverRooms.map(r => r.id));
+    const mine = getMyPublicRooms().filter(r => !ids.has(r.id)).map(r => ({
+      id: r.id, name: r.name, category: r.category, host: r.host,
+      mediaTitle: r.mediaTitle || r.name, videoId: r.videoId || '', thumb: r.thumb || '',
+      viewers: 1, avatars: [{ initial: (r.host || 'U').charAt(0).toUpperCase(), bg: 'from-purple-500 to-indigo-600' }]
+    }));
+    return mine.concat(serverRooms);
+  };
   fetch('/api/public-rooms')
     .then(res => res.json())
     .then(data => {
       if (data && data.rooms && data.rooms.length > 0) {
-        renderRoomList(data.rooms);
+        renderRoomList(withMine(data.rooms));
       } else {
-        renderRoomList(DEFAULT_COMMUNITY_ROOMS);
+        renderRoomList(withMine(DEFAULT_COMMUNITY_ROOMS));
       }
     })
     .catch(err => {
       console.warn('API fetch failed, rendering fallback community rooms:', err);
-      renderRoomList(DEFAULT_COMMUNITY_ROOMS);
+      renderRoomList(withMine(DEFAULT_COMMUNITY_ROOMS));
     });
 }
 
