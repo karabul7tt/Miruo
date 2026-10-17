@@ -1486,6 +1486,8 @@ body.has-mini-player #stageContainer #miniPlayerOverlay {
     padding: 12px 16px !important;
     border-radius: 14px !important;
     margin: 0 !important;
+    pointer-events: auto !important;
+    cursor: pointer !important;
     transition: background 0.15s ease, color 0.15s ease !important;
   }
   #mobileBottomNav:not(.hidden) > button:hover { background: rgba(255, 255, 255, 0.06) !important; }
@@ -1519,15 +1521,21 @@ body.has-mini-player #stageContainer #miniPlayerOverlay {
     top: 0 !important;
     left: 0 !important;
     width: var(--miruo-sidebar-w) !important;
+    height: 76px !important;
     min-height: 72px !important;
+    max-height: 76px !important;
     padding: 18px 20px 0 !important;
     background: transparent !important;
     border-bottom: none !important;
     z-index: 46 !important;
+    pointer-events: none !important;
   }
   body:has(#mobileBottomNav:not(.hidden)) #mainHeader > div { justify-content: flex-start !important; }
   body:has(#mobileBottomNav:not(.hidden)) #mainHeader > div > div:empty { display: none !important; }
-  body:has(#mobileBottomNav:not(.hidden)) #mainHeader #navLogoBtn { align-items: flex-start !important; }
+  body:has(#mobileBottomNav:not(.hidden)) #mainHeader #navLogoBtn {
+    align-items: flex-start !important;
+    pointer-events: auto !important;
+  }
 
   /* İçerik alanı: kenar çubuğunun sağında, geniş ve ferah */
   body:has(#mobileBottomNav:not(.hidden)) main {

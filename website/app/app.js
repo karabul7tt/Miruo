@@ -252,6 +252,7 @@ function persistUserToLocalRegistry(user, oldUsername = '') {
         avatarBg: user.avatarBg || prev.avatarBg || 'from-rose-500 to-[#A64D79]'
       };
       localStorage.setItem('miruo_profiles_by_email', JSON.stringify(byEmail));
+    }
     if (user.avatarUrl) {
       localStorage.setItem('miruo_avatar', user.avatarUrl);
     }
