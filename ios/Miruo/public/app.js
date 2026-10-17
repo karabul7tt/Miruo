@@ -15069,60 +15069,15 @@ function initEvents() {
     }
   }
 
-  // Personal Video Fit & Local Zoom (Viewer-only local preferences)
-  let currentVideoFit = localStorage.getItem('miruo_video_fit') || 'contain';
-  let currentVideoZoom = parseInt(localStorage.getItem('miruo_video_zoom') || '100', 10);
-
-  function applyPersonalVideoSize() {
-    if (!dom.stageContainer) return;
-    
-    // Fit classes
+  // Clean up any legacy video zoom/fit preferences so video is clean and authentic
+  try {
+    localStorage.removeItem('miruo_video_fit');
+    localStorage.removeItem('miruo_video_zoom');
+  } catch (_) {}
+  if (dom.stageContainer) {
     dom.stageContainer.classList.remove('video-fit-contain', 'video-fit-cover', 'video-fit-zoom');
-    dom.stageContainer.classList.add(`video-fit-${currentVideoFit}`);
-
-    // Zoom scale variable
-    const scale = currentVideoZoom / 100;
-    dom.stageContainer.style.setProperty('--miruo-video-scale', scale.toString());
-
-    // Update Fit buttons
-    document.querySelectorAll('.video-fit-btn').forEach(btn => {
-      const mode = btn.dataset.fit;
-      if (mode === currentVideoFit) {
-        btn.className = 'video-fit-btn py-1 rounded-lg bg-rose-500/30 text-rose-300 border border-rose-500/40 transition-all text-[10px] cursor-pointer font-black';
-      } else {
-        btn.className = 'video-fit-btn py-1 rounded-lg bg-white/5 hover:bg-rose-500/20 hover:text-rose-300 transition-all text-[10px] cursor-pointer';
-      }
-    });
-
-    // Update Zoom Slider & Value Text
-    if (dom.playerZoomSlider) {
-      dom.playerZoomSlider.value = currentVideoZoom;
-    }
-    if (dom.playerZoomVal) {
-      dom.playerZoomVal.textContent = `%${currentVideoZoom}`;
-    }
+    dom.stageContainer.style.removeProperty('--miruo-video-scale');
   }
-
-  function setPersonalVideoFit(mode) {
-    if (!['contain', 'cover', 'zoom'].includes(mode)) mode = 'contain';
-    currentVideoFit = mode;
-    localStorage.setItem('miruo_video_fit', mode);
-    applyPersonalVideoSize();
-    const names = { contain: 'Sığdır (Orantılı)', cover: 'Doldur (Kırp)', zoom: 'Yakınlaştır' };
-    showToast(`Video Boyutu: ${names[mode] || mode} (Yalnızca Sende)`);
-  }
-
-  function setPersonalVideoZoom(zoomPercent) {
-    zoomPercent = parseInt(zoomPercent, 10);
-    if (isNaN(zoomPercent)) zoomPercent = 100;
-    zoomPercent = Math.max(70, Math.min(150, zoomPercent));
-    currentVideoZoom = zoomPercent;
-    localStorage.setItem('miruo_video_zoom', zoomPercent.toString());
-    applyPersonalVideoSize();
-  }
-
-  // Initialize saved local video fit & zoom
-  applyPersonalVideoSize();
 
   function triggerResyncWithHost() {
     if (state.isHost) {
@@ -15155,20 +15110,6 @@ function initEvents() {
     dom.closeRaveRoomSettingsMenuBtn.addEventListener('click', (e) => {
       e.stopPropagation();
       toggleRaveRoomSettingsMenu(false);
-    });
-  }
-
-  document.querySelectorAll('.video-fit-btn').forEach(btn => {
-    btn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      setPersonalVideoFit(btn.dataset.fit);
-    });
-  });
-
-  if (dom.playerZoomSlider) {
-    dom.playerZoomSlider.addEventListener('input', (e) => {
-      e.stopPropagation();
-      setPersonalVideoZoom(e.target.value);
     });
   }
 
