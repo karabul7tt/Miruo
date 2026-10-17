@@ -3501,9 +3501,15 @@ function updatePlayPauseUI(playing) {
   if (playing) {
     dom.playIcon.classList.add('hidden');
     dom.pauseIcon.classList.remove('hidden');
+    if (typeof resetControlsHideTimer === 'function') {
+      resetControlsHideTimer();
+    }
   } else {
     dom.playIcon.classList.remove('hidden');
     dom.pauseIcon.classList.add('hidden');
+    if (typeof showStageControls === 'function') {
+      showStageControls();
+    }
   }
   updateMiniPlayerPlayPauseUI(playing);
 }
@@ -4122,6 +4128,10 @@ function updateFullscreenUI() {
   }
   if (dom.stageExitFullscreenFloatingBtn) {
     dom.stageExitFullscreenFloatingBtn.classList.toggle('hidden', !isFs);
+  }
+
+  if (typeof resetControlsHideTimer === 'function') {
+    resetControlsHideTimer();
   }
 
   // Apply PiP in fullscreen visibility rules
@@ -17043,18 +17053,25 @@ function initAuthOwlMascot() {
 }
 
 // ==========================================
-// 6.1 YOUTUBE-STYLE AUTO-HIDE CONTROLS
+// 6.1 YOUTUBE-STYLE AUTO-HIDE CONTROLS (Desktop & Mobile Parity)
 // ==========================================
 let controlsHideTimeout = null;
+let isTouchingStage = false;
 
 function getStageControlElements() {
   return [
     dom.stageFloatingFullscreenBtn,
+    dom.stageExitFullscreenFloatingBtn,
     document.getElementById('raveRoomSettingsBtn'),
-    document.getElementById('backToLobbyBtn'),
     document.getElementById('ravePlayerOverlay'),
-    document.getElementById('roomAccessBtn')
+    document.getElementById('closePhotoStageBtn')
   ].filter(Boolean);
+}
+
+function areStageControlsVisible() {
+  if (!dom.ravePlayerOverlay) return true;
+  return !dom.ravePlayerOverlay.classList.contains('fs-controls-hidden') &&
+         !dom.ravePlayerOverlay.classList.contains('opacity-0');
 }
 
 function showStageControls() {
@@ -17072,11 +17089,11 @@ function showStageControls() {
 }
 
 function hideStageControls() {
-  // Do NOT hide if video is paused, or if 3-dots settings menu is open
+  // Do NOT hide if video is paused, if 3-dots settings menu is open, or while touching/dragging
   const isPaused = state.isPlaying === false;
   const menu = document.getElementById('raveRoomSettingsMenu');
   const isMenuOpen = menu && !menu.classList.contains('hidden');
-  if (isPaused || isMenuOpen) return;
+  if (isPaused || isMenuOpen || isTouchingStage) return;
 
   const elements = getStageControlElements();
   elements.forEach(el => {
@@ -17091,44 +17108,120 @@ function hideStageControls() {
   }
 }
 
-function resetControlsHideTimer() {
+function resetControlsHideTimer(delay = 2500) {
   showStageControls();
-  clearTimeout(controlsHideTimeout);
+  if (controlsHideTimeout) {
+    clearTimeout(controlsHideTimeout);
+    controlsHideTimeout = null;
+  }
 
   const isPaused = state.isPlaying === false;
   const menu = document.getElementById('raveRoomSettingsMenu');
   const isMenuOpen = menu && !menu.classList.contains('hidden');
 
   // Auto-hide after 2.5 seconds of inactivity when playing
-  if (!isPaused && !isMenuOpen) {
+  if (!isPaused && !isMenuOpen && !isTouchingStage) {
     controlsHideTimeout = setTimeout(() => {
       hideStageControls();
-    }, 2500);
+    }, delay);
   }
 }
 window.resetControlsHideTimer = resetControlsHideTimer;
+window.showStageControls = showStageControls;
+window.hideStageControls = hideStageControls;
 
 function initStageAutoHideEvents() {
   if (!dom.stageContainer) return;
 
-  ['mousemove', 'pointermove', 'touchstart', 'touchmove'].forEach(evt => {
+  // Desktop mouse movement reveals controls and resets timer
+  ['mousemove', 'pointermove'].forEach(evt => {
     dom.stageContainer.addEventListener(evt, () => {
       resetControlsHideTimer();
     }, { passive: true });
   });
 
-  dom.stageContainer.addEventListener('mouseleave', () => {
+  // Fullscreen global mouse listener so moving anywhere reveals controls
+  window.addEventListener('mousemove', (e) => {
+    if (isStageFullscreen()) {
+      resetControlsHideTimer();
+    }
+  }, { passive: true });
+
+  // Touch handlers for mobile / touch devices
+  dom.stageContainer.addEventListener('touchstart', (e) => {
+    if (e.target.closest('button') || e.target.closest('input') || e.target.closest('#raveRoomSettingsMenu')) {
+      resetControlsHideTimer();
+      return;
+    }
+    isTouchingStage = true;
+    if (controlsHideTimeout) {
+      clearTimeout(controlsHideTimeout);
+      controlsHideTimeout = null;
+    }
+  }, { passive: true });
+
+  dom.stageContainer.addEventListener('touchmove', () => {
+    isTouchingStage = true;
+    if (controlsHideTimeout) {
+      clearTimeout(controlsHideTimeout);
+      controlsHideTimeout = null;
+    }
+  }, { passive: true });
+
+  dom.stageContainer.addEventListener('touchend', () => {
+    isTouchingStage = false;
     const isPaused = state.isPlaying === false;
-    const menu = document.getElementById('raveRoomSettingsMenu');
-    const isMenuOpen = menu && !menu.classList.contains('hidden');
-    if (!isPaused && !isMenuOpen) {
-      hideStageControls();
+    if (!isPaused) {
+      resetControlsHideTimer(2500);
+    }
+  }, { passive: true });
+
+  // Mouse leave player stage (only when windowed)
+  dom.stageContainer.addEventListener('mouseleave', () => {
+    if (!isStageFullscreen()) {
+      const isPaused = state.isPlaying === false;
+      const menu = document.getElementById('raveRoomSettingsMenu');
+      const isMenuOpen = menu && !menu.classList.contains('hidden');
+      if (!isPaused && !isMenuOpen) {
+        hideStageControls();
+      }
     }
   });
 
+  // Tap or Click handling: Toggle controls when tapping on empty stage, refresh timer when tapping controls
   dom.stageContainer.addEventListener('click', (e) => {
-    // Reveal and refresh timer on click
-    resetControlsHideTimer();
+    if (document.body.classList.contains('has-mini-player')) return;
+
+    const isControl = e.target.closest('button') ||
+                      e.target.closest('input') ||
+                      e.target.closest('a') ||
+                      e.target.closest('#raveRoomSettingsMenu') ||
+                      e.target.closest('#partnerPipCard') ||
+                      e.target.closest('#selfPipCard');
+
+    if (isControl) {
+      resetControlsHideTimer();
+      return;
+    }
+
+    const isPaused = state.isPlaying === false;
+    const menu = document.getElementById('raveRoomSettingsMenu');
+    const isMenuOpen = menu && !menu.classList.contains('hidden');
+
+    if (isMenuOpen) {
+      menu.classList.add('hidden');
+      resetControlsHideTimer();
+      return;
+    }
+
+    // Toggle controls YouTube-style
+    if (areStageControlsVisible()) {
+      if (!isPaused) {
+        hideStageControls();
+      }
+    } else {
+      resetControlsHideTimer();
+    }
   });
 
   document.addEventListener('keydown', (e) => {
