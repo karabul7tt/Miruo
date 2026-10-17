@@ -75,6 +75,36 @@ function startLocalServer(callback) {
   };
 
   localServer = http.createServer((req, res) => {
+    // Enable CORS for desktop app requests
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS, PUT, DELETE');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+
+    if (req.method === 'OPTIONS') {
+      res.writeHead(204);
+      return res.end();
+    }
+
+    // Proxy /api/* requests to central server (port 3000)
+    if (req.url.startsWith('/api/')) {
+      const proxyReq = http.request({
+        host: '127.0.0.1',
+        port: 3000,
+        path: req.url,
+        method: req.method,
+        headers: req.headers
+      }, (proxyRes) => {
+        res.writeHead(proxyRes.statusCode, proxyRes.headers);
+        proxyRes.pipe(res);
+      });
+      proxyReq.on('error', () => {
+        res.writeHead(503, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Backend server unavailable' }));
+      });
+      req.pipe(proxyReq);
+      return;
+    }
+
     let reqPath = req.url.split('?')[0];
     if (reqPath === '/' || reqPath === '/app' || reqPath === '/app/') reqPath = '/index.html';
     const filePath = path.join(publicDir, reqPath);

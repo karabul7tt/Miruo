@@ -11517,18 +11517,36 @@ function initEvents() {
 
     // Register user in server backend
     try {
-      await fetch('/api/auth/register', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          fullName: pending.fullName,
-          username: pending.username,
-          email: pending.email,
-          password: pending.password,
-          avatarUrl: pending.avatarUrl || '',
-          avatarBg: selectedSignUpAvatarBg
-        })
-      });
+      const regPayload = {
+        fullName: pending.fullName,
+        username: pending.username,
+        email: pending.email,
+        password: pending.password,
+        avatarUrl: pending.avatarUrl || '',
+        avatarBg: selectedSignUpAvatarBg
+      };
+      let regOk = false;
+      try {
+        const res = await fetch('/api/auth/register', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(regPayload)
+        });
+        if (res.ok) {
+          const ct = res.headers.get('content-type') || '';
+          if (ct.includes('application/json')) regOk = true;
+        }
+      } catch (_) {}
+
+      if (!regOk && window.location.port !== '3000') {
+        try {
+          await fetch('http://127.0.0.1:3000/api/auth/register', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(regPayload)
+          });
+        } catch (_) {}
+      }
     } catch (e) {}
 
     // Save account to local registered users registry
@@ -11774,17 +11792,33 @@ function initEvents() {
 
         // 1. Check local backend
         try {
-          const resp = await fetch('/api/auth/login', {
+          const loginPayload = { email: cleanContact, emailOrUsername: cleanContact, password: passwordVal };
+          let resp = await fetch('/api/auth/login', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ email: cleanContact, emailOrUsername: cleanContact, password: passwordVal })
+            body: JSON.stringify(loginPayload)
           });
-          if (resp.ok) {
-            const data = await resp.json();
-            if (data.success && data.user) {
-              loginSuccess = true;
-              userData = data.user;
-            }
+          let data = null;
+          if (resp && resp.ok) {
+            const ct = resp.headers.get('content-type') || '';
+            if (ct.includes('application/json')) data = await resp.json();
+          }
+          if ((!data || !data.success) && window.location.port !== '3000') {
+            try {
+              const fallbackResp = await fetch('http://127.0.0.1:3000/api/auth/login', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(loginPayload)
+              });
+              if (fallbackResp && fallbackResp.ok) {
+                const ct = fallbackResp.headers.get('content-type') || '';
+                if (ct.includes('application/json')) data = await fallbackResp.json();
+              }
+            } catch (_) {}
+          }
+          if (data && data.success && data.user) {
+            loginSuccess = true;
+            userData = data.user;
           }
         } catch (e) {}
 
@@ -13448,16 +13482,25 @@ function initEvents() {
         if (typeof persistUserToLocalRegistry === 'function') persistUserToLocalRegistry(savedUser);
 
         try {
+          const profilePayload = {
+            userId: savedUser.id || state.userId,
+            username: (savedUser.username || state.username || '').replace(/^@/, ''),
+            fullName: savedUser.fullName || savedUser.name || '',
+            avatarUrl: base64Data
+          };
           fetch('/api/auth/update-profile', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              userId: savedUser.id || state.userId,
-              username: (savedUser.username || state.username || '').replace(/^@/, ''),
-              fullName: savedUser.fullName || savedUser.name || '',
-              avatarUrl: base64Data
-            })
-          }).catch(e => console.warn('[Update Avatar Backend Error]:', e));
+            body: JSON.stringify(profilePayload)
+          }).catch(async () => {
+            if (window.location.port !== '3000') {
+              fetch('http://127.0.0.1:3000/api/auth/update-profile', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(profilePayload)
+              }).catch(() => {});
+            }
+          });
         } catch (e) {}
         syncUserProfileToSupabase(savedUser);
 
@@ -13670,19 +13713,28 @@ function initEvents() {
 
       // 1. Sync to backend users.json
       try {
+        const updatePayload = {
+          userId: savedUser.id || state.userId,
+          email: savedUser.email || '',
+          oldUsername: currentActiveUsername,
+          username: cleanUsername,
+          fullName: resolvedFullName,
+          avatarUrl: savedUser.avatarUrl || '',
+          avatarBg: savedUser.avatarBg || ''
+        };
         fetch('/api/auth/update-profile', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            userId: savedUser.id || state.userId,
-            email: savedUser.email || '',
-            oldUsername: currentActiveUsername,
-            username: cleanUsername,
-            fullName: resolvedFullName,
-            avatarUrl: savedUser.avatarUrl || '',
-            avatarBg: savedUser.avatarBg || ''
-          })
-        }).catch(e => console.warn('[Update Profile Backend Error]:', e));
+          body: JSON.stringify(updatePayload)
+        }).catch(async () => {
+          if (window.location.port !== '3000') {
+            fetch('http://127.0.0.1:3000/api/auth/update-profile', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(updatePayload)
+            }).catch(() => {});
+          }
+        });
       } catch (e) {}
 
       // 2. Sync to Supabase profiles
@@ -14528,6 +14580,17 @@ function initEvents() {
 
   function openCreateRoomModal(platform = 'YouTube') {
     selectedPlatform = platform;
+    const isSleep = (platform || '').toLowerCase().includes('uyku') || (platform || '').toLowerCase().includes('sleep');
+
+    const platformSec = document.getElementById('createRoomPlatformSection');
+    if (platformSec) {
+      if (isSleep) {
+        platformSec.classList.add('hidden');
+      } else {
+        platformSec.classList.remove('hidden');
+      }
+    }
+
     // Update platform selector UI in modal
     document.querySelectorAll('.platform-choice').forEach(choice => {
       const cat = (choice.dataset.category || '').toLowerCase();
@@ -14541,9 +14604,13 @@ function initEvents() {
       }
     });
 
+    if (dom.submitCreateRoomBtn) {
+      dom.submitCreateRoomBtn.textContent = isSleep ? 'Uykuyu Başlat & Katıl' : 'Odayı Başlat & Katıl';
+    }
+
     if (dom.newRoomTitleInput) {
-      dom.newRoomTitleInput.value = '';
-      dom.newRoomTitleInput.placeholder = selectedPlatform === 'Uyku Modu' ? 'Birlikte Uyku Odası' : `Örn: ${selectedPlatform} Partisi veya Gece Sohbeti`;
+      dom.newRoomTitleInput.value = isSleep ? 'Birlikte Uyku Odası' : '';
+      dom.newRoomTitleInput.placeholder = isSleep ? 'Birlikte Uyku Odası' : `Örn: ${selectedPlatform} Partisi veya Gece Sohbeti`;
     }
 
     if (dom.createRoomModal) {
