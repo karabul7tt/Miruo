@@ -33,12 +33,15 @@ ipcMain.handle('mac-touch-id-apple-sign-in', async () => {
       const crypto = require('crypto');
       const stableSeed = sysUser + '_' + os.hostname();
       const stableHash = crypto.createHash('sha256').update(stableSeed).digest('hex').substring(0, 8);
-      let realName = 'Mehmet Karabulut';
+      let realName = '';
       try {
         const { execSync } = require('child_process');
         const out = execSync('id -F', { encoding: 'utf8' }).trim();
-        if (out && out.length > 1) realName = out;
+        if (out && out.length > 0) realName = out;
       } catch (_) {}
+      if (!realName || realName.length < 2) {
+        realName = sysUser ? (sysUser.charAt(0).toUpperCase() + sysUser.slice(1)) : 'Apple Kullanıcısı';
+      }
 
       appleProfile = {
         id: 'apple_mac_' + stableHash,

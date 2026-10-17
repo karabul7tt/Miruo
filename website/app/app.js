@@ -10709,7 +10709,7 @@ function initEvents() {
     }
 
     // 2. Prepare user profile
-    const displayName = fullName || (email ? email.split('@')[0] : 'Mehmet Karabulut');
+    const displayName = fullName || (email ? email.split('@')[0] : (userObj.name || (userObj.username ? (userObj.username.charAt(0).toUpperCase() + userObj.username.slice(1)) : 'Apple Kullanıcısı')));
     const safeUsername = (userObj.username || displayName.replace(/[^a-zA-Z0-9_]/g, '') || ('user_' + Math.random().toString(36).substring(2, 6))).toLowerCase();
     const resolvedEmail = email || `${safeUsername}@icloud.com`;
     const avatarChar = displayName.charAt(0).toUpperCase() || 'M';
