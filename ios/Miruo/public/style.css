@@ -540,6 +540,15 @@ body.stage-is-fullscreen #fsChatOverlay {
   }
 }
 
+#stageContainer #webPlayerFrame {
+  position: absolute !important;
+  inset: 0 !important;
+  width: 100% !important;
+  height: 100% !important;
+  border: none !important;
+  background: #000 !important;
+}
+
 /* Portrait strict override: Video is NEVER shifted right or reduced in width */
 @media (orientation: portrait) {
   #stageContainer #ytPlayerContainer,
@@ -1315,6 +1324,45 @@ body.has-mini-player #stageContainer #miniPlayerOverlay {
   object-fit: contain !important;
 }
 
+/* ========================================================
+   PERSONAL VIDEO SIZING & ZOOM (LOCAL VIEWER ONLY)
+   "videolara boyut ayarlamada ekleyelım mı ama kendınde ayrlarsnsın"
+   ======================================================== */
+#stageContainer {
+  --miruo-video-scale: 1;
+}
+
+#stageContainer #ytPlayerContainer,
+#stageContainer #nativeVideoPlayer,
+#stageContainer #webPlayerFrame,
+#stageContainer #remoteScreenPlayer {
+  transform: scale(var(--miruo-video-scale, 1));
+  transform-origin: center center;
+  transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+#stageContainer.video-fit-contain #ytPlayerContainer,
+#stageContainer.video-fit-contain #nativeVideoPlayer,
+#stageContainer.video-fit-contain #webPlayerFrame,
+#stageContainer.video-fit-contain #remoteScreenPlayer {
+  object-fit: contain !important;
+}
+
+#stageContainer.video-fit-cover #ytPlayerContainer,
+#stageContainer.video-fit-cover #nativeVideoPlayer,
+#stageContainer.video-fit-cover #webPlayerFrame,
+#stageContainer.video-fit-cover #remoteScreenPlayer {
+  object-fit: cover !important;
+  transform: scale(calc(var(--miruo-video-scale, 1) * 1.18));
+}
+
+#stageContainer.video-fit-zoom #ytPlayerContainer,
+#stageContainer.video-fit-zoom #nativeVideoPlayer,
+#stageContainer.video-fit-zoom #webPlayerFrame,
+#stageContainer.video-fit-zoom #remoteScreenPlayer {
+  transform: scale(calc(var(--miruo-video-scale, 1) * 1.35));
+}
+
 /* Landscape Fullscreen with Chat Closed: Fill 100% of screen width & height edge-to-edge (no black side bars on 19.5:9 iPhones) */
 @media (orientation: landscape) {
   body.stage-is-fullscreen:not(.fs-chat-active) #stageContainer,
@@ -1435,3 +1483,125 @@ body.has-mini-player #stageContainer #miniPlayerOverlay {
 
 
 
+
+/* ========================================================
+   MASAÜSTÜ DÜZENİ (Mac & Windows & Web)
+   Yalnızca geniş ekran + fare/trackpad olan cihazlarda devreye girer.
+   Telefon / tablet (dokunmatik) görünümü KESİNLİKLE etkilenmez.
+   ======================================================== */
+@media (min-width: 1024px) and (hover: hover) and (pointer: fine) {
+  :root { --miruo-sidebar-w: 232px; }
+
+  /* Alt menü → sol kenar çubuğu */
+  #mobileBottomNav:not(.hidden) {
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: stretch !important;
+    justify-content: flex-start !important;
+    position: fixed !important;
+    top: 0 !important;
+    bottom: 0 !important;
+    left: 0 !important;
+    right: auto !important;
+    inset-inline: 0 auto !important;
+    transform: none !important;
+    width: var(--miruo-sidebar-w) !important;
+    gap: 6px !important;
+    padding: 88px 14px 20px !important;
+    border-radius: 0 !important;
+    border: none !important;
+    border-right: 1px solid rgba(255, 255, 255, 0.08) !important;
+    background: #07080D !important;
+    box-shadow: none !important;
+    z-index: 45 !important;
+  }
+
+  #mobileBottomNav:not(.hidden) > button {
+    flex-direction: row !important;
+    align-items: center !important;
+    justify-content: flex-start !important;
+    gap: 14px !important;
+    width: 100% !important;
+    padding: 12px 16px !important;
+    border-radius: 14px !important;
+    margin: 0 !important;
+    pointer-events: auto !important;
+    cursor: pointer !important;
+    transition: background 0.15s ease, color 0.15s ease !important;
+  }
+  #mobileBottomNav:not(.hidden) > button:hover { background: rgba(255, 255, 255, 0.06) !important; }
+  #mobileBottomNav:not(.hidden) > button svg { width: 20px !important; height: 20px !important; flex-shrink: 0; }
+  #mobileBottomNav:not(.hidden) > button > span { font-size: 14px !important; font-weight: 600 !important; }
+
+  /* "+" butonu: kenar çubuğunun en üstünde geniş "Yeni Oda" butonu */
+  #mobileBottomNav:not(.hidden) > #raveFabPlusBtn {
+    order: -1 !important;
+    width: 100% !important;
+    height: 48px !important;
+    margin: 0 0 14px 0 !important;
+    border: none !important;
+    border-radius: 14px !important;
+    gap: 10px !important;
+    font-size: 14px !important;
+    font-weight: 800 !important;
+    box-shadow: 0 6px 20px rgba(255, 255, 255, 0.12) !important;
+  }
+  #mobileBottomNav:not(.hidden) > #raveFabPlusBtn svg { width: 18px !important; height: 18px !important; }
+  #mobileBottomNav:not(.hidden) > #raveFabPlusBtn::after {
+    content: "Yeni Oda";
+    font-size: 14px;
+    font-weight: 800;
+    color: #000;
+  }
+
+  /* Üst başlık: logo kenar çubuğunun üstüne, sola hizalı */
+  body:has(#mobileBottomNav:not(.hidden)) #mainHeader {
+    position: fixed !important;
+    top: 0 !important;
+    left: 0 !important;
+    width: var(--miruo-sidebar-w) !important;
+    height: 76px !important;
+    min-height: 72px !important;
+    max-height: 76px !important;
+    padding: 18px 20px 0 !important;
+    background: transparent !important;
+    border-bottom: none !important;
+    z-index: 46 !important;
+    pointer-events: none !important;
+  }
+  body:has(#mobileBottomNav:not(.hidden)) #mainHeader > div { justify-content: flex-start !important; }
+  body:has(#mobileBottomNav:not(.hidden)) #mainHeader > div > div:empty { display: none !important; }
+  body:has(#mobileBottomNav:not(.hidden)) #mainHeader #navLogoBtn {
+    align-items: flex-start !important;
+    pointer-events: auto !important;
+  }
+
+  /* İçerik alanı: kenar çubuğunun sağında, geniş ve ferah */
+  body:has(#mobileBottomNav:not(.hidden)) main {
+    margin-left: var(--miruo-sidebar-w) !important;
+    width: calc(100% - var(--miruo-sidebar-w)) !important;
+    max-width: 1560px !important;
+    padding: 32px clamp(28px, 4vw, 64px) 48px !important;
+  }
+  body:has(#mobileBottomNav:not(.hidden)) #friendsTabSection,
+  body:has(#mobileBottomNav:not(.hidden)) #profileTabSection {
+    padding-bottom: 24px !important;
+  }
+
+  /* Keşfet: arama sola, oda kartları otomatik sütunlu ızgara */
+  body:has(#mobileBottomNav:not(.hidden)) #exploreLobbySection > div:first-child {
+    max-width: 640px !important;
+    margin-left: 0 !important;
+    margin-right: auto !important;
+  }
+  #publicRoomsGrid {
+    grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)) !important;
+    gap: 18px !important;
+  }
+  #tabFriendsContainer {
+    display: grid !important;
+    grid-template-columns: repeat(auto-fill, minmax(380px, 1fr)) !important;
+    gap: 14px !important;
+  }
+  #tabFriendsContainer > * { margin: 0 !important; }
+}

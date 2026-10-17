@@ -6,6 +6,23 @@
  * - Virtual Living Room Interactive Touch & Reactions
  */
 
+// Sunucu adresi (config.js veya localStorage.miruo_api_base). Doluysa tüm /api/* istekleri,
+// WebSocket ve SSE bağlantıları bu sunucuya gider; böylece Mac / Windows / telefon / web
+// aynı hesapları ve aynı herkese açık odaları görür.
+const MIRUO_API_BASE = (localStorage.getItem('miruo_api_base') || window.MIRUO_API_BASE || '').replace(/\/+$/, '');
+if (MIRUO_API_BASE) {
+  const __origFetch = window.fetch.bind(window);
+  window.fetch = (input, init) => {
+    if (typeof input === 'string' && input.startsWith('/api/')) input = MIRUO_API_BASE + input;
+    return __origFetch(input, init);
+  };
+}
+// Mac/Windows uygulaması ya da file:// üzerinde sunucu adresi yoksa "tek cihaz" modu.
+const MIRUO_STANDALONE = !MIRUO_API_BASE && (
+  window.location.protocol === 'file:' || !window.location.host ||
+  !!(window.miruoDesktop && window.miruoDesktop.isDesktop)
+);
+
 // Supabase Auth Integration
 const DEFAULT_SUPABASE_URL = 'https://qvmdzfhjfdoqjmqipvux.supabase.co';
 const DEFAULT_SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InF2bWR6ZmhqZmRvcWptcWlwdnV4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE0MTk0NDYsImV4cCI6MjEwNjk5NTQ0Nn0.lkqfTJCr5ZJT6SDi13k8RKlOpabBZE8TiT42ehwYqzM';
@@ -252,6 +269,12 @@ function persistUserToLocalRegistry(user, oldUsername = '') {
         avatarBg: user.avatarBg || prev.avatarBg || 'from-rose-500 to-[#A64D79]'
       };
       localStorage.setItem('miruo_profiles_by_email', JSON.stringify(byEmail));
+    }
+    if (user.avatarUrl) {
+      localStorage.setItem('miruo_avatar', user.avatarUrl);
+    }
+    if (window.miruoDesktop && typeof window.miruoDesktop.saveDesktopProfile === 'function') {
+      window.miruoDesktop.saveDesktopProfile(user);
     }
   } catch (e) {
     console.warn('[Miruo persistUserToLocalRegistry warning]:', e);
@@ -1896,6 +1919,9 @@ const dom = {
   raveRoomSettingsBtn: document.getElementById('raveRoomSettingsBtn'),
   raveRoomSettingsMenu: document.getElementById('raveRoomSettingsMenu'),
   closeRaveRoomSettingsMenuBtn: document.getElementById('closeRaveRoomSettingsMenuBtn'),
+  playerZoomSlider: document.getElementById('playerZoomSlider'),
+  playerZoomVal: document.getElementById('playerZoomVal'),
+  playerSpeedVal: document.getElementById('playerSpeedVal'),
   raveResyncBtn: document.getElementById('raveResyncBtn'),
   raveCopyRoomLinkBtn: document.getElementById('raveCopyRoomLinkBtn'),
   raveOpenParticipantsBtn: document.getElementById('raveOpenParticipantsBtn'),
@@ -2194,6 +2220,17 @@ const dom = {
   duckingLevelVal: document.getElementById('duckingLevelVal'),
   micSensSlider: document.getElementById('micSensSlider'),
   micSensVal: document.getElementById('micSensVal'),
+  settingsMicMasterToggle: document.getElementById('settingsMicMasterToggle'),
+  settingsMicStatusBadge: document.getElementById('settingsMicStatusBadge'),
+  settingsMicDeviceSelect: document.getElementById('settingsMicDeviceSelect'),
+  settingsRefreshAudioDevicesBtn: document.getElementById('settingsRefreshAudioDevicesBtn'),
+  settingsMicGainSlider: document.getElementById('settingsMicGainSlider'),
+  settingsMicGainVal: document.getElementById('settingsMicGainVal'),
+  settingsMicTestBtn: document.getElementById('settingsMicTestBtn'),
+  settingsMicVuBar: document.getElementById('settingsMicVuBar'),
+  settingsMicTestHint: document.getElementById('settingsMicTestHint'),
+  settingsNoiseSuppressionToggle: document.getElementById('settingsNoiseSuppressionToggle'),
+  settingsEchoCancellationToggle: document.getElementById('settingsEchoCancellationToggle'),
   pipShowInFullscreenCheckbox: document.getElementById('pipShowInFullscreenCheckbox'),
   openPlatformAccountsFromSettingsBtn: document.getElementById('openPlatformAccountsFromSettingsBtn'),
 
@@ -2456,12 +2493,21 @@ function connectSignaling() {
     try { ws.close(); } catch (e) {}
     ws = null;
   }
-  if (window.location.protocol === 'file:' || !window.location.host) {
+  if (MIRUO_STANDALONE || window.location.protocol === 'file:' || !window.location.host) {
     console.log('Miruo Bağımsız Cihaz Modunda Çalışıyor');
+    if (!window._standaloneToastShown && typeof showToast === 'function') {
+      window._standaloneToastShown = true;
+      showToast('Sunucu bağlı değil: oda yalnızca bu cihazda çalışır, arkadaşların katılamaz.');
+    }
     return;
   }
-  const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-  const wsUrl = `${protocol}//${window.location.host}/?room=${encodeURIComponent(state.roomId)}&userId=${state.userId}`;
+  let wsUrl;
+  if (MIRUO_API_BASE) {
+    wsUrl = `${MIRUO_API_BASE.replace(/^http/i, 'ws')}/?room=${encodeURIComponent(state.roomId)}&userId=${state.userId}`;
+  } else {
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    wsUrl = `${protocol}//${window.location.host}/?room=${encodeURIComponent(state.roomId)}&userId=${state.userId}`;
+  }
 
   try {
     ws = new WebSocket(wsUrl);
@@ -2520,7 +2566,7 @@ function sendSignal(msg) {
 function connectFallbackSSE() {
   if (window._sseConnected) return;
   window._sseConnected = true;
-  const evtSource = new EventSource(`/api/events?room=${encodeURIComponent(state.roomId)}&userId=${state.userId}`);
+  const evtSource = new EventSource(`${MIRUO_API_BASE}/api/events?room=${encodeURIComponent(state.roomId)}&userId=${state.userId}`);
   evtSource.onmessage = (e) => {
     try {
       const msg = JSON.parse(e.data);
@@ -3054,26 +3100,57 @@ function fallbackToDirectYtEmbed(videoId) {
   loadYoutubeVideo(videoId);
 }
 
+function extractTwitchChannel(urlOrChannel) {
+  if (!urlOrChannel) return '';
+  let str = String(urlOrChannel).trim();
+  if (str.includes('twitch.tv/')) {
+    str = str.split('twitch.tv/')[1].split('/')[0].split('?')[0];
+  }
+  const clean = str.replace(/[^a-zA-Z0-9_]/g, '');
+  const forbidden = ['directory', 'p', 'search', 'videos', 'downloads', 'turbo', 'settings'];
+  if (!clean || forbidden.includes(clean.toLowerCase())) return '';
+  return clean;
+}
+
 function loadTwitchStream(channelOrUrl, title) {
+  let channel = extractTwitchChannel(channelOrUrl);
+  if (!channel) {
+    showToast('Lütfen geçerli bir Twitch canlı yayını seçin');
+    return;
+  }
+
   state.activeMode = 'twitch';
   state.currentProvider = 'Twitch';
+  state.currentVideoId = channel;
+  state.currentVideoTitle = title || `${channel} - Twitch`;
+  state.isPlaying = true;
+  if (typeof updatePlayPauseUI === 'function') updatePlayPauseUI(true);
+
   if (dom.nowPlayingProviderBadge) dom.nowPlayingProviderBadge.textContent = 'Twitch';
-  if (dom.nowPlayingTitle) dom.nowPlayingTitle.textContent = title || 'Twitch Canlı Yayını';
+  if (dom.nowPlayingTitle) dom.nowPlayingTitle.textContent = state.currentVideoTitle;
+  if (dom.raveOverlayTitle) dom.raveOverlayTitle.textContent = state.currentVideoTitle;
+  if (dom.stageSubtitleText) dom.stageSubtitleText.textContent = `${channel} (Twitch)`;
   if (typeof updateNowPlayingLikeState === 'function') updateNowPlayingLikeState();
-  
-  let channel = channelOrUrl || '';
-  if (channel.includes('twitch.tv/')) {
-    channel = channel.split('twitch.tv/')[1].split('/')[0].split('?')[0];
-  }
   
   dom.emptyStatePlaceholder.classList.add('hidden');
   dom.ytPlayerContainer.classList.add('hidden');
   dom.nativeVideoPlayer.classList.add('hidden');
+  if (typeof hideIframeFallback === 'function') hideIframeFallback();
+
   if (dom.webPlayerFrame) {
     dom.webPlayerFrame.classList.remove('hidden');
-    const parentHost = window.location.hostname || 'localhost';
-    dom.webPlayerFrame.src = `https://player.twitch.tv/?channel=${channel}&parent=${parentHost}&parent=localhost&parent=127.0.0.1&autoplay=true&muted=false`;
+    const hostnames = new Set(['localhost', '127.0.0.1']);
+    if (window.location.hostname) hostnames.add(window.location.hostname);
+    const parentParams = Array.from(hostnames).map(h => `parent=${encodeURIComponent(h)}`).join('&');
+    dom.webPlayerFrame.src = `https://player.twitch.tv/?channel=${encodeURIComponent(channel)}&${parentParams}&autoplay=true&muted=false`;
   }
+
+  // Hide the custom VOD overlay so user can interact directly with Twitch player controls
+  if (dom.ravePlayerOverlay) {
+    dom.ravePlayerOverlay.classList.add('opacity-0', 'pointer-events-none');
+    dom.ravePlayerOverlay.classList.remove('opacity-90');
+  }
+
   showToast(`Twitch: ${channel} yayını açıldı!`);
 }
 
@@ -3269,6 +3346,9 @@ function handleRemoteSync(payload) {
       }
       updatePlayPauseUI(payload.isPlaying);
     }
+    if (typeof payload.rate === 'number' && Math.abs((state.playbackRate || 1.0) - payload.rate) > 0.05) {
+      setPlayerPlaybackRate(payload.rate, false);
+    }
     return;
   }
 
@@ -3277,6 +3357,12 @@ function handleRemoteSync(payload) {
       loadYoutubeVideo(payload.videoId);
     }
     showToast('Partner videoyu başlattı');
+  }
+
+  if (payload.action === 'rate' || payload.action === 'speed') {
+    const targetRate = typeof payload.rate === 'number' ? payload.rate : parseFloat(payload.rate) || 1.0;
+    setPlayerPlaybackRate(targetRate, false);
+    showToast(`Oynatma Hızı: ${targetRate}x (${payload.by || 'Oda Sahibi'})`);
   }
 
   if (payload.action === 'play') {
@@ -3330,6 +3416,9 @@ function handleRemoteSync(payload) {
   }
 
   if (payload.action === 'heartbeat') {
+    if (typeof payload.rate === 'number' && Math.abs((state.playbackRate || 1.0) - payload.rate) > 0.05) {
+      setPlayerPlaybackRate(payload.rate, false);
+    }
     if (payload.isPlaying) {
       const targetTime = (payload.time || 0) + transit;
       const drift = Math.abs(state.currentTime - targetTime);
@@ -3366,6 +3455,7 @@ function startSyncHeartbeat() {
         action: 'heartbeat',
         time: state.currentTime,
         isPlaying: state.isPlaying,
+        rate: state.playbackRate || 1.0,
         sentAt: Date.now()
       });
     }
@@ -5071,6 +5161,163 @@ function updateAVToolbarUI() {
 }
 
 // Camera & Mic Controls
+function getAudioConstraints() {
+  const deviceId = localStorage.getItem('miruo_mic_device_id');
+  const noiseSup = localStorage.getItem('miruo_noise_suppression') !== 'false';
+  const echoCancel = localStorage.getItem('miruo_echo_cancellation') !== 'false';
+  const audioObj = {
+    echoCancellation: echoCancel,
+    noiseSuppression: noiseSup,
+    autoGainControl: true
+  };
+  if (deviceId) {
+    audioObj.deviceId = { exact: deviceId };
+  }
+  return { audio: audioObj, video: false };
+}
+
+let micTestStream = null;
+let micTestAudioCtx = null;
+let micTestAnalyser = null;
+let micTestAnimFrame = null;
+
+async function refreshAudioDeviceList() {
+  if (!dom.settingsMicDeviceSelect || !navigator.mediaDevices || !navigator.mediaDevices.enumerateDevices) return;
+  try {
+    const devices = await navigator.mediaDevices.enumerateDevices();
+    const audioInputs = devices.filter(d => d.kind === 'audioinput');
+    const savedDeviceId = localStorage.getItem('miruo_mic_device_id') || '';
+
+    dom.settingsMicDeviceSelect.innerHTML = '<option value="">Varsayılan Sistem Mikrofonu</option>';
+
+    audioInputs.forEach((dev, idx) => {
+      const opt = document.createElement('option');
+      opt.value = dev.deviceId;
+      opt.textContent = dev.label || `Mikrofon ${idx + 1}`;
+      if (dev.deviceId === savedDeviceId) opt.selected = true;
+      dom.settingsMicDeviceSelect.appendChild(opt);
+    });
+  } catch (e) {
+    console.warn('[Miruo] enumerateDevices error:', e);
+  }
+}
+
+function syncMicSettingsValues() {
+  if (dom.settingsMicMasterToggle) {
+    dom.settingsMicMasterToggle.checked = !!state.isMicOn;
+  }
+  if (dom.settingsMicStatusBadge) {
+    if (state.isMicOn) {
+      dom.settingsMicStatusBadge.textContent = 'Açık (Canlı)';
+      dom.settingsMicStatusBadge.className = 'text-[10px] px-2 py-0.5 rounded-full font-bold bg-emerald-500/20 text-emerald-400 border border-emerald-500/40';
+    } else {
+      dom.settingsMicStatusBadge.textContent = 'Kapalı (Sessiz)';
+      dom.settingsMicStatusBadge.className = 'text-[10px] px-2 py-0.5 rounded-full font-bold bg-white/10 text-gray-400 border border-white/10';
+    }
+  }
+  const savedGain = localStorage.getItem('miruo_mic_gain') || '100';
+  if (dom.settingsMicGainSlider) dom.settingsMicGainSlider.value = savedGain;
+  if (dom.settingsMicGainVal) dom.settingsMicGainVal.textContent = `%${savedGain}`;
+
+  if (dom.settingsNoiseSuppressionToggle) {
+    dom.settingsNoiseSuppressionToggle.checked = localStorage.getItem('miruo_noise_suppression') !== 'false';
+  }
+  if (dom.settingsEchoCancellationToggle) {
+    dom.settingsEchoCancellationToggle.checked = localStorage.getItem('miruo_echo_cancellation') !== 'false';
+  }
+
+  if (state.isMicOn && state.localStream && !micTestStream) {
+    startMicVuMeter(state.localStream);
+  }
+}
+
+function startMicVuMeter(mediaStream) {
+  stopMicVuMeter();
+  try {
+    const AudioCtx = window.AudioContext || window.webkitAudioContext;
+    if (!AudioCtx || !mediaStream) return;
+    micTestAudioCtx = new AudioCtx();
+    if (micTestAudioCtx.state === 'suspended') micTestAudioCtx.resume();
+    const source = micTestAudioCtx.createMediaStreamSource(mediaStream);
+    micTestAnalyser = micTestAudioCtx.createAnalyser();
+    micTestAnalyser.fftSize = 256;
+    source.connect(micTestAnalyser);
+
+    const bufLen = micTestAnalyser.frequencyBinCount;
+    const dataArr = new Uint8Array(bufLen);
+
+    function renderVu() {
+      if (!micTestAnalyser || !dom.settingsMicVuBar) return;
+      micTestAnalyser.getByteFrequencyData(dataArr);
+      let sum = 0;
+      for (let i = 0; i < bufLen; i++) sum += dataArr[i];
+      const avg = sum / bufLen;
+      const gainMult = (Number(localStorage.getItem('miruo_mic_gain') || 100) / 100);
+      const percent = Math.min(100, Math.round((avg / 128) * 100 * gainMult));
+      dom.settingsMicVuBar.style.width = `${percent}%`;
+      micTestAnimFrame = requestAnimationFrame(renderVu);
+    }
+    renderVu();
+  } catch (e) {
+    console.warn('[Miruo] startMicVuMeter failed:', e);
+  }
+}
+
+function stopMicVuMeter() {
+  if (micTestAnimFrame) {
+    cancelAnimationFrame(micTestAnimFrame);
+    micTestAnimFrame = null;
+  }
+  if (micTestAudioCtx) {
+    try { micTestAudioCtx.close(); } catch (_) {}
+    micTestAudioCtx = null;
+  }
+  micTestAnalyser = null;
+  if (dom.settingsMicVuBar) dom.settingsMicVuBar.style.width = '0%';
+}
+
+async function toggleMicTest() {
+  if (micTestStream) {
+    micTestStream.getTracks().forEach(t => { try { t.stop(); } catch (_) {} });
+    micTestStream = null;
+    stopMicVuMeter();
+    if (dom.settingsMicTestBtn) {
+      dom.settingsMicTestBtn.textContent = 'Mikrofonu Test Et';
+      dom.settingsMicTestBtn.className = 'px-2.5 py-1 rounded-lg bg-white/10 hover:bg-white/20 text-[11px] font-bold text-white transition-all cursor-pointer';
+    }
+    if (dom.settingsMicTestHint) {
+      dom.settingsMicTestHint.textContent = 'Test durduruldu.';
+    }
+    if (state.isMicOn && state.localStream) {
+      startMicVuMeter(state.localStream);
+    }
+    return;
+  }
+
+  try {
+    if (dom.settingsMicTestBtn) dom.settingsMicTestBtn.textContent = 'Başlatılıyor...';
+    const c = getAudioConstraints();
+    micTestStream = await navigator.mediaDevices.getUserMedia(c);
+    startMicVuMeter(micTestStream);
+    if (dom.settingsMicTestBtn) {
+      dom.settingsMicTestBtn.textContent = 'Testi Durdur';
+      dom.settingsMicTestBtn.className = 'px-2.5 py-1 rounded-lg bg-rose-500 hover:bg-rose-600 text-[11px] font-bold text-white transition-all cursor-pointer';
+    }
+    if (dom.settingsMicTestHint) {
+      dom.settingsMicTestHint.textContent = 'Mikrofona konuşun; yeşil/pembe bar sesinizi yansıtır.';
+    }
+  } catch (err) {
+    console.warn('[Miruo] Mic test error:', err);
+    if (dom.settingsMicTestBtn) {
+      dom.settingsMicTestBtn.textContent = 'Mikrofonu Test Et';
+      dom.settingsMicTestBtn.className = 'px-2.5 py-1 rounded-lg bg-white/10 hover:bg-white/20 text-[11px] font-bold text-white transition-all cursor-pointer';
+    }
+    if (dom.settingsMicTestHint) {
+      dom.settingsMicTestHint.textContent = 'Mikrofona erişilemedi: ' + (err.message || 'İzin verilmedi');
+    }
+  }
+}
+
 async function toggleMic() {
   // 1-Tap Toggle: Tap to open, tap again to close
   state.isMicOn = !state.isMicOn;
@@ -5078,7 +5325,7 @@ async function toggleMic() {
   if (state.isMicOn) {
     if (!state.localStream && navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
       try {
-        state.localStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+        state.localStream = await navigator.mediaDevices.getUserMedia(getAudioConstraints());
         if (dom.selfVideo) dom.selfVideo.srcObject = state.localStream;
         if (state.pc) {
           state.localStream.getAudioTracks().forEach(t => state.pc.addTrack(t, state.localStream));
@@ -5106,16 +5353,42 @@ async function toggleMic() {
   }
   broadcastMyMediaStatus();
   renderParticipantsList();
+  syncMicSettingsValues();
+}
+
+async function getLiveCameraStream() {
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+    throw new Error('navigator.mediaDevices.getUserMedia not supported');
+  }
+  const tryConstraints = [
+    { video: { width: { ideal: 640 }, height: { ideal: 480 }, facingMode: 'user' }, audio: false },
+    { video: { width: { ideal: 640 }, height: { ideal: 480 } }, audio: false },
+    { video: true, audio: false }
+  ];
+  let lastErr = null;
+  for (const c of tryConstraints) {
+    try {
+      return await navigator.mediaDevices.getUserMedia(c);
+    } catch (err) {
+      lastErr = err;
+    }
+  }
+  throw lastErr || new Error('No camera stream');
 }
 
 async function toggleCam() {
-  // If camera is already ON, turn it OFF directly!
+  // If camera is already ON, turn it OFF cleanly and release hardware LED
   if (state.isCamOn) {
     state.isCamOn = false;
     if (state.localStream) {
       state.localStream.getVideoTracks().forEach(track => {
         track.enabled = false;
+        try { track.stop(); } catch (e) {}
+        try { state.localStream.removeTrack(track); } catch (e) {}
       });
+    }
+    if (dom.selfVideo) {
+      dom.selfVideo.srcObject = null;
     }
     if (dom.selfPipCard) {
       dom.selfPipCard.classList.add('hidden');
@@ -5140,23 +5413,28 @@ async function toggleCam() {
   }
 
   try {
-    // IMPORTANT: audio MUST BE false! Requesting audio: true during camera toggle
-    // hijacks iOS AVAudioSession from video player and freezes video playback!
-    if (!state.localStream) {
-      state.localStream = await navigator.mediaDevices.getUserMedia({
-        video: { width: { ideal: 640 }, height: { ideal: 480 }, facingMode: 'user' },
-        audio: false
+    // Clean up any stale or ended video tracks
+    if (state.localStream) {
+      const deadTracks = state.localStream.getVideoTracks().filter(t => t.readyState === 'ended');
+      deadTracks.forEach(t => {
+        try { state.localStream.removeTrack(t); } catch (e) {}
       });
-    } else if (state.localStream.getVideoTracks().length === 0) {
-      const videoStream = await navigator.mediaDevices.getUserMedia({
-        video: { width: { ideal: 640 }, height: { ideal: 480 }, facingMode: 'user' },
-        audio: false
-      });
-      const videoTrack = videoStream.getVideoTracks()[0];
-      state.localStream.addTrack(videoTrack);
     }
 
-    const videoTrack = state.localStream ? state.localStream.getVideoTracks()[0] : null;
+    let videoTrack = state.localStream ? state.localStream.getVideoTracks().find(t => t.readyState === 'live') : null;
+
+    if (!videoTrack) {
+      const camStream = await getLiveCameraStream();
+      const freshTrack = camStream.getVideoTracks()[0];
+      if (!freshTrack) throw new Error('Kamera video izi alınamadı');
+      if (!state.localStream) {
+        state.localStream = camStream;
+      } else {
+        state.localStream.addTrack(freshTrack);
+      }
+      videoTrack = freshTrack;
+    }
+
     if (videoTrack) {
       videoTrack.enabled = true;
       state.isCamOn = true;
@@ -5216,7 +5494,7 @@ async function toggleCam() {
       throw new Error('Video track not available');
     }
   } catch (e) {
-    console.warn('Kamera donanımı bulunamadı veya simülatörde çalışıyor, canlı önizleme açılıyor:', e);
+    console.warn('Kamera donanımı bulunamadı veya izin verilmedi:', e);
     state.isCamOn = true;
     if (dom.selfPipCard) {
       dom.selfPipCard.classList.remove('hidden', 'pip-hidden-fullscreen');
@@ -5770,6 +6048,16 @@ function createAndJoinRoom(title, isPrivate = false, category = 'YouTube', video
     connectedAccount: activeConn
   }).then(code => {
     state.roomId = code;
+    if (!isPrivate) {
+      saveMyPublicRoom({
+        id: code,
+        name: title || `${category} Partisi`,
+        category: category,
+        host: state.username,
+        videoId: videoId || '',
+        mediaTitle: title || ''
+      });
+    }
     if (dom.activeRoomTitle) dom.activeRoomTitle.textContent = state.roomId;
     if (dom.currentRoomDisplay) dom.currentRoomDisplay.textContent = state.roomId;
     if (dom.raveInviteLinkText) dom.raveInviteLinkText.textContent = getMiruoRoomUrl(state.roomId);
@@ -6054,19 +6342,50 @@ function renderRoomList(roomsToRender) {
   });
 }
 
+// Bu cihazdan açılan herkese açık odalar (sunucu yokken de Keşfet'te görünsün).
+function getMyPublicRooms() {
+  try {
+    const list = JSON.parse(localStorage.getItem('miruo_my_public_rooms') || '[]');
+    const fresh = list.filter(r => r && r.id && (Date.now() - (r.ts || 0)) < 6 * 3600 * 1000);
+    if (fresh.length !== list.length) localStorage.setItem('miruo_my_public_rooms', JSON.stringify(fresh));
+    return fresh;
+  } catch (_) { return []; }
+}
+function saveMyPublicRoom(room) {
+  try {
+    const list = getMyPublicRooms().filter(r => r.id !== room.id);
+    list.unshift({ ...room, ts: Date.now() });
+    localStorage.setItem('miruo_my_public_rooms', JSON.stringify(list.slice(0, 10)));
+  } catch (_) {}
+}
+function removeMyPublicRoom(id) {
+  try {
+    localStorage.setItem('miruo_my_public_rooms', JSON.stringify(getMyPublicRooms().filter(r => r.id !== id)));
+  } catch (_) {}
+}
+
 function loadPublicRooms() {
+  const withMine = (serverRooms) => {
+    const ids = new Set(serverRooms.map(r => r.id));
+    const mine = getMyPublicRooms().filter(r => !ids.has(r.id)).map(r => ({
+      id: r.id, name: r.name, category: r.category, host: r.host,
+      mediaTitle: r.mediaTitle || r.name, videoId: r.videoId || '', thumb: r.thumb || '',
+      viewers: 1, avatars: [{ initial: (r.host || 'U').charAt(0).toUpperCase(), bg: 'from-purple-500 to-indigo-600' }]
+    }));
+    return mine.concat(serverRooms);
+  };
   fetch('/api/public-rooms')
     .then(res => res.json())
     .then(data => {
       if (data && data.rooms && data.rooms.length > 0) {
-        renderRoomList(data.rooms);
+        renderRoomList(withMine(data.rooms));
       } else {
-        renderRoomList(DEFAULT_COMMUNITY_ROOMS);
+        renderRoomList(withMine(DEFAULT_COMMUNITY_ROOMS));
       }
     })
     .catch(err => {
       console.warn('API fetch failed, rendering fallback community rooms:', err);
-      renderRoomList(DEFAULT_COMMUNITY_ROOMS);
+      renderRoomList(withMine(DEFAULT_COMMUNITY_ROOMS));
     });
 }
 
@@ -9514,10 +9833,15 @@ function loadUserSession() {
   }
 
   const customUsername = localStorage.getItem('miruo_custom_username');
+  const backupAvatar = localStorage.getItem('miruo_avatar') || '';
   if (user) {
+    if (!user.avatarUrl && backupAvatar) {
+      user.avatarUrl = backupAvatar;
+    }
     const cleanEmail = (user.email || '').trim().toLowerCase();
-    if (cleanEmail) {
-      try {
+    const cleanU = (user.username || customUsername || '').replace(/^@/, '').toLowerCase().trim();
+    try {
+      if (cleanEmail) {
         const byEmail = JSON.parse(localStorage.getItem('miruo_profiles_by_email') || '{}');
         const emailProf = byEmail[cleanEmail];
         if (emailProf) {
@@ -9529,8 +9853,18 @@ function loadUserSession() {
           if (!user.avatarUrl && emailProf.avatarUrl) user.avatarUrl = emailProf.avatarUrl;
           if (!user.avatarBg && emailProf.avatarBg) user.avatarBg = emailProf.avatarBg;
         }
-      } catch (e) {}
-    }
+      }
+      if (!user.avatarUrl || !user.fullName) {
+        const regUsers = JSON.parse(localStorage.getItem('miruo_registered_users') || '[]');
+        const regMatch = regUsers.find(u => (cleanEmail && u.email && u.email.toLowerCase() === cleanEmail) || (cleanU && u.username && u.username.toLowerCase().replace(/^@/,'') === cleanU));
+        if (regMatch) {
+          if (!user.avatarUrl && regMatch.avatarUrl) user.avatarUrl = regMatch.avatarUrl;
+          if (!user.avatarBg && regMatch.avatarBg) user.avatarBg = regMatch.avatarBg;
+          if ((!user.fullName || user.fullName.startsWith('@')) && regMatch.fullName) user.fullName = regMatch.fullName;
+        }
+      }
+    } catch (e) {}
+
     if (customUsername && !user.username) {
       user.username = customUsername.replace(/^@/, '');
     }
@@ -9546,8 +9880,42 @@ function loadUserSession() {
   state.userId = user.id || state.userId;
   state.username = ((user && user.username) || customUsername || (user && user.name) || 'kullanici').replace(/^@/, '');
   state.roomId = (roomFromUrl || user.defaultRoom || 'ODA-77').toUpperCase();
-  state.avatarUrl = user.avatarUrl || '';
-  state.avatarBg = user.avatarBg || '';
+  state.avatarUrl = (user && user.avatarUrl) || backupAvatar || '';
+  state.avatarBg = (user && user.avatarBg) || '';
+
+  if (user && user.avatarUrl) {
+    localStorage.setItem('miruo_avatar', user.avatarUrl);
+    localStorage.setItem('miruo_user', JSON.stringify(user));
+  }
+
+  // Desktop User Profile Restore from UserData directory
+  if (window.miruoDesktop && typeof window.miruoDesktop.getDesktopProfile === 'function') {
+    window.miruoDesktop.getDesktopProfile().then(deskUser => {
+      if (deskUser && (deskUser.avatarUrl || deskUser.username || deskUser.fullName)) {
+        let changed = false;
+        if (!user.avatarUrl && deskUser.avatarUrl) {
+          user.avatarUrl = deskUser.avatarUrl;
+          state.avatarUrl = deskUser.avatarUrl;
+          localStorage.setItem('miruo_avatar', deskUser.avatarUrl);
+          changed = true;
+        }
+        if ((!user.fullName || user.fullName.startsWith('@')) && deskUser.fullName) {
+          user.fullName = deskUser.fullName;
+          user.name = deskUser.fullName;
+          changed = true;
+        }
+        if ((!user.username || user.username.startsWith('user_')) && deskUser.username) {
+          user.username = deskUser.username;
+          state.username = deskUser.username;
+          changed = true;
+        }
+        if (changed) {
+          localStorage.setItem('miruo_user', JSON.stringify(user));
+          updateUserUI(user);
+        }
+      }
+    }).catch(() => {});
+  }
 
   updateUserUI(user);
 
@@ -10336,7 +10704,11 @@ function initEvents() {
     }
 
     hideAuthAlert();
-    const { identityToken, email, fullName, userIdentifier } = response;
+    const userObj = response.user || {};
+    const identityToken = response.identityToken || userObj.identityToken || '';
+    const email = (response.email || userObj.email || '').trim();
+    const fullName = (response.fullName || userObj.fullName || userObj.name || (userObj.firstName ? (userObj.firstName + ' ' + (userObj.lastName || '')).trim() : '') || '').trim();
+    const userIdentifier = response.userIdentifier || userObj.id || response.id || ('apple_' + Date.now());
 
     // 1. Auto-fill form inputs if present
     if (fullName) {
@@ -10353,31 +10725,71 @@ function initEvents() {
     }
 
     // 2. Prepare user profile
-    const displayName = fullName || (email ? email.split('@')[0] : 'Mehmet Karabulut');
-    const safeUsername = (displayName.replace(/[^a-zA-Z0-9_]/g, '') || ('user_' + Math.random().toString(36).substring(2, 6))).toLowerCase();
+    const displayName = fullName || (email ? email.split('@')[0] : (userObj.name || (userObj.username ? (userObj.username.charAt(0).toUpperCase() + userObj.username.slice(1)) : 'Apple Kullanıcısı')));
+    const safeUsername = (userObj.username || displayName.replace(/[^a-zA-Z0-9_]/g, '') || ('user_' + Math.random().toString(36).substring(2, 6))).toLowerCase();
+    const resolvedEmail = email || `${safeUsername}@icloud.com`;
     const avatarChar = displayName.charAt(0).toUpperCase() || 'M';
 
     const verifiedUser = {
-      id: userIdentifier || ('apple_' + Date.now()),
+      id: userIdentifier,
       name: displayName,
+      fullName: displayName,
       username: safeUsername,
-      email: email || '',
+      email: resolvedEmail,
       avatarChar: avatarChar,
       avatarBg: 'from-rose-500 to-indigo-600',
       isApple: true,
-      provider: 'apple'
+      provider: 'apple',
+      isGuest: false
     };
 
     localStorage.setItem('miruo_user', JSON.stringify(verifiedUser));
     state.userId = verifiedUser.id;
     state.username = verifiedUser.name;
+
+    // Save to local registered accounts so subsequent logins or checks recognize this account!
+    try {
+      const regList = JSON.parse(localStorage.getItem('miruo_registered_users') || '[]');
+      const cleanUName = safeUsername.replace(/^@/, '');
+      const idx = regList.findIndex(u => (u.email && u.email.toLowerCase() === resolvedEmail.toLowerCase()) || (u.id && u.id === verifiedUser.id) || (u.username && u.username.toLowerCase() === cleanUName));
+      const entry = {
+        id: verifiedUser.id,
+        email: resolvedEmail.toLowerCase(),
+        username: cleanUName,
+        fullName: displayName,
+        avatarUrl: verifiedUser.avatarUrl || '',
+        avatarBg: verifiedUser.avatarBg,
+        isApple: true,
+        provider: 'apple'
+      };
+      if (idx >= 0) {
+        regList[idx] = Object.assign(regList[idx], entry);
+      } else {
+        regList.push(entry);
+      }
+      localStorage.setItem('miruo_registered_users', JSON.stringify(regList));
+
+      const byEmail = JSON.parse(localStorage.getItem('miruo_profiles_by_email') || '{}');
+      byEmail[resolvedEmail.toLowerCase()] = entry;
+      localStorage.setItem('miruo_profiles_by_email', JSON.stringify(byEmail));
+      localStorage.setItem('miruo_custom_username', cleanUName);
+    } catch (_) {}
+
+    if (window.miruoDesktop && typeof window.miruoDesktop.saveDesktopProfile === 'function') {
+      try { window.miruoDesktop.saveDesktopProfile(verifiedUser); } catch (_) {}
+    }
+
     updateUserUI(verifiedUser);
 
     if (dom.authModal) {
       dom.authModal.classList.add('hidden');
       unfreezeBackgroundAfterModal();
     }
-    showToast(`Hoş geldin, ${displayName}`);
+    // Re-render settings if open
+    if (dom.profileEditModal && !dom.profileEditModal.classList.contains('hidden')) {
+      if (typeof openProfileEditModal === 'function') openProfileEditModal();
+    }
+    showToast(`Apple ile giriş yapıldı: ${displayName}`);
 
     // 3. Supabase background sync (non-blocking)
     if (supabaseClient && supabaseClient.auth) {
@@ -11402,18 +11814,36 @@ function initEvents() {
 
     // Register user in server backend
     try {
-      await fetch('/api/auth/register', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          fullName: pending.fullName,
-          username: pending.username,
-          email: pending.email,
-          password: pending.password,
-          avatarUrl: pending.avatarUrl || '',
-          avatarBg: selectedSignUpAvatarBg
-        })
-      });
+      const regPayload = {
+        fullName: pending.fullName,
+        username: pending.username,
+        email: pending.email,
+        password: pending.password,
+        avatarUrl: pending.avatarUrl || '',
+        avatarBg: selectedSignUpAvatarBg
+      };
+      let regOk = false;
+      try {
+        const res = await fetch('/api/auth/register', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(regPayload)
+        });
+        if (res.ok) {
+          const ct = res.headers.get('content-type') || '';
+          if (ct.includes('application/json')) regOk = true;
+        }
+      } catch (_) {}
+
+      if (!regOk && window.location.port !== '3000') {
+        try {
+          await fetch('http://127.0.0.1:3000/api/auth/register', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(regPayload)
+          });
+        } catch (_) {}
+      }
     } catch (e) {}
 
     // Save account to local registered users registry
@@ -11614,15 +12044,6 @@ function initEvents() {
           if (dom.authContactInput) dom.authContactInput.focus();
           return;
         }
-        if (!passwordVal) {
-          showAuthAlert("Lütfen şifrenizi girin.");
-          if (dom.authPasswordInput) dom.authPasswordInput.focus();
-          return;
-        }
-
-        const prevBtnText = dom.authSubmitBtn.innerText;
-        dom.authSubmitBtn.innerText = "Giriş yapılıyor...";
-        dom.authSubmitBtn.disabled = true;
 
         const isEmail = cleanContact.includes('@');
         const registeredUsers = JSON.parse(localStorage.getItem('miruo_registered_users') || '[]');
@@ -11649,27 +12070,62 @@ function initEvents() {
               fullName: (storedUser.fullName && !storedUser.fullName.startsWith('@')) ? storedUser.fullName : (storedUser.name || storedUser.username || cleanContact),
               password: passwordVal,
               avatarUrl: storedUser.avatarUrl || '',
-              avatarBg: storedUser.avatarBg || ''
+              avatarBg: storedUser.avatarBg || '',
+              isApple: !!(storedUser.isApple || storedUser.provider === 'apple'),
+              provider: storedUser.provider || (storedUser.isApple ? 'apple' : 'email')
             };
           }
         }
+
+        if (!passwordVal) {
+          // If this account is an Apple ID account, trigger Touch ID / Apple authentication seamlessly
+          if (localMatch && (localMatch.isApple || localMatch.provider === 'apple')) {
+            if (dom.appleLoginBtn) {
+              dom.appleLoginBtn.click();
+              return;
+            }
+          }
+          showAuthAlert("Lütfen şifrenizi girin.");
+          if (dom.authPasswordInput) dom.authPasswordInput.focus();
+          return;
+        }
+
+        const prevBtnText = dom.authSubmitBtn.innerText;
+        dom.authSubmitBtn.innerText = "Giriş yapılıyor...";
+        dom.authSubmitBtn.disabled = true;
 
         let loginSuccess = false;
         let userData = null;
 
         // 1. Check local backend
         try {
-          const resp = await fetch('/api/auth/login', {
+          const loginPayload = { email: cleanContact, emailOrUsername: cleanContact, password: passwordVal };
+          let resp = await fetch('/api/auth/login', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ email: cleanContact, emailOrUsername: cleanContact, password: passwordVal })
+            body: JSON.stringify(loginPayload)
           });
-          if (resp.ok) {
-            const data = await resp.json();
-            if (data.success && data.user) {
-              loginSuccess = true;
-              userData = data.user;
-            }
+          let data = null;
+          if (resp && resp.ok) {
+            const ct = resp.headers.get('content-type') || '';
+            if (ct.includes('application/json')) data = await resp.json();
+          }
+          if ((!data || !data.success) && window.location.port !== '3000') {
+            try {
+              const fallbackResp = await fetch('http://127.0.0.1:3000/api/auth/login', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(loginPayload)
+              });
+              if (fallbackResp && fallbackResp.ok) {
+                const ct = fallbackResp.headers.get('content-type') || '';
+                if (ct.includes('application/json')) data = await fallbackResp.json();
+              }
+            } catch (_) {}
+          }
+          if (data && data.success && data.user) {
+            loginSuccess = true;
+            userData = data.user;
           }
         } catch (e) {}
 
@@ -11696,7 +12152,7 @@ function initEvents() {
 
         // 3. Check local registered user record
         if (!loginSuccess && localMatch) {
-          if (!localMatch.password || localMatch.password === passwordVal) {
+          if (localMatch.isApple || localMatch.provider === 'apple' || !localMatch.password || localMatch.password === passwordVal) {
             loginSuccess = true;
             userData = {
               id: localMatch.id || ('user_' + Math.random().toString(36).substring(2, 8)),
@@ -11704,7 +12160,9 @@ function initEvents() {
               fullName: localMatch.fullName,
               username: localMatch.username,
               avatarUrl: localMatch.avatarUrl,
-              avatarBg: localMatch.avatarBg
+              avatarBg: localMatch.avatarBg,
+              isApple: !!(localMatch.isApple || localMatch.provider === 'apple'),
+              provider: localMatch.provider || (localMatch.isApple ? 'apple' : 'email')
             };
           } else {
             dom.authSubmitBtn.innerText = prevBtnText;
@@ -11870,6 +12328,157 @@ function initEvents() {
     history: { title: 'Geçmiş', url: 'https://m.youtube.com/feed/history' }
   };
 
+  function openDesktopPlatformBrowser(providerKey, url, platformTitle) {
+    const old = document.getElementById('desktopBrowserOverlay');
+    if (old) old.remove();
+
+    const isMac = window.miruoDesktop && window.miruoDesktop.platform === 'darwin';
+    let startUrl = String(url).replace('//m.youtube.com', '//www.youtube.com');
+    const ua = navigator.userAgent.replace(/\s(Electron|Miruo)[^\s]*/g, '');
+    const btnCss = 'display:flex;align-items:center;gap:6px;padding:8px 14px;border-radius:999px;border:1px solid rgba(255,255,255,.15);background:rgba(255,255,255,.08);color:#fff;font:600 13px system-ui,sans-serif;cursor:pointer;-webkit-app-region:no-drag;user-select:none;';
+
+    const playingTitle = (dom.nowPlayingTitle && dom.nowPlayingTitle.textContent) || state.currentVideoTitle || '';
+    const hasActivePlaying = !!(state.roomId && dom.roomWorkspaceSection && !dom.roomWorkspaceSection.classList.contains('hidden') && playingTitle && !playingTitle.includes('Henüz') && !playingTitle.includes('Seçilmedi') && !playingTitle.includes('No video'));
+
+    const ov = document.createElement('div');
+    ov.id = 'desktopBrowserOverlay';
+    ov.style.cssText = 'position:fixed;inset:0;z-index:2147483000;background:#000;display:flex;flex-direction:column;';
+    ov.innerHTML = `
+      <div style="display:flex;align-items:center;gap:10px;padding:10px 16px 10px ${isMac ? 84 : 16}px;background:#0B0D14;border-bottom:1px solid rgba(255,255,255,.1);-webkit-app-region:drag;">
+        <button id="dbCloseBtn" type="button" title="Odaya dön (video arka planda kesintisiz devam eder)" style="${btnCss}background:rgba(239,68,68,.18);border-color:rgba(239,68,68,.3);color:#fca5a5;">✕ Odaya Dön</button>
+        <button id="dbBackBtn" type="button" title="Önceki Sayfa (Geri)" style="${btnCss}">← Geri</button>
+        <button id="dbFwdBtn" type="button" title="Sonraki Sayfa (İleri)" style="${btnCss}">→ İleri</button>
+        <div style="flex:1;min-width:0;display:flex;flex-direction:column;align-items:center;text-align:center;">
+          <span id="dbTitle" style="width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#e5e7eb;font:700 14px system-ui,sans-serif;">${platformTitle}</span>
+          ${hasActivePlaying ? `<span style="font-size:11px;color:#34d399;font-weight:600;display:flex;align-items:center;gap:5px;max-width:380px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"><span style="width:6px;height:6px;border-radius:999px;background:#10b981;display:inline-block;"></span>Odada Oynatılıyor: "${escapeHtml(playingTitle)}" (Kesintisiz)</span>` : ''}
+        </div>
+        <button id="dbQueueBtn" type="button" title="Mevcut videoyu durdurmadan sıraya ekle" style="${btnCss}background:rgba(255,255,255,.14);border-color:rgba(255,255,255,.25);">+ Sıraya Ekle</button>
+        <button id="dbPlayBtn" type="button" title="Bu videoyu hemen odada başlat" style="${btnCss}background:linear-gradient(90deg,#e11d48,#a64d79);border-color:transparent;font-weight:700;">▶ Odada Oynat</button>
+      </div>
+      <webview id="dbWebview" src="${startUrl}" partition="persist:miruo-browser" useragent="${ua}" allowpopups style="flex:1;width:100%;border:0;background:#000;"></webview>`;
+    document.body.appendChild(ov);
+
+    const wv = ov.querySelector('#dbWebview');
+    const titleEl = ov.querySelector('#dbTitle');
+    const closeBtn = ov.querySelector('#dbCloseBtn');
+    const backBtn = ov.querySelector('#dbBackBtn');
+    const fwdBtn = ov.querySelector('#dbFwdBtn');
+    const playBtn = ov.querySelector('#dbPlayBtn');
+    const queueBtn = ov.querySelector('#dbQueueBtn');
+
+    const isYt = providerKey === 'youtube';
+    const isTwitch = providerKey === 'twitch';
+
+    const canPlay = () => {
+      let cur = '';
+      try { cur = wv.getURL(); } catch (e) { return false; }
+      if (!cur || !/^https?:/i.test(cur)) return false;
+      if (isYt) return !!extractYtId(cur);
+      if (isTwitch) return !!extractTwitchChannel(cur);
+      return true;
+    };
+
+    const refreshNav = () => {
+      let t = '';
+      try { t = (wv.getTitle() || '').replace(/\s*-\s*YouTube$/i, ''); } catch (e) {}
+      if (t) titleEl.textContent = t;
+      const ok = canPlay();
+      playBtn.style.opacity = ok ? '1' : '0.45';
+      queueBtn.style.opacity = ok ? '1' : '0.45';
+      try {
+        backBtn.style.opacity = wv.canGoBack() ? '1' : '0.45';
+        fwdBtn.style.opacity = wv.canGoForward() ? '1' : '0.45';
+      } catch (_) {}
+    };
+
+    ['did-navigate', 'did-navigate-in-page', 'page-title-updated', 'dom-ready'].forEach(ev => wv.addEventListener(ev, refreshNav));
+    refreshNav();
+
+    const close = () => {
+      document.removeEventListener('keydown', onKey, true);
+      ov.remove();
+    };
+    const onKey = (e) => { if (e.key === 'Escape') close(); };
+    document.addEventListener('keydown', onKey, true);
+
+    const handleBack = () => {
+      try {
+        if (wv.canGoBack()) wv.goBack();
+        else close();
+      } catch (e) {
+        close();
+      }
+    };
+    const handleForward = () => {
+      try {
+        if (wv.canGoForward()) wv.goForward();
+      } catch (e) {}
+    };
+
+    closeBtn.addEventListener('click', close);
+    backBtn.addEventListener('click', handleBack);
+    fwdBtn.addEventListener('click', handleForward);
+
+    // Support physical mouse back (button 3) and forward (button 4) navigation
+    ov.addEventListener('mouseup', (e) => {
+      if (e.button === 3) { e.preventDefault(); handleBack(); }
+      else if (e.button === 4) { e.preventDefault(); handleForward(); }
+    });
+    ov.addEventListener('auxclick', (e) => {
+      if (e.button === 3) { e.preventDefault(); handleBack(); }
+      else if (e.button === 4) { e.preventDefault(); handleForward(); }
+    });
+
+    if (window.miruoDesktop && typeof window.miruoDesktop.onNavBackward === 'function') {
+      window.miruoDesktop.onNavBackward(handleBack);
+      window.miruoDesktop.onNavForward(handleForward);
+    }
+
+    playBtn.addEventListener('click', () => {
+      if (!canPlay()) {
+        showToast(isYt ? 'Önce izlemek istediğin videoyu aç' : (isTwitch ? 'Önce izlemek istediğin bir Twitch yayınına tıkla' : 'Önce bir sayfa aç'));
+        return;
+      }
+      let cur = '', t = '';
+      try { cur = wv.getURL(); t = (wv.getTitle() || '').replace(/\s*-\s*YouTube$/i, ''); } catch (e) {}
+      close();
+      if (isTwitch) {
+        const ch = extractTwitchChannel(cur);
+        loadTwitchStream(cur, t || `${ch} - Twitch`);
+      } else {
+        selectAndPlayYoutubeVideo(cur, t || platformTitle, platformTitle);
+      }
+    });
+
+    queueBtn.addEventListener('click', () => {
+      if (!canPlay()) {
+        showToast(isYt ? 'Önce sıraya eklemek istediğin videoyu aç' : (isTwitch ? 'Önce sıraya eklemek istediğin bir Twitch yayınına tıkla' : 'Önce bir sayfa aç'));
+        return;
+      }
+      let cur = '', t = '';
+      try { cur = wv.getURL(); t = (wv.getTitle() || '').replace(/\s*-\s*YouTube$/i, ''); } catch (e) {}
+      const cleanId = extractYtId(cur);
+      const cleanTwitch = isTwitch ? extractTwitchChannel(cur) : '';
+
+      if (!state.roomId || !dom.roomWorkspaceSection || dom.roomWorkspaceSection.classList.contains('hidden')) {
+        close();
+        if (isTwitch) loadTwitchStream(cur, t || `${cleanTwitch} - Twitch`);
+        else selectAndPlayYoutubeVideo(cur, t || platformTitle, platformTitle);
+        return;
+      }
+
+      addToRoomQueue({
+        id: isTwitch ? `twitch:${cleanTwitch}` : (cleanId || cur),
+        title: t || (isTwitch ? `${cleanTwitch} - Twitch Yayını` : platformTitle),
+        thumb: cleanId ? `https://i.ytimg.com/vi/${cleanId}/hqdefault.jpg` : '',
+        channel: isTwitch ? cleanTwitch : (isYt ? 'YouTube' : platformTitle),
+        addedBy: state.username
+      });
+      showToast(`✓ "${t || platformTitle}" sıraya eklendi! Odanızdaki video kesintisiz devam ediyor.`);
+      close();
+    });
+  }
+
   function launchPlatform(providerKey) {
     if (providerKey === 'photos' || providerKey === 'gallery') {
       triggerRoomGalleryPicker();
@@ -11923,6 +12532,23 @@ function initEvents() {
         });
         return;
       }
+    }
+
+    // Mac / Windows / Web: same flow as the phone's native in-app browser.
+    // Picking a platform opens that platform's own screen (with a Back button) and the room
+    // is created/updated when a video is chosen - never an empty room.
+    const isDesktopApp = !!(window.miruoDesktop && window.miruoDesktop.isDesktop);
+    if (isDesktopApp && /^https?:/i.test(targetUrl || '')) {
+      openDesktopPlatformBrowser(providerKey, targetUrl, config.title);
+      return;
+    }
+    if (providerKey === 'youtube') {
+      openRaveYoutubeModal();
+      return;
+    }
+    if (state.isInRoom && state.roomId) {
+      loadWebStream(targetUrl, config.title, config.title);
+      return;
     }
     
     // Open and join watch room directly for YouTube and all platforms
@@ -12178,6 +12804,14 @@ function initEvents() {
   let selectedPendingVideo = null;
   function handleRaveVideoSelected(video) {
     if (!video || !video.id) return;
+    if (state.roomId && dom.roomWorkspaceSection && !dom.roomWorkspaceSection.classList.contains('hidden') && dom.raveVideoActionSheet) {
+      selectedPendingVideo = video;
+      if (dom.raveActionThumb) dom.raveActionThumb.src = video.thumb || `https://img.youtube.com/vi/${video.id}/hqdefault.jpg`;
+      if (dom.raveActionTitle) dom.raveActionTitle.textContent = video.title || 'Video';
+      if (dom.raveActionChannel) dom.raveActionChannel.textContent = video.channel || 'YouTube';
+      dom.raveVideoActionSheet.classList.remove('hidden');
+      return;
+    }
     selectAndPlayYoutubeVideo(video.id, video.title);
   }
 
@@ -12378,8 +13012,9 @@ function initEvents() {
           videoIdOrUrl.includes('/stream/') ||
           videoIdOrUrl.includes('googlevideo.com')
         );
-        if (platformName.toLowerCase().includes('twitch') || videoIdOrUrl.includes('twitch.tv')) {
-          loadTwitchStream(videoIdOrUrl, title);
+        if (platformName.toLowerCase().includes('twitch') || videoIdOrUrl.includes('twitch.tv') || videoIdOrUrl.startsWith('twitch:')) {
+          const ch = videoIdOrUrl.replace(/^twitch:/, '');
+          loadTwitchStream(ch, title);
         } else if (isDirectStream) {
           loadDirectVideo(videoIdOrUrl, title);
         } else {
@@ -12606,7 +13241,7 @@ function initEvents() {
     window.pendingAvatarUrl = savedUser.avatarUrl || state.avatarUrl || '';
     window.pendingAvatarBg = savedUser.avatarBg || state.avatarBg || 'from-[#A64D79] to-[#6A1E55]';
 
-    const isGuest = !!(savedUser.isGuest || !savedUser.email || (savedUser.id && String(savedUser.id).startsWith('guest_')));
+    const isGuest = !!(savedUser.isGuest || (!savedUser.email && !savedUser.isApple && savedUser.provider !== 'apple') || (savedUser.id && String(savedUser.id).startsWith('guest_')));
     const guestBanner = document.getElementById('settingsGuestBanner');
     if (guestBanner) {
       if (isGuest) {
@@ -12634,7 +13269,7 @@ function initEvents() {
     if (dom.profileEmailDisplay) {
       dom.profileEmailDisplay.textContent = isGuest
         ? 'Oturum açılmadı • Geçici profil'
-        : (savedUser.email || `${(state.username || 'user').toLowerCase()}@miruo.app`);
+        : (savedUser.email || (savedUser.isApple ? `${(savedUser.username || 'user')}@icloud.com` : `${(state.username || 'user').toLowerCase()}@miruo.app`));
     }
 
     // 1. Detect and render provider badge (Neyle Kayıt Olduğu)
@@ -12743,6 +13378,10 @@ function initEvents() {
         const sb = dom.profileEditModalScrollBody || document.getElementById('profileEditModalScrollBody');
         if (sb) sb.scrollTop = 0;
       }
+
+      // Refresh microphone and audio settings upon opening modal
+      if (typeof refreshAudioDeviceList === 'function') refreshAudioDeviceList();
+      if (typeof syncMicSettingsValues === 'function') syncMicSettingsValues();
     }
   }
 
@@ -13075,12 +13714,52 @@ function initEvents() {
     });
   }
 
+  function compressAvatarFile(file) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onerror = reject;
+      reader.onload = (e) => {
+        const img = new Image();
+        img.onerror = reject;
+        img.onload = () => {
+          const maxDim = 320;
+          let w = img.width;
+          let h = img.height;
+          if (w > h) {
+            if (w > maxDim) {
+              h = Math.round((h * maxDim) / w);
+              w = maxDim;
+            }
+          } else {
+            if (h > maxDim) {
+              w = Math.round((w * maxDim) / h);
+              h = maxDim;
+            }
+          }
+          const canvas = document.createElement('canvas');
+          canvas.width = w;
+          canvas.height = h;
+          const ctx = canvas.getContext('2d');
+          ctx.drawImage(img, 0, 0, w, h);
+          resolve(canvas.toDataURL('image/jpeg', 0.85));
+        };
+        img.src = e.target.result;
+      };
+      reader.readAsDataURL(file);
+    });
+  }
+
   // Avatar file upload trigger & reader
   const triggerAvatarPicker = (e) => {
     if (e && window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.pickImage) {
       e.preventDefault();
+      triggerPhotoPicker('avatar');
+      return;
     }
-    triggerPhotoPicker('avatar');
+    const fileInput = dom.avatarFileInput || document.getElementById('avatarFileInput');
+    if (fileInput && (!e || e.target !== fileInput)) {
+      fileInput.click();
+    }
   };
 
   if (dom.triggerAvatarUploadBtn) dom.triggerAvatarUploadBtn.addEventListener('click', triggerAvatarPicker);
@@ -13088,18 +13767,17 @@ function initEvents() {
   if (dom.avatarPreviewClickArea) dom.avatarPreviewClickArea.addEventListener('click', triggerAvatarPicker);
 
   if (dom.avatarFileInput) {
-    dom.avatarFileInput.addEventListener('change', (e) => {
+    dom.avatarFileInput.addEventListener('change', async (e) => {
       const file = e.target.files && e.target.files[0];
       if (!file) return;
 
-      if (file.size > 3.5 * 1024 * 1024) {
-        showToast('Fotoğraf boyutu 3.5MB\'dan küçük olmalıdır.');
+      if (!file.type || !file.type.startsWith('image/')) {
+        showToast('Lütfen geçerli bir görsel dosyası seçin');
         return;
       }
 
-      const reader = new FileReader();
-      reader.onload = (ev) => {
-        const base64Data = ev.target.result;
+      try {
+        const base64Data = await compressAvatarFile(file);
         window.pendingAvatarUrl = base64Data;
         window.pendingAvatarBg = '';
         if (dom.editAvatarPreview) {
@@ -13114,25 +13792,38 @@ function initEvents() {
         state.avatarUrl = base64Data;
         state.avatarBg = '';
         localStorage.setItem('miruo_user', JSON.stringify(savedUser));
+        if (typeof persistUserToLocalRegistry === 'function') persistUserToLocalRegistry(savedUser);
 
         try {
+          const profilePayload = {
+            userId: savedUser.id || state.userId,
+            username: (savedUser.username || state.username || '').replace(/^@/, ''),
+            fullName: savedUser.fullName || savedUser.name || '',
+            avatarUrl: base64Data
+          };
           fetch('/api/auth/update-profile', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              userId: savedUser.id || state.userId,
-              username: (savedUser.username || state.username || '').replace(/^@/, ''),
-              fullName: savedUser.fullName || savedUser.name || '',
-              avatarUrl: base64Data
-            })
-          }).catch(e => console.warn('[Update Avatar Backend Error]:', e));
+            body: JSON.stringify(profilePayload)
+          }).catch(async () => {
+            if (window.location.port !== '3000') {
+              fetch('http://127.0.0.1:3000/api/auth/update-profile', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(profilePayload)
+              }).catch(() => {});
+            }
+          });
         } catch (e) {}
         syncUserProfileToSupabase(savedUser);
 
         updateUserUI(savedUser);
+        if (typeof renderProfileTab === 'function') renderProfileTab();
         showToast('Profil fotoğrafı güncellendi');
-      };
-      reader.readAsDataURL(file);
+      } catch (err) {
+        console.error('Avatar processing error:', err);
+        showToast('Fotoğraf yüklenirken bir hata oluştu');
+      }
     });
   }
 
@@ -13335,19 +14026,28 @@ function initEvents() {
 
       // 1. Sync to backend users.json
       try {
+        const updatePayload = {
+          userId: savedUser.id || state.userId,
+          email: savedUser.email || '',
+          oldUsername: currentActiveUsername,
+          username: cleanUsername,
+          fullName: resolvedFullName,
+          avatarUrl: savedUser.avatarUrl || '',
+          avatarBg: savedUser.avatarBg || ''
+        };
         fetch('/api/auth/update-profile', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            userId: savedUser.id || state.userId,
-            email: savedUser.email || '',
-            oldUsername: currentActiveUsername,
-            username: cleanUsername,
-            fullName: resolvedFullName,
-            avatarUrl: savedUser.avatarUrl || '',
-            avatarBg: savedUser.avatarBg || ''
-          })
-        }).catch(e => console.warn('[Update Profile Backend Error]:', e));
+          body: JSON.stringify(updatePayload)
+        }).catch(async () => {
+          if (window.location.port !== '3000') {
+            fetch('http://127.0.0.1:3000/api/auth/update-profile', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(updatePayload)
+            }).catch(() => {});
+          }
+        });
       } catch (e) {}
 
       // 2. Sync to Supabase profiles
@@ -14002,24 +14702,122 @@ function initEvents() {
     }
   }
 
-  function setPlayerPlaybackRate(rate) {
+  function canControlPlayback() {
+    return state.isHost || state.controlMode === 'everyone' || state.hasDjPermission || state.userRole === 'owner' || state.userRole === 'admin' || state.userRole === 'dj';
+  }
+
+  function setPlayerPlaybackRate(rate, broadcast = true) {
     rate = parseFloat(rate) || 1.0;
+    
+    // Permission check if user clicked to broadcast speed change to room
+    if (broadcast && !canControlPlayback()) {
+      showToast('Oynatma hızını yalnızca oda sahibi veya yetkililer değiştirebilir.');
+      return;
+    }
+
     state.playbackRate = rate;
+
+    // 1. YouTube Player
     if (state.activeMode === 'youtube') {
       sendYtCommand('setPlaybackRate', [rate]);
-    } else if (dom.nativeVideoPlayer) {
-      dom.nativeVideoPlayer.playbackRate = rate;
+    }
+    // 2. Native HTML5 Video
+    else if (dom.nativeVideoPlayer) {
+      try {
+        dom.nativeVideoPlayer.playbackRate = rate;
+      } catch (err) {}
+    }
+
+    // 3. Web Player / Embedded Platforms (Twitch, Netflix, Web View)
+    if (window.miruoDesktop && dom.webPlayerFrame && typeof dom.webPlayerFrame.executeJavaScript === 'function') {
+      dom.webPlayerFrame.executeJavaScript(`
+        (function() {
+          const videos = document.querySelectorAll('video');
+          videos.forEach(v => {
+            try { v.playbackRate = ${rate}; } catch (e) {}
+          });
+        })();
+      `).catch(() => {});
+    }
+
+    // Update UI speed indicators
+    if (dom.playerSpeedVal) {
+      dom.playerSpeedVal.textContent = `${rate}x`;
     }
     document.querySelectorAll('.player-speed-btn').forEach(btn => {
       const bSpeed = parseFloat(btn.dataset.speed);
       if (Math.abs(bSpeed - rate) < 0.05) {
-        btn.className = 'player-speed-btn py-1 rounded-lg bg-rose-500/30 text-rose-300 border border-rose-500/40 transition-all text-[11px] cursor-pointer font-black';
+        btn.className = 'player-speed-btn py-1 rounded-lg bg-rose-500/30 text-rose-300 border border-rose-500/40 transition-all text-[10px] cursor-pointer font-black';
       } else {
-        btn.className = 'player-speed-btn py-1 rounded-lg bg-white/5 hover:bg-rose-500/20 hover:text-rose-300 transition-all text-[11px] cursor-pointer';
+        btn.className = 'player-speed-btn py-1 rounded-lg bg-white/5 hover:bg-rose-500/20 hover:text-rose-300 transition-all text-[10px] cursor-pointer';
       }
     });
-    showToast(`Oynatma Hızı: ${rate}x`);
+
+    if (broadcast) {
+      sendP2PData('sync', {
+        action: 'rate',
+        rate: rate,
+        by: state.username || 'Host',
+        sentAt: Date.now()
+      });
+      showToast(`Oynatma Hızı: ${rate}x (Tüm odaya uygulandı)`);
+    }
   }
+
+  // Personal Video Fit & Local Zoom (Viewer-only local preferences)
+  let currentVideoFit = localStorage.getItem('miruo_video_fit') || 'contain';
+  let currentVideoZoom = parseInt(localStorage.getItem('miruo_video_zoom') || '100', 10);
+
+  function applyPersonalVideoSize() {
+    if (!dom.stageContainer) return;
+    
+    // Fit classes
+    dom.stageContainer.classList.remove('video-fit-contain', 'video-fit-cover', 'video-fit-zoom');
+    dom.stageContainer.classList.add(`video-fit-${currentVideoFit}`);
+
+    // Zoom scale variable
+    const scale = currentVideoZoom / 100;
+    dom.stageContainer.style.setProperty('--miruo-video-scale', scale.toString());
+
+    // Update Fit buttons
+    document.querySelectorAll('.video-fit-btn').forEach(btn => {
+      const mode = btn.dataset.fit;
+      if (mode === currentVideoFit) {
+        btn.className = 'video-fit-btn py-1 rounded-lg bg-rose-500/30 text-rose-300 border border-rose-500/40 transition-all text-[10px] cursor-pointer font-black';
+      } else {
+        btn.className = 'video-fit-btn py-1 rounded-lg bg-white/5 hover:bg-rose-500/20 hover:text-rose-300 transition-all text-[10px] cursor-pointer';
+      }
+    });
+
+    // Update Zoom Slider & Value Text
+    if (dom.playerZoomSlider) {
+      dom.playerZoomSlider.value = currentVideoZoom;
+    }
+    if (dom.playerZoomVal) {
+      dom.playerZoomVal.textContent = `%${currentVideoZoom}`;
+    }
+  }
+
+  function setPersonalVideoFit(mode) {
+    if (!['contain', 'cover', 'zoom'].includes(mode)) mode = 'contain';
+    currentVideoFit = mode;
+    localStorage.setItem('miruo_video_fit', mode);
+    applyPersonalVideoSize();
+    const names = { contain: 'Sığdır (Orantılı)', cover: 'Doldur (Kırp)', zoom: 'Yakınlaştır' };
+    showToast(`Video Boyutu: ${names[mode] || mode} (Yalnızca Sende)`);
+  }
+
+  function setPersonalVideoZoom(zoomPercent) {
+    zoomPercent = parseInt(zoomPercent, 10);
+    if (isNaN(zoomPercent)) zoomPercent = 100;
+    zoomPercent = Math.max(70, Math.min(150, zoomPercent));
+    currentVideoZoom = zoomPercent;
+    localStorage.setItem('miruo_video_zoom', zoomPercent.toString());
+    applyPersonalVideoSize();
+  }
+
+  // Initialize saved local video fit & zoom
+  applyPersonalVideoSize();
 
   function triggerResyncWithHost() {
     if (state.isHost) {
@@ -14030,6 +14828,7 @@ function initEvents() {
           videoId: state.currentVideoId,
           time: state.currentTime,
           isPlaying: state.isPlaying,
+          rate: state.playbackRate || 1.0,
           sentAt: Date.now()
         });
       }
@@ -14054,10 +14853,24 @@ function initEvents() {
     });
   }
 
+  document.querySelectorAll('.video-fit-btn').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      setPersonalVideoFit(btn.dataset.fit);
+    });
+  });
+
+  if (dom.playerZoomSlider) {
+    dom.playerZoomSlider.addEventListener('input', (e) => {
+      e.stopPropagation();
+      setPersonalVideoZoom(e.target.value);
+    });
+  }
+
   document.querySelectorAll('.player-speed-btn').forEach(btn => {
     btn.addEventListener('click', (e) => {
       e.stopPropagation();
-      setPlayerPlaybackRate(btn.dataset.speed);
+      setPlayerPlaybackRate(btn.dataset.speed, true);
     });
   });
 
@@ -14193,6 +15006,17 @@ function initEvents() {
 
   function openCreateRoomModal(platform = 'YouTube') {
     selectedPlatform = platform;
+    const isSleep = (platform || '').toLowerCase().includes('uyku') || (platform || '').toLowerCase().includes('sleep');
+
+    const platformSec = document.getElementById('createRoomPlatformSection');
+    if (platformSec) {
+      if (isSleep) {
+        platformSec.classList.add('hidden');
+      } else {
+        platformSec.classList.remove('hidden');
+      }
+    }
+
     // Update platform selector UI in modal
     document.querySelectorAll('.platform-choice').forEach(choice => {
       const cat = (choice.dataset.category || '').toLowerCase();
@@ -14206,9 +15030,13 @@ function initEvents() {
       }
     });
 
+    if (dom.submitCreateRoomBtn) {
+      dom.submitCreateRoomBtn.textContent = isSleep ? 'Uykuyu Başlat & Katıl' : 'Odayı Başlat & Katıl';
+    }
+
     if (dom.newRoomTitleInput) {
-      dom.newRoomTitleInput.value = '';
-      dom.newRoomTitleInput.placeholder = selectedPlatform === 'Uyku Modu' ? 'Birlikte Uyku Odası' : `Örn: ${selectedPlatform} Partisi veya Gece Sohbeti`;
+      dom.newRoomTitleInput.value = isSleep ? 'Birlikte Uyku Odası' : '';
+      dom.newRoomTitleInput.placeholder = isSleep ? 'Birlikte Uyku Odası' : `Örn: ${selectedPlatform} Partisi veya Gece Sohbeti`;
     }
 
     if (dom.createRoomModal) {
@@ -14858,6 +15686,31 @@ function initEvents() {
       if (dom.raveVideoActionSheet) dom.raveVideoActionSheet.classList.add('hidden');
     });
   }
+  if (dom.raveActionPlayNowBtn) {
+    addInstantTap(dom.raveActionPlayNowBtn, () => {
+      if (selectedPendingVideo) {
+        selectAndPlayYoutubeVideo(selectedPendingVideo.id, selectedPendingVideo.title);
+        if (dom.raveVideoActionSheet) dom.raveVideoActionSheet.classList.add('hidden');
+        closeRaveYoutubeModal();
+      }
+    });
+  }
+  if (dom.raveActionQueueBtn) {
+    addInstantTap(dom.raveActionQueueBtn, () => {
+      if (selectedPendingVideo) {
+        addToRoomQueue({
+          id: selectedPendingVideo.id,
+          title: selectedPendingVideo.title,
+          thumb: selectedPendingVideo.thumb,
+          channel: selectedPendingVideo.channel,
+          addedBy: state.username
+        });
+        showToast(`✓ "${selectedPendingVideo.title}" sıraya eklendi!`);
+        if (dom.raveVideoActionSheet) dom.raveVideoActionSheet.classList.add('hidden');
+        closeRaveYoutubeModal();
+      }
+    });
+  }
   if (dom.closeSuggestionBannerBtn) {
     addInstantTap(dom.closeSuggestionBannerBtn, () => {
       if (dom.hostSuggestionBanner) dom.hostSuggestionBanner.classList.add('hidden');
@@ -15455,6 +16308,79 @@ function generateUniqueRoomCode(isPrivate = false) {
       state.speechThreshold = e.target.value / 255;
       const dict = I18N[currentLang] || I18N.tr;
       if (dom.micSensVal) dom.micSensVal.textContent = e.target.value < 15 ? (dict.sens_high || 'Yüksek') : (e.target.value < 30 ? (dict.sens_med || 'Orta') : (dict.sens_low || 'Düşük'));
+    });
+  }
+
+  // Settings: Microphone Master Switch
+  if (dom.settingsMicMasterToggle) {
+    dom.settingsMicMasterToggle.addEventListener('change', () => {
+      toggleMic();
+    });
+  }
+
+  // Settings: Microphone Device Selection
+  if (dom.settingsMicDeviceSelect) {
+    dom.settingsMicDeviceSelect.addEventListener('change', async (e) => {
+      localStorage.setItem('miruo_mic_device_id', e.target.value);
+      if (state.isMicOn && state.localStream) {
+        try {
+          const newStream = await navigator.mediaDevices.getUserMedia(getAudioConstraints());
+          const newTrack = newStream.getAudioTracks()[0];
+          const oldTrack = state.localStream.getAudioTracks()[0];
+          if (oldTrack) {
+            state.localStream.removeTrack(oldTrack);
+            try { oldTrack.stop(); } catch (_) {}
+          }
+          if (newTrack) {
+            state.localStream.addTrack(newTrack);
+            if (state.pc) {
+              const senders = state.pc.getSenders();
+              const audioSender = senders.find(s => s.track && s.track.kind === 'audio');
+              if (audioSender) audioSender.replaceTrack(newTrack);
+            }
+          }
+          if (dom.settingsMicVuBar) startMicVuMeter(state.localStream);
+          showToast('Mikrofon aygıtı değiştirildi');
+        } catch (err) {
+          console.warn('[Miruo] device switch error:', err);
+        }
+      }
+    });
+  }
+
+  // Settings: Refresh Audio Devices
+  if (dom.settingsRefreshAudioDevicesBtn) {
+    dom.settingsRefreshAudioDevicesBtn.addEventListener('click', () => {
+      refreshAudioDeviceList();
+      showToast('Ses aygıtları yenilendi');
+    });
+  }
+
+  // Settings: Microphone Gain Slider
+  if (dom.settingsMicGainSlider) {
+    dom.settingsMicGainSlider.addEventListener('input', (e) => {
+      const val = e.target.value;
+      localStorage.setItem('miruo_mic_gain', val);
+      if (dom.settingsMicGainVal) dom.settingsMicGainVal.textContent = `%${val}`;
+    });
+  }
+
+  // Settings: Live Mic Test Button
+  if (dom.settingsMicTestBtn) {
+    dom.settingsMicTestBtn.addEventListener('click', () => {
+      toggleMicTest();
+    });
+  }
+
+  // Settings: Noise Suppression & Echo Cancellation Toggles
+  if (dom.settingsNoiseSuppressionToggle) {
+    dom.settingsNoiseSuppressionToggle.addEventListener('change', (e) => {
+      localStorage.setItem('miruo_noise_suppression', e.target.checked);
+    });
+  }
+  if (dom.settingsEchoCancellationToggle) {
+    dom.settingsEchoCancellationToggle.addEventListener('change', (e) => {
+      localStorage.setItem('miruo_echo_cancellation', e.target.checked);
     });
   }
 
