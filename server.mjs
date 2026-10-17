@@ -723,8 +723,8 @@ const server = http.createServer(async (req, res) => {
     }
 
     try {
-      // 7. Request body limited to 100KB with prototype pollution sanitization
-      const body = await readJsonBody(req, res, CONFIG.MAX_BODY_BYTES);
+      // 7. Request body allowed up to 2MB for avatar photo on signup
+      const body = await readJsonBody(req, res, 2 * 1024 * 1024);
       const { fullName, username, email, password, avatarUrl } = body;
 
       // 6. Input Validation

@@ -252,6 +252,11 @@ function persistUserToLocalRegistry(user, oldUsername = '') {
         avatarBg: user.avatarBg || prev.avatarBg || 'from-rose-500 to-[#A64D79]'
       };
       localStorage.setItem('miruo_profiles_by_email', JSON.stringify(byEmail));
+    if (user.avatarUrl) {
+      localStorage.setItem('miruo_avatar', user.avatarUrl);
+    }
+    if (window.miruoDesktop && typeof window.miruoDesktop.saveDesktopProfile === 'function') {
+      window.miruoDesktop.saveDesktopProfile(user);
     }
   } catch (e) {
     console.warn('[Miruo persistUserToLocalRegistry warning]:', e);
@@ -3054,26 +3059,57 @@ function fallbackToDirectYtEmbed(videoId) {
   loadYoutubeVideo(videoId);
 }
 
+function extractTwitchChannel(urlOrChannel) {
+  if (!urlOrChannel) return '';
+  let str = String(urlOrChannel).trim();
+  if (str.includes('twitch.tv/')) {
+    str = str.split('twitch.tv/')[1].split('/')[0].split('?')[0];
+  }
+  const clean = str.replace(/[^a-zA-Z0-9_]/g, '');
+  const forbidden = ['directory', 'p', 'search', 'videos', 'downloads', 'turbo', 'settings'];
+  if (!clean || forbidden.includes(clean.toLowerCase())) return '';
+  return clean;
+}
+
 function loadTwitchStream(channelOrUrl, title) {
+  let channel = extractTwitchChannel(channelOrUrl);
+  if (!channel) {
+    showToast('Lütfen geçerli bir Twitch canlı yayını seçin');
+    return;
+  }
+
   state.activeMode = 'twitch';
   state.currentProvider = 'Twitch';
+  state.currentVideoId = channel;
+  state.currentVideoTitle = title || `${channel} - Twitch`;
+  state.isPlaying = true;
+  if (typeof updatePlayPauseUI === 'function') updatePlayPauseUI(true);
+
   if (dom.nowPlayingProviderBadge) dom.nowPlayingProviderBadge.textContent = 'Twitch';
-  if (dom.nowPlayingTitle) dom.nowPlayingTitle.textContent = title || 'Twitch Canlı Yayını';
+  if (dom.nowPlayingTitle) dom.nowPlayingTitle.textContent = state.currentVideoTitle;
+  if (dom.raveOverlayTitle) dom.raveOverlayTitle.textContent = state.currentVideoTitle;
+  if (dom.stageSubtitleText) dom.stageSubtitleText.textContent = `${channel} (Twitch)`;
   if (typeof updateNowPlayingLikeState === 'function') updateNowPlayingLikeState();
-  
-  let channel = channelOrUrl || '';
-  if (channel.includes('twitch.tv/')) {
-    channel = channel.split('twitch.tv/')[1].split('/')[0].split('?')[0];
-  }
   
   dom.emptyStatePlaceholder.classList.add('hidden');
   dom.ytPlayerContainer.classList.add('hidden');
   dom.nativeVideoPlayer.classList.add('hidden');
+  if (typeof hideIframeFallback === 'function') hideIframeFallback();
+
   if (dom.webPlayerFrame) {
     dom.webPlayerFrame.classList.remove('hidden');
-    const parentHost = window.location.hostname || 'localhost';
-    dom.webPlayerFrame.src = `https://player.twitch.tv/?channel=${channel}&parent=${parentHost}&parent=localhost&parent=127.0.0.1&autoplay=true&muted=false`;
+    const hostnames = new Set(['localhost', '127.0.0.1']);
+    if (window.location.hostname) hostnames.add(window.location.hostname);
+    const parentParams = Array.from(hostnames).map(h => `parent=${encodeURIComponent(h)}`).join('&');
+    dom.webPlayerFrame.src = `https://player.twitch.tv/?channel=${encodeURIComponent(channel)}&${parentParams}&autoplay=true&muted=false`;
   }
+
+  // Hide the custom VOD overlay so user can interact directly with Twitch player controls
+  if (dom.ravePlayerOverlay) {
+    dom.ravePlayerOverlay.classList.add('opacity-0', 'pointer-events-none');
+    dom.ravePlayerOverlay.classList.remove('opacity-90');
+  }
+
   showToast(`Twitch: ${channel} yayını açıldı!`);
 }
 
@@ -9544,10 +9580,15 @@ function loadUserSession() {
   }
 
   const customUsername = localStorage.getItem('miruo_custom_username');
+  const backupAvatar = localStorage.getItem('miruo_avatar') || '';
   if (user) {
+    if (!user.avatarUrl && backupAvatar) {
+      user.avatarUrl = backupAvatar;
+    }
     const cleanEmail = (user.email || '').trim().toLowerCase();
-    if (cleanEmail) {
-      try {
+    const cleanU = (user.username || customUsername || '').replace(/^@/, '').toLowerCase().trim();
+    try {
+      if (cleanEmail) {
         const byEmail = JSON.parse(localStorage.getItem('miruo_profiles_by_email') || '{}');
         const emailProf = byEmail[cleanEmail];
         if (emailProf) {
@@ -9559,8 +9600,18 @@ function loadUserSession() {
           if (!user.avatarUrl && emailProf.avatarUrl) user.avatarUrl = emailProf.avatarUrl;
           if (!user.avatarBg && emailProf.avatarBg) user.avatarBg = emailProf.avatarBg;
         }
-      } catch (e) {}
-    }
+      }
+      if (!user.avatarUrl || !user.fullName) {
+        const regUsers = JSON.parse(localStorage.getItem('miruo_registered_users') || '[]');
+        const regMatch = regUsers.find(u => (cleanEmail && u.email && u.email.toLowerCase() === cleanEmail) || (cleanU && u.username && u.username.toLowerCase().replace(/^@/,'') === cleanU));
+        if (regMatch) {
+          if (!user.avatarUrl && regMatch.avatarUrl) user.avatarUrl = regMatch.avatarUrl;
+          if (!user.avatarBg && regMatch.avatarBg) user.avatarBg = regMatch.avatarBg;
+          if ((!user.fullName || user.fullName.startsWith('@')) && regMatch.fullName) user.fullName = regMatch.fullName;
+        }
+      }
+    } catch (e) {}
+
     if (customUsername && !user.username) {
       user.username = customUsername.replace(/^@/, '');
     }
@@ -9576,8 +9627,42 @@ function loadUserSession() {
   state.userId = user.id || state.userId;
   state.username = ((user && user.username) || customUsername || (user && user.name) || 'kullanici').replace(/^@/, '');
   state.roomId = (roomFromUrl || user.defaultRoom || 'ODA-77').toUpperCase();
-  state.avatarUrl = user.avatarUrl || '';
-  state.avatarBg = user.avatarBg || '';
+  state.avatarUrl = (user && user.avatarUrl) || backupAvatar || '';
+  state.avatarBg = (user && user.avatarBg) || '';
+
+  if (user && user.avatarUrl) {
+    localStorage.setItem('miruo_avatar', user.avatarUrl);
+    localStorage.setItem('miruo_user', JSON.stringify(user));
+  }
+
+  // Desktop User Profile Restore from UserData directory
+  if (window.miruoDesktop && typeof window.miruoDesktop.getDesktopProfile === 'function') {
+    window.miruoDesktop.getDesktopProfile().then(deskUser => {
+      if (deskUser && (deskUser.avatarUrl || deskUser.username || deskUser.fullName)) {
+        let changed = false;
+        if (!user.avatarUrl && deskUser.avatarUrl) {
+          user.avatarUrl = deskUser.avatarUrl;
+          state.avatarUrl = deskUser.avatarUrl;
+          localStorage.setItem('miruo_avatar', deskUser.avatarUrl);
+          changed = true;
+        }
+        if ((!user.fullName || user.fullName.startsWith('@')) && deskUser.fullName) {
+          user.fullName = deskUser.fullName;
+          user.name = deskUser.fullName;
+          changed = true;
+        }
+        if ((!user.username || user.username.startsWith('user_')) && deskUser.username) {
+          user.username = deskUser.username;
+          state.username = deskUser.username;
+          changed = true;
+        }
+        if (changed) {
+          localStorage.setItem('miruo_user', JSON.stringify(user));
+          updateUserUI(user);
+        }
+      }
+    }).catch(() => {});
+  }
 
   updateUserUI(user);
 
@@ -11900,89 +11985,153 @@ function initEvents() {
     history: { title: 'Geçmiş', url: 'https://m.youtube.com/feed/history' }
   };
 
-  // Desktop (Electron) in-app browser: the platform's real screen with a Back button,
-  // like the native in-app browser on the phone. "Odada Oynat" sends the open page to the room.
   function openDesktopPlatformBrowser(providerKey, url, platformTitle) {
     const old = document.getElementById('desktopBrowserOverlay');
     if (old) old.remove();
 
     const isMac = window.miruoDesktop && window.miruoDesktop.platform === 'darwin';
-    const startUrl = String(url).replace('//m.youtube.com', '//www.youtube.com');
+    let startUrl = String(url).replace('//m.youtube.com', '//www.youtube.com');
     const ua = navigator.userAgent.replace(/\s(Electron|Miruo)[^\s]*/g, '');
-    const btnCss = 'display:flex;align-items:center;gap:6px;padding:8px 14px;border-radius:999px;border:1px solid rgba(255,255,255,.15);background:rgba(255,255,255,.08);color:#fff;font:600 13px system-ui,sans-serif;cursor:pointer;-webkit-app-region:no-drag;';
+    const btnCss = 'display:flex;align-items:center;gap:6px;padding:8px 14px;border-radius:999px;border:1px solid rgba(255,255,255,.15);background:rgba(255,255,255,.08);color:#fff;font:600 13px system-ui,sans-serif;cursor:pointer;-webkit-app-region:no-drag;user-select:none;';
+
+    const playingTitle = (dom.nowPlayingTitle && dom.nowPlayingTitle.textContent) || state.currentVideoTitle || '';
+    const hasActivePlaying = !!(state.roomId && dom.roomWorkspaceSection && !dom.roomWorkspaceSection.classList.contains('hidden') && playingTitle && !playingTitle.includes('Henüz') && !playingTitle.includes('Seçilmedi') && !playingTitle.includes('No video'));
 
     const ov = document.createElement('div');
     ov.id = 'desktopBrowserOverlay';
     ov.style.cssText = 'position:fixed;inset:0;z-index:2147483000;background:#000;display:flex;flex-direction:column;';
     ov.innerHTML = `
       <div style="display:flex;align-items:center;gap:10px;padding:10px 16px 10px ${isMac ? 84 : 16}px;background:#0B0D14;border-bottom:1px solid rgba(255,255,255,.1);-webkit-app-region:drag;">
-        <button id="dbBackBtn" type="button" style="${btnCss}">← Geri</button>
-        <button id="dbPrevBtn" type="button" title="Önceki sayfa" style="${btnCss}">‹</button>
-        <span id="dbTitle" style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#e5e7eb;font:700 14px system-ui,sans-serif;text-align:center;">${platformTitle}</span>
-        <button id="dbPlayBtn" type="button" style="${btnCss}background:linear-gradient(90deg,#e11d48,#a64d79);border-color:transparent;">▶ Odada Oynat</button>
-        <button id="dbQueueBtn" type="button" style="${btnCss}background:rgba(255,255,255,.12);">+ Sıraya Ekle</button>
+        <button id="dbCloseBtn" type="button" title="Odaya dön (video arka planda kesintisiz devam eder)" style="${btnCss}background:rgba(239,68,68,.18);border-color:rgba(239,68,68,.3);color:#fca5a5;">✕ Odaya Dön</button>
+        <button id="dbBackBtn" type="button" title="Önceki Sayfa (Geri)" style="${btnCss}">← Geri</button>
+        <button id="dbFwdBtn" type="button" title="Sonraki Sayfa (İleri)" style="${btnCss}">→ İleri</button>
+        <div style="flex:1;min-width:0;display:flex;flex-direction:column;align-items:center;text-align:center;">
+          <span id="dbTitle" style="width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#e5e7eb;font:700 14px system-ui,sans-serif;">${platformTitle}</span>
+          ${hasActivePlaying ? `<span style="font-size:11px;color:#34d399;font-weight:600;display:flex;align-items:center;gap:5px;max-width:380px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"><span style="width:6px;height:6px;border-radius:999px;background:#10b981;display:inline-block;"></span>Odada Oynatılıyor: "${escapeHtml(playingTitle)}" (Kesintisiz)</span>` : ''}
+        </div>
+        <button id="dbQueueBtn" type="button" title="Mevcut videoyu durdurmadan sıraya ekle" style="${btnCss}background:rgba(255,255,255,.14);border-color:rgba(255,255,255,.25);">+ Sıraya Ekle</button>
+        <button id="dbPlayBtn" type="button" title="Bu videoyu hemen odada başlat" style="${btnCss}background:linear-gradient(90deg,#e11d48,#a64d79);border-color:transparent;font-weight:700;">▶ Odada Oynat</button>
       </div>
       <webview id="dbWebview" src="${startUrl}" partition="persist:miruo-browser" useragent="${ua}" allowpopups style="flex:1;width:100%;border:0;background:#000;"></webview>`;
     document.body.appendChild(ov);
 
     const wv = ov.querySelector('#dbWebview');
     const titleEl = ov.querySelector('#dbTitle');
+    const closeBtn = ov.querySelector('#dbCloseBtn');
+    const backBtn = ov.querySelector('#dbBackBtn');
+    const fwdBtn = ov.querySelector('#dbFwdBtn');
     const playBtn = ov.querySelector('#dbPlayBtn');
     const queueBtn = ov.querySelector('#dbQueueBtn');
+
     const isYt = providerKey === 'youtube';
+    const isTwitch = providerKey === 'twitch';
+
     const canPlay = () => {
       let cur = '';
       try { cur = wv.getURL(); } catch (e) { return false; }
-      return isYt ? !!extractYtId(cur) : /^https?:/i.test(cur);
+      if (!cur || !/^https?:/i.test(cur)) return false;
+      if (isYt) return !!extractYtId(cur);
+      if (isTwitch) return !!extractTwitchChannel(cur);
+      return true;
     };
-    const refresh = () => {
+
+    const refreshNav = () => {
       let t = '';
       try { t = (wv.getTitle() || '').replace(/\s*-\s*YouTube$/i, ''); } catch (e) {}
       if (t) titleEl.textContent = t;
       const ok = canPlay();
       playBtn.style.opacity = ok ? '1' : '0.45';
       queueBtn.style.opacity = ok ? '1' : '0.45';
+      try {
+        backBtn.style.opacity = wv.canGoBack() ? '1' : '0.45';
+        fwdBtn.style.opacity = wv.canGoForward() ? '1' : '0.45';
+      } catch (_) {}
     };
-    ['did-navigate', 'did-navigate-in-page', 'page-title-updated', 'dom-ready'].forEach(ev => wv.addEventListener(ev, refresh));
-    refresh();
 
-    const close = () => { document.removeEventListener('keydown', onKey, true); ov.remove(); };
+    ['did-navigate', 'did-navigate-in-page', 'page-title-updated', 'dom-ready'].forEach(ev => wv.addEventListener(ev, refreshNav));
+    refreshNav();
+
+    const close = () => {
+      document.removeEventListener('keydown', onKey, true);
+      ov.remove();
+    };
     const onKey = (e) => { if (e.key === 'Escape') close(); };
     document.addEventListener('keydown', onKey, true);
 
-    ov.querySelector('#dbBackBtn').addEventListener('click', close);
-    ov.querySelector('#dbPrevBtn').addEventListener('click', () => { try { if (wv.canGoBack()) wv.goBack(); } catch (e) {} });
+    const handleBack = () => {
+      try {
+        if (wv.canGoBack()) wv.goBack();
+        else close();
+      } catch (e) {
+        close();
+      }
+    };
+    const handleForward = () => {
+      try {
+        if (wv.canGoForward()) wv.goForward();
+      } catch (e) {}
+    };
+
+    closeBtn.addEventListener('click', close);
+    backBtn.addEventListener('click', handleBack);
+    fwdBtn.addEventListener('click', handleForward);
+
+    // Support physical mouse back (button 3) and forward (button 4) navigation
+    ov.addEventListener('mouseup', (e) => {
+      if (e.button === 3) { e.preventDefault(); handleBack(); }
+      else if (e.button === 4) { e.preventDefault(); handleForward(); }
+    });
+    ov.addEventListener('auxclick', (e) => {
+      if (e.button === 3) { e.preventDefault(); handleBack(); }
+      else if (e.button === 4) { e.preventDefault(); handleForward(); }
+    });
+
+    if (window.miruoDesktop && typeof window.miruoDesktop.onNavBackward === 'function') {
+      window.miruoDesktop.onNavBackward(handleBack);
+      window.miruoDesktop.onNavForward(handleForward);
+    }
+
     playBtn.addEventListener('click', () => {
       if (!canPlay()) {
-        showToast(isYt ? 'Önce izlemek istediğin videoyu aç' : 'Önce bir sayfa aç');
+        showToast(isYt ? 'Önce izlemek istediğin videoyu aç' : (isTwitch ? 'Önce izlemek istediğin bir Twitch yayınına tıkla' : 'Önce bir sayfa aç'));
         return;
       }
       let cur = '', t = '';
       try { cur = wv.getURL(); t = (wv.getTitle() || '').replace(/\s*-\s*YouTube$/i, ''); } catch (e) {}
       close();
-      selectAndPlayYoutubeVideo(cur, t || platformTitle, platformTitle);
+      if (isTwitch) {
+        const ch = extractTwitchChannel(cur);
+        loadTwitchStream(cur, t || `${ch} - Twitch`);
+      } else {
+        selectAndPlayYoutubeVideo(cur, t || platformTitle, platformTitle);
+      }
     });
 
     queueBtn.addEventListener('click', () => {
       if (!canPlay()) {
-        showToast(isYt ? 'Önce sıraya eklemek istediğin videoyu aç' : 'Önce bir sayfa aç');
+        showToast(isYt ? 'Önce sıraya eklemek istediğin videoyu aç' : (isTwitch ? 'Önce sıraya eklemek istediğin bir Twitch yayınına tıkla' : 'Önce bir sayfa aç'));
         return;
       }
       let cur = '', t = '';
       try { cur = wv.getURL(); t = (wv.getTitle() || '').replace(/\s*-\s*YouTube$/i, ''); } catch (e) {}
       const cleanId = extractYtId(cur);
+      const cleanTwitch = isTwitch ? extractTwitchChannel(cur) : '';
+
       if (!state.roomId || !dom.roomWorkspaceSection || dom.roomWorkspaceSection.classList.contains('hidden')) {
         close();
-        selectAndPlayYoutubeVideo(cur, t || platformTitle, platformTitle);
+        if (isTwitch) loadTwitchStream(cur, t || `${cleanTwitch} - Twitch`);
+        else selectAndPlayYoutubeVideo(cur, t || platformTitle, platformTitle);
         return;
       }
+
       addToRoomQueue({
-        id: cleanId || cur,
-        title: t || platformTitle,
+        id: isTwitch ? `twitch:${cleanTwitch}` : (cleanId || cur),
+        title: t || (isTwitch ? `${cleanTwitch} - Twitch Yayını` : platformTitle),
         thumb: cleanId ? `https://i.ytimg.com/vi/${cleanId}/hqdefault.jpg` : '',
+        channel: isTwitch ? cleanTwitch : (isYt ? 'YouTube' : platformTitle),
         addedBy: state.username
       });
-      showToast(`✓ "${t || platformTitle}" sıraya eklendi!`);
+      showToast(`✓ "${t || platformTitle}" sıraya eklendi! Odanızdaki video kesintisiz devam ediyor.`);
       close();
     });
   }
@@ -12520,8 +12669,9 @@ function initEvents() {
           videoIdOrUrl.includes('/stream/') ||
           videoIdOrUrl.includes('googlevideo.com')
         );
-        if (platformName.toLowerCase().includes('twitch') || videoIdOrUrl.includes('twitch.tv')) {
-          loadTwitchStream(videoIdOrUrl, title);
+        if (platformName.toLowerCase().includes('twitch') || videoIdOrUrl.includes('twitch.tv') || videoIdOrUrl.startsWith('twitch:')) {
+          const ch = videoIdOrUrl.replace(/^twitch:/, '');
+          loadTwitchStream(ch, title);
         } else if (isDirectStream) {
           loadDirectVideo(videoIdOrUrl, title);
         } else {

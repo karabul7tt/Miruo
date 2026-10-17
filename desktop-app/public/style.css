@@ -540,6 +540,15 @@ body.stage-is-fullscreen #fsChatOverlay {
   }
 }
 
+#stageContainer #webPlayerFrame {
+  position: absolute !important;
+  inset: 0 !important;
+  width: 100% !important;
+  height: 100% !important;
+  border: none !important;
+  background: #000 !important;
+}
+
 /* Portrait strict override: Video is NEVER shifted right or reduced in width */
 @media (orientation: portrait) {
   #stageContainer #ytPlayerContainer,

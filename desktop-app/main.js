@@ -35,6 +35,32 @@ ipcMain.handle('mac-touch-id-apple-sign-in', async () => {
   }
 });
 
+// Desktop Profile Persistence in UserData Directory
+const desktopProfilePath = path.join(app.getPath('userData'), 'miruo_profile.json');
+ipcMain.handle('get-desktop-profile', async () => {
+  try {
+    if (fs.existsSync(desktopProfilePath)) {
+      const data = fs.readFileSync(desktopProfilePath, 'utf8');
+      return JSON.parse(data);
+    }
+  } catch (err) {
+    console.warn('[Miruo Desktop] Failed to read profile:', err);
+  }
+  return null;
+});
+
+ipcMain.handle('save-desktop-profile', async (e, profile) => {
+  try {
+    if (profile) {
+      fs.writeFileSync(desktopProfilePath, JSON.stringify(profile, null, 2), 'utf8');
+      return { success: true };
+    }
+  } catch (err) {
+    console.warn('[Miruo Desktop] Failed to save profile:', err);
+  }
+  return { success: false };
+});
+
 function startLocalServer(callback) {
   const publicDir = path.join(__dirname, 'public');
   const mimeTypes = {
@@ -80,7 +106,15 @@ function startLocalServer(callback) {
     });
   });
 
-  localServer.listen(0, '127.0.0.1', () => {
+  const DEFAULT_PORT = 24180;
+  localServer.on('error', (err) => {
+    if (err.code === 'EADDRINUSE') {
+      console.warn(`[Miruo Desktop] Port ${DEFAULT_PORT} is in use, falling back to dynamic port...`);
+      localServer.listen(0, '127.0.0.1');
+    }
+  });
+
+  localServer.listen(DEFAULT_PORT, '127.0.0.1', () => {
     localPort = localServer.address().port;
     console.log(`[Miruo Desktop] Embedded server listening on http://127.0.0.1:${localPort}`);
     callback(localPort);
@@ -107,6 +141,15 @@ function createWindow(port) {
       webSecurity: true,
       preload: path.join(__dirname, 'preload.js'),
       webviewTag: true
+    }
+  });
+
+  // Support hardware/mouse back & forward buttons
+  mainWindow.on('app-command', (e, cmd) => {
+    if (cmd === 'browser-backward') {
+      mainWindow.webContents.send('nav-backward');
+    } else if (cmd === 'browser-forward') {
+      mainWindow.webContents.send('nav-forward');
     }
   });
 
