@@ -895,32 +895,47 @@ body.in-room-mode #roomMainSplitLayout {
 }
 
 /* Portrait Mobile Layout: Video at top, Chat taking bottom */
-@media (orientation: portrait) and (max-width: 768px) {
+@media (max-width: 768px), (orientation: portrait) and (max-width: 900px) {
   body.in-room-mode:not(.stage-is-fullscreen) #roomMainSplitLayout {
     flex-direction: column !important;
+    gap: 8px !important;
+    flex: 1 1 0% !important;
+    min-height: 0 !important;
+    height: 100% !important;
   }
 
-  /* When Chat is OPEN: Video pinned top (16:9, max ~30vh), chat takes bottom */
+  /* When Chat is OPEN: Video pinned top (16:9, max ~32vh), chat takes bottom */
   body.in-room-mode:not(.stage-is-fullscreen) #roomWorkspaceSection:not(.chat-is-closed) #roomPlayerColumn {
     flex: 0 0 auto !important;
     display: flex !important;
     flex-direction: column !important;
     gap: 6px !important;
     width: 100% !important;
+    min-width: 0 !important;
   }
 
   body.in-room-mode:not(.stage-is-fullscreen) #roomWorkspaceSection:not(.chat-is-closed) #stageContainer {
     width: 100% !important;
     aspect-ratio: 16/9 !important;
-    max-height: 35vh !important;
+    height: auto !important;
+    max-height: 32vh !important;
     border-radius: 14px !important;
+    flex: 0 0 auto !important;
     flex-shrink: 0 !important;
+    overflow: hidden !important;
+  }
+
+  body.in-room-mode:not(.stage-is-fullscreen) #nowPlayingBar,
+  body.in-room-mode:not(.stage-is-fullscreen) #roomControlsToolbar {
+    width: 100% !important;
+    flex-shrink: 0 !important;
+    box-sizing: border-box !important;
   }
 
   body.in-room-mode:not(.stage-is-fullscreen) #roomWorkspaceSection:not(.chat-is-closed) #roomChatSidebar {
     flex: 1 1 0% !important;
     min-height: 0 !important;
-    height: 100% !important;
+    height: auto !important;
     width: 100% !important;
     display: flex !important;
     flex-direction: column !important;
@@ -932,6 +947,7 @@ body.in-room-mode #roomMainSplitLayout {
     flex: 1 1 0% !important;
     min-height: 0 !important;
     overflow-y: auto !important;
+    -webkit-overflow-scrolling: touch !important;
   }
 
   /* When Chat is CLOSED (.chat-is-closed): Video cleanly expands to fill theater space without dead voids */
@@ -950,9 +966,9 @@ body.in-room-mode #roomMainSplitLayout {
   body.in-room-mode:not(.stage-is-fullscreen) #roomWorkspaceSection.chat-is-closed #stageContainer {
     width: 100% !important;
     max-width: 100% !important;
+    aspect-ratio: 16/9 !important;
     min-height: 240px !important;
-    height: 52vh !important;
-    max-height: 65vh !important;
+    max-height: 52vh !important;
     border-radius: 18px !important;
     flex-shrink: 0 !important;
     transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
