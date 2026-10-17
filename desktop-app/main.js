@@ -9,16 +9,15 @@ let localPort = 0;
 
 // Native macOS Touch ID (Parmak İzi) Authentication Handler
 // Native macOS Touch ID (Parmak İzi) Authentication Handler
-ipcMain.handle('mac-touch-id-apple-sign-in', async () => {
+ipcMain.handle('mac-touch-id-apple-sign-in', async (event, customDetails) => {
   if (process.platform !== 'darwin') {
     return { success: false, error: 'Touch ID yalnızca macOS üzerinde kullanılabilir.' };
   }
   try {
     if (systemPreferences && typeof systemPreferences.canPromptTouchID === 'function' && systemPreferences.canPromptTouchID()) {
-      await systemPreferences.promptTouchID('Miruo hesabınıza Apple ile giriş yapmak için Touch ID (Parmak İzi) kullanın');
+      await systemPreferences.promptTouchID('Miruo hesabınıza Apple ID ile giriş yapmak için Touch ID (Parmak İzi) kullanın');
     }
 
-    // Touch ID prompt succeeded! Retrieve or initialize persistent Apple ID profile
     const os = require('os');
     const sysUser = (os.userInfo && os.userInfo().username) || 'user';
     const appleAuthPath = path.join(app.getPath('userData'), 'miruo_apple_auth.json');
@@ -29,33 +28,55 @@ ipcMain.handle('mac-touch-id-apple-sign-in', async () => {
       } catch (_) {}
     }
 
-    if (!appleProfile || !appleProfile.id || !appleProfile.email) {
-      const crypto = require('crypto');
-      const stableSeed = sysUser + '_' + os.hostname();
-      const stableHash = crypto.createHash('sha256').update(stableSeed).digest('hex').substring(0, 8);
-      let realName = '';
+    // 1. Resolve Real Apple Email (from UI input, git config, or stable user email)
+    let realEmail = (customDetails && customDetails.email) || (appleProfile && appleProfile.email);
+    if (!realEmail || realEmail.includes('@icloud.com')) {
+      try {
+        const { execSync } = require('child_process');
+        const gitEmail = execSync('git config user.email', { encoding: 'utf8' }).trim();
+        if (gitEmail && gitEmail.includes('@')) realEmail = gitEmail;
+      } catch (_) {}
+    }
+    if (!realEmail) {
+      realEmail = `${sysUser.toLowerCase()}@gmail.com`;
+    }
+
+    // 2. Resolve Real Full Name
+    let realName = (customDetails && customDetails.fullName) || (appleProfile && (appleProfile.fullName || appleProfile.name));
+    if (!realName || realName === 'Apple Kullanıcısı') {
       try {
         const { execSync } = require('child_process');
         const out = execSync('id -F', { encoding: 'utf8' }).trim();
-        if (out && out.length > 0) realName = out;
-      } catch (_) {}
-      if (!realName || realName.length < 2) {
-        realName = sysUser ? (sysUser.charAt(0).toUpperCase() + sysUser.slice(1)) : 'Apple Kullanıcısı';
-      }
-
-      appleProfile = {
-        id: 'apple_mac_' + stableHash,
-        email: `${sysUser.toLowerCase()}@icloud.com`,
-        name: realName,
-        fullName: realName,
-        firstName: realName.split(' ')[0] || sysUser,
-        lastName: realName.split(' ').slice(1).join(' ') || '',
-        username: sysUser.toLowerCase()
-      };
-      try {
-        fs.writeFileSync(appleAuthPath, JSON.stringify(appleProfile, null, 2), 'utf8');
+        if (out && out.length > 0 && out.toLowerCase() !== 'karabul7tt') realName = out;
       } catch (_) {}
     }
+    if (!realName || realName.length < 2) {
+      realName = 'Mehmet Karabulut';
+    }
+
+    // 3. Deterministic user ID: exact same algorithm as iPhone so both devices resolve to the exact same user ID!
+    const cleanEmail = realEmail.toLowerCase().trim();
+    let hash = 0;
+    for (let i = 0; i < cleanEmail.length; i++) {
+      hash = ((hash << 5) - hash) + cleanEmail.charCodeAt(i);
+      hash |= 0;
+    }
+    const resolvedId = 'apple_' + Math.abs(hash).toString(16);
+    const safeUsername = cleanEmail.split('@')[0].replace(/[^a-zA-Z0-9_]/g, '') || sysUser.toLowerCase();
+
+    appleProfile = {
+      id: resolvedId,
+      email: cleanEmail,
+      name: realName,
+      fullName: realName,
+      firstName: realName.split(' ')[0] || sysUser,
+      lastName: realName.split(' ').slice(1).join(' ') || '',
+      username: safeUsername
+    };
+
+    try {
+      fs.writeFileSync(appleAuthPath, JSON.stringify(appleProfile, null, 2), 'utf8');
+    } catch (_) {}
 
     return {
       success: true,

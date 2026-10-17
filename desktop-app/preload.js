@@ -3,7 +3,7 @@ const { contextBridge, ipcRenderer } = require('electron');
 contextBridge.exposeInMainWorld('miruoDesktop', {
   isDesktop: true,
   platform: process.platform,
-  promptAppleTouchID: () => ipcRenderer.invoke('mac-touch-id-apple-sign-in'),
+  promptAppleTouchID: (details) => ipcRenderer.invoke('mac-touch-id-apple-sign-in', details),
   getDesktopProfile: () => ipcRenderer.invoke('get-desktop-profile'),
   saveDesktopProfile: (profile) => ipcRenderer.invoke('save-desktop-profile', profile),
   onNavBackward: (cb) => { ipcRenderer.on('nav-backward', cb); },

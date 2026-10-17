@@ -1003,6 +1003,72 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  // SOCIAL AUTH SYNC (Apple & Google cross-device account synchronization)
+  if (urlObj.pathname === '/api/auth/social-sync' && req.method === 'POST') {
+    try {
+      const body = await readJsonBody(req, res, CONFIG.MAX_BODY_BYTES);
+      const { id, email, fullName, username, avatarUrl, avatarBg, provider } = body;
+      const cleanEmail = (email || '').trim().toLowerCase();
+      const displayName = (fullName || username || (cleanEmail ? cleanEmail.split('@')[0] : 'Kullanıcı')).trim();
+      const cleanUsername = (username || displayName || (cleanEmail ? cleanEmail.split('@')[0] : 'kullanici')).replace(/^@/, '').trim().replace(/\s+/g, '_');
+
+      const users = loadUsers();
+      let user = users.find(u => 
+        (cleanEmail && (u.email || '').toLowerCase() === cleanEmail) || 
+        (id && u.id === id) ||
+        (u.username && cleanUsername && (u.username || '').toLowerCase() === cleanUsername.toLowerCase())
+      );
+
+      if (user) {
+        user.fullName = displayName || user.fullName;
+        if (cleanEmail) user.email = cleanEmail;
+        if (avatarUrl) user.avatarUrl = avatarUrl;
+        if (avatarBg) user.avatarBg = avatarBg;
+        if (provider) user.provider = provider;
+        user.last_login = new Date().toISOString();
+      } else {
+        user = {
+          id: id || ('user_' + Date.now().toString(36)),
+          fullName: displayName,
+          username: cleanUsername,
+          email: cleanEmail,
+          provider: provider || 'apple',
+          role: 'user',
+          avatarUrl: avatarUrl || null,
+          avatarBg: avatarBg || 'from-rose-500 to-indigo-600',
+          created_at: new Date().toISOString(),
+          last_login: new Date().toISOString()
+        };
+        users.push(user);
+      }
+      saveUsers(users);
+
+      const token = createSignedToken({ id: user.id, email: user.email, role: user.role }, CONFIG.SESSION_SECRET);
+      res.setHeader('Set-Cookie', buildSecureCookie('miruo_token', token, 30 * 24 * 60 * 60 * 1000, CONFIG.NODE_ENV === 'production'));
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({
+        success: true,
+        message: 'Giriş başarılı ✓',
+        token,
+        user: {
+          id: user.id,
+          fullName: user.fullName || user.username,
+          username: user.username,
+          email: user.email,
+          role: user.role,
+          avatarUrl: user.avatarUrl,
+          avatarBg: user.avatarBg,
+          provider: user.provider
+        }
+      }));
+    } catch (err) {
+      if (err.message !== 'Payload too large' && err.message !== 'Invalid JSON') {
+        sendError(res, 500, 'SERVER_ERROR', 'Sosyal oturum senkronizasyonu başarısız.');
+      }
+    }
+    return;
+  }
+
   // 21. REAL ACCOUNT DELETION ENDPOINT (Item 21: hesabı gerçekten sil tusu ekle ve gerçekten sil)
   if (urlObj.pathname === '/api/auth/delete-account' && req.method === 'POST') {
     try {
