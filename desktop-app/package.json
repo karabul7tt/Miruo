@@ -28,6 +28,12 @@
       "preload.js",
       "public/**/*"
     ],
+    "extraResources": [
+      {
+        "from": "build/MiruoAppleAuth.app",
+        "to": "MiruoAppleAuth.app"
+      }
+    ],
     "mac": {
       "category": "public.app-category.entertainment",
       "icon": "build/icon.icns",

@@ -1,6 +1,7 @@
 # Build and DerivedData outputs
 build/
 !desktop-app/build/
+desktop-app/build/MiruoAppleAuth.app/
 DerivedData/
 ios/build/
 *.build/

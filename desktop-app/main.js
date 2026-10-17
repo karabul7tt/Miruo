@@ -104,11 +104,12 @@ function resolveAppleAuthHelperBinary() {
   }
 
   const candidates = [
-    path.join(userDataDir, 'MiruoAppleAuth.app', 'Contents', 'MacOS', 'MiruoAppleAuth'),
     path.join(process.resourcesPath || '', 'MiruoAppleAuth.app', 'Contents', 'MacOS', 'MiruoAppleAuth'),
+    path.join(__dirname, 'build', 'MiruoAppleAuth.app', 'Contents', 'MacOS', 'MiruoAppleAuth'),
+    path.join(__dirname, '..', 'mac-auth', 'DerivedData', 'Build', 'Products', 'Release', 'MiruoAppleAuth.app', 'Contents', 'MacOS', 'MiruoAppleAuth'),
+    path.join(userDataDir, 'MiruoAppleAuth.app', 'Contents', 'MacOS', 'MiruoAppleAuth'),
     path.join(__dirname, 'MiruoAppleAuth.app', 'Contents', 'MacOS', 'MiruoAppleAuth'),
-    path.join(__dirname, '..', 'MiruoAppleAuth.app', 'Contents', 'MacOS', 'MiruoAppleAuth'),
-    path.join(__dirname, '..', 'mac-auth', 'build', 'Release', 'MiruoAppleAuth.app', 'Contents', 'MacOS', 'MiruoAppleAuth')
+    path.join(__dirname, '..', 'MiruoAppleAuth.app', 'Contents', 'MacOS', 'MiruoAppleAuth')
   ];
   for (const candidate of candidates) {
     if (candidate && fs.existsSync(candidate)) {
