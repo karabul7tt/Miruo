@@ -1919,6 +1919,9 @@ const dom = {
   raveRoomSettingsBtn: document.getElementById('raveRoomSettingsBtn'),
   raveRoomSettingsMenu: document.getElementById('raveRoomSettingsMenu'),
   closeRaveRoomSettingsMenuBtn: document.getElementById('closeRaveRoomSettingsMenuBtn'),
+  playerZoomSlider: document.getElementById('playerZoomSlider'),
+  playerZoomVal: document.getElementById('playerZoomVal'),
+  playerSpeedVal: document.getElementById('playerSpeedVal'),
   raveResyncBtn: document.getElementById('raveResyncBtn'),
   raveCopyRoomLinkBtn: document.getElementById('raveCopyRoomLinkBtn'),
   raveOpenParticipantsBtn: document.getElementById('raveOpenParticipantsBtn'),
@@ -3343,6 +3346,9 @@ function handleRemoteSync(payload) {
       }
       updatePlayPauseUI(payload.isPlaying);
     }
+    if (typeof payload.rate === 'number' && Math.abs((state.playbackRate || 1.0) - payload.rate) > 0.05) {
+      setPlayerPlaybackRate(payload.rate, false);
+    }
     return;
   }
 
@@ -3351,6 +3357,12 @@ function handleRemoteSync(payload) {
       loadYoutubeVideo(payload.videoId);
     }
     showToast('Partner videoyu başlattı');
+  }
+
+  if (payload.action === 'rate' || payload.action === 'speed') {
+    const targetRate = typeof payload.rate === 'number' ? payload.rate : parseFloat(payload.rate) || 1.0;
+    setPlayerPlaybackRate(targetRate, false);
+    showToast(`Oynatma Hızı: ${targetRate}x (${payload.by || 'Oda Sahibi'})`);
   }
 
   if (payload.action === 'play') {
@@ -3404,6 +3416,9 @@ function handleRemoteSync(payload) {
   }
 
   if (payload.action === 'heartbeat') {
+    if (typeof payload.rate === 'number' && Math.abs((state.playbackRate || 1.0) - payload.rate) > 0.05) {
+      setPlayerPlaybackRate(payload.rate, false);
+    }
     if (payload.isPlaying) {
       const targetTime = (payload.time || 0) + transit;
       const drift = Math.abs(state.currentTime - targetTime);
@@ -3440,6 +3455,7 @@ function startSyncHeartbeat() {
         action: 'heartbeat',
         time: state.currentTime,
         isPlaying: state.isPlaying,
+        rate: state.playbackRate || 1.0,
         sentAt: Date.now()
       });
     }
@@ -14686,24 +14702,122 @@ function initEvents() {
     }
   }
 
-  function setPlayerPlaybackRate(rate) {
+  function canControlPlayback() {
+    return state.isHost || state.controlMode === 'everyone' || state.hasDjPermission || state.userRole === 'owner' || state.userRole === 'admin' || state.userRole === 'dj';
+  }
+
+  function setPlayerPlaybackRate(rate, broadcast = true) {
     rate = parseFloat(rate) || 1.0;
+    
+    // Permission check if user clicked to broadcast speed change to room
+    if (broadcast && !canControlPlayback()) {
+      showToast('Oynatma hızını yalnızca oda sahibi veya yetkililer değiştirebilir.');
+      return;
+    }
+
     state.playbackRate = rate;
+
+    // 1. YouTube Player
     if (state.activeMode === 'youtube') {
       sendYtCommand('setPlaybackRate', [rate]);
-    } else if (dom.nativeVideoPlayer) {
-      dom.nativeVideoPlayer.playbackRate = rate;
+    }
+    // 2. Native HTML5 Video
+    else if (dom.nativeVideoPlayer) {
+      try {
+        dom.nativeVideoPlayer.playbackRate = rate;
+      } catch (err) {}
+    }
+
+    // 3. Web Player / Embedded Platforms (Twitch, Netflix, Web View)
+    if (window.miruoDesktop && dom.webPlayerFrame && typeof dom.webPlayerFrame.executeJavaScript === 'function') {
+      dom.webPlayerFrame.executeJavaScript(`
+        (function() {
+          const videos = document.querySelectorAll('video');
+          videos.forEach(v => {
+            try { v.playbackRate = ${rate}; } catch (e) {}
+          });
+        })();
+      `).catch(() => {});
+    }
+
+    // Update UI speed indicators
+    if (dom.playerSpeedVal) {
+      dom.playerSpeedVal.textContent = `${rate}x`;
     }
     document.querySelectorAll('.player-speed-btn').forEach(btn => {
       const bSpeed = parseFloat(btn.dataset.speed);
       if (Math.abs(bSpeed - rate) < 0.05) {
-        btn.className = 'player-speed-btn py-1 rounded-lg bg-rose-500/30 text-rose-300 border border-rose-500/40 transition-all text-[11px] cursor-pointer font-black';
+        btn.className = 'player-speed-btn py-1 rounded-lg bg-rose-500/30 text-rose-300 border border-rose-500/40 transition-all text-[10px] cursor-pointer font-black';
       } else {
-        btn.className = 'player-speed-btn py-1 rounded-lg bg-white/5 hover:bg-rose-500/20 hover:text-rose-300 transition-all text-[11px] cursor-pointer';
+        btn.className = 'player-speed-btn py-1 rounded-lg bg-white/5 hover:bg-rose-500/20 hover:text-rose-300 transition-all text-[10px] cursor-pointer';
       }
     });
-    showToast(`Oynatma Hızı: ${rate}x`);
+
+    if (broadcast) {
+      sendP2PData('sync', {
+        action: 'rate',
+        rate: rate,
+        by: state.username || 'Host',
+        sentAt: Date.now()
+      });
+      showToast(`Oynatma Hızı: ${rate}x (Tüm odaya uygulandı)`);
+    }
   }
+
+  // Personal Video Fit & Local Zoom (Viewer-only local preferences)
+  let currentVideoFit = localStorage.getItem('miruo_video_fit') || 'contain';
+  let currentVideoZoom = parseInt(localStorage.getItem('miruo_video_zoom') || '100', 10);
+
+  function applyPersonalVideoSize() {
+    if (!dom.stageContainer) return;
+    
+    // Fit classes
+    dom.stageContainer.classList.remove('video-fit-contain', 'video-fit-cover', 'video-fit-zoom');
+    dom.stageContainer.classList.add(`video-fit-${currentVideoFit}`);
+
+    // Zoom scale variable
+    const scale = currentVideoZoom / 100;
+    dom.stageContainer.style.setProperty('--miruo-video-scale', scale.toString());
+
+    // Update Fit buttons
+    document.querySelectorAll('.video-fit-btn').forEach(btn => {
+      const mode = btn.dataset.fit;
+      if (mode === currentVideoFit) {
+        btn.className = 'video-fit-btn py-1 rounded-lg bg-rose-500/30 text-rose-300 border border-rose-500/40 transition-all text-[10px] cursor-pointer font-black';
+      } else {
+        btn.className = 'video-fit-btn py-1 rounded-lg bg-white/5 hover:bg-rose-500/20 hover:text-rose-300 transition-all text-[10px] cursor-pointer';
+      }
+    });
+
+    // Update Zoom Slider & Value Text
+    if (dom.playerZoomSlider) {
+      dom.playerZoomSlider.value = currentVideoZoom;
+    }
+    if (dom.playerZoomVal) {
+      dom.playerZoomVal.textContent = `%${currentVideoZoom}`;
+    }
+  }
+
+  function setPersonalVideoFit(mode) {
+    if (!['contain', 'cover', 'zoom'].includes(mode)) mode = 'contain';
+    currentVideoFit = mode;
+    localStorage.setItem('miruo_video_fit', mode);
+    applyPersonalVideoSize();
+    const names = { contain: 'Sığdır (Orantılı)', cover: 'Doldur (Kırp)', zoom: 'Yakınlaştır' };
+    showToast(`Video Boyutu: ${names[mode] || mode} (Yalnızca Sende)`);
+  }
+
+  function setPersonalVideoZoom(zoomPercent) {
+    zoomPercent = parseInt(zoomPercent, 10);
+    if (isNaN(zoomPercent)) zoomPercent = 100;
+    zoomPercent = Math.max(70, Math.min(150, zoomPercent));
+    currentVideoZoom = zoomPercent;
+    localStorage.setItem('miruo_video_zoom', zoomPercent.toString());
+    applyPersonalVideoSize();
+  }
+
+  // Initialize saved local video fit & zoom
+  applyPersonalVideoSize();
 
   function triggerResyncWithHost() {
     if (state.isHost) {
@@ -14714,6 +14828,7 @@ function initEvents() {
           videoId: state.currentVideoId,
           time: state.currentTime,
           isPlaying: state.isPlaying,
+          rate: state.playbackRate || 1.0,
           sentAt: Date.now()
         });
       }
@@ -14738,10 +14853,24 @@ function initEvents() {
     });
   }
 
+  document.querySelectorAll('.video-fit-btn').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      setPersonalVideoFit(btn.dataset.fit);
+    });
+  });
+
+  if (dom.playerZoomSlider) {
+    dom.playerZoomSlider.addEventListener('input', (e) => {
+      e.stopPropagation();
+      setPersonalVideoZoom(e.target.value);
+    });
+  }
+
   document.querySelectorAll('.player-speed-btn').forEach(btn => {
     btn.addEventListener('click', (e) => {
       e.stopPropagation();
-      setPlayerPlaybackRate(btn.dataset.speed);
+      setPlayerPlaybackRate(btn.dataset.speed, true);
     });
   });
 

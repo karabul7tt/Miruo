@@ -631,7 +631,7 @@
               <button id="raveRoomSettingsBtn" class="w-7 h-7 rounded-full bg-black/40 hover:bg-black/70 active:scale-95 text-white hover:text-rose-400 flex items-center justify-center transition-all text-base cursor-pointer" title="Oda ve Oynatıcı Ayarları">⋮</button>
               
               <!-- Quick Room & Player Popover Menu -->
-              <div id="raveRoomSettingsMenu" class="absolute right-0 top-9 w-56 bg-[#0E0D14]/95 backdrop-blur-xl border border-white/15 rounded-2xl p-3 shadow-2xl z-50 hidden text-xs text-white space-y-2.5 select-none animate-fade-in">
+              <div id="raveRoomSettingsMenu" class="absolute right-0 top-9 w-64 bg-[#0E0D14]/95 backdrop-blur-xl border border-white/15 rounded-2xl p-3 shadow-2xl z-50 hidden text-xs text-white space-y-3 select-none animate-fade-in">
                 <div class="flex items-center justify-between border-b border-white/10 pb-2">
                   <span class="font-extrabold text-[11px] text-gray-300 uppercase tracking-wider">Oynatıcı Ayarları</span>
                   <button id="closeRaveRoomSettingsMenuBtn" type="button" class="text-gray-400 hover:text-white p-1 cursor-pointer">
@@ -641,15 +641,38 @@
                     </svg>
                   </button>
                 </div>
-                
-                <!-- Oynatma Hızı -->
+
+                <!-- Kişisel Video Boyutu (Yalnızca Sende) -->
                 <div>
-                  <label class="text-[10px] text-gray-400 font-medium block mb-1">Oynatma Hızı</label>
-                  <div class="grid grid-cols-4 gap-1 text-center font-bold">
-                    <button type="button" class="player-speed-btn py-1 rounded-lg bg-white/5 hover:bg-rose-500/20 hover:text-rose-300 transition-all text-[11px] cursor-pointer" data-speed="0.75">0.75x</button>
-                    <button type="button" class="player-speed-btn py-1 rounded-lg bg-rose-500/30 text-rose-300 border border-rose-500/40 transition-all text-[11px] cursor-pointer font-black" data-speed="1">1.0x</button>
-                    <button type="button" class="player-speed-btn py-1 rounded-lg bg-white/5 hover:bg-rose-500/20 hover:text-rose-300 transition-all text-[11px] cursor-pointer" data-speed="1.25">1.25x</button>
-                    <button type="button" class="player-speed-btn py-1 rounded-lg bg-white/5 hover:bg-rose-500/20 hover:text-rose-300 transition-all text-[11px] cursor-pointer" data-speed="1.5">1.5x</button>
+                  <div class="flex items-center justify-between mb-1">
+                    <label class="text-[10px] text-gray-400 font-medium">Kişisel Boyut (Sadece Sende)</label>
+                    <span id="playerZoomVal" class="text-[10px] text-rose-400 font-bold">%100</span>
+                  </div>
+                  <div class="grid grid-cols-3 gap-1 text-center font-bold mb-2">
+                    <button type="button" class="video-fit-btn py-1 rounded-lg bg-rose-500/30 text-rose-300 border border-rose-500/40 transition-all text-[10px] cursor-pointer" data-fit="contain">Sığdır</button>
+                    <button type="button" class="video-fit-btn py-1 rounded-lg bg-white/5 hover:bg-rose-500/20 hover:text-rose-300 transition-all text-[10px] cursor-pointer" data-fit="cover">Doldur</button>
+                    <button type="button" class="video-fit-btn py-1 rounded-lg bg-white/5 hover:bg-rose-500/20 hover:text-rose-300 transition-all text-[10px] cursor-pointer" data-fit="zoom">Yakınlaş</button>
+                  </div>
+                  <div class="flex items-center gap-2">
+                    <span class="text-[9px] text-gray-400 font-mono">70%</span>
+                    <input id="playerZoomSlider" type="range" min="70" max="150" step="5" value="100" class="w-full accent-rose-500 h-1 bg-white/10 rounded-lg cursor-pointer">
+                    <span class="text-[9px] text-gray-400 font-mono">150%</span>
+                  </div>
+                </div>
+                
+                <!-- Oynatma Hızı (Oda İçi Senkron) -->
+                <div>
+                  <div class="flex items-center justify-between mb-1">
+                    <label class="text-[10px] text-gray-400 font-medium">Oda Oynatma Hızı</label>
+                    <span id="playerSpeedVal" class="text-[10px] text-cyan-400 font-bold">1.0x</span>
+                  </div>
+                  <div class="grid grid-cols-6 gap-1 text-center font-bold">
+                    <button type="button" class="player-speed-btn py-1 rounded-lg bg-white/5 hover:bg-rose-500/20 hover:text-rose-300 transition-all text-[10px] cursor-pointer" data-speed="0.5">0.5x</button>
+                    <button type="button" class="player-speed-btn py-1 rounded-lg bg-white/5 hover:bg-rose-500/20 hover:text-rose-300 transition-all text-[10px] cursor-pointer" data-speed="0.75">0.75x</button>
+                    <button type="button" class="player-speed-btn py-1 rounded-lg bg-rose-500/30 text-rose-300 border border-rose-500/40 transition-all text-[10px] cursor-pointer font-black" data-speed="1">1.0x</button>
+                    <button type="button" class="player-speed-btn py-1 rounded-lg bg-white/5 hover:bg-rose-500/20 hover:text-rose-300 transition-all text-[10px] cursor-pointer" data-speed="1.25">1.25x</button>
+                    <button type="button" class="player-speed-btn py-1 rounded-lg bg-white/5 hover:bg-rose-500/20 hover:text-rose-300 transition-all text-[10px] cursor-pointer" data-speed="1.5">1.5x</button>
+                    <button type="button" class="player-speed-btn py-1 rounded-lg bg-white/5 hover:bg-rose-500/20 hover:text-rose-300 transition-all text-[10px] cursor-pointer" data-speed="2">2.0x</button>
                   </div>
                 </div>
 

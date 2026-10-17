@@ -1324,6 +1324,45 @@ body.has-mini-player #stageContainer #miniPlayerOverlay {
   object-fit: contain !important;
 }
 
+/* ========================================================
+   PERSONAL VIDEO SIZING & ZOOM (LOCAL VIEWER ONLY)
+   "videolara boyut ayarlamada ekleyelım mı ama kendınde ayrlarsnsın"
+   ======================================================== */
+#stageContainer {
+  --miruo-video-scale: 1;
+}
+
+#stageContainer #ytPlayerContainer,
+#stageContainer #nativeVideoPlayer,
+#stageContainer #webPlayerFrame,
+#stageContainer #remoteScreenPlayer {
+  transform: scale(var(--miruo-video-scale, 1));
+  transform-origin: center center;
+  transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+#stageContainer.video-fit-contain #ytPlayerContainer,
+#stageContainer.video-fit-contain #nativeVideoPlayer,
+#stageContainer.video-fit-contain #webPlayerFrame,
+#stageContainer.video-fit-contain #remoteScreenPlayer {
+  object-fit: contain !important;
+}
+
+#stageContainer.video-fit-cover #ytPlayerContainer,
+#stageContainer.video-fit-cover #nativeVideoPlayer,
+#stageContainer.video-fit-cover #webPlayerFrame,
+#stageContainer.video-fit-cover #remoteScreenPlayer {
+  object-fit: cover !important;
+  transform: scale(calc(var(--miruo-video-scale, 1) * 1.18));
+}
+
+#stageContainer.video-fit-zoom #ytPlayerContainer,
+#stageContainer.video-fit-zoom #nativeVideoPlayer,
+#stageContainer.video-fit-zoom #webPlayerFrame,
+#stageContainer.video-fit-zoom #remoteScreenPlayer {
+  transform: scale(calc(var(--miruo-video-scale, 1) * 1.35));
+}
+
 /* Landscape Fullscreen with Chat Closed: Fill 100% of screen width & height edge-to-edge (no black side bars on 19.5:9 iPhones) */
 @media (orientation: landscape) {
   body.stage-is-fullscreen:not(.fs-chat-active) #stageContainer,
