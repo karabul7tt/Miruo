@@ -658,6 +658,7 @@ class ViewController: UIViewController, WKNavigationDelegate, WKUIDelegate, WKSc
             self?.webView.evaluateJavaScript(js, completionHandler: nil)
         }
         browserVC.onOpenProviderPicker = { [weak self] in
+            if isConnectMode { return }
             let js = "if (typeof switchToProviderPicker === 'function') { switchToProviderPicker(); } else if (typeof openVideoChooser === 'function') { openVideoChooser(); }"
             self?.webView.evaluateJavaScript(js, completionHandler: nil)
         }
@@ -1216,7 +1217,13 @@ class PlatformBrowserViewController: UIViewController, WKNavigationDelegate, WKU
         if webView.canGoBack {
             webView.goBack()
         } else {
-            openPlatformPickerTapped()
+            if isConnectMode {
+                webView.evaluateJavaScript("try { var v = document.querySelectorAll('video, audio'); v.forEach(function(el){ el.pause(); el.src = ''; }); } catch(e) {}")
+                webView.load(URLRequest(url: URL(string: "about:blank")!))
+                dismiss(animated: true, completion: nil)
+            } else {
+                openPlatformPickerTapped()
+            }
         }
     }
     

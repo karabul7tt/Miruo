@@ -4426,6 +4426,26 @@ function clampPipCardsToStage() {
 
   [dom.selfPipCard, dom.partnerPipCard].forEach(card => {
     if (!card || card.classList.contains('hidden')) return;
+
+    // Restore saved drag position from localStorage if available
+    const storageKey = card.id === 'selfPipCard' ? 'miruo_self_cam_pos' : 'miruo_partner_cam_pos';
+    if (!card.classList.contains('pip-custom-pos')) {
+      try {
+        const savedPosRaw = localStorage.getItem(storageKey);
+        if (savedPosRaw) {
+          const savedPos = JSON.parse(savedPosRaw);
+          if (savedPos && typeof savedPos.relX === 'number' && typeof savedPos.relY === 'number') {
+            const posX = Math.round(savedPos.relX * stageW);
+            const posY = Math.round(savedPos.relY * stageH);
+            card.classList.remove('pip-pos-bottom-right', 'pip-pos-bottom-left', 'pip-pos-top-right', 'pip-pos-top-left');
+            card.classList.add('pip-custom-pos');
+            card.style.setProperty('left', `${posX}px`, 'important');
+            card.style.setProperty('top', `${posY}px`, 'important');
+          }
+        }
+      } catch (_) {}
+    }
+
     if (card.classList.contains('pip-custom-pos') || card.style.left || card.style.top) {
       const cardRect = card.getBoundingClientRect();
       const cardW = card.offsetWidth || cardRect.width || 96;
@@ -4999,6 +5019,16 @@ function makeDraggable(el) {
     activeTouchId = null;
     el.classList.remove('pip-dragging', 'pip-active-drag');
     el.style.transition = 'none';
+
+    try {
+      const parent = getDragParent();
+      const parentRect = parent.getBoundingClientRect();
+      const elRect = el.getBoundingClientRect();
+      const relX = (elRect.left - parentRect.left) / Math.max(1, parentRect.width);
+      const relY = (elRect.top - parentRect.top) / Math.max(1, parentRect.height);
+      const storageKey = el.id === 'selfPipCard' ? 'miruo_self_cam_pos' : 'miruo_partner_cam_pos';
+      localStorage.setItem(storageKey, JSON.stringify({ relX, relY, left: el.style.left, top: el.style.top }));
+    } catch (_) {}
   }
 
   // Native Mobile Touch Events
@@ -6921,18 +6951,18 @@ function sendAffinityRequest(slotKey, friend) {
   requests.unshift(req);
   localStorage.setItem('miruo_affinity_requests', JSON.stringify(requests));
 
-  // Mark pending in user's tree so they see "İstek Gönderildi"
-  const currentTree = getUserAffinityTree();
-  currentTree[slotKey] = {
-    username: targetUsername,
-    name: '@' + targetUsername,
-    avatarUrl: friend.avatarUrl || '',
+  // Store outgoing request so picker shows "İstek Gönderildi", but do NOT display on graph until accepted
+  let outgoing = [];
+  try { outgoing = JSON.parse(localStorage.getItem('miruo_outgoing_affinity_requests') || '[]'); } catch (_) { outgoing = []; }
+  outgoing = outgoing.filter(o => o.slotKey !== slotKey);
+  outgoing.push({
+    id: req.id,
+    slotKey: slotKey,
+    toUsername: targetUsername,
     category: slotDef ? slotDef.category : 'partner',
-    isPending: true,
-    requestId: req.id,
-    boundAt: Date.now()
-  };
-  saveUserAffinityTree(currentTree);
+    createdAt: Date.now()
+  });
+  localStorage.setItem('miruo_outgoing_affinity_requests', JSON.stringify(outgoing));
 
   closeAffinityPicker();
   renderAffinityTree();
@@ -7938,11 +7968,6 @@ function addSharedWatchMinutes(username, addedMinutes) {
 // Starts 100% empty with '+' as requested by the user:
 function getUserAffinityTree() {
   const saved = localStorage.getItem('miruo_user_affinity');
-  if (saved) {
-    try {
-      return JSON.parse(saved);
-    } catch (e) {}
-  }
   const initial = {
     partner_1: null,
     bro_1: null,
@@ -7954,6 +7979,28 @@ function getUserAffinityTree() {
     confidant_1: null,
     confidant_2: null
   };
+  if (saved) {
+    try {
+      const tree = JSON.parse(saved);
+      const savedUser = JSON.parse(localStorage.getItem('miruo_user') || '{}');
+      const myClean = (savedUser.username || state.username || '').toLowerCase().replace(/^@/, '').trim();
+      let modified = false;
+      Object.keys(tree).forEach(k => {
+        const item = tree[k];
+        if (item) {
+          const itemClean = (item.username || item.name || '').toLowerCase().replace(/^@/, '').trim();
+          if (myClean && itemClean === myClean) {
+            tree[k] = null;
+            modified = true;
+          }
+        }
+      });
+      if (modified) {
+        localStorage.setItem('miruo_user_affinity', JSON.stringify(tree));
+      }
+      return tree;
+    } catch (e) {}
+  }
   localStorage.setItem('miruo_user_affinity', JSON.stringify(initial));
   return initial;
 }
@@ -7967,7 +8014,7 @@ function getMockAffinityTreeForUser(targetUsername) {
   const clean = (targetUsername || '').toLowerCase().replace(/^@/, '').trim();
   const currentTree = getUserAffinityTree();
   const savedUser = JSON.parse(localStorage.getItem('miruo_user') || '{}');
-  const myUsername = (savedUser.username || state.username || 'kullanici').replace(/^@/, '');
+  const myUsername = (savedUser.username || state.username || 'kullanici').replace(/^@/, '').toLowerCase();
   const myName = '@' + myUsername;
 
   let mutuals = {};
@@ -7981,7 +8028,7 @@ function getMockAffinityTreeForUser(targetUsername) {
   let isConfidantWithMe = false;
 
   const mutual = mutuals[clean];
-  if (mutual && (mutual.partnerOf || '').toLowerCase() === myUsername.toLowerCase()) {
+  if (mutual && (mutual.partnerOf || '').toLowerCase() === myUsername) {
     if (mutual.category === 'partner') isPartnerWithMe = true;
     else if (mutual.category === 'bro') isBroWithMe = true;
     else if (mutual.category === 'bestie') isBestieWithMe = true;
@@ -7991,7 +8038,7 @@ function getMockAffinityTreeForUser(targetUsername) {
   // Also check if currentTree has an accepted slot for this user
   Object.keys(currentTree).forEach(k => {
     const slot = currentTree[k];
-    if (slot && slot.username && slot.username.toLowerCase() === clean && !slot.isPending) {
+    if (slot && slot.username && slot.username.toLowerCase().replace(/^@/, '') === clean && !slot.isPending) {
       if (slot.category === 'partner') isPartnerWithMe = true;
       else if (slot.category === 'bro') isBroWithMe = true;
       else if (slot.category === 'bestie') isBestieWithMe = true;
@@ -7999,28 +8046,28 @@ function getMockAffinityTreeForUser(targetUsername) {
     }
   });
 
-  const partnerWatchMins = isPartnerWithMe ? getSharedWatchMinutes(clean) : 1440;
+  // Never allow user to be bound to themselves
+  const canBePartner = isPartnerWithMe && myUsername && myUsername !== clean;
+  const canBeBro = isBroWithMe && myUsername && myUsername !== clean;
+  const canBeBestie = isBestieWithMe && myUsername && myUsername !== clean;
+  const canBeConfidant = isConfidantWithMe && myUsername && myUsername !== clean;
 
   const tree = {
-    partner_1: isPartnerWithMe 
-      ? { username: myUsername, name: myName, category: 'partner', watchMins: partnerWatchMins } 
-      : { username: 'selin', name: 'Selin Yılmaz', category: 'partner', watchMins: 1440 },
-    bro_1: isBroWithMe
-      ? { username: myUsername, name: myName, category: 'bro', watchMins: getSharedWatchMinutes(clean) }
-      : (clean === 'can' 
-          ? { username: 'emre', name: 'Emre Yıldız', category: 'bro', watchMins: 360 } 
-          : { username: 'can', name: 'Can Demir', category: 'bro', watchMins: 720 }),
+    partner_1: canBePartner 
+      ? { username: myUsername, name: myName, category: 'partner', watchMins: getSharedWatchMinutes(clean) || 1440 } 
+      : null,
+    bro_1: canBeBro
+      ? { username: myUsername, name: myName, category: 'bro', watchMins: getSharedWatchMinutes(clean) || 360 }
+      : null,
     bro_2: null,
     bro_3: null,
-    bestie_1: isBestieWithMe
-      ? { username: myUsername, name: myName, category: 'bestie', watchMins: getSharedWatchMinutes(clean) }
-      : (clean === 'merve' 
-          ? { username: 'selin', name: 'Selin Yılmaz', category: 'bestie', watchMins: 900 } 
-          : { username: 'merve', name: 'Merve Kaya', category: 'bestie', watchMins: 180 }),
+    bestie_1: canBeBestie
+      ? { username: myUsername, name: myName, category: 'bestie', watchMins: getSharedWatchMinutes(clean) || 180 }
+      : null,
     bestie_2: null,
     bestie_3: null,
-    confidant_1: isConfidantWithMe
-      ? { username: myUsername, name: myName, category: 'confidant', watchMins: getSharedWatchMinutes(clean) }
+    confidant_1: canBeConfidant
+      ? { username: myUsername, name: myName, category: 'confidant', watchMins: getSharedWatchMinutes(clean) || 60 }
       : null,
     confidant_2: null
   };
@@ -8088,9 +8135,22 @@ function renderAffinityTree(containerId = 'affinityConstellationContainer', svgI
   // Counters for Legend
   let countPartner = 0, countBro = 0, countBestie = 0, countConfidant = 0;
 
+  const targetClean = (isOwnProfile 
+    ? (savedUser.username || state.username || '') 
+    : (targetUser ? (targetUser.username || targetUser.name) : '')
+  ).toLowerCase().replace(/^@/, '').trim();
+
   // Render each slot and connecting branch
   AFFINITY_SLOTS.forEach(slot => {
-    const assigned = currentTree[slot.key];
+    let assigned = currentTree[slot.key];
+    if (assigned) {
+      const assignedClean = (assigned.username || assigned.name || '').toLowerCase().replace(/^@/, '').trim();
+      // 1. Strictly forbid self-relationships
+      // 2. Pending requests must not appear on constellation graph until accepted
+      if (assignedClean === targetClean || assigned.isPending) {
+        assigned = null;
+      }
+    }
     const cat = AFFINITY_CATEGORIES[slot.category];
 
     const isPartner = slot.category === 'partner';
@@ -8412,9 +8472,9 @@ function renderAffinityPickerList() {
       card.className = 'p-3 rounded-2xl bg-white/5 border border-emerald-500/30 flex items-center justify-between gap-3 shadow-md hover:border-emerald-500/50 transition-all';
       
       const targetUser = (fr.cleanUsername || fr.username || '').replace(/^@/, '');
-      const currentTree = getUserAffinityTree();
-      const existingInSlot = currentTree[currentPickerSlotKey];
-      const isAlreadyPending = existingInSlot && existingInSlot.username === targetUser && existingInSlot.isPending;
+      let outgoingReqs = [];
+      try { outgoingReqs = JSON.parse(localStorage.getItem('miruo_outgoing_affinity_requests') || '[]'); } catch (_) { outgoingReqs = []; }
+      const isAlreadyPending = outgoingReqs.some(o => o.slotKey === currentPickerSlotKey && (o.toUsername || '').toLowerCase() === targetUser.toLowerCase());
 
       const btnText = isAlreadyPending ? 'İstek Gönderildi' : 'İstek Gönder';
       const btnStyle = isAlreadyPending 
@@ -10079,10 +10139,14 @@ function loadUserSession() {
   // Handle Affinity Demo or Bound Partner
   const affinityParam = urlParams.get('affinity');
   if (affinityParam === 'demo' || affinityParam === 'partner' || affinityParam === 'bound') {
+    const savedUser = JSON.parse(localStorage.getItem('miruo_user') || '{}');
+    const myClean = (savedUser.username || state.username || '').toLowerCase().replace(/^@/, '');
+    const demoPartner = myClean === 'selin' ? 'ayse' : 'selin';
+    const demoName = myClean === 'selin' ? 'Ayşe Kaya' : 'Selin Yılmaz';
     const tree = getUserAffinityTree();
     tree.partner_1 = {
-      username: 'selin',
-      name: 'Selin Yılmaz',
+      username: demoPartner,
+      name: demoName,
       avatarUrl: '',
       category: 'partner',
       boundAt: Date.now()
@@ -10932,7 +10996,10 @@ function initEvents() {
           provider: 'google',
           options: {
             redirectTo: redirectUrl,
-            skipBrowserRedirect: true
+            skipBrowserRedirect: true,
+            queryParams: {
+              prompt: 'select_account'
+            }
           }
         });
         if (error || !data?.url) {
@@ -10967,7 +11034,10 @@ function initEvents() {
         const { data, error } = await supabaseClient.auth.signInWithOAuth({
           provider: provId,
           options: {
-            redirectTo: window.location.href.split('#')[0]
+            redirectTo: window.location.href.split('#')[0],
+            queryParams: {
+              prompt: 'select_account'
+            }
           }
         });
 
@@ -12350,7 +12420,6 @@ function initEvents() {
         <button id="dbFwdBtn" type="button" title="Sonraki Sayfa (İleri)" style="${btnCss}">→ İleri</button>
         <div style="flex:1;min-width:0;display:flex;flex-direction:column;align-items:center;text-align:center;">
           <span id="dbTitle" style="width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#e5e7eb;font:700 14px system-ui,sans-serif;">${platformTitle}</span>
-          ${hasActivePlaying ? `<span style="font-size:11px;color:#34d399;font-weight:600;display:flex;align-items:center;gap:5px;max-width:380px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"><span style="width:6px;height:6px;border-radius:999px;background:#10b981;display:inline-block;"></span>Odada Oynatılıyor: "${escapeHtml(playingTitle)}" (Kesintisiz)</span>` : ''}
         </div>
         <button id="dbQueueBtn" type="button" title="Mevcut videoyu durdurmadan sıraya ekle" style="${btnCss}background:rgba(255,255,255,.14);border-color:rgba(255,255,255,.25);">+ Sıraya Ekle</button>
         <button id="dbPlayBtn" type="button" title="Bu videoyu hemen odada başlat" style="${btnCss}background:linear-gradient(90deg,#e11d48,#a64d79);border-color:transparent;font-weight:700;">▶ Odada Oynat</button>
@@ -14455,6 +14524,44 @@ function initEvents() {
     } catch (e) {}
   }
 
+  function connectPlatformAccountPrompt(provider) {
+    const pDef = PLATFORM_AUTH_CONFIGS[provider] || { name: provider, placeholder: 'ornek@email.com' };
+    const savedUser = JSON.parse(localStorage.getItem('miruo_user') || '{}');
+    const defaultAcc = savedUser.email || (savedUser.username ? `@${savedUser.username}` : '');
+
+    // 1. In iOS Native App: Opens native in-app browser with connect mode
+    if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.openPlatform) {
+      window.webkit.messageHandlers.openPlatform.postMessage({
+        provider: provider,
+        url: pDef.loginUrl,
+        title: `${pDef.name} Giriş`,
+        action: 'connect',
+        mode: 'connect',
+        lang: currentLang
+      });
+      return;
+    }
+
+    // 2. On Web Desktop / Electron: Clean in-app prompt so user stays in Settings
+    const entered = window.prompt(
+      `${pDef.name} hesabınızı bağlayın.\n\nHesap e-posta veya kullanıcı adınızı girin:`,
+      defaultAcc
+    );
+    if (entered && entered.trim()) {
+      const finalAcc = entered.trim();
+      const accounts = getConnectedAccounts();
+      accounts[provider] = {
+        connected: true,
+        account: finalAcc,
+        autoStart: true,
+        connectedAt: Date.now()
+      };
+      saveConnectedAccounts(accounts);
+      renderConnectedAccountsUI();
+      showToast(`✓ ${pDef.name} hesabı (${finalAcc}) başarıyla bağlandı!`);
+    }
+  }
+
   function toggleAccountConnection(provider) {
     const accounts = getConnectedAccounts();
     const current = accounts[provider] || { connected: false, account: '' };
@@ -14481,8 +14588,7 @@ function initEvents() {
 
       showToast(`${pDef.name} hesabı bağlantısı ve oturumu kaldırıldı.`);
     } else {
-      // Directly throw the user onto the platform site's login page!
-      startDirectPlatformLogin(provider);
+      connectPlatformAccountPrompt(provider);
     }
   }
 
@@ -14500,6 +14606,7 @@ function initEvents() {
         connectedAt: Date.now()
       };
       saveConnectedAccounts(accounts);
+      renderConnectedAccountsUI();
       showToast(`✓ ${pDef.name} hesabı (${finalAcc}) başarıyla bağlandı! Artık beraber izleme bu hesaptan başlayacak.`);
     }
   };
@@ -15149,7 +15256,14 @@ function initEvents() {
   if (dom.backToLobbyBtn) {
     addInstantTap(dom.backToLobbyBtn, (e) => {
       e.stopPropagation();
-      leaveRoom();
+      showMiruoConfirm({
+        title: 'Odadan Ayrıl',
+        message: 'Odadan ayrılmak istediğinize emin misiniz?',
+        actionText: 'Evet, Ayrıl',
+        onConfirm: () => {
+          leaveRoom();
+        }
+      });
     });
   }
 
@@ -16588,25 +16702,6 @@ function generateUniqueRoomCode(isPrivate = false) {
 
 
 
-  // Stage Overlay Temporary Peek on Stage Click (Auto fades after 3.5s)
-  let overlayHideTimeout = null;
-  const stageContainer = document.getElementById('stageContainer');
-  const ravePlayerOverlay = document.getElementById('ravePlayerOverlay');
-  if (stageContainer && ravePlayerOverlay) {
-    stageContainer.addEventListener('click', (e) => {
-      // Don't intercept if clicking PiP or buttons inside overlay
-      if (e.target.closest('#partnerPipCard') || e.target.closest('#selfPipCard') || e.target.closest('button') || e.target.closest('input')) return;
-      
-      ravePlayerOverlay.classList.remove('opacity-0', 'pointer-events-none');
-      ravePlayerOverlay.classList.add('opacity-100');
-
-      clearTimeout(overlayHideTimeout);
-      overlayHideTimeout = setTimeout(() => {
-        ravePlayerOverlay.classList.add('opacity-0', 'pointer-events-none');
-        ravePlayerOverlay.classList.remove('opacity-100');
-      }, 3500);
-    });
-  }
 
   // Periodic simulated room viewers refresh (Heartbeat bot activity simulation)
   setInterval(() => {
@@ -16833,34 +16928,70 @@ function initAuthOwlMascot() {
 }
 
 // ==========================================
-// 6.1 FULLSCREEN / CINEMA AUTO-HIDE CONTROLS
+// 6.1 YOUTUBE-STYLE AUTO-HIDE CONTROLS
 // ==========================================
 let controlsHideTimeout = null;
 
-function resetControlsHideTimer() {
-  const elementsToControl = [
+function getStageControlElements() {
+  return [
     dom.stageFloatingFullscreenBtn,
+    document.getElementById('raveRoomSettingsBtn'),
     document.getElementById('backToLobbyBtn'),
     document.getElementById('ravePlayerOverlay'),
-    document.getElementById('roomAccessBtn'),
-    document.getElementById('roomVideoGrid')
+    document.getElementById('roomAccessBtn')
   ].filter(Boolean);
+}
 
-  // Reveal controls
-  elementsToControl.forEach(el => el.classList.remove('fs-controls-hidden'));
-  if (dom.stageContainer) dom.stageContainer.style.cursor = 'default';
-
-  clearTimeout(controlsHideTimeout);
-
-  const isFs = isStageFullscreen();
-  // Auto-hide ONLY when explicitly in Fullscreen mode! In normal mode, buttons must never disappear.
-  if (isFs) {
-    controlsHideTimeout = setTimeout(() => {
-      elementsToControl.forEach(el => el.classList.add('fs-controls-hidden'));
-      if (dom.stageContainer) dom.stageContainer.style.cursor = 'none';
-    }, 3000);
+function showStageControls() {
+  const elements = getStageControlElements();
+  elements.forEach(el => {
+    el.classList.remove('fs-controls-hidden');
+  });
+  if (dom.ravePlayerOverlay) {
+    dom.ravePlayerOverlay.classList.remove('opacity-0', 'pointer-events-none');
+    dom.ravePlayerOverlay.classList.add('opacity-100');
+  }
+  if (dom.stageContainer) {
+    dom.stageContainer.style.cursor = 'default';
   }
 }
+
+function hideStageControls() {
+  // Do NOT hide if video is paused, or if 3-dots settings menu is open
+  const isPaused = state.isPlaying === false;
+  const menu = document.getElementById('raveRoomSettingsMenu');
+  const isMenuOpen = menu && !menu.classList.contains('hidden');
+  if (isPaused || isMenuOpen) return;
+
+  const elements = getStageControlElements();
+  elements.forEach(el => {
+    el.classList.add('fs-controls-hidden');
+  });
+  if (dom.ravePlayerOverlay) {
+    dom.ravePlayerOverlay.classList.add('opacity-0', 'pointer-events-none');
+    dom.ravePlayerOverlay.classList.remove('opacity-100');
+  }
+  if (isStageFullscreen() && dom.stageContainer) {
+    dom.stageContainer.style.cursor = 'none';
+  }
+}
+
+function resetControlsHideTimer() {
+  showStageControls();
+  clearTimeout(controlsHideTimeout);
+
+  const isPaused = state.isPlaying === false;
+  const menu = document.getElementById('raveRoomSettingsMenu');
+  const isMenuOpen = menu && !menu.classList.contains('hidden');
+
+  // Auto-hide after 2.5 seconds of inactivity when playing
+  if (!isPaused && !isMenuOpen) {
+    controlsHideTimeout = setTimeout(() => {
+      hideStageControls();
+    }, 2500);
+  }
+}
+window.resetControlsHideTimer = resetControlsHideTimer;
 
 function initStageAutoHideEvents() {
   if (!dom.stageContainer) return;
@@ -16871,50 +17002,29 @@ function initStageAutoHideEvents() {
     }, { passive: true });
   });
 
-  dom.stageContainer.addEventListener('click', (e) => {
-    if (e.target.closest('button') || e.target.closest('input') || e.target.closest('#partnerPipCard') || e.target.closest('#selfPipCard')) {
-      resetControlsHideTimer();
-      return;
-    }
-    const isFs = isStageFullscreen();
-    if (!isFs) {
-      // Normal portrait mode: tapping stage toggles player overlay controls cleanly without hiding navigation buttons!
-      resetControlsHideTimer();
-      if (dom.ravePlayerOverlay) {
-        const isOverlayVisible = !dom.ravePlayerOverlay.classList.contains('opacity-0');
-        if (isOverlayVisible) {
-          dom.ravePlayerOverlay.classList.add('opacity-0', 'pointer-events-none');
-          dom.ravePlayerOverlay.classList.remove('opacity-100');
-        } else {
-          dom.ravePlayerOverlay.classList.remove('opacity-0', 'pointer-events-none');
-          dom.ravePlayerOverlay.classList.add('opacity-100');
-          clearTimeout(controlsHideTimeout);
-          controlsHideTimeout = setTimeout(() => {
-            if (dom.ravePlayerOverlay) {
-              dom.ravePlayerOverlay.classList.add('opacity-0', 'pointer-events-none');
-              dom.ravePlayerOverlay.classList.remove('opacity-100');
-            }
-          }, 3500);
-        }
-      }
-      return;
-    }
-    const isHidden = dom.stageFloatingFullscreenBtn && dom.stageFloatingFullscreenBtn.classList.contains('fs-controls-hidden');
-    if (isHidden) {
-      resetControlsHideTimer();
-    } else {
-      const elementsToControl = [
-        dom.stageFloatingFullscreenBtn,
-        document.getElementById('backToLobbyBtn'),
-        document.getElementById('ravePlayerOverlay'),
-        document.getElementById('roomAccessBtn')
-      ].filter(Boolean);
-      elementsToControl.forEach(el => el.classList.add('fs-controls-hidden'));
-      if (dom.stageContainer) dom.stageContainer.style.cursor = 'none';
+  dom.stageContainer.addEventListener('mouseleave', () => {
+    const isPaused = state.isPlaying === false;
+    const menu = document.getElementById('raveRoomSettingsMenu');
+    const isMenuOpen = menu && !menu.classList.contains('hidden');
+    if (!isPaused && !isMenuOpen) {
+      hideStageControls();
     }
   });
 
+  dom.stageContainer.addEventListener('click', (e) => {
+    // Reveal and refresh timer on click
+    resetControlsHideTimer();
+  });
+
+  document.addEventListener('keydown', (e) => {
+    if (['input', 'textarea'].includes((document.activeElement?.tagName || '').toLowerCase())) return;
+    resetControlsHideTimer();
+  });
+
   document.addEventListener('fullscreenchange', () => {
+    resetControlsHideTimer();
+  });
+  document.addEventListener('webkitfullscreenchange', () => {
     resetControlsHideTimer();
   });
 
