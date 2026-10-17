@@ -45,6 +45,28 @@
         "NSMicrophoneUsageDescription": "Miruo, odada arkadaşlarınızla sesli sohbet edebilmeniz için mikrofonunuzu kullanır."
       }
     },
+    "dmg": {
+      "title": "${productName}",
+      "icon": "build/icon.icns",
+      "iconSize": 128,
+      "contents": [
+        {
+          "x": 130,
+          "y": 220,
+          "type": "file"
+        },
+        {
+          "x": 410,
+          "y": 220,
+          "type": "link",
+          "path": "/Applications"
+        }
+      ],
+      "window": {
+        "width": 540,
+        "height": 380
+      }
+    },
     "win": {
       "icon": "build/icon.ico",
       "target": [
