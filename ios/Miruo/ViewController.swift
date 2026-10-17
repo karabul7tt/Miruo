@@ -4,6 +4,7 @@ import Network
 import AVFoundation
 import PhotosUI
 import AuthenticationServices
+import Security
 
 class ViewController: UIViewController, WKNavigationDelegate, WKUIDelegate, WKScriptMessageHandler {
     static let sharedProcessPool = WKProcessPool()
@@ -1602,7 +1603,7 @@ class LocalStaticServer {
     }
     
     private func receiveRequest(on connection: NWConnection) {
-        connection.receive(minimumIncompleteLength: 1, maximumLength: 4096) { [weak self] content, _, _, _ in
+        connection.receive(minimumIncompleteLength: 1, maximumLength: 262144) { [weak self] content, _, _, _ in
             guard let self = self, let content = content, let requestString = String(data: content, encoding: .utf8) else {
                 connection.cancel()
                 return
@@ -1610,13 +1611,38 @@ class LocalStaticServer {
             
             let firstLine = requestString.components(separatedBy: "\r\n").first ?? ""
             let parts = firstLine.components(separatedBy: " ")
-            guard parts.count >= 2, parts[0] == "GET" else {
+            guard parts.count >= 2 else {
                 self.sendResponse(connection: connection, statusCode: 400, contentType: "text/plain", data: Data("Bad Request".utf8))
                 return
             }
             
+            let method = parts[0].uppercased()
             var path = parts[1]
             if let q = path.firstIndex(of: "?") { path = String(path[..<q]) }
+            
+            if method == "OPTIONS" {
+                self.sendResponse(connection: connection, statusCode: 204, contentType: "text/plain", data: Data())
+                return
+            }
+            
+            if path.hasPrefix("/api/auth/") {
+                let bodyString: String
+                if let range = requestString.range(of: "\r\n\r\n") {
+                    bodyString = String(requestString[range.upperBound...])
+                } else {
+                    bodyString = "{}"
+                }
+                let (statusCode, responseDict) = MiruoPersistentAuthStore.shared.handleAuthEndpoint(path: path, method: method, bodyString: bodyString)
+                let jsonData = (try? JSONSerialization.data(withJSONObject: responseDict, options: [])) ?? Data("{}".utf8)
+                self.sendResponse(connection: connection, statusCode: statusCode, contentType: "application/json; charset=utf-8", data: jsonData)
+                return
+            }
+            
+            guard method == "GET" else {
+                self.sendResponse(connection: connection, statusCode: 400, contentType: "text/plain", data: Data("Bad Request".utf8))
+                return
+            }
+            
             if path == "/" || path.isEmpty { path = "/index.html" }
             let relativePath = path.hasPrefix("/") ? String(path.dropFirst()) : path
             let fileURL = self.rootURL.appendingPathComponent(relativePath)
@@ -1631,10 +1657,21 @@ class LocalStaticServer {
     }
     
     private func sendResponse(connection: NWConnection, statusCode: Int, contentType: String, data: Data) {
-        var header = "HTTP/1.1 \(statusCode) \(statusCode == 200 ? "OK" : "Not Found")\r\n"
+        let statusText: String
+        switch statusCode {
+        case 200: statusText = "OK"
+        case 204: statusText = "No Content"
+        case 400: statusText = "Bad Request"
+        case 401: statusText = "Unauthorized"
+        case 409: statusText = "Conflict"
+        default: statusText = "Not Found"
+        }
+        var header = "HTTP/1.1 \(statusCode) \(statusText)\r\n"
         header += "Content-Type: \(contentType)\r\n"
         header += "Content-Length: \(data.count)\r\n"
         header += "Access-Control-Allow-Origin: *\r\n"
+        header += "Access-Control-Allow-Methods: GET, POST, OPTIONS\r\n"
+        header += "Access-Control-Allow-Headers: Content-Type, Authorization\r\n"
         header += "Connection: close\r\n\r\n"
         
         var responseData = Data(header.utf8)
@@ -1657,6 +1694,255 @@ class LocalStaticServer {
         case "webp": return "image/webp"
         case "ico": return "image/x-icon"
         default: return "application/octet-stream"
+        }
+    }
+}
+
+// MARK: - Persistent Keychain + Documents Auth Store (Single Registration Per Apple ID / Email)
+final class MiruoPersistentAuthStore {
+    static let shared = MiruoPersistentAuthStore()
+    private let service = "com.miruo.app.appleauth"
+    private let queue = DispatchQueue(label: "com.miruo.app.authstore")
+    
+    private var dbFileURL: URL {
+        let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
+        return docs.appendingPathComponent("miruo_users_db.json")
+    }
+    
+    func saveKeychainString(_ value: String, account: String) {
+        guard let data = value.data(using: .utf8) else { return }
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: service,
+            kSecAttrAccount as String: account
+        ]
+        SecItemDelete(query as CFDictionary)
+        var addQuery = query
+        addQuery[kSecValueData as String] = data
+        addQuery[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlock
+        SecItemAdd(addQuery as CFDictionary, nil)
+    }
+    
+    func loadKeychainString(account: String) -> String? {
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: service,
+            kSecAttrAccount as String: account,
+            kSecReturnData as String: true,
+            kSecMatchLimit as String: kSecMatchLimitOne
+        ]
+        var item: CFTypeRef?
+        let status = SecItemCopyMatching(query as CFDictionary, &item)
+        if status == errSecSuccess, let data = item as? Data, let str = String(data: data, encoding: .utf8) {
+            return str
+        }
+        return nil
+    }
+    
+    func decodeJwtPayload(_ jwt: String) -> [String: Any]? {
+        let segments = jwt.components(separatedBy: ".")
+        guard segments.count > 1 else { return nil }
+        var base64 = segments[1]
+            .replacingOccurrences(of: "-", with: "+")
+            .replacingOccurrences(of: "_", with: "/")
+        let remainder = base64.count % 4
+        if remainder > 0 {
+            base64 += String(repeating: "=", count: 4 - remainder)
+        }
+        guard let data = Data(base64Encoded: base64),
+              let json = try? JSONSerialization.jsonObject(with: data, options: []) as? [String: Any] else {
+            return nil
+        }
+        return json
+    }
+    
+    func loadUsers() -> [[String: Any]] {
+        if let kcStr = loadKeychainString(account: "miruo_users_db_v1"),
+           let data = kcStr.data(using: .utf8),
+           let arr = try? JSONSerialization.jsonObject(with: data, options: []) as? [[String: Any]],
+           !arr.isEmpty {
+            return arr
+        }
+        if let data = try? Data(contentsOf: dbFileURL),
+           let arr = try? JSONSerialization.jsonObject(with: data, options: []) as? [[String: Any]] {
+            return arr
+        }
+        return []
+    }
+    
+    func saveUsers(_ users: [[String: Any]]) {
+        guard let data = try? JSONSerialization.data(withJSONObject: users, options: []),
+              let str = String(data: data, encoding: .utf8) else { return }
+        saveKeychainString(str, account: "miruo_users_db_v1")
+        try? data.write(to: dbFileURL, options: .atomic)
+    }
+    
+    func findExistingAppleUser(userIdentifier: String, email: String) -> [String: Any]? {
+        let users = loadUsers()
+        let canonicalId = userIdentifier.hasPrefix("apple_") ? userIdentifier : "apple_\(userIdentifier)"
+        let cleanEmail = email.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        return users.first { u in
+            let uid = (u["id"] as? String) ?? ""
+            let aid = (u["appleUserId"] as? String) ?? ""
+            let uemail = ((u["email"] as? String) ?? "").trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+            if !userIdentifier.isEmpty && (uid == canonicalId || uid == userIdentifier || aid == userIdentifier || aid == canonicalId) {
+                return true
+            }
+            if !cleanEmail.isEmpty && uemail == cleanEmail {
+                return true
+            }
+            return false
+        }
+    }
+    
+    func handleAuthEndpoint(path: String, method: String, bodyString: String) -> (Int, [String: Any]) {
+        return queue.sync {
+            let bodyData = bodyString.data(using: .utf8) ?? Data()
+            let body = (try? JSONSerialization.jsonObject(with: bodyData, options: []) as? [String: Any]) ?? [:]
+            var users = loadUsers()
+            
+            if path == "/api/auth/social-sync" && method == "POST" {
+                let rawId = ((body["id"] as? String) ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+                let appleUserId = ((body["appleUserId"] as? String) ?? rawId).replacingOccurrences(of: "apple_", with: "")
+                let email = ((body["email"] as? String) ?? "").trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+                let reqUsername = ((body["username"] as? String) ?? "").trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+                let displayName = ((body["displayName"] as? String) ?? (body["fullName"] as? String) ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+                let provider = ((body["provider"] as? String) ?? "Apple").trimmingCharacters(in: .whitespacesAndNewlines)
+                let avatarUrl = body["avatarUrl"] as? String
+                let avatarBg = body["avatarBg"] as? String
+                
+                let canonicalId = !rawId.isEmpty ? rawId : (!appleUserId.isEmpty ? "apple_\(appleUserId)" : "usr_\(Int(Date().timeIntervalSince1970))")
+                
+                if let idx = users.firstIndex(where: { u in
+                    let uid = (u["id"] as? String) ?? ""
+                    let aid = (u["appleUserId"] as? String) ?? ""
+                    let uemail = ((u["email"] as? String) ?? "").lowercased()
+                    if !canonicalId.isEmpty && (uid == canonicalId || (!appleUserId.isEmpty && (uid == appleUserId || aid == appleUserId))) {
+                        return true
+                    }
+                    if !email.isEmpty && uemail == email {
+                        return true
+                    }
+                    return false
+                }) {
+                    var existing = users[idx]
+                    // Preserve existing user's customized fullName, username, avatarUrl, avatarBg!
+                    if ((existing["fullName"] as? String) ?? "").isEmpty && !displayName.isEmpty {
+                        existing["fullName"] = displayName
+                    }
+                    if ((existing["email"] as? String) ?? "").isEmpty && !email.isEmpty {
+                        existing["email"] = email
+                    }
+                    if !appleUserId.isEmpty {
+                        existing["appleUserId"] = appleUserId
+                    }
+                    if ((existing["avatarUrl"] as? String) ?? "").isEmpty, let av = avatarUrl, !av.isEmpty {
+                        existing["avatarUrl"] = av
+                    }
+                    if ((existing["avatarBg"] as? String) ?? "").isEmpty, let bg = avatarBg, !bg.isEmpty {
+                        existing["avatarBg"] = bg
+                    }
+                    users[idx] = existing
+                    saveUsers(users)
+                    return (200, [
+                        "ok": true,
+                        "isExistingUser": true,
+                        "token": "local_tok_\(existing["id"] as? String ?? canonicalId)",
+                        "user": existing
+                    ])
+                } else {
+                    let finalName = !displayName.isEmpty ? displayName : (!reqUsername.isEmpty ? reqUsername : (email.components(separatedBy: "@").first ?? "Apple Kullanıcısı"))
+                    var baseUsername = !reqUsername.isEmpty ? reqUsername : (email.components(separatedBy: "@").first ?? finalName)
+                    baseUsername = baseUsername.lowercased().replacingOccurrences(of: "[^a-z0-9_.]", with: "", options: .regularExpression)
+                    if baseUsername.count < 3 { baseUsername = "user_\(Int.random(in: 1000...9999))" }
+                    if users.contains(where: { (($0["username"] as? String) ?? "").lowercased() == baseUsername }) {
+                        baseUsername = "\(baseUsername)\(Int.random(in: 10...999))"
+                    }
+                    let newUser: [String: Any] = [
+                        "id": canonicalId,
+                        "appleUserId": appleUserId,
+                        "fullName": finalName,
+                        "username": baseUsername,
+                        "email": email,
+                        "provider": provider,
+                        "avatarUrl": avatarUrl ?? "",
+                        "avatarBg": avatarBg ?? "linear-gradient(135deg, #ec4899, #8b5cf6)",
+                        "createdAt": ISO8601DateFormatter().string(from: Date())
+                    ]
+                    users.append(newUser)
+                    saveUsers(users)
+                    return (200, [
+                        "ok": true,
+                        "isExistingUser": false,
+                        "token": "local_tok_\(canonicalId)",
+                        "user": newUser
+                    ])
+                }
+            }
+            
+            if path == "/api/auth/register" && method == "POST" {
+                let fullName = ((body["fullName"] as? String) ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+                let username = ((body["username"] as? String) ?? "").trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+                let email = ((body["email"] as? String) ?? "").trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+                let password = (body["password"] as? String) ?? ""
+                
+                if !email.isEmpty && users.contains(where: { (($0["email"] as? String) ?? "").lowercased() == email }) {
+                    return (409, ["error": "Bu e-posta adresi ile zaten kayıtlı bir hesap bulunuyor. Lütfen giriş yapın."])
+                }
+                if !username.isEmpty && users.contains(where: { (($0["username"] as? String) ?? "").lowercased() == username }) {
+                    return (409, ["error": "Bu kullanıcı adı zaten alınmış."])
+                }
+                let uid = "usr_\(Int(Date().timeIntervalSince1970))_\(Int.random(in: 100...999))"
+                let newUser: [String: Any] = [
+                    "id": uid,
+                    "fullName": fullName,
+                    "username": username,
+                    "email": email,
+                    "password": password,
+                    "provider": "local",
+                    "avatarUrl": (body["avatarUrl"] as? String) ?? "",
+                    "avatarBg": (body["avatarBg"] as? String) ?? "linear-gradient(135deg, #ec4899, #8b5cf6)",
+                    "createdAt": ISO8601DateFormatter().string(from: Date())
+                ]
+                users.append(newUser)
+                saveUsers(users)
+                return (200, ["ok": true, "token": "local_tok_\(uid)", "user": newUser])
+            }
+            
+            if path == "/api/auth/login" && method == "POST" {
+                let identifier = ((body["identifier"] as? String) ?? (body["email"] as? String) ?? (body["username"] as? String) ?? "").trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+                let password = (body["password"] as? String) ?? ""
+                if let found = users.first(where: {
+                    let uemail = (($0["email"] as? String) ?? "").lowercased()
+                    let uname = (($0["username"] as? String) ?? "").lowercased()
+                    return (uemail == identifier || uname == identifier) && (($0["password"] as? String) ?? password) == password
+                }) {
+                    return (200, ["ok": true, "token": "local_tok_\(found["id"] as? String ?? "")", "user": found])
+                }
+                return (401, ["error": "Kullanıcı bulunamadı veya şifre hatalı."])
+            }
+            
+            if path == "/api/auth/update-profile" && method == "POST" {
+                let userId = ((body["id"] as? String) ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+                let email = ((body["email"] as? String) ?? "").trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+                if let idx = users.firstIndex(where: {
+                    let uid = ($0["id"] as? String) ?? ""
+                    let uemail = (($0["email"] as? String) ?? "").lowercased()
+                    return (!userId.isEmpty && uid == userId) || (!email.isEmpty && uemail == email)
+                }) {
+                    var u = users[idx]
+                    if let fn = body["fullName"] as? String, !fn.isEmpty { u["fullName"] = fn }
+                    if let un = body["username"] as? String, !un.isEmpty { u["username"] = un.lowercased() }
+                    if let av = body["avatarUrl"] as? String { u["avatarUrl"] = av }
+                    if let bg = body["avatarBg"] as? String, !bg.isEmpty { u["avatarBg"] = bg }
+                    users[idx] = u
+                    saveUsers(users)
+                    return (200, ["ok": true, "user": u])
+                }
+                return (200, ["ok": true])
+            }
+            
+            return (200, ["ok": true])
         }
     }
 }
@@ -1765,28 +2051,54 @@ extension ViewController: ASAuthorizationControllerDelegate, ASAuthorizationCont
     
     func authorizationController(controller: ASAuthorizationController, didCompleteWithAuthorization authorization: ASAuthorization) {
         if let appleIDCredential = authorization.credential as? ASAuthorizationAppleIDCredential {
-            let userIdentifier = appleIDCredential.user
+            var userIdentifier = appleIDCredential.user
             var email = appleIDCredential.email ?? ""
             var fullName = [appleIDCredential.fullName?.givenName, appleIDCredential.fullName?.familyName]
                 .compactMap { $0 }
                 .joined(separator: " ")
-            
-            // Cache full name and email in UserDefaults because Apple only sends them on the first authorization
-            if !fullName.isEmpty {
-                UserDefaults.standard.set(fullName, forKey: "apple_user_fullname_\(userIdentifier)")
-            } else {
-                fullName = UserDefaults.standard.string(forKey: "apple_user_fullname_\(userIdentifier)") ?? ""
-            }
-            if !email.isEmpty {
-                UserDefaults.standard.set(email, forKey: "apple_user_email_\(userIdentifier)")
-            } else {
-                email = UserDefaults.standard.string(forKey: "apple_user_email_\(userIdentifier)") ?? ""
-            }
+                .trimmingCharacters(in: .whitespacesAndNewlines)
             
             var identityTokenString = ""
             if let identityTokenData = appleIDCredential.identityToken,
                let token = String(data: identityTokenData, encoding: .utf8) {
                 identityTokenString = token
+                if let jwtClaims = MiruoPersistentAuthStore.shared.decodeJwtPayload(token) {
+                    if email.isEmpty, let jwtEmail = jwtClaims["email"] as? String, !jwtEmail.isEmpty {
+                        email = jwtEmail
+                    }
+                    if userIdentifier.isEmpty, let jwtSub = jwtClaims["sub"] as? String, !jwtSub.isEmpty {
+                        userIdentifier = jwtSub
+                    }
+                }
+            }
+            
+            let store = MiruoPersistentAuthStore.shared
+            // Persist & recover fullName and email in iOS Keychain + UserDefaults across reinstalls
+            if !fullName.isEmpty {
+                UserDefaults.standard.set(fullName, forKey: "apple_user_fullname_\(userIdentifier)")
+                store.saveKeychainString(fullName, account: "apple_fullname_\(userIdentifier)")
+            } else {
+                fullName = store.loadKeychainString(account: "apple_fullname_\(userIdentifier)")
+                    ?? UserDefaults.standard.string(forKey: "apple_user_fullname_\(userIdentifier)")
+                    ?? ""
+            }
+            if !email.isEmpty {
+                UserDefaults.standard.set(email, forKey: "apple_user_email_\(userIdentifier)")
+                store.saveKeychainString(email, account: "apple_email_\(userIdentifier)")
+            } else {
+                email = store.loadKeychainString(account: "apple_email_\(userIdentifier)")
+                    ?? UserDefaults.standard.string(forKey: "apple_user_email_\(userIdentifier)")
+                    ?? ""
+            }
+            
+            // Check if this Apple account is already registered in persistent store
+            if let existingUser = store.findExistingAppleUser(userIdentifier: userIdentifier, email: email) {
+                if fullName.isEmpty, let savedName = existingUser["fullName"] as? String, !savedName.isEmpty {
+                    fullName = savedName
+                }
+                if email.isEmpty, let savedEmail = existingUser["email"] as? String, !savedEmail.isEmpty {
+                    email = savedEmail
+                }
             }
             
             var authCodeString = ""
@@ -1795,7 +2107,7 @@ extension ViewController: ASAuthorizationControllerDelegate, ASAuthorizationCont
                 authCodeString = code
             }
             
-            let payload: [String: Any] = [
+            var payload: [String: Any] = [
                 "success": true,
                 "userIdentifier": userIdentifier,
                 "email": email,
@@ -1803,6 +2115,9 @@ extension ViewController: ASAuthorizationControllerDelegate, ASAuthorizationCont
                 "identityToken": identityTokenString,
                 "authorizationCode": authCodeString
             ]
+            if let existingUser = store.findExistingAppleUser(userIdentifier: userIdentifier, email: email) {
+                payload["existingUser"] = existingUser
+            }
             
             if let jsonData = try? JSONSerialization.data(withJSONObject: payload, options: []),
                let jsonString = String(data: jsonData, encoding: .utf8) {

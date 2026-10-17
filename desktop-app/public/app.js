@@ -3501,9 +3501,15 @@ function updatePlayPauseUI(playing) {
   if (playing) {
     dom.playIcon.classList.add('hidden');
     dom.pauseIcon.classList.remove('hidden');
+    if (typeof resetControlsHideTimer === 'function') {
+      resetControlsHideTimer();
+    }
   } else {
     dom.playIcon.classList.remove('hidden');
     dom.pauseIcon.classList.add('hidden');
+    if (typeof showStageControls === 'function') {
+      showStageControls();
+    }
   }
   updateMiniPlayerPlayPauseUI(playing);
 }
@@ -4122,6 +4128,10 @@ function updateFullscreenUI() {
   }
   if (dom.stageExitFullscreenFloatingBtn) {
     dom.stageExitFullscreenFloatingBtn.classList.toggle('hidden', !isFs);
+  }
+
+  if (typeof resetControlsHideTimer === 'function') {
+    resetControlsHideTimer();
   }
 
   // Apply PiP in fullscreen visibility rules
@@ -10748,14 +10758,55 @@ function initEvents() {
     });
   }
 
-  // Native Apple Sign In Callback from iOS Swift & macOS / Web
+  function decodeAppleJwtPayload(jwt) {
+    try {
+      if (!jwt || typeof jwt !== 'string' || !jwt.includes('.')) return null;
+      const parts = jwt.split('.');
+      if (parts.length < 2) return null;
+      let base64 = parts[1].replace(/-/g, '+').replace(/_/g, '/');
+      while (base64.length % 4 !== 0) base64 += '=';
+      const jsonStr = decodeURIComponent(
+        atob(base64)
+          .split('')
+          .map(c => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2))
+          .join('')
+      );
+      return JSON.parse(jsonStr);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  // Clean up any legacy fake/placeholder data ("Karabul7tt", "mac_touch_id_") from localStorage on load
+  (function cleanupLegacyFakeStorage() {
+    try {
+      const regList = JSON.parse(localStorage.getItem('miruo_registered_users') || '[]');
+      const cleaned = regList.filter(u => {
+        const n = String((u && (u.fullName || u.name || u.username)) || '').toLowerCase();
+        const e = String((u && u.email) || '').toLowerCase();
+        return n !== 'karabul7tt' && e !== 'mehmetkarabul7tt@icloud.com';
+      });
+      if (cleaned.length !== regList.length) {
+        localStorage.setItem('miruo_registered_users', JSON.stringify(cleaned));
+      }
+      const curUser = JSON.parse(localStorage.getItem('miruo_user') || 'null');
+      if (curUser) {
+        const cn = String(curUser.fullName || curUser.name || curUser.username || '').toLowerCase();
+        const ce = String(curUser.email || '').toLowerCase();
+        if (cn === 'karabul7tt' || ce === 'mehmetkarabul7tt@icloud.com') {
+          localStorage.removeItem('miruo_user');
+        }
+      }
+    } catch (_) {}
+  })();
+
+  // Native Apple Sign In Callback from iOS & macOS (ASAuthorizationController)
   window.handleNativeAppleSignInResponse = async function(response) {
     if (dom.appleLoginBtn) {
       dom.appleLoginBtn.classList.remove('opacity-60', 'pointer-events-none');
     }
 
     if (!response || !response.success) {
-      // If user canceled the Apple sheet, do not show any error alert
       if (response && (response.canceled || response.error === 'canceled' || (typeof response.error === 'string' && response.error.includes('1001')))) {
         console.log('[Miruo] Apple Sign In dismissed by user');
         hideAuthAlert();
@@ -10763,62 +10814,183 @@ function initEvents() {
       }
       const err = response && response.error ? response.error : 'İşlem tamamlanamadı.';
       console.warn('[Miruo] Native Apple Sign In error:', err);
-      showAuthAlert('Giriş işlemi tamamlanamadı. Lütfen tekrar deneyin.', false);
+      showAuthAlert('Apple ile giriş tamamlanamadı. Lütfen tekrar deneyin.', false);
       return;
     }
 
     hideAuthAlert();
     const userObj = response.user || {};
+    const existingFromNative = response.existingUser || null;
     const identityToken = response.identityToken || userObj.identityToken || '';
-    let email = (response.email || userObj.email || '').trim().toLowerCase();
-    if (!email || email.includes('@icloud.com')) {
-      email = localStorage.getItem('miruo_last_apple_email') || 'mehmetkarabul7tt@gmail.com';
-    }
-    localStorage.setItem('miruo_last_apple_email', email);
+    const jwtClaims = decodeAppleJwtPayload(identityToken) || {};
 
-    let fullName = (response.fullName || userObj.fullName || userObj.name || (userObj.firstName ? (userObj.firstName + ' ' + (userObj.lastName || '')).trim() : '') || '').trim();
-    if (!fullName || fullName === 'Apple Kullanıcısı') {
-      fullName = 'Mehmet Karabulut';
+    let rawAppleSub = String(response.userIdentifier || userObj.id || jwtClaims.sub || '').replace(/^apple_/, '').trim();
+    let email = String(
+      response.email ||
+      userObj.email ||
+      jwtClaims.email ||
+      (existingFromNative && existingFromNative.email) ||
+      (rawAppleSub && localStorage.getItem(`miruo_apple_email_${rawAppleSub}`)) ||
+      ''
+    ).trim().toLowerCase();
+
+    let incomingFullName = String(
+      response.fullName ||
+      userObj.fullName ||
+      userObj.name ||
+      (userObj.firstName ? `${userObj.firstName} ${userObj.lastName || ''}`.trim() : '') ||
+      (rawAppleSub && localStorage.getItem(`miruo_apple_name_${rawAppleSub}`)) ||
+      ''
+    ).trim();
+
+    if (rawAppleSub && email) {
+      localStorage.setItem(`miruo_apple_email_${rawAppleSub}`, email);
+    }
+    if (rawAppleSub && incomingFullName) {
+      localStorage.setItem(`miruo_apple_name_${rawAppleSub}`, incomingFullName);
     }
 
-    // 1. Auto-fill form inputs if present
-    if (fullName) {
-      const parts = fullName.trim().split(/\s+/);
-      const fn = parts[0] || '';
-      const ln = parts.slice(1).join(' ') || '';
-      if (dom.authFirstNameInput) dom.authFirstNameInput.value = fn;
-      if (dom.authLastNameInput) dom.authLastNameInput.value = ln;
-      if (dom.authNameInput) dom.authNameInput.value = fullName;
-      if (dom.editProfileNameInput) dom.editProfileNameInput.value = fullName;
-    }
-    if (email) {
-      if (dom.authContactInput) dom.authContactInput.value = email;
-    }
+    const canonicalAppleId = rawAppleSub ? `apple_${rawAppleSub}` : '';
 
-    // 2. Prepare user profile with identical cross-device deterministic ID
+    // 1. Look up if this Apple ID or Email is ALREADY registered locally
     const regList = JSON.parse(localStorage.getItem('miruo_registered_users') || '[]');
-    const existing = regList.find(u => (u.email && u.email.toLowerCase() === email) || (u.isApple && u.email));
+    const byEmail = JSON.parse(localStorage.getItem('miruo_profiles_by_email') || '{}');
+    let existingLocal = existingFromNative || regList.find(u =>
+      (rawAppleSub && (u.id === canonicalAppleId || u.id === rawAppleSub || u.appleUserId === rawAppleSub)) ||
+      (email && u.email && u.email.toLowerCase() === email)
+    ) || (email && byEmail[email]) || null;
 
-    let hash = 0;
-    for (let i = 0; i < email.length; i++) {
-      hash = ((hash << 5) - hash) + email.charCodeAt(i);
-      hash |= 0;
+    // 2. Sync & look up existing account from persistent backend (/api/auth/social-sync)
+    let backendUser = null;
+    try {
+      const syncResp = await fetch('/api/auth/social-sync', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: (existingLocal && existingLocal.id) || canonicalAppleId,
+          appleUserId: rawAppleSub,
+          email: email,
+          fullName: incomingFullName || (existingLocal && existingLocal.fullName) || '',
+          username: (existingLocal && existingLocal.username) || '',
+          provider: 'Apple',
+          avatarUrl: (existingLocal && existingLocal.avatarUrl) || '',
+          avatarBg: (existingLocal && existingLocal.avatarBg) || ''
+        })
+      });
+      if (syncResp && syncResp.ok) {
+        const syncData = await syncResp.json();
+        if (syncData && syncData.user) {
+          backendUser = syncData.user;
+        }
+      }
+    } catch (_) {}
+
+    // 3. Also check Supabase profiles table for existing cross-device Apple account
+    let supaProfile = null;
+    if (supabaseClient) {
+      try {
+        if (identityToken && supabaseClient.auth) {
+          const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 2500));
+          await Promise.race([
+            supabaseClient.auth.signInWithIdToken({ provider: 'apple', token: identityToken }),
+            timeoutPromise
+          ]).catch(() => {});
+        }
+        const lookupId = (backendUser && backendUser.id) || (existingLocal && existingLocal.id) || canonicalAppleId;
+        if (lookupId) {
+          const { data: profById } = await supabaseClient
+            .from('profiles')
+            .select('*')
+            .eq('id', lookupId)
+            .maybeSingle();
+          if (profById) supaProfile = profById;
+        }
+        if (!supaProfile && email) {
+          const { data: profByEmail } = await supabaseClient
+            .from('profiles')
+            .select('*')
+            .ilike('email', email)
+            .maybeSingle();
+          if (profByEmail) supaProfile = profByEmail;
+        }
+      } catch (_) {}
     }
-    const deterministicId = 'apple_' + Math.abs(hash).toString(16);
-    const userIdentifier = (existing && existing.id) || deterministicId;
 
-    const safeUsername = (existing && existing.username) || email.split('@')[0].replace(/[^a-zA-Z0-9_]/g, '') || 'mehmetkarabul7tt';
-    const displayName = fullName || (existing && existing.fullName) || 'Mehmet Karabulut';
-    const avatarChar = displayName.charAt(0).toUpperCase() || 'M';
+    // 4. Merge & preserve existing account profile (1 Apple account = 1 registration, keeps saved profile!)
+    const genericLabels = ['kullanıcı', 'kullanici', 'apple kullanıcısı', 'apple user', 'user', 'misafir'];
+    const pickValidName = (...candidates) => {
+      for (const c of candidates) {
+        const s = String(c || '').trim();
+        if (s && !s.startsWith('@') && !genericLabels.includes(s.toLowerCase())) {
+          return s;
+        }
+      }
+      return '';
+    };
+
+    const resolvedId =
+      (supaProfile && supaProfile.id) ||
+      (backendUser && backendUser.id) ||
+      (existingLocal && existingLocal.id) ||
+      canonicalAppleId ||
+      ('apple_' + Date.now().toString(36));
+
+    const resolvedEmail = (
+      email ||
+      (supaProfile && supaProfile.email) ||
+      (backendUser && backendUser.email) ||
+      (existingLocal && existingLocal.email) ||
+      ''
+    ).toLowerCase();
+
+    const displayName =
+      pickValidName(
+        existingLocal && existingLocal.fullName,
+        supaProfile && (supaProfile.full_name || supaProfile.name),
+        backendUser && backendUser.fullName,
+        incomingFullName
+      ) ||
+      (resolvedEmail ? resolvedEmail.split('@')[0] : 'Apple Kullanıcısı');
+
+    let safeUsername = (
+      (existingLocal && existingLocal.username) ||
+      (supaProfile && supaProfile.username) ||
+      (backendUser && backendUser.username) ||
+      (resolvedEmail ? resolvedEmail.split('@')[0] : displayName)
+    )
+      .replace(/^@/, '')
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9_.]/g, '');
+
+    if (!safeUsername || safeUsername.length < 3) {
+      safeUsername = 'user_' + (rawAppleSub ? rawAppleSub.slice(0, 6).toLowerCase().replace(/[^a-z0-9]/g, '') : Math.floor(1000 + Math.random() * 9000));
+    }
+
+    const resolvedAvatarUrl =
+      (existingLocal && existingLocal.avatarUrl) ||
+      (supaProfile && supaProfile.avatar_url) ||
+      (backendUser && backendUser.avatarUrl) ||
+      '';
+
+    const resolvedAvatarBg =
+      (existingLocal && existingLocal.avatarBg) ||
+      (supaProfile && supaProfile.avatar_bg) ||
+      (backendUser && backendUser.avatarBg) ||
+      'from-rose-500 to-indigo-600';
+
+    const avatarChar = (displayName || safeUsername || 'A').charAt(0).toUpperCase();
 
     const verifiedUser = {
-      id: userIdentifier,
+      id: resolvedId,
+      appleUserId: rawAppleSub || undefined,
       name: displayName,
       fullName: displayName,
       username: safeUsername,
-      email: email,
+      email: resolvedEmail,
+      avatarUrl: resolvedAvatarUrl,
       avatarChar: avatarChar,
-      avatarBg: 'from-rose-500 to-indigo-600',
+      avatarBg: resolvedAvatarBg,
       isApple: true,
       provider: 'apple',
       isGuest: false
@@ -10826,16 +10998,22 @@ function initEvents() {
 
     localStorage.setItem('miruo_user', JSON.stringify(verifiedUser));
     state.userId = verifiedUser.id;
-    state.username = verifiedUser.name;
+    state.username = verifiedUser.username;
+    state.avatarUrl = verifiedUser.avatarUrl || '';
+    state.avatarBg = verifiedUser.avatarBg;
 
-    // Save to local registered accounts so subsequent logins or checks recognize this account!
+    // Persist in local registered users list without creating duplicates
     try {
-      const cleanUName = safeUsername.replace(/^@/, '');
-      const idx = regList.findIndex(u => (u.email && u.email.toLowerCase() === email) || (u.id && u.id === verifiedUser.id) || (u.username && u.username.toLowerCase() === cleanUName));
+      const idx = regList.findIndex(u =>
+        (u.id && u.id === verifiedUser.id) ||
+        (rawAppleSub && u.appleUserId === rawAppleSub) ||
+        (resolvedEmail && u.email && u.email.toLowerCase() === resolvedEmail)
+      );
       const entry = {
         id: verifiedUser.id,
-        email: email,
-        username: cleanUName,
+        appleUserId: rawAppleSub || undefined,
+        email: resolvedEmail,
+        username: safeUsername,
         fullName: displayName,
         avatarUrl: verifiedUser.avatarUrl || '',
         avatarBg: verifiedUser.avatarBg,
@@ -10843,16 +11021,17 @@ function initEvents() {
         provider: 'apple'
       };
       if (idx >= 0) {
-        regList[idx] = Object.assign(regList[idx], entry);
+        regList[idx] = Object.assign({}, regList[idx], entry);
       } else {
         regList.push(entry);
       }
       localStorage.setItem('miruo_registered_users', JSON.stringify(regList));
 
-      const byEmail = JSON.parse(localStorage.getItem('miruo_profiles_by_email') || '{}');
-      byEmail[email] = entry;
-      localStorage.setItem('miruo_profiles_by_email', JSON.stringify(byEmail));
-      localStorage.setItem('miruo_custom_username', cleanUName);
+      if (resolvedEmail) {
+        byEmail[resolvedEmail] = entry;
+        localStorage.setItem('miruo_profiles_by_email', JSON.stringify(byEmail));
+      }
+      localStorage.setItem('miruo_custom_username', safeUsername);
     } catch (_) {}
 
     if (window.miruoDesktop && typeof window.miruoDesktop.saveDesktopProfile === 'function') {
@@ -10865,49 +11044,14 @@ function initEvents() {
       dom.authModal.classList.add('hidden');
       unfreezeBackgroundAfterModal();
     }
-    const appleModal = document.getElementById('appleSignInModal');
-    if (appleModal) appleModal.classList.add('hidden');
 
-    // Re-render settings if open
     if (dom.profileEditModal && !dom.profileEditModal.classList.contains('hidden')) {
       if (typeof openProfileEditModal === 'function') openProfileEditModal();
     }
     showToast(`Apple ile giriş yapıldı: ${displayName}`);
 
-    // 3. Sync to central backend server (server.mjs / users.json)
-    try {
-      fetch('/api/auth/social-sync', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          id: verifiedUser.id,
-          email: verifiedUser.email,
-          fullName: verifiedUser.fullName,
-          username: verifiedUser.username,
-          provider: 'apple',
-          avatarUrl: verifiedUser.avatarUrl || '',
-          avatarBg: verifiedUser.avatarBg
-        })
-      }).catch(() => {});
-    } catch (_) {}
-
-    // 4. Supabase background sync (non-blocking)
-    if (supabaseClient && supabaseClient.auth) {
-      (async () => {
-        try {
-          if (identityToken) {
-            const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 3000));
-            await Promise.race([
-              supabaseClient.auth.signInWithIdToken({ provider: 'apple', token: identityToken }),
-              timeoutPromise
-            ]).catch(e => console.warn('[Miruo] Supabase Apple token info:', e.message));
-          }
-          syncUserProfileToSupabase(verifiedUser);
-        } catch (err) {
-          console.warn('[Miruo] Supabase background sync note:', err);
-        }
-      })();
-    }
+    // Keep Supabase profile synced
+    syncUserProfileToSupabase(verifiedUser);
   };
 
   // Native OAuth (Google) Callback from iOS ASWebAuthenticationSession
@@ -10944,7 +11088,6 @@ function initEvents() {
       const safeUsername = profile.usernameBase || ('user_' + Math.random().toString(36).substring(2, 6));
       const avatarChar = displayName.charAt(0).toUpperCase() || 'M';
 
-      // Auto-fill form inputs
       if (profile.name) {
         const parts = profile.name.trim().split(/\s+/);
         if (dom.authFirstNameInput) dom.authFirstNameInput.value = parts[0] || '';
@@ -10959,18 +11102,20 @@ function initEvents() {
       const verifiedUser = {
         id: user.id,
         name: displayName,
+        fullName: displayName,
         username: safeUsername,
         email: user.email || '',
         avatarChar: avatarChar,
         avatarUrl: profile.avatar || null,
         avatarBg: 'from-rose-500 to-indigo-600',
         isGoogle: true,
-        provider: 'google'
+        provider: 'google',
+        isGuest: false
       };
 
       localStorage.setItem('miruo_user', JSON.stringify(verifiedUser));
       state.userId = verifiedUser.id;
-      state.username = verifiedUser.name;
+      state.username = verifiedUser.username;
       updateUserUI(verifiedUser);
 
       if (dom.authModal) {
@@ -10985,7 +11130,7 @@ function initEvents() {
     }
   };
 
-  // Social Auth Handlers (Google OAuth & Native Apple Sign In)
+  // Social Auth Handlers (Google OAuth & 100% Real Native Apple Sign In)
   async function handleSocialLogin(provider) {
     const isGoogle = provider.toLowerCase() === 'google';
     const btn = isGoogle ? dom.googleLoginBtn : dom.appleLoginBtn;
@@ -10997,113 +11142,24 @@ function initEvents() {
       try {
         window.webkit.messageHandlers.startAppleSignIn.postMessage({});
       } catch (e) {
-        console.warn('[Miruo] startAppleSignIn failed, falling back:', e);
+        console.warn('[Miruo] startAppleSignIn failed:', e);
         if (btn) btn.classList.remove('opacity-60', 'pointer-events-none');
       }
       return;
     }
 
-    // 1b. Non-iOS (macOS Desktop & Web): Open Authentic Apple Sign In Sheet!
-    if (!isGoogle) {
+    // 1b. Native macOS Desktop Apple Sign In (via ASAuthorizationController in MiruoAppleAuth.app)
+    if (!isGoogle && window.miruoDesktop && typeof window.miruoDesktop.promptAppleTouchID === 'function') {
       hideAuthAlert();
-      const appleModal = document.getElementById('appleSignInModal');
-      const emailInput = document.getElementById('appleModalEmail');
-      const nameInput = document.getElementById('appleModalFullName');
-      const confirmBtn = document.getElementById('confirmAppleSignInBtn');
-      const cancelBtn = document.getElementById('cancelAppleSignInBtn');
-
-      if (appleModal) {
-        // Pre-fill with existing profile, saved apple email, or current device details
-        const regList = JSON.parse(localStorage.getItem('miruo_registered_users') || '[]');
-        const existingApple = regList.find(u => u.isApple || u.provider === 'apple');
-        let defaultEmail = (existingApple && existingApple.email) || localStorage.getItem('miruo_last_apple_email') || '';
-        let defaultName = (existingApple && existingApple.fullName) || '';
-
-        // Dynamically query system user info on Mac Desktop
-        if (window.miruoDesktop && typeof window.miruoDesktop.getSystemUserInfo === 'function') {
-          try {
-            const sysInfo = await window.miruoDesktop.getSystemUserInfo();
-            if (!defaultName && sysInfo.fullName) defaultName = sysInfo.fullName;
-            if (!defaultEmail && sysInfo.email) defaultEmail = sysInfo.email;
-          } catch (_) {}
-        }
-
-        if (emailInput) {
-          emailInput.value = defaultEmail;
-          emailInput.placeholder = 'Apple ID e-posta adresiniz (örn. ad@icloud.com veya gmail.com)';
-        }
-        if (nameInput) {
-          nameInput.value = defaultName;
-          nameInput.placeholder = 'Adınız ve Soyadınız';
-        }
-
-        appleModal.classList.remove('hidden');
-        if (!defaultEmail && emailInput) {
-          emailInput.focus();
-        }
-
-        if (cancelBtn) {
-          cancelBtn.onclick = () => {
-            appleModal.classList.add('hidden');
-          };
-        }
-
-        if (confirmBtn) {
-          confirmBtn.onclick = async () => {
-            const finalEmail = ((emailInput && emailInput.value) || defaultEmail || '').trim().toLowerCase();
-            const finalName = ((nameInput && nameInput.value) || defaultName || '').trim();
-
-            if (!finalEmail || !finalEmail.includes('@')) {
-              showAuthAlert('Lütfen geçerli bir Apple ID e-posta adresi girin.', false);
-              if (emailInput) emailInput.focus();
-              return;
-            }
-
-            localStorage.setItem('miruo_last_apple_email', finalEmail);
-
-            // If running inside Mac Desktop app, trigger Touch ID verification for 100% native feel!
-            if (window.miruoDesktop && typeof window.miruoDesktop.promptAppleTouchID === 'function') {
-              try {
-                confirmBtn.disabled = true;
-                confirmBtn.classList.add('opacity-60');
-                const res = await window.miruoDesktop.promptAppleTouchID({ email: finalEmail, fullName: finalName });
-                confirmBtn.disabled = false;
-                confirmBtn.classList.remove('opacity-60');
-                if (res && res.success) {
-                  appleModal.classList.add('hidden');
-                  window.handleNativeAppleSignInResponse(res);
-                  return;
-                } else if (res && res.canceled) {
-                  return;
-                }
-              } catch (err) {
-                console.warn('[Miruo] Desktop Touch ID error:', err);
-              }
-            }
-
-            // Web or fallback completion
-            appleModal.classList.add('hidden');
-            let hash = 0;
-            for (let i = 0; i < finalEmail.length; i++) {
-              hash = ((hash << 5) - hash) + finalEmail.charCodeAt(i);
-              hash |= 0;
-            }
-            const resolvedId = 'apple_' + Math.abs(hash).toString(16);
-            window.handleNativeAppleSignInResponse({
-              success: true,
-              email: finalEmail,
-              fullName: finalName,
-              userIdentifier: resolvedId,
-              user: {
-                id: resolvedId,
-                email: finalEmail,
-                name: finalName,
-                fullName: finalName,
-                username: finalEmail.split('@')[0].replace(/[^a-zA-Z0-9_]/g, '')
-              }
-            });
-          };
-        }
+      if (btn) btn.classList.add('opacity-60', 'pointer-events-none');
+      try {
+        const res = await window.miruoDesktop.promptAppleTouchID();
+        if (btn) btn.classList.remove('opacity-60', 'pointer-events-none');
+        window.handleNativeAppleSignInResponse(res);
+      } catch (err) {
+        if (btn) btn.classList.remove('opacity-60', 'pointer-events-none');
+        console.warn('[Miruo] Native macOS Apple Sign-In error:', err);
+        showAuthAlert('Apple ile giriş başlatılamadı. Lütfen tekrar deneyin.', false);
       }
       return;
     }
@@ -11139,7 +11195,7 @@ function initEvents() {
       return;
     }
 
-    // 3. Web Fallback (when not on native iOS/macOS)
+    // 3. Web OAuth (when running in a standard web browser)
     const provId = isGoogle ? 'google' : 'apple';
     hideAuthAlert();
     if (btn) btn.classList.add('opacity-60', 'pointer-events-none');
@@ -12197,6 +12253,29 @@ function initEvents() {
           if (dom.authContactInput) dom.authContactInput.focus();
           return;
         }
+        const cleanRegEmail = contactVal.trim().toLowerCase();
+        const existingRegUsers = JSON.parse(localStorage.getItem('miruo_registered_users') || '[]');
+        const existingByEmail = JSON.parse(localStorage.getItem('miruo_profiles_by_email') || '{}');
+        if (
+          existingRegUsers.some(u => u && u.email && u.email.toLowerCase() === cleanRegEmail) ||
+          Boolean(existingByEmail[cleanRegEmail])
+        ) {
+          showAuthAlert("Bu e-posta adresi ile zaten kayıtlı bir hesap bulunuyor! Tek e-posta ile yalnızca 1 kez kayıt olunabilir. Lütfen 'Giriş Yap' sekmesinden giriş yapın.");
+          return;
+        }
+        if (supabaseClient) {
+          try {
+            const { data: existingSupa } = await supabaseClient
+              .from('profiles')
+              .select('id, email')
+              .ilike('email', cleanRegEmail)
+              .maybeSingle();
+            if (existingSupa && existingSupa.id) {
+              showAuthAlert("Bu e-posta adresi ile zaten kayıtlı bir hesap bulunuyor! Tek e-posta ile yalnızca 1 kez kayıt olunabilir. Lütfen 'Giriş Yap' sekmesinden giriş yapın.");
+              return;
+            }
+          } catch (_) {}
+        }
         if (!passwordVal || passwordVal.length < 6) {
           showAuthAlert("Şifre en az 6 karakter olmalıdır.");
           if (dom.authPasswordInput) dom.authPasswordInput.focus();
@@ -12215,7 +12294,7 @@ function initEvents() {
         handleSendEmailOtp({
           fullName: fullName,
           username: cleanUsername,
-          email: contactVal,
+          email: cleanRegEmail,
           password: passwordVal,
           avatarUrl: selectedSignUpAvatarData || ''
         });
@@ -14207,10 +14286,14 @@ function initEvents() {
       localStorage.setItem('miruo_user', JSON.stringify(savedUser));
       localStorage.setItem('miruo_custom_username', cleanUsername);
       persistUserToLocalRegistry(savedUser, currentActiveUsername);
+      if (window.miruoDesktop && typeof window.miruoDesktop.saveDesktopProfile === 'function') {
+        try { window.miruoDesktop.saveDesktopProfile(savedUser); } catch (_) {}
+      }
 
-      // 1. Sync to backend users.json
+      // 1. Sync to backend users.json & embedded native auth store
       try {
         const updatePayload = {
+          id: savedUser.id || state.userId,
           userId: savedUser.id || state.userId,
           email: savedUser.email || '',
           oldUsername: currentActiveUsername,
@@ -17043,18 +17126,25 @@ function initAuthOwlMascot() {
 }
 
 // ==========================================
-// 6.1 YOUTUBE-STYLE AUTO-HIDE CONTROLS
+// 6.1 YOUTUBE-STYLE AUTO-HIDE CONTROLS (Desktop & Mobile Parity)
 // ==========================================
 let controlsHideTimeout = null;
+let isTouchingStage = false;
 
 function getStageControlElements() {
   return [
     dom.stageFloatingFullscreenBtn,
+    dom.stageExitFullscreenFloatingBtn,
     document.getElementById('raveRoomSettingsBtn'),
-    document.getElementById('backToLobbyBtn'),
     document.getElementById('ravePlayerOverlay'),
-    document.getElementById('roomAccessBtn')
+    document.getElementById('closePhotoStageBtn')
   ].filter(Boolean);
+}
+
+function areStageControlsVisible() {
+  if (!dom.ravePlayerOverlay) return true;
+  return !dom.ravePlayerOverlay.classList.contains('fs-controls-hidden') &&
+         !dom.ravePlayerOverlay.classList.contains('opacity-0');
 }
 
 function showStageControls() {
@@ -17072,11 +17162,11 @@ function showStageControls() {
 }
 
 function hideStageControls() {
-  // Do NOT hide if video is paused, or if 3-dots settings menu is open
+  // Do NOT hide if video is paused, if 3-dots settings menu is open, or while touching/dragging
   const isPaused = state.isPlaying === false;
   const menu = document.getElementById('raveRoomSettingsMenu');
   const isMenuOpen = menu && !menu.classList.contains('hidden');
-  if (isPaused || isMenuOpen) return;
+  if (isPaused || isMenuOpen || isTouchingStage) return;
 
   const elements = getStageControlElements();
   elements.forEach(el => {
@@ -17091,44 +17181,120 @@ function hideStageControls() {
   }
 }
 
-function resetControlsHideTimer() {
+function resetControlsHideTimer(delay = 2500) {
   showStageControls();
-  clearTimeout(controlsHideTimeout);
+  if (controlsHideTimeout) {
+    clearTimeout(controlsHideTimeout);
+    controlsHideTimeout = null;
+  }
 
   const isPaused = state.isPlaying === false;
   const menu = document.getElementById('raveRoomSettingsMenu');
   const isMenuOpen = menu && !menu.classList.contains('hidden');
 
   // Auto-hide after 2.5 seconds of inactivity when playing
-  if (!isPaused && !isMenuOpen) {
+  if (!isPaused && !isMenuOpen && !isTouchingStage) {
     controlsHideTimeout = setTimeout(() => {
       hideStageControls();
-    }, 2500);
+    }, delay);
   }
 }
 window.resetControlsHideTimer = resetControlsHideTimer;
+window.showStageControls = showStageControls;
+window.hideStageControls = hideStageControls;
 
 function initStageAutoHideEvents() {
   if (!dom.stageContainer) return;
 
-  ['mousemove', 'pointermove', 'touchstart', 'touchmove'].forEach(evt => {
+  // Desktop mouse movement reveals controls and resets timer
+  ['mousemove', 'pointermove'].forEach(evt => {
     dom.stageContainer.addEventListener(evt, () => {
       resetControlsHideTimer();
     }, { passive: true });
   });
 
-  dom.stageContainer.addEventListener('mouseleave', () => {
+  // Fullscreen global mouse listener so moving anywhere reveals controls
+  window.addEventListener('mousemove', (e) => {
+    if (isStageFullscreen()) {
+      resetControlsHideTimer();
+    }
+  }, { passive: true });
+
+  // Touch handlers for mobile / touch devices
+  dom.stageContainer.addEventListener('touchstart', (e) => {
+    if (e.target.closest('button') || e.target.closest('input') || e.target.closest('#raveRoomSettingsMenu')) {
+      resetControlsHideTimer();
+      return;
+    }
+    isTouchingStage = true;
+    if (controlsHideTimeout) {
+      clearTimeout(controlsHideTimeout);
+      controlsHideTimeout = null;
+    }
+  }, { passive: true });
+
+  dom.stageContainer.addEventListener('touchmove', () => {
+    isTouchingStage = true;
+    if (controlsHideTimeout) {
+      clearTimeout(controlsHideTimeout);
+      controlsHideTimeout = null;
+    }
+  }, { passive: true });
+
+  dom.stageContainer.addEventListener('touchend', () => {
+    isTouchingStage = false;
     const isPaused = state.isPlaying === false;
-    const menu = document.getElementById('raveRoomSettingsMenu');
-    const isMenuOpen = menu && !menu.classList.contains('hidden');
-    if (!isPaused && !isMenuOpen) {
-      hideStageControls();
+    if (!isPaused) {
+      resetControlsHideTimer(2500);
+    }
+  }, { passive: true });
+
+  // Mouse leave player stage (only when windowed)
+  dom.stageContainer.addEventListener('mouseleave', () => {
+    if (!isStageFullscreen()) {
+      const isPaused = state.isPlaying === false;
+      const menu = document.getElementById('raveRoomSettingsMenu');
+      const isMenuOpen = menu && !menu.classList.contains('hidden');
+      if (!isPaused && !isMenuOpen) {
+        hideStageControls();
+      }
     }
   });
 
+  // Tap or Click handling: Toggle controls when tapping on empty stage, refresh timer when tapping controls
   dom.stageContainer.addEventListener('click', (e) => {
-    // Reveal and refresh timer on click
-    resetControlsHideTimer();
+    if (document.body.classList.contains('has-mini-player')) return;
+
+    const isControl = e.target.closest('button') ||
+                      e.target.closest('input') ||
+                      e.target.closest('a') ||
+                      e.target.closest('#raveRoomSettingsMenu') ||
+                      e.target.closest('#partnerPipCard') ||
+                      e.target.closest('#selfPipCard');
+
+    if (isControl) {
+      resetControlsHideTimer();
+      return;
+    }
+
+    const isPaused = state.isPlaying === false;
+    const menu = document.getElementById('raveRoomSettingsMenu');
+    const isMenuOpen = menu && !menu.classList.contains('hidden');
+
+    if (isMenuOpen) {
+      menu.classList.add('hidden');
+      resetControlsHideTimer();
+      return;
+    }
+
+    // Toggle controls YouTube-style
+    if (areStageControlsVisible()) {
+      if (!isPaused) {
+        hideStageControls();
+      }
+    } else {
+      resetControlsHideTimer();
+    }
   });
 
   document.addEventListener('keydown', (e) => {

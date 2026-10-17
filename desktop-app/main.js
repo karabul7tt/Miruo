@@ -1,131 +1,238 @@
-const { app, BrowserWindow, shell, session, Menu, ipcMain, systemPreferences } = require('electron');
+const { app, BrowserWindow, shell, session, Menu, ipcMain } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const http = require('http');
+const { spawn, execFileSync } = require('child_process');
 
 let mainWindow = null;
 let localServer = null;
 let localPort = 0;
 
-// Native macOS Touch ID (Parmak İzi) Authentication Handler
-// Native macOS Touch ID (Parmak İzi) Authentication Handler
-ipcMain.handle('mac-touch-id-apple-sign-in', async (event, customDetails) => {
+// Persistent User Database & Profile Paths in UserData Directory
+const userDataDir = app.getPath('userData');
+const usersDbPath = path.join(userDataDir, 'miruo_users_db.json');
+const desktopProfilePath = path.join(userDataDir, 'miruo_profile.json');
+const appleAuthPath = path.join(userDataDir, 'miruo_apple_auth.json');
+
+// Clean up any legacy fake/placeholder data ("Karabul7tt", "@icloud.com") from previous builds
+function sanitizeLegacyFakeFiles() {
+  for (const filePath of [desktopProfilePath, appleAuthPath]) {
+    try {
+      if (fs.existsSync(filePath)) {
+        const raw = fs.readFileSync(filePath, 'utf8');
+        const parsed = JSON.parse(raw);
+        const nameStr = String((parsed && (parsed.fullName || parsed.name || parsed.username)) || '').toLowerCase();
+        const emailStr = String((parsed && parsed.email) || '').toLowerCase();
+        const tokStr = String((parsed && parsed.identityToken) || '');
+        if (
+          nameStr === 'karabul7tt' ||
+          emailStr === 'mehmetkarabul7tt@icloud.com' ||
+          tokStr.startsWith('mac_touch_id_')
+        ) {
+          fs.unlinkSync(filePath);
+        }
+      }
+    } catch (_) {}
+  }
+}
+sanitizeLegacyFakeFiles();
+
+function loadLocalUsers() {
+  try {
+    if (fs.existsSync(usersDbPath)) {
+      const data = JSON.parse(fs.readFileSync(usersDbPath, 'utf8'));
+      if (Array.isArray(data)) {
+        return data.filter(u => {
+          const n = String((u && (u.fullName || u.username)) || '').toLowerCase();
+          const e = String((u && u.email) || '').toLowerCase();
+          return n !== 'karabul7tt' && e !== 'mehmetkarabul7tt@icloud.com';
+        });
+      }
+    }
+  } catch (_) {}
+  return [];
+}
+
+function saveLocalUsers(users) {
+  try {
+    fs.writeFileSync(usersDbPath, JSON.stringify(users, null, 2), 'utf8');
+  } catch (err) {
+    console.warn('[Miruo Desktop] Failed to save users DB:', err);
+  }
+}
+
+function decodeJwtPayload(jwt) {
+  try {
+    if (!jwt || typeof jwt !== 'string') return null;
+    const parts = jwt.split('.');
+    if (parts.length < 2) return null;
+    let base64 = parts[1].replace(/-/g, '+').replace(/_/g, '/');
+    while (base64.length % 4 !== 0) base64 += '=';
+    return JSON.parse(Buffer.from(base64, 'base64').toString('utf8'));
+  } catch (_) {
+    return null;
+  }
+}
+
+function resolveAppleAuthHelperBinary() {
+  try {
+    const b64Path = path.join(__dirname, 'apple-auth-bundle.b64');
+    const extractedApp = path.join(userDataDir, 'MiruoAppleAuth.app');
+    const extractedBin = path.join(extractedApp, 'Contents', 'MacOS', 'MiruoAppleAuth');
+    if (fs.existsSync(b64Path)) {
+      if (!fs.existsSync(extractedBin)) {
+        const b64Data = fs.readFileSync(b64Path, 'utf8').replace(/\s+/g, '');
+        const zipBuf = Buffer.from(b64Data, 'base64');
+        const tmpZip = path.join(userDataDir, 'MiruoAppleAuth_tmp.zip');
+        fs.writeFileSync(tmpZip, zipBuf);
+        try {
+          if (fs.existsSync(extractedApp)) {
+            fs.rmSync(extractedApp, { recursive: true, force: true });
+          }
+          execFileSync('/usr/bin/ditto', ['-x', '-k', tmpZip, userDataDir]);
+          execFileSync('/usr/bin/xattr', ['-cr', extractedApp]);
+        } finally {
+          try { fs.unlinkSync(tmpZip); } catch (_) {}
+        }
+      }
+      if (fs.existsSync(extractedBin)) {
+        return extractedBin;
+      }
+    }
+  } catch (err) {
+    console.warn('[Miruo Desktop] Failed to extract Apple Auth helper:', err);
+  }
+
+  const candidates = [
+    path.join(userDataDir, 'MiruoAppleAuth.app', 'Contents', 'MacOS', 'MiruoAppleAuth'),
+    path.join(process.resourcesPath || '', 'MiruoAppleAuth.app', 'Contents', 'MacOS', 'MiruoAppleAuth'),
+    path.join(__dirname, 'MiruoAppleAuth.app', 'Contents', 'MacOS', 'MiruoAppleAuth'),
+    path.join(__dirname, '..', 'MiruoAppleAuth.app', 'Contents', 'MacOS', 'MiruoAppleAuth'),
+    path.join(__dirname, '..', 'mac-auth', 'build', 'Release', 'MiruoAppleAuth.app', 'Contents', 'MacOS', 'MiruoAppleAuth')
+  ];
+  for (const candidate of candidates) {
+    if (candidate && fs.existsSync(candidate)) {
+      return candidate;
+    }
+  }
+  return null;
+}
+
+// Real Native macOS Sign in with Apple (ASAuthorizationAppleIDProvider via MiruoAppleAuth.app)
+ipcMain.handle('mac-touch-id-apple-sign-in', async () => {
   if (process.platform !== 'darwin') {
-    return { success: false, error: 'Touch ID yalnızca macOS üzerinde kullanılabilir.' };
+    return { success: false, error: 'Apple ile Giriş yalnızca macOS ve iOS üzerinde kullanılabilir.' };
   }
-  try {
-    if (systemPreferences && typeof systemPreferences.canPromptTouchID === 'function' && systemPreferences.canPromptTouchID()) {
-      await systemPreferences.promptTouchID('Miruo hesabınıza Apple ID ile giriş yapmak için Touch ID (Parmak İzi) kullanın');
-    }
+  const helperBin = resolveAppleAuthHelperBinary();
+  if (!helperBin) {
+    return { success: false, error: 'Native Apple Sign-In bileşeni (MiruoAppleAuth) bulunamadı.' };
+  }
 
-    const os = require('os');
-    const sysUser = (os.userInfo && os.userInfo().username) || 'user';
-    const appleAuthPath = path.join(app.getPath('userData'), 'miruo_apple_auth.json');
-    let appleProfile = null;
-    if (fs.existsSync(appleAuthPath)) {
-      try {
-        appleProfile = JSON.parse(fs.readFileSync(appleAuthPath, 'utf8'));
-      } catch (_) {}
-    }
+  return new Promise((resolve) => {
+    let stdoutBuf = '';
+    let stderrBuf = '';
+    let finished = false;
 
-    // 1. Resolve Real Apple Email (from UI input, git config, or stable user email)
-    let realEmail = (customDetails && customDetails.email) || (appleProfile && appleProfile.email);
-    if (!realEmail || realEmail.includes('@icloud.com')) {
-      try {
-        const { execSync } = require('child_process');
-        const gitEmail = execSync('git config user.email', { encoding: 'utf8' }).trim();
-        if (gitEmail && gitEmail.includes('@')) realEmail = gitEmail;
-      } catch (_) {}
-    }
-    if (!realEmail) {
-      realEmail = `${sysUser.toLowerCase()}@gmail.com`;
-    }
+    const child = spawn(helperBin, [], {
+      stdio: ['ignore', 'pipe', 'pipe']
+    });
 
-    // 2. Resolve Real Full Name
-    let realName = (customDetails && customDetails.fullName) || (appleProfile && (appleProfile.fullName || appleProfile.name));
-    if (!realName || realName === 'Apple Kullanıcısı') {
-      try {
-        const { execSync } = require('child_process');
-        const out = execSync('id -F', { encoding: 'utf8' }).trim();
-        if (out && out.length > 0 && out.toLowerCase() !== 'karabul7tt') realName = out;
-      } catch (_) {}
-    }
-    if (!realName || realName.length < 2) {
-      realName = 'Mehmet Karabulut';
-    }
-
-    // 3. Deterministic user ID: exact same algorithm as iPhone so both devices resolve to the exact same user ID!
-    const cleanEmail = realEmail.toLowerCase().trim();
-    let hash = 0;
-    for (let i = 0; i < cleanEmail.length; i++) {
-      hash = ((hash << 5) - hash) + cleanEmail.charCodeAt(i);
-      hash |= 0;
-    }
-    const resolvedId = 'apple_' + Math.abs(hash).toString(16);
-    const safeUsername = cleanEmail.split('@')[0].replace(/[^a-zA-Z0-9_]/g, '') || sysUser.toLowerCase();
-
-    appleProfile = {
-      id: resolvedId,
-      email: cleanEmail,
-      name: realName,
-      fullName: realName,
-      firstName: realName.split(' ')[0] || sysUser,
-      lastName: realName.split(' ').slice(1).join(' ') || '',
-      username: safeUsername
+    const finish = (result) => {
+      if (finished) return;
+      finished = true;
+      resolve(result);
     };
 
-    try {
-      fs.writeFileSync(appleAuthPath, JSON.stringify(appleProfile, null, 2), 'utf8');
-    } catch (_) {}
+    child.stdout.on('data', (chunk) => {
+      stdoutBuf += chunk.toString('utf8');
+      const lines = stdoutBuf.split('\n');
+      for (const line of lines) {
+        const trimmed = line.trim();
+        if (trimmed.startsWith('MIRUO_APPLE_AUTH_JSON:')) {
+          const jsonStr = trimmed.slice('MIRUO_APPLE_AUTH_JSON:'.length);
+          try {
+            const payload = JSON.parse(jsonStr);
+            if (payload && payload.success) {
+              let userIdentifier = String(payload.userIdentifier || '').trim();
+              let email = String(payload.email || '').trim().toLowerCase();
+              let fullName = String(payload.fullName || '').trim();
+              const identityToken = String(payload.identityToken || '');
 
-    return {
-      success: true,
-      userIdentifier: appleProfile.id,
-      email: appleProfile.email,
-      fullName: appleProfile.fullName || appleProfile.name,
-      identityToken: 'mac_touch_id_' + appleProfile.id,
-      user: appleProfile
-    };
-  } catch (err) {
-    console.warn('[Miruo] Touch ID canceled or failed:', err);
-    return { success: false, canceled: true, error: err.message };
-  }
+              if (identityToken) {
+                const claims = decodeJwtPayload(identityToken);
+                if (claims) {
+                  if (!email && claims.email) email = String(claims.email).trim().toLowerCase();
+                  if (!userIdentifier && claims.sub) userIdentifier = String(claims.sub).trim();
+                }
+              }
+
+              const canonicalId = userIdentifier.startsWith('apple_') ? userIdentifier : `apple_${userIdentifier}`;
+              const users = loadLocalUsers();
+              const existingUser = users.find(u =>
+                (userIdentifier && (u.id === canonicalId || u.id === userIdentifier || u.appleUserId === userIdentifier)) ||
+                (email && (u.email || '').toLowerCase() === email)
+              );
+
+              if (existingUser) {
+                if (!fullName && existingUser.fullName) fullName = existingUser.fullName;
+                if (!email && existingUser.email) email = existingUser.email;
+              }
+
+              finish({
+                success: true,
+                userIdentifier,
+                email,
+                fullName,
+                identityToken,
+                authorizationCode: payload.authorizationCode || '',
+                existingUser: existingUser || null
+              });
+              return;
+            } else {
+              finish({
+                success: false,
+                canceled: Boolean(payload && payload.canceled),
+                error: (payload && payload.error) || 'canceled'
+              });
+              return;
+            }
+          } catch (_) {}
+        }
+      }
+    });
+
+    child.stderr.on('data', (chunk) => {
+      stderrBuf += chunk.toString('utf8');
+    });
+
+    child.on('error', (err) => {
+      finish({ success: false, canceled: false, error: err.message });
+    });
+
+    child.on('close', () => {
+      if (!finished) {
+        finish({
+          success: false,
+          canceled: true,
+          error: stderrBuf.trim() || 'canceled'
+        });
+      }
+    });
+  });
 });
 
-// Dynamic System User Info for Any Mac User
 ipcMain.handle('get-system-user-info', async () => {
-  try {
-    const os = require('os');
-    const sysUser = (os.userInfo && os.userInfo().username) || '';
-    let realName = '';
-    try {
-      const { execSync } = require('child_process');
-      const out = execSync('id -F', { encoding: 'utf8' }).trim();
-      if (out && out.length > 0 && out.toLowerCase() !== sysUser.toLowerCase()) realName = out;
-    } catch (_) {}
-    let email = '';
-    try {
-      const { execSync } = require('child_process');
-      const gitEmail = execSync('git config user.email', { encoding: 'utf8' }).trim();
-      if (gitEmail && gitEmail.includes('@')) email = gitEmail;
-    } catch (_) {}
-    return {
-      username: sysUser,
-      fullName: realName || sysUser,
-      email: email
-    };
-  } catch (err) {
-    return { username: '', fullName: '', email: '' };
-  }
+  return { username: '', fullName: '', email: '' };
 });
 
-// Desktop Profile Persistence in UserData Directory
-const desktopProfilePath = path.join(app.getPath('userData'), 'miruo_profile.json');
 ipcMain.handle('get-desktop-profile', async () => {
   try {
     if (fs.existsSync(desktopProfilePath)) {
       const data = fs.readFileSync(desktopProfilePath, 'utf8');
-      return JSON.parse(data);
+      const parsed = JSON.parse(data);
+      const nameStr = String((parsed && (parsed.fullName || parsed.name || parsed.username)) || '').toLowerCase();
+      if (nameStr === 'karabul7tt') return null;
+      return parsed;
     }
   } catch (err) {
     console.warn('[Miruo Desktop] Failed to read profile:', err);
@@ -137,6 +244,21 @@ ipcMain.handle('save-desktop-profile', async (e, profile) => {
   try {
     if (profile) {
       fs.writeFileSync(desktopProfilePath, JSON.stringify(profile, null, 2), 'utf8');
+      // Also update in persistent users DB so profile changes survive logout/login
+      const users = loadLocalUsers();
+      const uid = String(profile.id || '').trim();
+      const uemail = String(profile.email || '').trim().toLowerCase();
+      const idx = users.findIndex(u =>
+        (uid && (u.id === uid || `apple_${u.appleUserId}` === uid)) ||
+        (uemail && (u.email || '').toLowerCase() === uemail)
+      );
+      if (idx !== -1) {
+        if (profile.fullName || profile.name) users[idx].fullName = profile.fullName || profile.name;
+        if (profile.username) users[idx].username = String(profile.username).replace(/^@/, '').toLowerCase();
+        if (profile.avatarUrl !== undefined) users[idx].avatarUrl = profile.avatarUrl;
+        if (profile.avatarBg) users[idx].avatarBg = profile.avatarBg;
+        saveLocalUsers(users);
+      }
       return { success: true };
     }
   } catch (err) {
@@ -144,6 +266,183 @@ ipcMain.handle('save-desktop-profile', async (e, profile) => {
   }
   return { success: false };
 });
+
+function handleLocalAuthRequest(req, res, pathname, bodyStr) {
+  let body = {};
+  try {
+    body = JSON.parse(bodyStr || '{}');
+  } catch (_) {}
+
+  // Also forward asynchronously to central server on port 3000 if running
+  try {
+    const syncReq = http.request({
+      host: '127.0.0.1',
+      port: 3000,
+      path: pathname,
+      method: req.method,
+      headers: { 'Content-Type': 'application/json' }
+    });
+    syncReq.on('error', () => {});
+    syncReq.write(bodyStr || '{}');
+    syncReq.end();
+  } catch (_) {}
+
+  const users = loadLocalUsers();
+  const genericNames = ['kullanıcı', 'kullanici', 'apple kullanıcısı', 'apple user', 'user', 'misafir', 'karabul7tt'];
+
+  if (pathname === '/api/auth/social-sync' && req.method === 'POST') {
+    const rawId = String(body.id || '').trim();
+    const rawAppleId = String(body.appleUserId || rawId).replace(/^apple_/, '').trim();
+    const canonicalId = rawId || (rawAppleId ? `apple_${rawAppleId}` : `usr_${Date.now()}`);
+    const cleanEmail = String(body.email || '').trim().toLowerCase();
+    const incomingName = String(body.fullName || body.displayName || '').trim();
+    const isIncomingGeneric = !incomingName || genericNames.includes(incomingName.toLowerCase());
+    const reqUsername = String(body.username || '').replace(/^@/, '').trim().toLowerCase();
+
+    let existing = users.find(u =>
+      (canonicalId && (u.id === canonicalId || (rawAppleId && (u.id === rawAppleId || u.appleUserId === rawAppleId)))) ||
+      (cleanEmail && (u.email || '').toLowerCase() === cleanEmail)
+    );
+
+    let isExistingUser = false;
+    if (existing) {
+      isExistingUser = true;
+      const existingIsGeneric = !existing.fullName || genericNames.includes(String(existing.fullName).trim().toLowerCase());
+      if (existingIsGeneric && !isIncomingGeneric) {
+        existing.fullName = incomingName;
+      }
+      if (!existing.email && cleanEmail) existing.email = cleanEmail;
+      if (rawAppleId && !existing.appleUserId) existing.appleUserId = rawAppleId;
+      if (!existing.avatarUrl && body.avatarUrl) existing.avatarUrl = body.avatarUrl;
+      if (!existing.avatarBg && body.avatarBg) existing.avatarBg = body.avatarBg;
+      existing.last_login = new Date().toISOString();
+    } else {
+      const finalName = !isIncomingGeneric ? incomingName : (reqUsername || (cleanEmail ? cleanEmail.split('@')[0] : 'Apple Kullanıcısı'));
+      let baseUsername = (reqUsername || (cleanEmail ? cleanEmail.split('@')[0] : finalName))
+        .toLowerCase()
+        .replace(/[^a-z0-9_.]/g, '');
+      if (!baseUsername || baseUsername.length < 3) {
+        baseUsername = 'user_' + Math.floor(1000 + Math.random() * 9000);
+      }
+      if (users.some(u => (u.username || '').toLowerCase() === baseUsername)) {
+        baseUsername = `${baseUsername}${Math.floor(10 + Math.random() * 900)}`;
+      }
+      existing = {
+        id: canonicalId,
+        appleUserId: rawAppleId || undefined,
+        fullName: finalName,
+        username: baseUsername,
+        email: cleanEmail,
+        provider: body.provider || 'Apple',
+        avatarUrl: body.avatarUrl || '',
+        avatarBg: body.avatarBg || 'linear-gradient(135deg, #ec4899, #8b5cf6)',
+        createdAt: new Date().toISOString(),
+        last_login: new Date().toISOString()
+      };
+      users.push(existing);
+    }
+    saveLocalUsers(users);
+    res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+    res.end(JSON.stringify({
+      ok: true,
+      success: true,
+      isExistingUser,
+      token: `local_tok_${existing.id}`,
+      user: existing
+    }));
+    return true;
+  }
+
+  if (pathname === '/api/auth/register' && req.method === 'POST') {
+    const fullName = String(body.fullName || '').trim();
+    const username = String(body.username || '').replace(/^@/, '').trim().toLowerCase();
+    const email = String(body.email || '').trim().toLowerCase();
+    const password = String(body.password || '');
+
+    if (email && users.some(u => (u.email || '').toLowerCase() === email)) {
+      res.writeHead(409, { 'Content-Type': 'application/json; charset=utf-8' });
+      res.end(JSON.stringify({ error: 'Bu e-posta adresi ile zaten kayıtlı bir hesap bulunuyor. Lütfen giriş yapın.' }));
+      return true;
+    }
+    if (username && users.some(u => (u.username || '').toLowerCase() === username)) {
+      res.writeHead(409, { 'Content-Type': 'application/json; charset=utf-8' });
+      res.end(JSON.stringify({ error: 'Bu kullanıcı adı zaten alınmış.' }));
+      return true;
+    }
+    const uid = `usr_${Date.now()}_${Math.floor(100 + Math.random() * 899)}`;
+    const newUser = {
+      id: uid,
+      fullName,
+      username,
+      email,
+      password,
+      provider: 'local',
+      avatarUrl: body.avatarUrl || '',
+      avatarBg: body.avatarBg || 'linear-gradient(135deg, #ec4899, #8b5cf6)',
+      createdAt: new Date().toISOString()
+    };
+    users.push(newUser);
+    saveLocalUsers(users);
+    res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+    res.end(JSON.stringify({ ok: true, success: true, token: `local_tok_${uid}`, user: newUser }));
+    return true;
+  }
+
+  if (pathname === '/api/auth/login' && req.method === 'POST') {
+    const identifier = String(body.identifier || body.email || body.username || '').trim().toLowerCase();
+    const password = String(body.password || '');
+    const found = users.find(u =>
+      ((u.email || '').toLowerCase() === identifier || (u.username || '').toLowerCase() === identifier) &&
+      (!u.password || u.password === password)
+    );
+    if (found) {
+      res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+      res.end(JSON.stringify({ ok: true, success: true, token: `local_tok_${found.id}`, user: found }));
+      return true;
+    }
+    res.writeHead(401, { 'Content-Type': 'application/json; charset=utf-8' });
+    res.end(JSON.stringify({ error: 'Hatalı e-posta, kullanıcı adı veya şifre.' }));
+    return true;
+  }
+
+  if (pathname === '/api/auth/update-profile' && req.method === 'POST') {
+    const uid = String(body.id || '').trim();
+    const uemail = String(body.email || '').trim().toLowerCase();
+    const found = users.find(u =>
+      (uid && (u.id === uid || `apple_${u.appleUserId}` === uid)) ||
+      (uemail && (u.email || '').toLowerCase() === uemail)
+    );
+    if (found) {
+      if (body.fullName && String(body.fullName).trim()) found.fullName = String(body.fullName).trim();
+      if (body.username && String(body.username).trim()) found.username = String(body.username).replace(/^@/, '').trim().toLowerCase();
+      if (body.avatarUrl !== undefined) found.avatarUrl = body.avatarUrl;
+      if (body.avatarBg) found.avatarBg = body.avatarBg;
+      saveLocalUsers(users);
+    }
+    res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+    res.end(JSON.stringify({ ok: true, success: true, user: found || null }));
+    return true;
+  }
+
+  if (pathname === '/api/auth/delete-account' && req.method === 'POST') {
+    const uid = String(body.userId || body.id || '').trim();
+    const uemail = String(body.email || '').trim().toLowerCase();
+    const idx = users.findIndex(u =>
+      (uid && u.id === uid) ||
+      (uemail && (u.email || '').toLowerCase() === uemail)
+    );
+    if (idx !== -1) {
+      users.splice(idx, 1);
+      saveLocalUsers(users);
+    }
+    try { if (fs.existsSync(desktopProfilePath)) fs.unlinkSync(desktopProfilePath); } catch (_) {}
+    res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+    res.end(JSON.stringify({ ok: true, success: true }));
+    return true;
+  }
+
+  return false;
+}
 
 function startLocalServer(callback) {
   const publicDir = path.join(__dirname, 'public');
@@ -169,7 +468,23 @@ function startLocalServer(callback) {
       return res.end();
     }
 
-    // Proxy /api/* requests to central server (port 3000)
+    const reqPathOnly = req.url.split('?')[0];
+
+    // Handle /api/auth/* directly in embedded persistent store (and sync to 3000 if available)
+    if (reqPathOnly.startsWith('/api/auth/')) {
+      let bodyChunks = [];
+      req.on('data', chunk => bodyChunks.push(chunk));
+      req.on('end', () => {
+        const bodyStr = Buffer.concat(bodyChunks).toString('utf8');
+        if (!handleLocalAuthRequest(req, res, reqPathOnly, bodyStr)) {
+          res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+          res.end(JSON.stringify({ ok: true }));
+        }
+      });
+      return;
+    }
+
+    // Proxy other /api/* requests to central server (port 3000)
     if (req.url.startsWith('/api/')) {
       const proxyReq = http.request({
         host: '127.0.0.1',
@@ -182,14 +497,14 @@ function startLocalServer(callback) {
         proxyRes.pipe(res);
       });
       proxyReq.on('error', () => {
-        res.writeHead(503, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ error: 'Backend server unavailable' }));
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ ok: true, offline: true }));
       });
       req.pipe(proxyReq);
       return;
     }
 
-    let reqPath = req.url.split('?')[0];
+    let reqPath = reqPathOnly;
     if (reqPath === '/' || reqPath === '/app' || reqPath === '/app/') reqPath = '/index.html';
     const filePath = path.join(publicDir, reqPath);
     if (!filePath.startsWith(publicDir)) {

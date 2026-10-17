@@ -1003,39 +1003,61 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  // SOCIAL AUTH SYNC (Apple & Google cross-device account synchronization)
+  // SOCIAL AUTH SYNC (Apple & Google cross-device account synchronization - single registration per account)
   if (urlObj.pathname === '/api/auth/social-sync' && req.method === 'POST') {
     try {
       const body = await readJsonBody(req, res, CONFIG.MAX_BODY_BYTES);
-      const { id, email, fullName, username, avatarUrl, avatarBg, provider } = body;
+      const { id, appleUserId, email, fullName, displayName: reqDisplayName, username, avatarUrl, avatarBg, provider } = body;
       const cleanEmail = (email || '').trim().toLowerCase();
-      const displayName = (fullName || username || (cleanEmail ? cleanEmail.split('@')[0] : 'Kullanıcı')).trim();
-      const cleanUsername = (username || displayName || (cleanEmail ? cleanEmail.split('@')[0] : 'kullanici')).replace(/^@/, '').trim().replace(/\s+/g, '_');
+      const rawAppleId = String(appleUserId || id || '').replace(/^apple_/, '').trim();
+      const canonicalId = (id && String(id).trim()) || (rawAppleId ? `apple_${rawAppleId}` : '');
+      const incomingName = (fullName || reqDisplayName || '').trim();
+      const genericNames = ['kullanıcı', 'kullanici', 'apple kullanıcısı', 'apple user', 'user', 'misafir'];
+      const isIncomingGeneric = !incomingName || genericNames.includes(incomingName.toLowerCase());
 
       const users = loadUsers();
       let user = users.find(u => 
-        (cleanEmail && (u.email || '').toLowerCase() === cleanEmail) || 
-        (id && u.id === id) ||
-        (u.username && cleanUsername && (u.username || '').toLowerCase() === cleanUsername.toLowerCase())
+        (canonicalId && (u.id === canonicalId || u.id === rawAppleId || u.appleUserId === rawAppleId)) ||
+        (cleanEmail && (u.email || '').toLowerCase() === cleanEmail)
       );
 
+      let isExistingUser = false;
       if (user) {
-        user.fullName = displayName || user.fullName;
-        if (cleanEmail) user.email = cleanEmail;
-        if (avatarUrl) user.avatarUrl = avatarUrl;
-        if (avatarBg) user.avatarBg = avatarBg;
-        if (provider) user.provider = provider;
+        isExistingUser = true;
+        // Preserve existing user's profile! Only fill in missing/generic fields.
+        const existingIsGeneric = !user.fullName || genericNames.includes(String(user.fullName).trim().toLowerCase());
+        if (existingIsGeneric && !isIncomingGeneric) {
+          user.fullName = incomingName;
+        }
+        if (!user.email && cleanEmail) user.email = cleanEmail;
+        if (rawAppleId && !user.appleUserId) user.appleUserId = rawAppleId;
+        if (!user.avatarUrl && avatarUrl) user.avatarUrl = avatarUrl;
+        if (!user.avatarBg && avatarBg) user.avatarBg = avatarBg;
+        if (provider && !user.provider) user.provider = provider;
         user.last_login = new Date().toISOString();
       } else {
+        const finalName = !isIncomingGeneric ? incomingName : (username || (cleanEmail ? cleanEmail.split('@')[0] : 'Apple Kullanıcısı'));
+        let baseUsername = (username || (cleanEmail ? cleanEmail.split('@')[0] : finalName))
+          .replace(/^@/, '')
+          .trim()
+          .toLowerCase()
+          .replace(/[^a-z0-9_.]/g, '');
+        if (!baseUsername || baseUsername.length < 3) {
+          baseUsername = 'user_' + Math.floor(1000 + Math.random() * 9000);
+        }
+        if (users.some(u => (u.username || '').toLowerCase() === baseUsername)) {
+          baseUsername = `${baseUsername}${Math.floor(10 + Math.random() * 900)}`;
+        }
         user = {
-          id: id || ('user_' + Date.now().toString(36)),
-          fullName: displayName,
-          username: cleanUsername,
+          id: canonicalId || ('user_' + Date.now().toString(36)),
+          appleUserId: rawAppleId || undefined,
+          fullName: finalName,
+          username: baseUsername,
           email: cleanEmail,
-          provider: provider || 'apple',
+          provider: provider || 'Apple',
           role: 'user',
           avatarUrl: avatarUrl || null,
-          avatarBg: avatarBg || 'from-rose-500 to-indigo-600',
+          avatarBg: avatarBg || 'linear-gradient(135deg, #ec4899, #8b5cf6)',
           created_at: new Date().toISOString(),
           last_login: new Date().toISOString()
         };
@@ -1047,11 +1069,14 @@ const server = http.createServer(async (req, res) => {
       res.setHeader('Set-Cookie', buildSecureCookie('miruo_token', token, 30 * 24 * 60 * 60 * 1000, CONFIG.NODE_ENV === 'production'));
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({
+        ok: true,
         success: true,
+        isExistingUser,
         message: 'Giriş başarılı ✓',
         token,
         user: {
           id: user.id,
+          appleUserId: user.appleUserId,
           fullName: user.fullName || user.username,
           username: user.username,
           email: user.email,
@@ -1064,6 +1089,34 @@ const server = http.createServer(async (req, res) => {
     } catch (err) {
       if (err.message !== 'Payload too large' && err.message !== 'Invalid JSON') {
         sendError(res, 500, 'SERVER_ERROR', 'Sosyal oturum senkronizasyonu başarısız.');
+      }
+    }
+    return;
+  }
+
+  // PROFILE UPDATE ENDPOINT (Persists profile changes to users.json)
+  if (urlObj.pathname === '/api/auth/update-profile' && req.method === 'POST') {
+    try {
+      const body = await readJsonBody(req, res, CONFIG.MAX_BODY_BYTES);
+      const { id, email, fullName, username, avatarUrl, avatarBg } = body;
+      const cleanEmail = (email || '').trim().toLowerCase();
+      const users = loadUsers();
+      const user = users.find(u =>
+        (id && (u.id === id || u.appleUserId === String(id).replace(/^apple_/, ''))) ||
+        (cleanEmail && (u.email || '').toLowerCase() === cleanEmail)
+      );
+      if (user) {
+        if (fullName && String(fullName).trim()) user.fullName = String(fullName).trim();
+        if (username && String(username).trim()) user.username = String(username).replace(/^@/, '').trim().toLowerCase();
+        if (avatarUrl !== undefined) user.avatarUrl = avatarUrl;
+        if (avatarBg) user.avatarBg = avatarBg;
+        saveUsers(users);
+      }
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ ok: true, success: true, user: user || null }));
+    } catch (err) {
+      if (err.message !== 'Payload too large' && err.message !== 'Invalid JSON') {
+        sendError(res, 500, 'SERVER_ERROR', 'Profil güncellenemedi.');
       }
     }
     return;
