@@ -92,6 +92,33 @@ ipcMain.handle('mac-touch-id-apple-sign-in', async (event, customDetails) => {
   }
 });
 
+// Dynamic System User Info for Any Mac User
+ipcMain.handle('get-system-user-info', async () => {
+  try {
+    const os = require('os');
+    const sysUser = (os.userInfo && os.userInfo().username) || '';
+    let realName = '';
+    try {
+      const { execSync } = require('child_process');
+      const out = execSync('id -F', { encoding: 'utf8' }).trim();
+      if (out && out.length > 0 && out.toLowerCase() !== sysUser.toLowerCase()) realName = out;
+    } catch (_) {}
+    let email = '';
+    try {
+      const { execSync } = require('child_process');
+      const gitEmail = execSync('git config user.email', { encoding: 'utf8' }).trim();
+      if (gitEmail && gitEmail.includes('@')) email = gitEmail;
+    } catch (_) {}
+    return {
+      username: sysUser,
+      fullName: realName || sysUser,
+      email: email
+    };
+  } catch (err) {
+    return { username: '', fullName: '', email: '' };
+  }
+});
+
 // Desktop Profile Persistence in UserData Directory
 const desktopProfilePath = path.join(app.getPath('userData'), 'miruo_profile.json');
 ipcMain.handle('get-desktop-profile', async () => {

@@ -11016,13 +11016,31 @@ function initEvents() {
         // Pre-fill with existing profile, saved apple email, or current device details
         const regList = JSON.parse(localStorage.getItem('miruo_registered_users') || '[]');
         const existingApple = regList.find(u => u.isApple || u.provider === 'apple');
-        const defaultEmail = (existingApple && existingApple.email) || localStorage.getItem('miruo_last_apple_email') || 'mehmetkarabul7tt@gmail.com';
-        const defaultName = (existingApple && existingApple.fullName) || 'Mehmet Karabulut';
+        let defaultEmail = (existingApple && existingApple.email) || localStorage.getItem('miruo_last_apple_email') || '';
+        let defaultName = (existingApple && existingApple.fullName) || '';
 
-        if (emailInput) emailInput.value = defaultEmail;
-        if (nameInput) nameInput.value = defaultName;
+        // Dynamically query system user info on Mac Desktop
+        if (window.miruoDesktop && typeof window.miruoDesktop.getSystemUserInfo === 'function') {
+          try {
+            const sysInfo = await window.miruoDesktop.getSystemUserInfo();
+            if (!defaultName && sysInfo.fullName) defaultName = sysInfo.fullName;
+            if (!defaultEmail && sysInfo.email) defaultEmail = sysInfo.email;
+          } catch (_) {}
+        }
+
+        if (emailInput) {
+          emailInput.value = defaultEmail;
+          emailInput.placeholder = 'Apple ID e-posta adresiniz (örn. ad@icloud.com veya gmail.com)';
+        }
+        if (nameInput) {
+          nameInput.value = defaultName;
+          nameInput.placeholder = 'Adınız ve Soyadınız';
+        }
 
         appleModal.classList.remove('hidden');
+        if (!defaultEmail && emailInput) {
+          emailInput.focus();
+        }
 
         if (cancelBtn) {
           cancelBtn.onclick = () => {
@@ -11032,8 +11050,15 @@ function initEvents() {
 
         if (confirmBtn) {
           confirmBtn.onclick = async () => {
-            const finalEmail = (emailInput && emailInput.value.trim().toLowerCase()) || defaultEmail;
-            const finalName = (nameInput && nameInput.value.trim()) || defaultName;
+            const finalEmail = ((emailInput && emailInput.value) || defaultEmail || '').trim().toLowerCase();
+            const finalName = ((nameInput && nameInput.value) || defaultName || '').trim();
+
+            if (!finalEmail || !finalEmail.includes('@')) {
+              showAuthAlert('Lütfen geçerli bir Apple ID e-posta adresi girin.', false);
+              if (emailInput) emailInput.focus();
+              return;
+            }
+
             localStorage.setItem('miruo_last_apple_email', finalEmail);
 
             // If running inside Mac Desktop app, trigger Touch ID verification for 100% native feel!
