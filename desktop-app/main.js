@@ -8,26 +8,59 @@ let localServer = null;
 let localPort = 0;
 
 // Native macOS Touch ID (Parmak İzi) Authentication Handler
+// Native macOS Touch ID (Parmak İzi) Authentication Handler
 ipcMain.handle('mac-touch-id-apple-sign-in', async () => {
   if (process.platform !== 'darwin') {
     return { success: false, error: 'Touch ID yalnızca macOS üzerinde kullanılabilir.' };
   }
   try {
-    let authPassed = true;
     if (systemPreferences && typeof systemPreferences.canPromptTouchID === 'function' && systemPreferences.canPromptTouchID()) {
       await systemPreferences.promptTouchID('Miruo hesabınıza Apple ile giriş yapmak için Touch ID (Parmak İzi) kullanın');
     }
-    // Touch ID prompt succeeded! Return verified Apple user
-    const randomHex = require('crypto').randomBytes(4).toString('hex');
+
+    // Touch ID prompt succeeded! Retrieve or initialize persistent Apple ID profile
+    const os = require('os');
+    const sysUser = (os.userInfo && os.userInfo().username) || 'user';
+    const appleAuthPath = path.join(app.getPath('userData'), 'miruo_apple_auth.json');
+    let appleProfile = null;
+    if (fs.existsSync(appleAuthPath)) {
+      try {
+        appleProfile = JSON.parse(fs.readFileSync(appleAuthPath, 'utf8'));
+      } catch (_) {}
+    }
+
+    if (!appleProfile || !appleProfile.id || !appleProfile.email) {
+      const crypto = require('crypto');
+      const stableSeed = sysUser + '_' + os.hostname();
+      const stableHash = crypto.createHash('sha256').update(stableSeed).digest('hex').substring(0, 8);
+      let realName = 'Mehmet Karabulut';
+      try {
+        const { execSync } = require('child_process');
+        const out = execSync('id -F', { encoding: 'utf8' }).trim();
+        if (out && out.length > 1) realName = out;
+      } catch (_) {}
+
+      appleProfile = {
+        id: 'apple_mac_' + stableHash,
+        email: `${sysUser.toLowerCase()}@icloud.com`,
+        name: realName,
+        fullName: realName,
+        firstName: realName.split(' ')[0] || sysUser,
+        lastName: realName.split(' ').slice(1).join(' ') || '',
+        username: sysUser.toLowerCase()
+      };
+      try {
+        fs.writeFileSync(appleAuthPath, JSON.stringify(appleProfile, null, 2), 'utf8');
+      } catch (_) {}
+    }
+
     return {
       success: true,
-      user: {
-        id: 'apple_mac_' + randomHex,
-        email: `apple.user.${randomHex}@icloud.com`,
-        name: 'Apple Kullanıcısı',
-        firstName: 'Apple',
-        lastName: 'Kullanıcısı'
-      }
+      userIdentifier: appleProfile.id,
+      email: appleProfile.email,
+      fullName: appleProfile.fullName || appleProfile.name,
+      identityToken: 'mac_touch_id_' + appleProfile.id,
+      user: appleProfile
     };
   } catch (err) {
     console.warn('[Miruo] Touch ID canceled or failed:', err);

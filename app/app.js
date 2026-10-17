@@ -2217,6 +2217,17 @@ const dom = {
   duckingLevelVal: document.getElementById('duckingLevelVal'),
   micSensSlider: document.getElementById('micSensSlider'),
   micSensVal: document.getElementById('micSensVal'),
+  settingsMicMasterToggle: document.getElementById('settingsMicMasterToggle'),
+  settingsMicStatusBadge: document.getElementById('settingsMicStatusBadge'),
+  settingsMicDeviceSelect: document.getElementById('settingsMicDeviceSelect'),
+  settingsRefreshAudioDevicesBtn: document.getElementById('settingsRefreshAudioDevicesBtn'),
+  settingsMicGainSlider: document.getElementById('settingsMicGainSlider'),
+  settingsMicGainVal: document.getElementById('settingsMicGainVal'),
+  settingsMicTestBtn: document.getElementById('settingsMicTestBtn'),
+  settingsMicVuBar: document.getElementById('settingsMicVuBar'),
+  settingsMicTestHint: document.getElementById('settingsMicTestHint'),
+  settingsNoiseSuppressionToggle: document.getElementById('settingsNoiseSuppressionToggle'),
+  settingsEchoCancellationToggle: document.getElementById('settingsEchoCancellationToggle'),
   pipShowInFullscreenCheckbox: document.getElementById('pipShowInFullscreenCheckbox'),
   openPlatformAccountsFromSettingsBtn: document.getElementById('openPlatformAccountsFromSettingsBtn'),
 
@@ -5134,6 +5145,163 @@ function updateAVToolbarUI() {
 }
 
 // Camera & Mic Controls
+function getAudioConstraints() {
+  const deviceId = localStorage.getItem('miruo_mic_device_id');
+  const noiseSup = localStorage.getItem('miruo_noise_suppression') !== 'false';
+  const echoCancel = localStorage.getItem('miruo_echo_cancellation') !== 'false';
+  const audioObj = {
+    echoCancellation: echoCancel,
+    noiseSuppression: noiseSup,
+    autoGainControl: true
+  };
+  if (deviceId) {
+    audioObj.deviceId = { exact: deviceId };
+  }
+  return { audio: audioObj, video: false };
+}
+
+let micTestStream = null;
+let micTestAudioCtx = null;
+let micTestAnalyser = null;
+let micTestAnimFrame = null;
+
+async function refreshAudioDeviceList() {
+  if (!dom.settingsMicDeviceSelect || !navigator.mediaDevices || !navigator.mediaDevices.enumerateDevices) return;
+  try {
+    const devices = await navigator.mediaDevices.enumerateDevices();
+    const audioInputs = devices.filter(d => d.kind === 'audioinput');
+    const savedDeviceId = localStorage.getItem('miruo_mic_device_id') || '';
+
+    dom.settingsMicDeviceSelect.innerHTML = '<option value="">Varsayılan Sistem Mikrofonu</option>';
+
+    audioInputs.forEach((dev, idx) => {
+      const opt = document.createElement('option');
+      opt.value = dev.deviceId;
+      opt.textContent = dev.label || `Mikrofon ${idx + 1}`;
+      if (dev.deviceId === savedDeviceId) opt.selected = true;
+      dom.settingsMicDeviceSelect.appendChild(opt);
+    });
+  } catch (e) {
+    console.warn('[Miruo] enumerateDevices error:', e);
+  }
+}
+
+function syncMicSettingsValues() {
+  if (dom.settingsMicMasterToggle) {
+    dom.settingsMicMasterToggle.checked = !!state.isMicOn;
+  }
+  if (dom.settingsMicStatusBadge) {
+    if (state.isMicOn) {
+      dom.settingsMicStatusBadge.textContent = 'Açık (Canlı)';
+      dom.settingsMicStatusBadge.className = 'text-[10px] px-2 py-0.5 rounded-full font-bold bg-emerald-500/20 text-emerald-400 border border-emerald-500/40';
+    } else {
+      dom.settingsMicStatusBadge.textContent = 'Kapalı (Sessiz)';
+      dom.settingsMicStatusBadge.className = 'text-[10px] px-2 py-0.5 rounded-full font-bold bg-white/10 text-gray-400 border border-white/10';
+    }
+  }
+  const savedGain = localStorage.getItem('miruo_mic_gain') || '100';
+  if (dom.settingsMicGainSlider) dom.settingsMicGainSlider.value = savedGain;
+  if (dom.settingsMicGainVal) dom.settingsMicGainVal.textContent = `%${savedGain}`;
+
+  if (dom.settingsNoiseSuppressionToggle) {
+    dom.settingsNoiseSuppressionToggle.checked = localStorage.getItem('miruo_noise_suppression') !== 'false';
+  }
+  if (dom.settingsEchoCancellationToggle) {
+    dom.settingsEchoCancellationToggle.checked = localStorage.getItem('miruo_echo_cancellation') !== 'false';
+  }
+
+  if (state.isMicOn && state.localStream && !micTestStream) {
+    startMicVuMeter(state.localStream);
+  }
+}
+
+function startMicVuMeter(mediaStream) {
+  stopMicVuMeter();
+  try {
+    const AudioCtx = window.AudioContext || window.webkitAudioContext;
+    if (!AudioCtx || !mediaStream) return;
+    micTestAudioCtx = new AudioCtx();
+    if (micTestAudioCtx.state === 'suspended') micTestAudioCtx.resume();
+    const source = micTestAudioCtx.createMediaStreamSource(mediaStream);
+    micTestAnalyser = micTestAudioCtx.createAnalyser();
+    micTestAnalyser.fftSize = 256;
+    source.connect(micTestAnalyser);
+
+    const bufLen = micTestAnalyser.frequencyBinCount;
+    const dataArr = new Uint8Array(bufLen);
+
+    function renderVu() {
+      if (!micTestAnalyser || !dom.settingsMicVuBar) return;
+      micTestAnalyser.getByteFrequencyData(dataArr);
+      let sum = 0;
+      for (let i = 0; i < bufLen; i++) sum += dataArr[i];
+      const avg = sum / bufLen;
+      const gainMult = (Number(localStorage.getItem('miruo_mic_gain') || 100) / 100);
+      const percent = Math.min(100, Math.round((avg / 128) * 100 * gainMult));
+      dom.settingsMicVuBar.style.width = `${percent}%`;
+      micTestAnimFrame = requestAnimationFrame(renderVu);
+    }
+    renderVu();
+  } catch (e) {
+    console.warn('[Miruo] startMicVuMeter failed:', e);
+  }
+}
+
+function stopMicVuMeter() {
+  if (micTestAnimFrame) {
+    cancelAnimationFrame(micTestAnimFrame);
+    micTestAnimFrame = null;
+  }
+  if (micTestAudioCtx) {
+    try { micTestAudioCtx.close(); } catch (_) {}
+    micTestAudioCtx = null;
+  }
+  micTestAnalyser = null;
+  if (dom.settingsMicVuBar) dom.settingsMicVuBar.style.width = '0%';
+}
+
+async function toggleMicTest() {
+  if (micTestStream) {
+    micTestStream.getTracks().forEach(t => { try { t.stop(); } catch (_) {} });
+    micTestStream = null;
+    stopMicVuMeter();
+    if (dom.settingsMicTestBtn) {
+      dom.settingsMicTestBtn.textContent = 'Mikrofonu Test Et';
+      dom.settingsMicTestBtn.className = 'px-2.5 py-1 rounded-lg bg-white/10 hover:bg-white/20 text-[11px] font-bold text-white transition-all cursor-pointer';
+    }
+    if (dom.settingsMicTestHint) {
+      dom.settingsMicTestHint.textContent = 'Test durduruldu.';
+    }
+    if (state.isMicOn && state.localStream) {
+      startMicVuMeter(state.localStream);
+    }
+    return;
+  }
+
+  try {
+    if (dom.settingsMicTestBtn) dom.settingsMicTestBtn.textContent = 'Başlatılıyor...';
+    const c = getAudioConstraints();
+    micTestStream = await navigator.mediaDevices.getUserMedia(c);
+    startMicVuMeter(micTestStream);
+    if (dom.settingsMicTestBtn) {
+      dom.settingsMicTestBtn.textContent = 'Testi Durdur';
+      dom.settingsMicTestBtn.className = 'px-2.5 py-1 rounded-lg bg-rose-500 hover:bg-rose-600 text-[11px] font-bold text-white transition-all cursor-pointer';
+    }
+    if (dom.settingsMicTestHint) {
+      dom.settingsMicTestHint.textContent = 'Mikrofona konuşun; yeşil/pembe bar sesinizi yansıtır.';
+    }
+  } catch (err) {
+    console.warn('[Miruo] Mic test error:', err);
+    if (dom.settingsMicTestBtn) {
+      dom.settingsMicTestBtn.textContent = 'Mikrofonu Test Et';
+      dom.settingsMicTestBtn.className = 'px-2.5 py-1 rounded-lg bg-white/10 hover:bg-white/20 text-[11px] font-bold text-white transition-all cursor-pointer';
+    }
+    if (dom.settingsMicTestHint) {
+      dom.settingsMicTestHint.textContent = 'Mikrofona erişilemedi: ' + (err.message || 'İzin verilmedi');
+    }
+  }
+}
+
 async function toggleMic() {
   // 1-Tap Toggle: Tap to open, tap again to close
   state.isMicOn = !state.isMicOn;
@@ -5141,7 +5309,7 @@ async function toggleMic() {
   if (state.isMicOn) {
     if (!state.localStream && navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
       try {
-        state.localStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+        state.localStream = await navigator.mediaDevices.getUserMedia(getAudioConstraints());
         if (dom.selfVideo) dom.selfVideo.srcObject = state.localStream;
         if (state.pc) {
           state.localStream.getAudioTracks().forEach(t => state.pc.addTrack(t, state.localStream));
@@ -5169,6 +5337,7 @@ async function toggleMic() {
   }
   broadcastMyMediaStatus();
   renderParticipantsList();
+  syncMicSettingsValues();
 }
 
 async function getLiveCameraStream() {
@@ -10519,7 +10688,11 @@ function initEvents() {
     }
 
     hideAuthAlert();
-    const { identityToken, email, fullName, userIdentifier } = response;
+    const userObj = response.user || {};
+    const identityToken = response.identityToken || userObj.identityToken || '';
+    const email = (response.email || userObj.email || '').trim();
+    const fullName = (response.fullName || userObj.fullName || userObj.name || (userObj.firstName ? (userObj.firstName + ' ' + (userObj.lastName || '')).trim() : '') || '').trim();
+    const userIdentifier = response.userIdentifier || userObj.id || response.id || ('apple_' + Date.now());
 
     // 1. Auto-fill form inputs if present
     if (fullName) {
@@ -10537,30 +10710,70 @@ function initEvents() {
 
     // 2. Prepare user profile
     const displayName = fullName || (email ? email.split('@')[0] : 'Mehmet Karabulut');
-    const safeUsername = (displayName.replace(/[^a-zA-Z0-9_]/g, '') || ('user_' + Math.random().toString(36).substring(2, 6))).toLowerCase();
+    const safeUsername = (userObj.username || displayName.replace(/[^a-zA-Z0-9_]/g, '') || ('user_' + Math.random().toString(36).substring(2, 6))).toLowerCase();
+    const resolvedEmail = email || `${safeUsername}@icloud.com`;
     const avatarChar = displayName.charAt(0).toUpperCase() || 'M';
 
     const verifiedUser = {
-      id: userIdentifier || ('apple_' + Date.now()),
+      id: userIdentifier,
       name: displayName,
+      fullName: displayName,
       username: safeUsername,
-      email: email || '',
+      email: resolvedEmail,
       avatarChar: avatarChar,
       avatarBg: 'from-rose-500 to-indigo-600',
       isApple: true,
-      provider: 'apple'
+      provider: 'apple',
+      isGuest: false
     };
 
     localStorage.setItem('miruo_user', JSON.stringify(verifiedUser));
     state.userId = verifiedUser.id;
     state.username = verifiedUser.name;
+
+    // Save to local registered accounts so subsequent logins or checks recognize this account!
+    try {
+      const regList = JSON.parse(localStorage.getItem('miruo_registered_users') || '[]');
+      const cleanUName = safeUsername.replace(/^@/, '');
+      const idx = regList.findIndex(u => (u.email && u.email.toLowerCase() === resolvedEmail.toLowerCase()) || (u.id && u.id === verifiedUser.id) || (u.username && u.username.toLowerCase() === cleanUName));
+      const entry = {
+        id: verifiedUser.id,
+        email: resolvedEmail.toLowerCase(),
+        username: cleanUName,
+        fullName: displayName,
+        avatarUrl: verifiedUser.avatarUrl || '',
+        avatarBg: verifiedUser.avatarBg,
+        isApple: true,
+        provider: 'apple'
+      };
+      if (idx >= 0) {
+        regList[idx] = Object.assign(regList[idx], entry);
+      } else {
+        regList.push(entry);
+      }
+      localStorage.setItem('miruo_registered_users', JSON.stringify(regList));
+
+      const byEmail = JSON.parse(localStorage.getItem('miruo_profiles_by_email') || '{}');
+      byEmail[resolvedEmail.toLowerCase()] = entry;
+      localStorage.setItem('miruo_profiles_by_email', JSON.stringify(byEmail));
+      localStorage.setItem('miruo_custom_username', cleanUName);
+    } catch (_) {}
+
+    if (window.miruoDesktop && typeof window.miruoDesktop.saveDesktopProfile === 'function') {
+      try { window.miruoDesktop.saveDesktopProfile(verifiedUser); } catch (_) {}
+    }
+
     updateUserUI(verifiedUser);
 
     if (dom.authModal) {
       dom.authModal.classList.add('hidden');
       unfreezeBackgroundAfterModal();
     }
-    showToast(`Hoş geldin, ${displayName}`);
+    // Re-render settings if open
+    if (dom.profileEditModal && !dom.profileEditModal.classList.contains('hidden')) {
+      if (typeof openProfileEditModal === 'function') openProfileEditModal();
+    }
+    showToast(`Apple ile giriş yapıldı: ${displayName}`);
 
     // 3. Supabase background sync (non-blocking)
     if (supabaseClient && supabaseClient.auth) {
@@ -11815,15 +12028,6 @@ function initEvents() {
           if (dom.authContactInput) dom.authContactInput.focus();
           return;
         }
-        if (!passwordVal) {
-          showAuthAlert("Lütfen şifrenizi girin.");
-          if (dom.authPasswordInput) dom.authPasswordInput.focus();
-          return;
-        }
-
-        const prevBtnText = dom.authSubmitBtn.innerText;
-        dom.authSubmitBtn.innerText = "Giriş yapılıyor...";
-        dom.authSubmitBtn.disabled = true;
 
         const isEmail = cleanContact.includes('@');
         const registeredUsers = JSON.parse(localStorage.getItem('miruo_registered_users') || '[]');
@@ -11850,10 +12054,29 @@ function initEvents() {
               fullName: (storedUser.fullName && !storedUser.fullName.startsWith('@')) ? storedUser.fullName : (storedUser.name || storedUser.username || cleanContact),
               password: passwordVal,
               avatarUrl: storedUser.avatarUrl || '',
-              avatarBg: storedUser.avatarBg || ''
+              avatarBg: storedUser.avatarBg || '',
+              isApple: !!(storedUser.isApple || storedUser.provider === 'apple'),
+              provider: storedUser.provider || (storedUser.isApple ? 'apple' : 'email')
             };
           }
         }
+
+        if (!passwordVal) {
+          // If this account is an Apple ID account, trigger Touch ID / Apple authentication seamlessly
+          if (localMatch && (localMatch.isApple || localMatch.provider === 'apple')) {
+            if (dom.appleLoginBtn) {
+              dom.appleLoginBtn.click();
+              return;
+            }
+          }
+          showAuthAlert("Lütfen şifrenizi girin.");
+          if (dom.authPasswordInput) dom.authPasswordInput.focus();
+          return;
+        }
+
+        const prevBtnText = dom.authSubmitBtn.innerText;
+        dom.authSubmitBtn.innerText = "Giriş yapılıyor...";
+        dom.authSubmitBtn.disabled = true;
 
         let loginSuccess = false;
         let userData = null;
@@ -11913,7 +12136,7 @@ function initEvents() {
 
         // 3. Check local registered user record
         if (!loginSuccess && localMatch) {
-          if (!localMatch.password || localMatch.password === passwordVal) {
+          if (localMatch.isApple || localMatch.provider === 'apple' || !localMatch.password || localMatch.password === passwordVal) {
             loginSuccess = true;
             userData = {
               id: localMatch.id || ('user_' + Math.random().toString(36).substring(2, 8)),
@@ -11921,7 +12144,9 @@ function initEvents() {
               fullName: localMatch.fullName,
               username: localMatch.username,
               avatarUrl: localMatch.avatarUrl,
-              avatarBg: localMatch.avatarBg
+              avatarBg: localMatch.avatarBg,
+              isApple: !!(localMatch.isApple || localMatch.provider === 'apple'),
+              provider: localMatch.provider || (localMatch.isApple ? 'apple' : 'email')
             };
           } else {
             dom.authSubmitBtn.innerText = prevBtnText;
@@ -13000,7 +13225,7 @@ function initEvents() {
     window.pendingAvatarUrl = savedUser.avatarUrl || state.avatarUrl || '';
     window.pendingAvatarBg = savedUser.avatarBg || state.avatarBg || 'from-[#A64D79] to-[#6A1E55]';
 
-    const isGuest = !!(savedUser.isGuest || !savedUser.email || (savedUser.id && String(savedUser.id).startsWith('guest_')));
+    const isGuest = !!(savedUser.isGuest || (!savedUser.email && !savedUser.isApple && savedUser.provider !== 'apple') || (savedUser.id && String(savedUser.id).startsWith('guest_')));
     const guestBanner = document.getElementById('settingsGuestBanner');
     if (guestBanner) {
       if (isGuest) {
@@ -13028,7 +13253,7 @@ function initEvents() {
     if (dom.profileEmailDisplay) {
       dom.profileEmailDisplay.textContent = isGuest
         ? 'Oturum açılmadı • Geçici profil'
-        : (savedUser.email || `${(state.username || 'user').toLowerCase()}@miruo.app`);
+        : (savedUser.email || (savedUser.isApple ? `${(savedUser.username || 'user')}@icloud.com` : `${(state.username || 'user').toLowerCase()}@miruo.app`));
     }
 
     // 1. Detect and render provider badge (Neyle Kayıt Olduğu)
@@ -13137,6 +13362,10 @@ function initEvents() {
         const sb = dom.profileEditModalScrollBody || document.getElementById('profileEditModalScrollBody');
         if (sb) sb.scrollTop = 0;
       }
+
+      // Refresh microphone and audio settings upon opening modal
+      if (typeof refreshAudioDeviceList === 'function') refreshAudioDeviceList();
+      if (typeof syncMicSettingsValues === 'function') syncMicSettingsValues();
     }
   }
 
@@ -15950,6 +16179,79 @@ function generateUniqueRoomCode(isPrivate = false) {
       state.speechThreshold = e.target.value / 255;
       const dict = I18N[currentLang] || I18N.tr;
       if (dom.micSensVal) dom.micSensVal.textContent = e.target.value < 15 ? (dict.sens_high || 'Yüksek') : (e.target.value < 30 ? (dict.sens_med || 'Orta') : (dict.sens_low || 'Düşük'));
+    });
+  }
+
+  // Settings: Microphone Master Switch
+  if (dom.settingsMicMasterToggle) {
+    dom.settingsMicMasterToggle.addEventListener('change', () => {
+      toggleMic();
+    });
+  }
+
+  // Settings: Microphone Device Selection
+  if (dom.settingsMicDeviceSelect) {
+    dom.settingsMicDeviceSelect.addEventListener('change', async (e) => {
+      localStorage.setItem('miruo_mic_device_id', e.target.value);
+      if (state.isMicOn && state.localStream) {
+        try {
+          const newStream = await navigator.mediaDevices.getUserMedia(getAudioConstraints());
+          const newTrack = newStream.getAudioTracks()[0];
+          const oldTrack = state.localStream.getAudioTracks()[0];
+          if (oldTrack) {
+            state.localStream.removeTrack(oldTrack);
+            try { oldTrack.stop(); } catch (_) {}
+          }
+          if (newTrack) {
+            state.localStream.addTrack(newTrack);
+            if (state.pc) {
+              const senders = state.pc.getSenders();
+              const audioSender = senders.find(s => s.track && s.track.kind === 'audio');
+              if (audioSender) audioSender.replaceTrack(newTrack);
+            }
+          }
+          if (dom.settingsMicVuBar) startMicVuMeter(state.localStream);
+          showToast('Mikrofon aygıtı değiştirildi');
+        } catch (err) {
+          console.warn('[Miruo] device switch error:', err);
+        }
+      }
+    });
+  }
+
+  // Settings: Refresh Audio Devices
+  if (dom.settingsRefreshAudioDevicesBtn) {
+    dom.settingsRefreshAudioDevicesBtn.addEventListener('click', () => {
+      refreshAudioDeviceList();
+      showToast('Ses aygıtları yenilendi');
+    });
+  }
+
+  // Settings: Microphone Gain Slider
+  if (dom.settingsMicGainSlider) {
+    dom.settingsMicGainSlider.addEventListener('input', (e) => {
+      const val = e.target.value;
+      localStorage.setItem('miruo_mic_gain', val);
+      if (dom.settingsMicGainVal) dom.settingsMicGainVal.textContent = `%${val}`;
+    });
+  }
+
+  // Settings: Live Mic Test Button
+  if (dom.settingsMicTestBtn) {
+    dom.settingsMicTestBtn.addEventListener('click', () => {
+      toggleMicTest();
+    });
+  }
+
+  // Settings: Noise Suppression & Echo Cancellation Toggles
+  if (dom.settingsNoiseSuppressionToggle) {
+    dom.settingsNoiseSuppressionToggle.addEventListener('change', (e) => {
+      localStorage.setItem('miruo_noise_suppression', e.target.checked);
+    });
+  }
+  if (dom.settingsEchoCancellationToggle) {
+    dom.settingsEchoCancellationToggle.addEventListener('change', (e) => {
+      localStorage.setItem('miruo_echo_cancellation', e.target.checked);
     });
   }
 
