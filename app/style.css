@@ -894,42 +894,33 @@ body.in-room-mode #roomMainSplitLayout {
   gap: 8px !important;
 }
 
-/* Portrait Mobile Layout: Video at top (16:9), Chat taking bottom */
-@media (max-width: 768px) {
+/* Portrait Mobile Layout: Video at top, Chat taking bottom */
+@media (orientation: portrait) and (max-width: 768px) {
   body.in-room-mode:not(.stage-is-fullscreen) #roomMainSplitLayout {
     flex-direction: column !important;
-    gap: 8px !important;
   }
 
-  body.in-room-mode:not(.stage-is-fullscreen) #roomPlayerColumn {
+  /* When Chat is OPEN: Video pinned top (16:9, max ~30vh), chat takes bottom */
+  body.in-room-mode:not(.stage-is-fullscreen) #roomWorkspaceSection:not(.chat-is-closed) #roomPlayerColumn {
     flex: 0 0 auto !important;
     display: flex !important;
     flex-direction: column !important;
     gap: 6px !important;
     width: 100% !important;
-    min-width: 0 !important;
   }
 
-  body.in-room-mode:not(.stage-is-fullscreen) #stageContainer {
+  body.in-room-mode:not(.stage-is-fullscreen) #roomWorkspaceSection:not(.chat-is-closed) #stageContainer {
     width: 100% !important;
     aspect-ratio: 16/9 !important;
-    height: auto !important;
     max-height: 35vh !important;
     border-radius: 14px !important;
-    flex: 0 0 auto !important;
     flex-shrink: 0 !important;
-    overflow: hidden !important;
-  }
-
-  body.in-room-mode:not(.stage-is-fullscreen) #nowPlayingBar {
-    width: 100% !important;
-    flex-shrink: 0 !important;
-    box-sizing: border-box !important;
   }
 
   body.in-room-mode:not(.stage-is-fullscreen) #roomWorkspaceSection:not(.chat-is-closed) #roomChatSidebar {
     flex: 1 1 0% !important;
-    min-height: 220px !important;
+    min-height: 0 !important;
+    height: 100% !important;
     width: 100% !important;
     display: flex !important;
     flex-direction: column !important;
@@ -943,17 +934,28 @@ body.in-room-mode #roomMainSplitLayout {
     overflow-y: auto !important;
   }
 
+  /* When Chat is CLOSED (.chat-is-closed): Video cleanly expands to fill theater space without dead voids */
   body.in-room-mode:not(.stage-is-fullscreen) #roomWorkspaceSection.chat-is-closed #roomPlayerColumn {
     flex: 1 1 0% !important;
     width: 100% !important;
     min-height: 0 !important;
+    display: flex !important;
+    flex-direction: column !important;
+    justify-content: flex-start !important;
+    align-items: stretch !important;
+    gap: 10px !important;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
   }
 
   body.in-room-mode:not(.stage-is-fullscreen) #roomWorkspaceSection.chat-is-closed #stageContainer {
     width: 100% !important;
-    aspect-ratio: 16/9 !important;
-    max-height: 52vh !important;
-    border-radius: 16px !important;
+    max-width: 100% !important;
+    min-height: 240px !important;
+    height: 52vh !important;
+    max-height: 65vh !important;
+    border-radius: 18px !important;
+    flex-shrink: 0 !important;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
   }
 
   body.in-room-mode:not(.stage-is-fullscreen) #roomWorkspaceSection.chat-is-closed #roomChatSidebar {
@@ -962,7 +964,7 @@ body.in-room-mode #roomMainSplitLayout {
 }
 
 /* Landscape / Desktop Layout */
-@media (min-width: 769px), (orientation: landscape) and (min-width: 600px) {
+@media (orientation: landscape) or (min-width: 769px) {
   body.in-room-mode:not(.stage-is-fullscreen) #roomMainSplitLayout {
     flex-direction: row !important;
     gap: 12px !important;
@@ -1340,6 +1342,45 @@ body.has-mini-player #stageContainer #miniPlayerOverlay {
   width: 100% !important;
   height: 100% !important;
   object-fit: contain !important;
+}
+
+/* ========================================================
+   PERSONAL VIDEO SIZING & ZOOM (LOCAL VIEWER ONLY)
+   "videolara boyut ayarlamada ekleyelım mı ama kendınde ayrlarsnsın"
+   ======================================================== */
+#stageContainer {
+  --miruo-video-scale: 1;
+}
+
+#stageContainer #ytPlayerContainer,
+#stageContainer #nativeVideoPlayer,
+#stageContainer #webPlayerFrame,
+#stageContainer #remoteScreenPlayer {
+  transform: scale(var(--miruo-video-scale, 1));
+  transform-origin: center center;
+  transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+#stageContainer.video-fit-contain #ytPlayerContainer,
+#stageContainer.video-fit-contain #nativeVideoPlayer,
+#stageContainer.video-fit-contain #webPlayerFrame,
+#stageContainer.video-fit-contain #remoteScreenPlayer {
+  object-fit: contain !important;
+}
+
+#stageContainer.video-fit-cover #ytPlayerContainer,
+#stageContainer.video-fit-cover #nativeVideoPlayer,
+#stageContainer.video-fit-cover #webPlayerFrame,
+#stageContainer.video-fit-cover #remoteScreenPlayer {
+  object-fit: cover !important;
+  transform: scale(calc(var(--miruo-video-scale, 1) * 1.18));
+}
+
+#stageContainer.video-fit-zoom #ytPlayerContainer,
+#stageContainer.video-fit-zoom #nativeVideoPlayer,
+#stageContainer.video-fit-zoom #webPlayerFrame,
+#stageContainer.video-fit-zoom #remoteScreenPlayer {
+  transform: scale(calc(var(--miruo-video-scale, 1) * 1.35));
 }
 
 /* Landscape Fullscreen with Chat Closed: Fill 100% of screen width & height edge-to-edge (no black side bars on 19.5:9 iPhones) */
