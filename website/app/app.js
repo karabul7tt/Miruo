@@ -4228,8 +4228,10 @@ function saveFsChatSettings() {
 
 function isMobileLandscapeMode() {
   const isTouchDevice = ('ontouchstart' in window) || (navigator.maxTouchPoints > 0) || (/iPhone|iPad|iPod|Android/i.test(navigator.userAgent));
-  const isShortLandscape = (window.innerWidth > window.innerHeight) && (window.innerHeight < 600);
-  return isTouchDevice && isShortLandscape;
+  const isLandscapeOrientation = window.innerWidth > window.innerHeight;
+  const isPhone = /iPhone|iPod|Android/i.test(navigator.userAgent);
+  const isShortScreen = window.innerHeight < 650;
+  return isTouchDevice && isLandscapeOrientation && (isPhone || isShortScreen);
 }
 
 function applyFsChatFullscreenSettings(isFullscreen) {
