@@ -842,22 +842,42 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  // CHECK USERNAME AVAILABILITY (Item: aynı kullanıcı adı 2 defa alınmasın)
+// Instagram-style Username Validation
+function validateInstagramUsername(username) {
+  const raw = String(username || '').trim().replace(/^@/, '');
+  if (!raw) return { valid: false, error: 'Kullanıcı adı boş bırakılamaz.' };
+  if (raw.length < 3) return { valid: false, error: 'Kullanıcı adı en az 3 karakter olmalıdır.' };
+  if (raw.length > 30) return { valid: false, error: 'Kullanıcı adı en fazla 30 karakter olabilir.' };
+  if (!/^[a-zA-Z0-9_.]+$/.test(raw)) return { valid: false, error: 'Kullanıcı adı yalnızca harf, rakam, alt çizgi (_) ve nokta (.) içerebilir.' };
+  if (raw.startsWith('.')) return { valid: false, error: 'Kullanıcı adı nokta (.) ile başlayamaz.' };
+  if (raw.endsWith('.')) return { valid: false, error: 'Kullanıcı adı nokta (.) ile bitemez.' };
+  if (raw.includes('..')) return { valid: false, error: 'Kullanıcı adında yan yana iki nokta (..) bulunamaz.' };
+  return { valid: true, cleanUsername: raw.toLowerCase() };
+}
+
+  // CHECK USERNAME AVAILABILITY (Item: aynı kullanıcı adı 2 defa alınmasın & Instagram kuralları)
   if (urlObj.pathname === '/api/users/check-username' && req.method === 'GET') {
-    const rawUsername = (urlObj.searchParams.get('username') || '').replace(/^@/, '').trim().toLowerCase();
+    const rawUsername = (urlObj.searchParams.get('username') || '').replace(/^@/, '').trim();
     const excludeUserId = (urlObj.searchParams.get('userId') || '').trim();
     if (!rawUsername) {
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ available: false, error: 'Kullanıcı adı boş olamaz.' }));
       return;
     }
+    const check = validateInstagramUsername(rawUsername);
+    if (!check.valid) {
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ available: false, error: check.error }));
+      return;
+    }
+    const cleanUsername = check.cleanUsername;
     const users = loadUsers();
     const taken = users.some(u => 
       u.id !== excludeUserId && 
-      (u.username || '').toLowerCase().replace(/^@/, '') === rawUsername
+      (u.username || '').toLowerCase().replace(/^@/, '') === cleanUsername
     );
     res.writeHead(200, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({ available: !taken, username: rawUsername }));
+    res.end(JSON.stringify({ available: !taken, username: cleanUsername }));
     return;
   }
 
@@ -880,14 +900,19 @@ const server = http.createServer(async (req, res) => {
       );
 
       if (cleanUsername) {
+        const check = validateInstagramUsername(cleanUsername);
+        if (!check.valid) {
+          sendError(res, 400, 'INVALID_USERNAME', check.error);
+          return;
+        }
         const taken = users.some(u =>
           (!user || u.id !== user.id) &&
           u.id !== userId &&
           (!cleanEmail || (u.email || '').toLowerCase() !== cleanEmail) &&
-          (u.username || '').toLowerCase().replace(/^@/, '') === cleanUsername.toLowerCase()
+          (u.username || '').toLowerCase().replace(/^@/, '') === check.cleanUsername
         );
         if (taken) {
-          sendError(res, 400, 'USERNAME_TAKEN', `"${cleanUsername}" kullanıcı adı zaten kullanımda.`);
+          sendError(res, 400, 'USERNAME_TAKEN', `"${check.cleanUsername}" kullanıcı adı zaten kullanımda.`);
           return;
         }
       }

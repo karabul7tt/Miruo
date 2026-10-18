@@ -14318,6 +14318,37 @@ function initEvents() {
     });
   });
 
+// Instagram-style Username Validation
+function validateInstagramUsername(username) {
+  const raw = String(username || '').trim().replace(/^@/, '');
+  if (!raw) {
+    return { valid: false, error: 'Kullanıcı adı boş bırakılamaz.' };
+  }
+  if (raw.length < 3) {
+    return { valid: false, error: 'Kullanıcı adı en az 3 karakter olmalıdır.' };
+  }
+  if (raw.length > 30) {
+    return { valid: false, error: 'Kullanıcı adı en fazla 30 karakter olabilir.' };
+  }
+  // Instagram rules: Only lowercase/uppercase letters, numbers, underscores (_), and periods (.)
+  if (!/^[a-zA-Z0-9_.]+$/.test(raw)) {
+    return { valid: false, error: 'Kullanıcı adı yalnızca harf, rakam, alt çizgi (_) ve nokta (.) içerebilir.' };
+  }
+  // Cannot start with a period
+  if (raw.startsWith('.')) {
+    return { valid: false, error: 'Kullanıcı adı nokta (.) ile başlayamaz.' };
+  }
+  // Cannot end with a period
+  if (raw.endsWith('.')) {
+    return { valid: false, error: 'Kullanıcı adı nokta (.) ile bitemez.' };
+  }
+  // Cannot have consecutive periods
+  if (raw.includes('..')) {
+    return { valid: false, error: 'Kullanıcı adında yan yana iki nokta (..) bulunamaz.' };
+  }
+  return { valid: true, cleanUsername: raw.toLowerCase() };
+}
+
   if (dom.saveProfileBtn) {
     dom.saveProfileBtn.addEventListener('click', async () => {
       const fullNameVal = (dom.editProfileFullNameInput && dom.editProfileFullNameInput.value.trim()) || '';
@@ -14330,26 +14361,18 @@ function initEvents() {
         statusEl.textContent = '';
       }
 
-      if (!rawUsername) {
+      // Instagram-style strict validation
+      const userCheck = validateInstagramUsername(rawUsername);
+      if (!userCheck.valid) {
         if (statusEl) {
-          statusEl.textContent = 'Kullanıcı adı boş bırakılamaz.';
+          statusEl.textContent = userCheck.error;
           statusEl.className = 'text-[11px] font-semibold text-rose-400 pt-0.5 block';
         }
         if (dom.editProfileUsernameInput) dom.editProfileUsernameInput.focus();
-        showToast('Kullanıcı adı boş bırakılamaz!');
+        showToast(userCheck.error);
         return;
       }
-
-      const cleanUsername = rawUsername.toLowerCase().replace(/[^a-z0-9_.]/g, '');
-      if (cleanUsername.length < 3) {
-        if (statusEl) {
-          statusEl.textContent = 'Kullanıcı adı en az 3 karakter olmalıdır.';
-          statusEl.className = 'text-[11px] font-semibold text-rose-400 pt-0.5 block';
-        }
-        if (dom.editProfileUsernameInput) dom.editProfileUsernameInput.focus();
-        showToast('Kullanıcı adı en az 3 karakter olmalıdır!');
-        return;
-      }
+      const cleanUsername = userCheck.cleanUsername;
 
       const savedUser = JSON.parse(localStorage.getItem('miruo_user') || '{}');
       const currentActiveUsername = (savedUser.username || state.username || '').toLowerCase().replace(/^@/, '');
@@ -14506,6 +14529,85 @@ function initEvents() {
       renderAffinityTree();
       renderFriendsTab();
       renderFriendsList();
+    });
+  }
+
+  // Live Instagram username validation & availability check
+  let usernameCheckDebounce = null;
+  if (dom.editProfileUsernameInput) {
+    dom.editProfileUsernameInput.addEventListener('input', () => {
+      clearTimeout(usernameCheckDebounce);
+      const statusEl = document.getElementById('editProfileUsernameStatus');
+      const rawVal = dom.editProfileUsernameInput.value.trim().replace(/^@/, '');
+      if (!rawVal) {
+        if (statusEl) {
+          statusEl.textContent = '';
+          statusEl.className = 'hidden text-[11px] font-medium pt-0.5';
+        }
+        return;
+      }
+
+      const check = validateInstagramUsername(rawVal);
+      if (!check.valid) {
+        if (statusEl) {
+          statusEl.textContent = check.error;
+          statusEl.className = 'text-[11px] font-semibold text-rose-400 pt-0.5 block';
+        }
+        return;
+      }
+
+      const savedUser = JSON.parse(localStorage.getItem('miruo_user') || '{}');
+      const currentUsername = (savedUser.username || state.username || '').toLowerCase().replace(/^@/, '');
+      if (check.cleanUsername === currentUsername) {
+        if (statusEl) {
+          statusEl.textContent = '✓ Mevcut kullanıcı adınız';
+          statusEl.className = 'text-[11px] font-medium text-emerald-400/80 pt-0.5 block';
+        }
+        return;
+      }
+
+      if (statusEl) {
+        statusEl.textContent = 'Kontrol ediliyor...';
+        statusEl.className = 'text-[11px] font-medium text-gray-400 pt-0.5 block';
+      }
+
+      usernameCheckDebounce = setTimeout(async () => {
+        const targetUsername = check.cleanUsername;
+        let isTaken = false;
+        try {
+          const res = await fetch(`/api/users/check-username?username=${encodeURIComponent(targetUsername)}&userId=${encodeURIComponent(savedUser.id || state.userId || '')}`);
+          if (res.ok) {
+            const data = await res.json();
+            if (!data.available) isTaken = true;
+          }
+        } catch (e) {}
+
+        if (!isTaken && supabaseClient) {
+          try {
+            const { data: supaProfiles, error } = await supabaseClient
+              .from('profiles')
+              .select('id, username')
+              .ilike('username', targetUsername);
+            if (!error && supaProfiles && supaProfiles.length > 0) {
+              const takenByOther = supaProfiles.some(p => p.id !== (savedUser.id || state.userId) && (p.username || '').toLowerCase() === targetUsername);
+              if (takenByOther) isTaken = true;
+            }
+          } catch (e) {}
+        }
+
+        // Check if value changed while waiting
+        if (dom.editProfileUsernameInput.value.trim().replace(/^@/, '').toLowerCase() !== targetUsername) return;
+
+        if (statusEl) {
+          if (isTaken) {
+            statusEl.textContent = `✕ "@${targetUsername}" zaten alınmış.`;
+            statusEl.className = 'text-[11px] font-semibold text-rose-400 pt-0.5 block';
+          } else {
+            statusEl.textContent = `✓ "@${targetUsername}" kullanılabilir.`;
+            statusEl.className = 'text-[11px] font-semibold text-emerald-400 pt-0.5 block';
+          }
+        }
+      }, 350);
     });
   }
 

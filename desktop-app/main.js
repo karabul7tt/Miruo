@@ -407,16 +407,51 @@ function handleLocalAuthRequest(req, res, pathname, bodyStr) {
     return true;
   }
 
+function validateInstagramUsername(username) {
+  const raw = String(username || '').trim().replace(/^@/, '');
+  if (!raw) return { valid: false, error: 'Kullanıcı adı boş bırakılamaz.' };
+  if (raw.length < 3) return { valid: false, error: 'Kullanıcı adı en az 3 karakter olmalıdır.' };
+  if (raw.length > 30) return { valid: false, error: 'Kullanıcı adı en fazla 30 karakter olabilir.' };
+  if (!/^[a-zA-Z0-9_.]+$/.test(raw)) return { valid: false, error: 'Kullanıcı adı yalnızca harf, rakam, alt çizgi (_) ve nokta (.) içerebilir.' };
+  if (raw.startsWith('.')) return { valid: false, error: 'Kullanıcı adı nokta (.) ile başlayamaz.' };
+  if (raw.endsWith('.')) return { valid: false, error: 'Kullanıcı adı nokta (.) ile bitemez.' };
+  if (raw.includes('..')) return { valid: false, error: 'Kullanıcı adında yan yana iki nokta (..) bulunamaz.' };
+  return { valid: true, cleanUsername: raw.toLowerCase() };
+}
+
   if (pathname === '/api/auth/update-profile' && req.method === 'POST') {
-    const uid = String(body.id || '').trim();
+    const uid = String(body.id || body.userId || '').trim();
     const uemail = String(body.email || '').trim().toLowerCase();
+    const rawUsername = body.username ? String(body.username).replace(/^@/, '').trim() : '';
+    let cleanUsername = '';
+    if (rawUsername) {
+      const userCheck = validateInstagramUsername(rawUsername);
+      if (!userCheck.valid) {
+        res.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' });
+        res.end(JSON.stringify({ ok: false, success: false, error: userCheck.error }));
+        return true;
+      }
+      cleanUsername = userCheck.cleanUsername;
+    }
     const found = users.find(u =>
       (uid && (u.id === uid || `apple_${u.appleUserId}` === uid)) ||
       (uemail && (u.email || '').toLowerCase() === uemail)
     );
+    if (cleanUsername) {
+      const taken = users.some(u =>
+        u.id !== (found ? found.id : uid) &&
+        (!uemail || (u.email || '').toLowerCase() !== uemail) &&
+        String(u.username || '').replace(/^@/, '').trim().toLowerCase() === cleanUsername
+      );
+      if (taken) {
+        res.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' });
+        res.end(JSON.stringify({ ok: false, success: false, error: `"${cleanUsername}" kullanıcı adı zaten kullanımda.` }));
+        return true;
+      }
+    }
     if (found) {
       if (body.fullName && String(body.fullName).trim()) found.fullName = String(body.fullName).trim();
-      if (body.username && String(body.username).trim()) found.username = String(body.username).replace(/^@/, '').trim().toLowerCase();
+      if (cleanUsername) found.username = cleanUsername;
       if (body.avatarUrl !== undefined) found.avatarUrl = body.avatarUrl;
       if (body.avatarBg) found.avatarBg = body.avatarBg;
       saveLocalUsers(users);
@@ -471,6 +506,33 @@ function startLocalServer(callback) {
     }
 
     const reqPathOnly = req.url.split('?')[0];
+
+    // Check username availability locally
+    if (reqPathOnly === '/api/users/check-username' && req.method === 'GET') {
+      const urlObj = new URL(req.url, 'http://127.0.0.1');
+      const rawUsername = (urlObj.searchParams.get('username') || '').replace(/^@/, '').trim();
+      const excludeUserId = (urlObj.searchParams.get('userId') || '').trim();
+      if (!rawUsername) {
+        res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+        res.end(JSON.stringify({ available: false, error: 'Kullanıcı adı boş olamaz.' }));
+        return;
+      }
+      const check = validateInstagramUsername(rawUsername);
+      if (!check.valid) {
+        res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+        res.end(JSON.stringify({ available: false, error: check.error }));
+        return;
+      }
+      const cleanUsername = check.cleanUsername;
+      const users = loadLocalUsers();
+      const taken = users.some(u =>
+        u.id !== excludeUserId &&
+        String(u.username || '').toLowerCase().replace(/^@/, '') === cleanUsername
+      );
+      res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+      res.end(JSON.stringify({ available: !taken, username: cleanUsername }));
+      return;
+    }
 
     // Handle /api/auth/* directly in embedded persistent store (and sync to 3000 if available)
     if (reqPathOnly.startsWith('/api/auth/')) {
