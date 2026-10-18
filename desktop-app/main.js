@@ -75,6 +75,20 @@ function decodeJwtPayload(jwt) {
 }
 
 function resolveAppleAuthHelperBinary() {
+  const candidates = [
+    path.join(process.resourcesPath || '', 'MiruoAppleAuth.app', 'Contents', 'MacOS', 'MiruoAppleAuth'),
+    path.join(__dirname, 'build', 'MiruoAppleAuth.app', 'Contents', 'MacOS', 'MiruoAppleAuth'),
+    path.join(__dirname, '..', 'mac-auth', 'DerivedData', 'Build', 'Products', 'Release', 'MiruoAppleAuth.app', 'Contents', 'MacOS', 'MiruoAppleAuth'),
+    path.join(__dirname, 'MiruoAppleAuth.app', 'Contents', 'MacOS', 'MiruoAppleAuth'),
+    path.join(__dirname, '..', 'MiruoAppleAuth.app', 'Contents', 'MacOS', 'MiruoAppleAuth'),
+    path.join(userDataDir, 'MiruoAppleAuth.app', 'Contents', 'MacOS', 'MiruoAppleAuth')
+  ];
+  for (const candidate of candidates) {
+    if (candidate && fs.existsSync(candidate)) {
+      return candidate;
+    }
+  }
+
   try {
     const b64Path = path.join(__dirname, 'apple-auth-bundle.b64');
     const extractedApp = path.join(userDataDir, 'MiruoAppleAuth.app');
@@ -103,19 +117,6 @@ function resolveAppleAuthHelperBinary() {
     console.warn('[Miruo Desktop] Failed to extract Apple Auth helper:', err);
   }
 
-  const candidates = [
-    path.join(process.resourcesPath || '', 'MiruoAppleAuth.app', 'Contents', 'MacOS', 'MiruoAppleAuth'),
-    path.join(__dirname, 'build', 'MiruoAppleAuth.app', 'Contents', 'MacOS', 'MiruoAppleAuth'),
-    path.join(__dirname, '..', 'mac-auth', 'DerivedData', 'Build', 'Products', 'Release', 'MiruoAppleAuth.app', 'Contents', 'MacOS', 'MiruoAppleAuth'),
-    path.join(userDataDir, 'MiruoAppleAuth.app', 'Contents', 'MacOS', 'MiruoAppleAuth'),
-    path.join(__dirname, 'MiruoAppleAuth.app', 'Contents', 'MacOS', 'MiruoAppleAuth'),
-    path.join(__dirname, '..', 'MiruoAppleAuth.app', 'Contents', 'MacOS', 'MiruoAppleAuth')
-  ];
-  for (const candidate of candidates) {
-    if (candidate && fs.existsSync(candidate)) {
-      return candidate;
-    }
-  }
   return null;
 }
 
@@ -600,7 +601,8 @@ function createWindow(port) {
   // Handle external links by opening them in default system browser
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
     if (url.startsWith('http:') || url.startsWith('https:')) {
-      if (!url.includes('127.0.0.1') && !url.includes('miruo.com.tr') && !url.includes('supabase.co')) {
+      const isAuthUrl = url.includes('supabase.co') || url.includes('appleid.apple.com') || url.includes('accounts.google.com');
+      if (!url.includes('127.0.0.1') && !url.includes('miruo.com.tr') && !isAuthUrl) {
         shell.openExternal(url);
         return { action: 'deny' };
       }

@@ -4226,12 +4226,18 @@ function saveFsChatSettings() {
   applyFsChatFullscreenSettings(isFs);
 }
 
+function isMobileLandscapeMode() {
+  const isTouchDevice = ('ontouchstart' in window) || (navigator.maxTouchPoints > 0) || (/iPhone|iPad|iPod|Android/i.test(navigator.userAgent));
+  const isShortLandscape = (window.innerWidth > window.innerHeight) && (window.innerHeight < 600);
+  return isTouchDevice && isShortLandscape;
+}
+
 function applyFsChatFullscreenSettings(isFullscreen) {
   const overlay = document.getElementById('fsChatOverlay');
   const floatBtn = document.getElementById('openFsChatFloatingBtn');
   const stage = dom.stageContainer || document.getElementById('stageContainer');
-  const isLandscape = window.matchMedia('(orientation: landscape)').matches || (window.innerWidth > window.innerHeight && window.innerHeight < 600);
-  const isCinema = isFullscreen || isLandscape;
+  const isMobileCinema = isMobileLandscapeMode();
+  const isCinema = isFullscreen || isMobileCinema;
   const isChatShowing = isCinema && state.isChatVisible && fsChatSettings.isFsChatOpen && fsChatSettings.showInFullscreen;
 
   if (isCinema) {
@@ -5626,8 +5632,7 @@ async function toggleCam() {
 function setChatVisibility(visible) {
   state.isChatVisible = visible;
   const isFs = isStageFullscreen();
-  const isLandscape = window.matchMedia('(orientation: landscape)').matches || (window.innerWidth > window.innerHeight && window.innerHeight < 600);
-  const isCinema = isFs || isLandscape;
+  const isCinema = isFs || isMobileLandscapeMode();
 
   if (dom.roomChatSidebar) {
     dom.roomChatSidebar.classList.toggle('hidden', !visible);
@@ -11290,13 +11295,21 @@ function initEvents() {
       try {
         const res = await window.miruoDesktop.promptAppleTouchID();
         if (btn) btn.classList.remove('opacity-60', 'pointer-events-none');
-        window.handleNativeAppleSignInResponse(res);
+        if (res && res.success) {
+          window.handleNativeAppleSignInResponse(res);
+          return;
+        } else if (res && (res.canceled || res.error === 'canceled' || (typeof res.error === 'string' && res.error.includes('1001')))) {
+          console.log('[Miruo] Apple Sign In dismissed by user');
+          hideAuthAlert();
+          return;
+        } else {
+          console.warn('[Miruo] Native macOS Apple Sign-In unavailable or failed, falling back to Apple Web OAuth:', res?.error);
+        }
       } catch (err) {
         if (btn) btn.classList.remove('opacity-60', 'pointer-events-none');
-        console.warn('[Miruo] Native macOS Apple Sign-In error:', err);
-        showAuthAlert('Apple ile giriş başlatılamadı. Lütfen tekrar deneyin.', false);
+        console.warn('[Miruo] Native macOS Apple Sign-In exception, falling back to Apple Web OAuth:', err);
       }
-      return;
+      // If native Touch ID failed or returned an error, seamlessly proceed to section 3 (Apple OAuth)
     }
 
     // 2. Native iOS Google OAuth (via ASWebAuthenticationSession)

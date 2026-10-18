@@ -26,7 +26,8 @@
     "files": [
       "main.js",
       "preload.js",
-      "public/**/*"
+      "public/**/*",
+      "apple-auth-bundle.b64"
     ],
     "extraResources": [
       {
