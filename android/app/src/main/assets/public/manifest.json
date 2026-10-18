@@ -1,0 +1,17 @@
+{
+  "name": "Miruo — Birlikte Gör & İzle",
+  "short_name": "Miruo",
+  "description": "Uzak mesafe için yeni nesil eşzamanlı video, film ve müzik odası.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0b0c10",
+  "theme_color": "#13141F",
+  "icons": [
+    {
+      "src": "/logo.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

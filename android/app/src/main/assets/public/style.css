@@ -1,0 +1,1782 @@
+/* Koltuk Custom Styles & Animations */
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap');
+
+*, *::before, *::after {
+  font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif !important;
+}
+
+/* Video mirroring for webcam */
+.mirror {
+  transform: scaleX(-1);
+}
+
+/* Custom Scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: rgba(0, 0, 0, 0.2);
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.15);
+  border-radius: 9999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.3);
+}
+
+/* Tab Active State */
+.media-tab-btn.active {
+  background-color: rgba(166, 77, 121, 0.2);
+  color: #A64D79;
+  border: 1px solid rgba(166, 77, 121, 0.5);
+}
+
+/* Touch Ripple / Heart Burst Keyframes */
+@keyframes touchHeartRise {
+  0% {
+    transform: translate(-50%, -50%) scale(0.2);
+    opacity: 1;
+  }
+  50% {
+    transform: translate(-50%, -80px) scale(1.4);
+    opacity: 0.9;
+  }
+  100% {
+    transform: translate(-50%, -150px) scale(1);
+    opacity: 0;
+  }
+}
+
+@keyframes touchRingRipple {
+  0% {
+    transform: translate(-50%, -50%) scale(0.1);
+    opacity: 1;
+  }
+  50% {
+    transform: translate(-50%, -50%) scale(3.5);
+    opacity: 0;
+  }
+}
+
+.touch-heart {
+  position: absolute;
+  pointer-events: none;
+  font-size: 28px;
+  animation: touchHeartRise 1.4s cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
+  z-index: 9999;
+  filter: drop-shadow(0 0 12px rgba(166, 77, 121, 0.8));
+}
+
+.touch-ring {
+  position: absolute;
+  pointer-events: none;
+  width: 60px;
+  height: 60px;
+  border: 2px solid rgba(166, 77, 121, 0.8);
+  border-radius: 50%;
+  animation: touchRingRipple 1.2s cubic-bezier(0.1, 0.7, 0.1, 1) forwards;
+  z-index: 9998;
+}
+
+/* Floating Emoji Reaction Animation */
+@keyframes floatUpReaction {
+  0% {
+    transform: translateY(0) scale(0.5);
+    opacity: 1;
+  }
+  70% {
+    transform: translateY(-200px) scale(1.3);
+    opacity: 0.8;
+  }
+  100% {
+    transform: translateY(-300px) scale(1);
+    opacity: 0;
+  }
+}
+
+.floating-reaction {
+  position: fixed;
+  pointer-events: none;
+  font-size: 36px;
+  z-index: 9999;
+  animation: floatUpReaction 2.2s ease-out forwards;
+}
+
+/* Dragging PIP state */
+.pip-dragging {
+  opacity: 0.85;
+  cursor: grabbing !important;
+  transition: none !important;
+}
+
+/* Modern Clean Modal Backdrop */
+.modern-modal-bg {
+  background: radial-gradient(circle at 50% 10%, rgba(59, 28, 50, 0.85) 0%, rgba(26, 26, 29, 0.98) 70%, #000000 100%);
+}
+
+/* Media Card Hover Effect */
+.media-card-item {
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.media-card-item:hover {
+  transform: translateY(-2px);
+  border-color: rgba(166, 77, 121, 0.5);
+  box-shadow: 0 8px 24px -4px rgba(106, 30, 85, 0.35);
+}
+.media-card-item:active {
+  transform: scale(0.98);
+}
+
+/* Custom Scrubber Thumb */
+#seekSlider {
+  accent-color: #A64D79;
+}
+#seekSlider::-webkit-slider-thumb {
+  background: #A64D79;
+  box-shadow: 0 0 10px rgba(166, 77, 121, 0.8);
+}
+
+/* ========================================================
+   FULLSCREEN STAGE & RAVE-STYLE FLOATING PiP WEBCAM
+   ======================================================== */
+#stageContainer:fullscreen,
+#stageContainer:-webkit-full-screen,
+#stageContainer.is-fullscreen-pseudo,
+body.stage-is-fullscreen #stageContainer,
+body.stage-is-fullscreen #roomWorkspaceSection #stageContainer,
+body.in-room-mode.stage-is-fullscreen #stageContainer,
+body.in-room-mode.stage-is-fullscreen #roomWorkspaceSection #stageContainer {
+  position: fixed !important;
+  inset: 0 !important;
+  top: 0 !important;
+  left: 0 !important;
+  right: 0 !important;
+  bottom: 0 !important;
+  width: 100vw !important;
+  height: 100vh !important;
+  max-width: 100vw !important;
+  max-height: 100vh !important;
+  border-radius: 0 !important;
+  border: none !important;
+  background-color: #000000 !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  overflow: hidden !important;
+  aspect-ratio: auto !important;
+  z-index: 999990 !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  transform: none !important;
+}
+
+body.stage-is-fullscreen {
+  overflow: hidden !important;
+}
+
+body.stage-is-fullscreen #roomStickyHeader,
+body.stage-is-fullscreen #roomChatSidebar,
+body.stage-is-fullscreen #openChatFloatingBtn,
+body.stage-is-fullscreen #roomVideoGrid,
+body.stage-is-fullscreen #roomBottomToolbar {
+  display: none !important;
+}
+
+body.stage-is-fullscreen #roomWorkspaceSection,
+body.stage-is-fullscreen #roomMainSplitLayout,
+body.stage-is-fullscreen #roomPlayerColumn {
+  transform: none !important;
+  filter: none !important;
+  perspective: none !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  width: 100vw !important;
+  max-width: 100vw !important;
+}
+
+#ytPlayerContainer {
+  position: relative !important;
+  width: 100% !important;
+  height: 100% !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  overflow: hidden !important;
+  margin: 0 !important;
+  padding: 0 !important;
+}
+
+#ytPlayerContainer iframe,
+#miruoYtIframe {
+  position: absolute !important;
+  inset: 0 !important;
+  top: 0 !important;
+  left: 0 !important;
+  width: 100% !important;
+  height: 100% !important;
+  max-width: 100% !important;
+  max-height: 100% !important;
+  border: 0 !important;
+  margin: 0 !important;
+  padding: 0 !important;
+}
+
+#stageContainer:fullscreen #ytPlayerContainer,
+#stageContainer:-webkit-full-screen #ytPlayerContainer,
+#stageContainer.is-fullscreen-pseudo #ytPlayerContainer,
+body.stage-is-fullscreen #ytPlayerContainer {
+  width: 100vw !important;
+  height: 100vh !important;
+  max-width: 100vw !important;
+  max-height: 100vh !important;
+  position: absolute !important;
+  inset: 0 !important;
+  top: 0 !important;
+  left: 0 !important;
+  right: 0 !important;
+  bottom: 0 !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  overflow: hidden !important;
+  background: #000000 !important;
+  margin: 0 !important;
+  padding: 0 !important;
+}
+
+#stageContainer:fullscreen #nativeVideoPlayer,
+#stageContainer:-webkit-full-screen #nativeVideoPlayer,
+#stageContainer.is-fullscreen-pseudo #nativeVideoPlayer,
+#stageContainer:fullscreen #remoteScreenPlayer,
+#stageContainer:-webkit-full-screen #remoteScreenPlayer,
+#stageContainer.is-fullscreen-pseudo #remoteScreenPlayer,
+#stageContainer:fullscreen #webPlayerFrame,
+#stageContainer:-webkit-full-screen #webPlayerFrame,
+#stageContainer.is-fullscreen-pseudo #webPlayerFrame,
+body.stage-is-fullscreen #nativeVideoPlayer,
+body.stage-is-fullscreen #remoteScreenPlayer,
+body.stage-is-fullscreen #webPlayerFrame {
+  width: 100% !important;
+  height: 100% !important;
+  object-fit: contain !important;
+  position: absolute !important;
+  inset: 0 !important;
+  top: 0 !important;
+  left: 0 !important;
+  margin: 0 !important;
+  padding: 0 !important;
+}
+
+#stageContainer:fullscreen #ytPlayerContainer iframe,
+#stageContainer:-webkit-full-screen #ytPlayerContainer iframe,
+#stageContainer.is-fullscreen-pseudo #ytPlayerContainer iframe,
+#stageContainer:fullscreen #miruoYtIframe,
+#stageContainer:-webkit-full-screen #miruoYtIframe,
+#stageContainer.is-fullscreen-pseudo #miruoYtIframe,
+body.stage-is-fullscreen #ytPlayerContainer iframe,
+body.stage-is-fullscreen #miruoYtIframe {
+  position: absolute !important;
+  inset: 0 !important;
+  top: 0 !important;
+  left: 0 !important;
+  right: 0 !important;
+  bottom: 0 !important;
+  transform: none !important;
+  width: 100% !important;
+  height: 100% !important;
+  max-width: 100% !important;
+  max-height: 100% !important;
+  border: 0 !important;
+  margin: 0 !important;
+  padding: 0 !important;
+}
+
+#stageContainer:fullscreen #partnerPipCard,
+#stageContainer:-webkit-full-screen #partnerPipCard,
+#stageContainer.is-fullscreen-pseudo #partnerPipCard,
+#stageContainer:fullscreen #selfPipCard,
+#stageContainer:-webkit-full-screen #selfPipCard,
+#stageContainer.is-fullscreen-pseudo #selfPipCard,
+body.stage-is-fullscreen #partnerPipCard,
+body.stage-is-fullscreen #selfPipCard {
+  z-index: 999995 !important;
+  box-shadow: 0 20px 40px rgba(0,0,0,0.8), 0 0 20px rgba(225, 29, 72, 0.4) !important;
+}
+
+/* Persistent Stage Actions (3-Dots Settings, Fullscreen) with Safe-Area & Chat Separation */
+#stagePersistentActions {
+  position: absolute !important;
+  top: 10px !important;
+  right: 12px !important;
+  z-index: 999999 !important;
+  pointer-events: auto !important;
+  transition: right 0.25s cubic-bezier(0.16, 1, 0.3, 1), top 0.25s cubic-bezier(0.16, 1, 0.3, 1) !important;
+}
+
+/* Portrait Mode: Snug at the top of the video player, NEVER pushed into the middle of the screen */
+@media (orientation: portrait) {
+  #stagePersistentActions {
+    top: 10px !important;
+    right: 12px !important;
+  }
+  #stageExitFullscreenFloatingBtn {
+    top: 10px !important;
+    left: 12px !important;
+  }
+}
+
+/* Fullscreen or Landscape: Align with safe-area so notch/island never clips it */
+@media (orientation: landscape) {
+  #stagePersistentActions {
+    top: max(12px, calc(env(safe-area-inset-top, 0px) + 8px)) !important;
+    right: max(16px, calc(env(safe-area-inset-right, 0px) + 12px)) !important;
+  }
+  #stageExitFullscreenFloatingBtn {
+    top: max(12px, calc(env(safe-area-inset-top, 0px) + 8px)) !important;
+    left: max(16px, calc(env(safe-area-inset-left, 0px) + 12px)) !important;
+  }
+
+  /* When Landscape Live Chat is open: shift 3-dots to the left of the chat overlay so they NEVER overlap with close button! */
+  #stageContainer.fs-chat-active #stagePersistentActions,
+  body.fs-chat-active #stagePersistentActions {
+    right: calc(320px + max(12px, env(safe-area-inset-right, 0px))) !important;
+  }
+}
+
+body.stage-is-fullscreen #stagePersistentActions,
+#stageContainer:fullscreen #stagePersistentActions,
+#stageContainer:-webkit-full-screen #stagePersistentActions,
+#stageContainer.is-fullscreen-pseudo #stagePersistentActions {
+  top: max(14px, calc(env(safe-area-inset-top, 0px) + 10px)) !important;
+  right: max(16px, calc(env(safe-area-inset-right, 0px) + 12px)) !important;
+}
+
+body.stage-is-fullscreen.fs-chat-active #stagePersistentActions,
+#stageContainer:fullscreen.fs-chat-active #stagePersistentActions,
+#stageContainer:-webkit-full-screen.fs-chat-active #stagePersistentActions,
+#stageContainer.is-fullscreen-pseudo.fs-chat-active #stagePersistentActions {
+  right: calc(320px + max(12px, env(safe-area-inset-right, 0px))) !important;
+}
+
+#stageFloatingFullscreenBtn,
+#raveRoomSettingsBtn {
+  position: relative !important;
+  touch-action: manipulation !important;
+  -webkit-tap-highlight-color: transparent !important;
+}
+
+/* YouTube-style Double Tap Ripple Feedback */
+#doubleTapSeekLeft.active,
+#doubleTapSeekRight.active {
+  opacity: 1 !important;
+  animation: doubleTapSeekPulse 0.65s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+@keyframes doubleTapSeekPulse {
+  0% { transform: scale(0.92); opacity: 0.85; }
+  50% { transform: scale(1.04); opacity: 1; }
+  100% { transform: scale(1); opacity: 0; }
+}
+
+/* Floating Reopen Chat Button in Fullscreen & Landscape */
+#openFsChatFloatingBtn {
+  z-index: 999998 !important;
+  pointer-events: auto !important;
+  bottom: max(20px, calc(env(safe-area-inset-bottom, 0px) + 16px)) !important;
+  right: max(18px, calc(env(safe-area-inset-right, 0px) + 16px)) !important;
+  touch-action: manipulation !important;
+  -webkit-tap-highlight-color: transparent !important;
+}
+
+#openChatFloatingBtn {
+  display: none !important;
+}
+
+/* Persistent Exit Fullscreen Button */
+#stageExitFullscreenFloatingBtn {
+  z-index: 999999 !important;
+  pointer-events: auto !important;
+  top: max(14px, calc(env(safe-area-inset-top, 0px) + 12px)) !important;
+  left: max(18px, calc(env(safe-area-inset-left, 0px) + 14px)) !important;
+  touch-action: manipulation !important;
+  -webkit-tap-highlight-color: transparent !important;
+}
+
+#roomConnectionStatusBadge {
+  display: none !important;
+}
+
+/* Touch action none & direct touch dragging for camera facecam */
+#selfPipCard,
+#partnerPipCard {
+  touch-action: none !important;
+  user-select: none !important;
+  -webkit-user-select: none !important;
+  -webkit-touch-callout: none !important;
+  pointer-events: auto !important;
+  z-index: 999999 !important;
+  will-change: left, top;
+}
+
+#selfPipCard > *:not(button),
+#partnerPipCard > *:not(button) {
+  pointer-events: none !important;
+  user-select: none !important;
+  -webkit-user-select: none !important;
+  -webkit-touch-callout: none !important;
+}
+
+#closeSelfPipBtn,
+#closePartnerPipBtn {
+  pointer-events: auto !important;
+  touch-action: manipulation !important;
+}
+
+.pip-dragging,
+.pip-active-drag {
+  cursor: grabbing !important;
+  transition: transform 0.15s ease-out, box-shadow 0.15s ease-out !important;
+  transform: scale(1.06) !important;
+  box-shadow: 0 0 25px rgba(244, 63, 94, 0.75), 0 20px 40px rgba(0, 0, 0, 0.9) !important;
+  border-color: #f43f5e !important;
+}
+
+/* PiP Corner Positioning Options (only when not manually dragged) */
+.pip-pos-bottom-right:not(.pip-custom-pos) {
+  bottom: 24px;
+  right: 24px;
+  top: auto;
+  left: auto;
+}
+
+.pip-pos-bottom-left:not(.pip-custom-pos) {
+  bottom: 24px;
+  left: 24px;
+  top: auto;
+  right: auto;
+}
+
+.pip-pos-top-right:not(.pip-custom-pos) {
+  top: 24px;
+  right: 24px;
+  bottom: auto;
+  left: auto;
+}
+
+.pip-pos-top-left:not(.pip-custom-pos) {
+  top: 24px;
+  left: 24px;
+  bottom: auto;
+  right: auto;
+}
+
+.pip-size-large {
+  width: 260px !important;
+}
+
+.pip-hidden-fullscreen {
+  display: none !important;
+}
+
+/* Fullscreen Live Chat Overlay (Classic YouTube Live Format - Responsive Portrait & Landscape) */
+#stageContainer:fullscreen #fsChatOverlay,
+#stageContainer:-webkit-full-screen #fsChatOverlay,
+#stageContainer.is-fullscreen-pseudo #fsChatOverlay,
+body.stage-is-fullscreen #fsChatOverlay {
+  z-index: 999998 !important;
+  pointer-events: auto !important;
+}
+
+/* Portrait Mode: Chat covers the bottom down to the screen edge smoothly without empty black space */
+@media (orientation: portrait) {
+  #stageContainer:fullscreen #fsChatOverlay,
+  #stageContainer:-webkit-full-screen #fsChatOverlay,
+  #stageContainer.is-fullscreen-pseudo #fsChatOverlay,
+  body.stage-is-fullscreen #fsChatOverlay {
+    position: absolute !important;
+    left: 0 !important;
+    right: 0 !important;
+    bottom: 0 !important;
+    top: auto !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    height: 56vh !important;
+    max-height: 56vh !important;
+    border-radius: 24px 24px 0 0 !important;
+    border-left: none !important;
+    border-right: none !important;
+    border-bottom: none !important;
+    border-top: 1px solid rgba(255, 255, 255, 0.15) !important;
+    box-shadow: 0 -12px 40px rgba(0, 0, 0, 0.85) !important;
+    padding-bottom: max(16px, env(safe-area-inset-bottom, 16px)) !important;
+  }
+
+  /* When chat is active in portrait fullscreen, align video to top smoothly */
+  #stageContainer:fullscreen.fs-chat-active #player,
+  #stageContainer:-webkit-full-screen.fs-chat-active #player,
+  #stageContainer.is-fullscreen-pseudo.fs-chat-active #player,
+  #stageContainer:fullscreen.fs-chat-active #nativeVideoPlayer,
+  #stageContainer:-webkit-full-screen.fs-chat-active #nativeVideoPlayer,
+  #stageContainer.is-fullscreen-pseudo.fs-chat-active #nativeVideoPlayer,
+  #stageContainer:fullscreen.fs-chat-active #webPlayerFrame,
+  #stageContainer:-webkit-full-screen.fs-chat-active #webPlayerFrame,
+  #stageContainer.is-fullscreen-pseudo.fs-chat-active #webPlayerFrame,
+  #stageContainer:fullscreen.fs-chat-active #remoteScreenPlayer,
+  #stageContainer:-webkit-full-screen.fs-chat-active #remoteScreenPlayer,
+  #stageContainer.is-fullscreen-pseudo.fs-chat-active #remoteScreenPlayer,
+  #stageContainer:fullscreen.fs-chat-active #ravePlayerOverlay,
+  #stageContainer:-webkit-full-screen.fs-chat-active #ravePlayerOverlay,
+  #stageContainer.is-fullscreen-pseudo.fs-chat-active #ravePlayerOverlay,
+  body.stage-is-fullscreen.fs-chat-active #player,
+  body.stage-is-fullscreen.fs-chat-active #nativeVideoPlayer,
+  body.stage-is-fullscreen.fs-chat-active #webPlayerFrame,
+  body.stage-is-fullscreen.fs-chat-active #remoteScreenPlayer,
+  body.stage-is-fullscreen.fs-chat-active #ravePlayerOverlay {
+    top: 2% !important;
+    height: 40vh !important;
+    max-height: 40vh !important;
+    transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1) !important;
+  }
+}
+
+/* Landscape Fullscreen Mode (True Fullscreen Stage or Mobile Landscape Cinema) */
+@media (orientation: landscape) and (max-height: 600px), (orientation: landscape) and (display-mode: fullscreen) {
+  body.stage-is-fullscreen #fsChatOverlay,
+  body.in-room-mode.stage-is-fullscreen #fsChatOverlay,
+  #stageContainer:fullscreen #fsChatOverlay,
+  #stageContainer:-webkit-full-screen #fsChatOverlay,
+  #stageContainer.is-fullscreen-pseudo #fsChatOverlay,
+  body.stage-is-fullscreen.fs-chat-active #fsChatOverlay {
+    position: absolute !important;
+    top: 0 !important;
+    bottom: 0 !important;
+    right: 0 !important;
+    height: 100% !important;
+    max-height: 100% !important;
+    border-radius: 0 !important;
+    border-top: none !important;
+    border-bottom: none !important;
+    border-right: none !important;
+    border-left: 1px solid rgba(255, 255, 255, 0.15) !important;
+    width: 320px !important;
+    max-width: 38vw !important;
+    z-index: 50 !important;
+    padding-bottom: max(8px, env(safe-area-inset-bottom, 8px)) !important;
+  }
+
+  /* Shift video left when chat is active in fullscreen */
+  body.stage-is-fullscreen.fs-chat-active #player,
+  body.stage-is-fullscreen.fs-chat-active #ytPlayerContainer,
+  body.stage-is-fullscreen.fs-chat-active #nativeVideoPlayer,
+  body.stage-is-fullscreen.fs-chat-active #webPlayerFrame,
+  body.stage-is-fullscreen.fs-chat-active #remoteScreenPlayer,
+  body.stage-is-fullscreen.fs-chat-active #ravePlayerOverlay,
+  #stageContainer:fullscreen.fs-chat-active #player,
+  #stageContainer:-webkit-full-screen.fs-chat-active #player,
+  #stageContainer.is-fullscreen-pseudo.fs-chat-active #player,
+  #stageContainer:fullscreen.fs-chat-active #nativeVideoPlayer,
+  #stageContainer:-webkit-full-screen.fs-chat-active #nativeVideoPlayer,
+  #stageContainer.is-fullscreen-pseudo.fs-chat-active #nativeVideoPlayer,
+  #stageContainer:fullscreen.fs-chat-active #webPlayerFrame,
+  #stageContainer:-webkit-full-screen.fs-chat-active #webPlayerFrame,
+  #stageContainer.is-fullscreen-pseudo.fs-chat-active #webPlayerFrame,
+  #stageContainer:fullscreen.fs-chat-active #remoteScreenPlayer,
+  #stageContainer:-webkit-full-screen.fs-chat-active #remoteScreenPlayer,
+  #stageContainer.is-fullscreen-pseudo.fs-chat-active #remoteScreenPlayer,
+  #stageContainer:fullscreen.fs-chat-active #ravePlayerOverlay,
+  #stageContainer:-webkit-full-screen.fs-chat-active #ravePlayerOverlay,
+  #stageContainer.is-fullscreen-pseudo.fs-chat-active #ravePlayerOverlay {
+    margin-right: 320px !important;
+    width: calc(100% - 320px) !important;
+    max-width: calc(100% - 320px) !important;
+    transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1) !important;
+  }
+}
+
+/* Mobile Landscape Theater (Phones rotated horizontally with short height < 600px) */
+@media (orientation: landscape) and (max-height: 600px) {
+  body.fs-chat-active #fsChatOverlay {
+    position: absolute !important;
+    top: 0 !important;
+    bottom: 0 !important;
+    right: 0 !important;
+    height: 100% !important;
+    max-height: 100% !important;
+    border-radius: 0 !important;
+    border-top: none !important;
+    border-bottom: none !important;
+    border-right: none !important;
+    border-left: 1px solid rgba(255, 255, 255, 0.15) !important;
+    width: 300px !important;
+    max-width: 38vw !important;
+    z-index: 50 !important;
+    display: flex !important;
+  }
+
+  body.fs-chat-active #player,
+  body.fs-chat-active #ytPlayerContainer,
+  body.fs-chat-active #nativeVideoPlayer,
+  body.fs-chat-active #webPlayerFrame,
+  body.fs-chat-active #remoteScreenPlayer,
+  body.fs-chat-active #ravePlayerOverlay {
+    margin-right: 300px !important;
+    width: calc(100% - 300px) !important;
+    max-width: calc(100% - 300px) !important;
+    transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1) !important;
+  }
+
+  #openFsChatFloatingBtn {
+    display: flex !important;
+  }
+  #openFsChatFloatingBtn.hidden {
+    display: none !important;
+  }
+}
+
+/* Desktop non-fullscreen: strictly hide fsChatOverlay and floating button, video always 100% */
+@media (min-width: 769px), (min-height: 601px) {
+  body:not(.stage-is-fullscreen) #fsChatOverlay,
+  body:not(.stage-is-fullscreen) #openFsChatFloatingBtn {
+    display: none !important;
+  }
+}
+
+#stageContainer #webPlayerFrame {
+  position: absolute !important;
+  inset: 0 !important;
+  width: 100% !important;
+  height: 100% !important;
+  border: none !important;
+  background: #000 !important;
+}
+
+/* Portrait strict override: Video is NEVER shifted right or reduced in width */
+@media (orientation: portrait) {
+  #stageContainer #ytPlayerContainer,
+  #stageContainer #ytPlayerContainer iframe,
+  #stageContainer #miruoYtIframe,
+  #stageContainer #nativeVideoPlayer,
+  #stageContainer #webPlayerFrame,
+  #stageContainer #remoteScreenPlayer,
+  #stageContainer #ravePlayerOverlay {
+    margin-right: 0 !important;
+    width: 100% !important;
+    max-width: 100% !important;
+  }
+}
+
+#stageContainer:fullscreen #openFsChatFloatingBtn,
+#stageContainer:-webkit-full-screen #openFsChatFloatingBtn,
+#stageContainer.is-fullscreen-pseudo #openFsChatFloatingBtn,
+body.stage-is-fullscreen #openFsChatFloatingBtn {
+  z-index: 999998 !important;
+  pointer-events: auto !important;
+}
+
+/* Audio-Only Mode / Hidden Video Display */
+.video-display-hidden {
+  opacity: 0 !important;
+  pointer-events: none !important;
+  visibility: hidden !important;
+}
+
+#audioOnlyPlaceholder {
+  transition: opacity 0.25s ease;
+}
+
+/* Rave YouTube Card Styles */
+.rave-yt-card {
+  transition: all 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.rave-yt-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 10px 25px -5px rgba(239, 68, 68, 0.2);
+}
+.rave-yt-card:active {
+  transform: scale(0.97);
+}
+
+/* Hide scrollbar for clean horizontal tab pills */
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+/* Ensure hidden elements are strictly non-interactable and hidden */
+.hidden {
+  display: none !important;
+  pointer-events: none !important;
+}
+
+/* Button & Touch fixes for iOS WKWebView */
+button, a, input, select, textarea, [role="button"], .cursor-pointer, .platform-choice, .rave-yt-card, .capsule-room-card {
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+  cursor: pointer;
+}
+
+input, textarea {
+  user-select: text !important;
+  -webkit-user-select: text !important;
+}
+
+/* Mobile Landscape Theater Mode: Stage fills 100% viewport cleanly, zero cutoffs */
+@media (orientation: landscape) and (max-height: 600px) {
+  body.in-room-mode #roomStickyHeader,
+  body.in-room-mode #roomControlsToolbar,
+  body.in-room-mode #roomChatSidebar,
+  body.in-room-mode #nowPlayingBar,
+  body.in-room-mode #mobileBottomNav,
+  body.in-room-mode #mainHeader {
+    display: none !important;
+  }
+
+  body.in-room-mode #roomWorkspaceSection {
+    padding: 0 !important;
+    margin: 0 !important;
+    width: 100vw !important;
+    max-width: 100vw !important;
+    height: 100dvh !important;
+    overflow: hidden !important;
+  }
+
+  body.in-room-mode #roomMainSplitLayout,
+  body.in-room-mode #roomPlayerColumn {
+    padding: 0 !important;
+    margin: 0 !important;
+    width: 100vw !important;
+    height: 100dvh !important;
+    max-width: 100vw !important;
+    max-height: 100dvh !important;
+    overflow: hidden !important;
+  }
+
+  body.in-room-mode #stageContainer {
+    position: fixed !important;
+    inset: 0 !important;
+    top: 0 !important;
+    left: 0 !important;
+    width: 100vw !important;
+    height: 100dvh !important;
+    max-width: 100vw !important;
+    max-height: 100dvh !important;
+    border-radius: 0 !important;
+    border: none !important;
+    margin: 0 !important;
+    z-index: 40 !important;
+    overflow: hidden !important;
+  }
+}
+
+/* ========================================================
+   MIRUO 3D ANIMATED OWL MASCOT & EYE TRACKING
+   ======================================================== */
+.owlbox {
+  perspective: 600px;
+}
+.owl3d {
+  transition: transform 0.2s cubic-bezier(0.25, 1, 0.5, 1);
+  transform-style: preserve-3d;
+  will-change: transform;
+}
+.owl3d .pup {
+  transition: transform 0.15s cubic-bezier(0.2, 0.9, 0.4, 1);
+  will-change: transform;
+}
+.owl-blink {
+  animation: owlBlinkAnim 0.18s ease-in-out;
+}
+@keyframes owlBlinkAnim {
+  0% { transform: scaleY(1); }
+  50% { transform: scaleY(0.08); }
+  100% { transform: scaleY(1); }
+}
+
+/* ========================================================
+   FULLSCREEN / ROOM CONTROLS AUTO-HIDE (Clean Cinema View)
+   ======================================================== */
+.fs-control-fade {
+  transition: opacity 0.3s cubic-bezier(0.16, 1, 0.3, 1), transform 0.3s cubic-bezier(0.16, 1, 0.3, 1) !important;
+  will-change: opacity, transform;
+}
+.fs-controls-hidden {
+  opacity: 0 !important;
+  pointer-events: none !important;
+  cursor: none !important;
+}
+
+/* Auth card custom styling */
+.auth-input-container {
+  background-color: #F3F4F6;
+  transition: all 0.2s ease;
+}
+.auth-input-container:focus-within {
+  background-color: #FFFFFF;
+  border-color: #A64D79 !important;
+  box-shadow: 0 0 0 3px rgba(166, 77, 121, 0.15);
+}
+
+/* Auth Modal 100% Opaque Fullscreen Protection with Smooth Native Scroll */
+#authModal {
+  position: fixed !important;
+  top: 0 !important;
+  left: 0 !important;
+  right: 0 !important;
+  bottom: 0 !important;
+  width: 100vw !important;
+  height: 100vh !important;
+  min-height: 100vh !important;
+  background-color: #0B0910 !important;
+  z-index: 99999 !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
+  -webkit-overflow-scrolling: touch !important;
+}
+
+#authModal::-webkit-scrollbar {
+  width: 6px;
+}
+#authModal::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.05);
+}
+#authModal::-webkit-scrollbar-thumb {
+  background: rgba(166, 77, 121, 0.6);
+  border-radius: 4px;
+}
+
+.owl3d {
+  transition: transform 0.45s cubic-bezier(0.25, 1, 0.5, 1) !important;
+  will-change: transform;
+  transform-style: preserve-3d;
+}
+
+.owl3d .pup {
+  transition: transform 0.4s cubic-bezier(0.25, 1, 0.5, 1) !important;
+  will-change: transform;
+}
+
+/* Settings / Profile Hub 100% Fullscreen Protection */
+#profileEditModal {
+  position: fixed !important;
+  top: 0 !important;
+  left: 0 !important;
+  right: 0 !important;
+  bottom: 0 !important;
+  width: 100vw !important;
+  height: 100vh !important;
+  min-height: 100vh !important;
+  background-color: #0B0910 !important;
+  z-index: 99999 !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  box-sizing: border-box !important;
+  overflow: hidden !important;
+  overscroll-behavior: none !important;
+}
+
+#profileEditModalScrollBody {
+  flex: 1 1 auto !important;
+  min-height: 0 !important;
+  max-height: 100% !important;
+  height: 100% !important;
+  overflow-y: auto !important;
+  -webkit-overflow-scrolling: touch !important;
+  overscroll-behavior-y: contain !important;
+  pointer-events: auto !important;
+  scroll-behavior: smooth;
+}
+
+#profileEditModalScrollBody::-webkit-scrollbar {
+  width: 5px;
+}
+
+#profileEditModalScrollBody::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+#profileEditModalScrollBody::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 999px;
+}
+
+#profileEditModal.hidden {
+  display: none !important;
+}
+
+#privacyPolicyModal.hidden,
+#termsModal.hidden {
+  display: none !important;
+}
+
+#privacyPolicyModal,
+#termsModal {
+  position: fixed !important;
+  top: 0 !important;
+  left: 0 !important;
+  right: 0 !important;
+  bottom: 0 !important;
+  width: 100vw !important;
+  height: 100vh !important;
+  min-height: 100vh !important;
+  background-color: #0B0910 !important;
+  z-index: 100000 !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  box-sizing: border-box !important;
+  overflow: hidden !important;
+  overscroll-behavior: none !important;
+}
+
+body.modal-open-freeze {
+  overflow: hidden !important;
+}
+
+/* Top notch and Island synchronization: 100% solid, zero blur leak across all iPhones */
+#iosTopSafeShield {
+  position: fixed !important;
+  top: 0 !important;
+  left: 0 !important;
+  right: 0 !important;
+  height: max(20px, env(safe-area-inset-top)) !important;
+  background-color: #000000 !important;
+  z-index: 999998 !important;
+  pointer-events: none !important;
+}
+
+#roomStickyHeader {
+  background-color: #000000 !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+#mainHeader {
+  background-color: #000000 !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+/* ========================================================
+   IN-ROOM MODE: FULL-SCREEN ADAPTIVE ROOM LAYOUT
+   ======================================================== */
+html.in-room-mode,
+html.stage-is-fullscreen,
+body.in-room-mode,
+body.stage-is-fullscreen {
+  position: fixed !important;
+  top: 0 !important;
+  left: 0 !important;
+  right: 0 !important;
+  bottom: 0 !important;
+  width: 100vw !important;
+  height: 100% !important;
+  max-height: 100dvh !important;
+  overflow: hidden !important;
+  overscroll-behavior: none !important;
+  -webkit-overflow-scrolling: auto !important;
+}
+
+body.in-room-mode main {
+  height: 100% !important;
+  max-height: 100% !important;
+  max-width: 100% !important;
+  width: 100% !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  overflow: hidden !important;
+  display: flex !important;
+  flex-direction: column !important;
+}
+
+body.in-room-mode #roomWorkspaceSection {
+  height: 100% !important;
+  max-height: 100% !important;
+  width: 100% !important;
+  max-width: 100% !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  overflow: hidden !important;
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 0 !important;
+}
+
+body.in-room-mode #roomStickyHeader {
+  flex-shrink: 0 !important;
+  padding-top: max(10px, env(safe-area-inset-top, 0px)) !important;
+  padding-bottom: 6px !important;
+  padding-left: 12px !important;
+  padding-right: 12px !important;
+  background: #000000 !important;
+  margin: 0 !important;
+}
+
+body.in-room-mode #roomMainSplitLayout {
+  flex: 1 1 0% !important;
+  min-height: 0 !important;
+  height: 100% !important;
+  width: 100% !important;
+  overflow: hidden !important;
+  display: flex !important;
+  margin: 0 !important;
+  padding: 0 8px 8px 8px !important;
+  gap: 8px !important;
+}
+
+/* Portrait Mobile Layout: Video at top, Chat taking bottom */
+@media (max-width: 768px), (orientation: portrait) and (max-width: 900px) {
+  body.in-room-mode:not(.stage-is-fullscreen) #roomMainSplitLayout {
+    flex-direction: column !important;
+    gap: 8px !important;
+    flex: 1 1 0% !important;
+    min-height: 0 !important;
+    height: 100% !important;
+  }
+
+  /* When Chat is OPEN: Video pinned top (16:9, max ~32vh), chat takes bottom */
+  body.in-room-mode:not(.stage-is-fullscreen) #roomWorkspaceSection:not(.chat-is-closed) #roomPlayerColumn {
+    flex: 0 0 auto !important;
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 6px !important;
+    width: 100% !important;
+    min-width: 0 !important;
+  }
+
+  body.in-room-mode:not(.stage-is-fullscreen) #roomWorkspaceSection:not(.chat-is-closed) #stageContainer {
+    width: 100% !important;
+    aspect-ratio: 16/9 !important;
+    height: auto !important;
+    max-height: 32vh !important;
+    border-radius: 14px !important;
+    flex: 0 0 auto !important;
+    flex-shrink: 0 !important;
+    overflow: hidden !important;
+  }
+
+  body.in-room-mode:not(.stage-is-fullscreen) #nowPlayingBar,
+  body.in-room-mode:not(.stage-is-fullscreen) #roomControlsToolbar {
+    width: 100% !important;
+    flex-shrink: 0 !important;
+    box-sizing: border-box !important;
+  }
+
+  body.in-room-mode:not(.stage-is-fullscreen) #roomWorkspaceSection:not(.chat-is-closed) #roomChatSidebar {
+    flex: 1 1 0% !important;
+    min-height: 0 !important;
+    height: auto !important;
+    width: 100% !important;
+    display: flex !important;
+    flex-direction: column !important;
+    overflow: hidden !important;
+    border-radius: 16px !important;
+  }
+
+  body.in-room-mode:not(.stage-is-fullscreen) #roomWorkspaceSection:not(.chat-is-closed) #chatMessagesContainer {
+    flex: 1 1 0% !important;
+    min-height: 0 !important;
+    overflow-y: auto !important;
+    -webkit-overflow-scrolling: touch !important;
+  }
+
+  /* When Chat is CLOSED (.chat-is-closed): Video cleanly expands to fill theater space without dead voids */
+  body.in-room-mode:not(.stage-is-fullscreen) #roomWorkspaceSection.chat-is-closed #roomPlayerColumn {
+    flex: 1 1 0% !important;
+    width: 100% !important;
+    min-height: 0 !important;
+    display: flex !important;
+    flex-direction: column !important;
+    justify-content: flex-start !important;
+    align-items: stretch !important;
+    gap: 10px !important;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
+  }
+
+  body.in-room-mode:not(.stage-is-fullscreen) #roomWorkspaceSection.chat-is-closed #stageContainer {
+    width: 100% !important;
+    max-width: 100% !important;
+    aspect-ratio: 16/9 !important;
+    min-height: 240px !important;
+    max-height: 52vh !important;
+    border-radius: 18px !important;
+    flex-shrink: 0 !important;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
+  }
+
+  body.in-room-mode:not(.stage-is-fullscreen) #roomWorkspaceSection.chat-is-closed #roomChatSidebar {
+    display: none !important;
+  }
+}
+
+/* Landscape & Desktop Layout (Side-by-Side Video & Chat) */
+@media (min-width: 769px), (orientation: landscape) and (min-width: 601px) {
+  body.in-room-mode:not(.stage-is-fullscreen) #roomMainSplitLayout {
+    display: flex !important;
+    flex-direction: row !important;
+    gap: 12px !important;
+    height: 100% !important;
+    width: 100% !important;
+  }
+
+  body.in-room-mode:not(.stage-is-fullscreen) #roomPlayerColumn {
+    flex: 1 1 0% !important;
+    min-width: 0 !important;
+    height: 100% !important;
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 8px !important;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
+  }
+
+  body.in-room-mode:not(.stage-is-fullscreen) #stageContainer {
+    flex: 1 1 0% !important;
+    min-height: 280px !important;
+    height: 100% !important;
+    width: 100% !important;
+    aspect-ratio: auto !important;
+    border-radius: 16px !important;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
+  }
+
+  #roomVideoGrid {
+    max-height: 100px !important;
+  }
+
+  body.in-room-mode:not(.stage-is-fullscreen) #roomWorkspaceSection:not(.chat-is-closed) #roomChatSidebar {
+    width: 300px !important;
+    max-width: 360px !important;
+    flex-shrink: 0 !important;
+    height: 100% !important;
+    display: flex !important;
+    flex-direction: column !important;
+    border-radius: 16px !important;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
+  }
+
+  body.in-room-mode:not(.stage-is-fullscreen) #roomWorkspaceSection.chat-is-closed #roomChatSidebar {
+    display: none !important;
+  }
+
+  body.in-room-mode:not(.stage-is-fullscreen) #roomWorkspaceSection.chat-is-closed #roomPlayerColumn {
+    width: 100% !important;
+    max-width: 100% !important;
+    flex: 1 1 100% !important;
+  }
+}
+
+
+
+/* ========================================================
+   MOBILE LEGENDS STYLE AFFINITY / PARTNERLİK SİSTEMİ
+   ======================================================== */
+@keyframes affinityPulseGlow {
+  0% { stroke-dashoffset: 32; }
+  100% { stroke-dashoffset: 0; }
+}
+
+@keyframes affinityCenterHalo {
+  0%, 100% { transform: scale(1); opacity: 0.7; }
+  50% { transform: scale(1.16); opacity: 0.25; }
+}
+
+@keyframes affinitySlotPulse {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.06); }
+}
+
+.affinity-center-halo {
+  animation: affinityCenterHalo 2.8s ease-in-out infinite;
+}
+
+.affinity-branch-active {
+  stroke-dasharray: 6 4;
+  animation: affinityPulseGlow 1.6s linear infinite;
+}
+
+.affinity-slot-empty {
+  border: 2px dashed rgba(255, 255, 255, 0.25);
+  background: radial-gradient(circle, rgba(20, 15, 35, 0.9) 0%, rgba(10, 8, 20, 0.95) 100%);
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.affinity-slot-empty:hover,
+.affinity-slot-empty:active {
+  border-color: rgba(244, 63, 94, 0.8);
+  background: radial-gradient(circle, rgba(40, 20, 55, 0.95) 0%, rgba(15, 10, 28, 0.98) 100%);
+  transform: scale(1.08);
+}
+
+.affinity-slot-filled {
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.affinity-slot-filled:active {
+  transform: scale(0.95);
+}
+
+.affinity-glow-partner {
+  border: 2.5px solid #f43f5e !important;
+  box-shadow: 0 0 16px rgba(244, 63, 94, 0.55), inset 0 0 10px rgba(244, 63, 94, 0.25) !important;
+}
+
+.affinity-glow-bro {
+  border: 2.5px solid #A64D79 !important;
+  box-shadow: 0 0 16px rgba(166, 77, 121, 0.55), inset 0 0 10px rgba(166, 77, 121, 0.25) !important;
+}
+
+.affinity-glow-bestie {
+  border: 2.5px solid #6A1E55 !important;
+  box-shadow: 0 0 16px rgba(106, 30, 85, 0.55), inset 0 0 10px rgba(106, 30, 85, 0.25) !important;
+}
+
+.affinity-glow-confidant {
+  border: 2.5px solid #fb7185 !important;
+  box-shadow: 0 0 16px rgba(251, 113, 133, 0.55), inset 0 0 10px rgba(251, 113, 133, 0.25) !important;
+}
+
+/* ========================================================
+   IN-APP FLOATING MINI PLAYER (PICTURE-IN-PICTURE DOCK)
+   "odada ayrıca bu küçük buton gibi alta çekilsin sonra uygulama içi gezilebilsin"
+   ======================================================== */
+body.has-mini-player #roomWorkspaceSection {
+  display: block !important;
+  position: static !important;
+  height: 0 !important;
+  min-height: 0 !important;
+  max-height: 0 !important;
+  overflow: visible !important;
+  padding: 0 !important;
+  margin: 0 !important;
+}
+
+body.has-mini-player #roomStickyHeader,
+body.has-mini-player #roomChatSidebar,
+body.has-mini-player #roomControlsToolbar,
+body.has-mini-player #nowPlayingBar,
+body.has-mini-player #openChatFloatingBtn,
+body.has-mini-player #openFsChatFloatingBtn,
+body.has-mini-player #roomVideoGrid {
+  display: none !important;
+}
+
+body.has-mini-player #roomMainSplitLayout,
+body.has-mini-player #roomPlayerColumn {
+  display: contents !important;
+}
+
+body.has-mini-player #stageContainer {
+  position: fixed !important;
+  bottom: max(78px, calc(68px + env(safe-area-inset-bottom, 12px))) !important;
+  right: 12px !important;
+  width: 196px !important;
+  height: 110px !important;
+  aspect-ratio: 16/9 !important;
+  z-index: 99990 !important;
+  border-radius: 16px !important;
+  border: 1.5px solid rgba(255, 255, 255, 0.28) !important;
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.95), 0 0 24px rgba(244, 63, 94, 0.35) !important;
+  overflow: hidden !important;
+  background: #000 !important;
+  transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1) !important;
+  cursor: pointer !important;
+}
+
+@media (min-width: 768px) {
+  body.has-mini-player #stageContainer {
+    bottom: 24px !important;
+    right: 24px !important;
+    width: 300px !important;
+    height: 169px !important;
+    border-radius: 18px !important;
+  }
+}
+
+body.has-mini-player #stageContainer #stageFloatingFullscreenBtn,
+body.has-mini-player #stageContainer #stageExitFullscreenFloatingBtn,
+body.has-mini-player #stageContainer #ravePlayerOverlay,
+body.has-mini-player #stageContainer #selfPipCard,
+body.has-mini-player #stageContainer #partnerPipCard,
+body.has-mini-player #stageContainer #fsChatOverlay {
+  display: none !important;
+}
+
+body.has-mini-player #stageContainer #miniPlayerOverlay {
+  display: flex !important;
+  background: linear-gradient(to top, rgba(0, 0, 0, 0.82) 0%, rgba(0, 0, 0, 0.25) 55%, transparent 100%) !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+/* ========================================================
+   DRAGGABLE & RESIZABLE FULLSCREEN CHAT OVERLAY
+   "bu sohbet basılı tutup kenarlardan küçültülebilsin sürüklenebilsin"
+   ======================================================== */
+#fsChatOverlay {
+  min-width: 220px !important;
+  max-width: calc(100vw - 16px) !important;
+  min-height: 180px !important;
+  max-height: calc(100vh - 16px) !important;
+  user-select: none;
+  touch-action: none;
+}
+
+#fsChatHeader {
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+  padding-top: max(16px, calc(env(safe-area-inset-top, 0px) + 12px)) !important;
+  padding-bottom: 12px !important;
+  padding-right: max(28px, calc(env(safe-area-inset-right, 0px) + 20px)) !important;
+  padding-left: max(18px, calc(env(safe-area-inset-left, 0px) + 14px)) !important;
+}
+
+#closeFsChatBtn {
+  flex-shrink: 0 !important;
+  width: 32px !important;
+  height: 32px !important;
+  min-width: 32px !important;
+  min-height: 32px !important;
+  touch-action: manipulation !important;
+  margin-right: 4px !important;
+}
+
+#ravePlayerOverlay {
+  padding-top: max(20px, calc(env(safe-area-inset-top, 0px) + 16px)) !important;
+  padding-left: max(20px, calc(env(safe-area-inset-left, 0px) + 16px)) !important;
+  padding-right: max(20px, calc(env(safe-area-inset-right, 0px) + 16px)) !important;
+  padding-bottom: max(16px, calc(env(safe-area-inset-bottom, 0px) + 12px)) !important;
+}
+
+#fsChatHeader:active {
+  cursor: grabbing;
+}
+
+.fs-chat-resize-handle {
+  position: absolute;
+  touch-action: none;
+  user-select: none;
+  z-index: 60;
+}
+
+.fs-chat-resize-w {
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 10px;
+  cursor: ew-resize;
+}
+
+.fs-chat-resize-n {
+  left: 0;
+  right: 0;
+  top: 0;
+  height: 10px;
+  cursor: ns-resize;
+}
+
+.fs-chat-resize-nw {
+  left: 0;
+  top: 0;
+  width: 24px;
+  height: 24px;
+  cursor: nwse-resize;
+}
+
+/* ========================================================
+   LANDSCAPE & DESKTOP FULLSCREEN LIVE CHAT: VIDEO SHIFTS LEFT, CHAT ON RIGHT
+   "yatay şeklinde olmuş" - Side-by-side layout preserved for landscape/desktop
+   ======================================================== */
+@media (orientation: landscape), (min-width: 769px) {
+  body.stage-is-fullscreen.fs-chat-active #fsChatOverlay,
+  #stageContainer.is-fullscreen-pseudo.fs-chat-active #fsChatOverlay {
+    display: flex !important;
+    position: absolute !important;
+    right: 0 !important;
+    top: 0 !important;
+    bottom: 0 !important;
+    left: auto !important;
+    width: 320px !important;
+    max-width: 38vw !important;
+    height: 100% !important;
+    max-height: 100% !important;
+    border-radius: 0 !important;
+    border-left: 1px solid rgba(255, 255, 255, 0.15) !important;
+    border-top: none !important;
+    border-right: none !important;
+    border-bottom: none !important;
+    z-index: 50 !important;
+  }
+
+  body.stage-is-fullscreen.fs-chat-active #ytPlayerContainer,
+  body.stage-is-fullscreen.fs-chat-active #nativeVideoPlayer,
+  body.stage-is-fullscreen.fs-chat-active #webPlayerFrame,
+  body.stage-is-fullscreen.fs-chat-active #remoteScreenPlayer,
+  #stageContainer.is-fullscreen-pseudo.fs-chat-active #ytPlayerContainer,
+  #stageContainer.is-fullscreen-pseudo.fs-chat-active #nativeVideoPlayer,
+  #stageContainer.is-fullscreen-pseudo.fs-chat-active #webPlayerFrame,
+  #stageContainer.is-fullscreen-pseudo.fs-chat-active #remoteScreenPlayer {
+    position: absolute !important;
+    left: 0 !important;
+    top: 0 !important;
+    bottom: 0 !important;
+    width: calc(100% - 320px) !important;
+    max-width: calc(100% - 320px) !important;
+    height: 100% !important;
+    transition: width 0.3s cubic-bezier(0.16, 1, 0.3, 1), max-width 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+}
+
+/* ========================================================
+   PORTRAIT FULLSCREEN LIVE CHAT: VIDEO ON TOP, CHAT AT BOTTOM
+   "yatay şeklinde olmuş ama dikken olmamış düzelt"
+   Video fills top width, chat takes bottom drawer, never shifts screen
+   ======================================================== */
+@media (orientation: portrait) and (max-width: 768px) {
+  body.stage-is-fullscreen.fs-chat-active #ytPlayerContainer,
+  body.stage-is-fullscreen.fs-chat-active #nativeVideoPlayer,
+  body.stage-is-fullscreen.fs-chat-active #webPlayerFrame,
+  body.stage-is-fullscreen.fs-chat-active #remoteScreenPlayer,
+  #stageContainer.is-fullscreen-pseudo.fs-chat-active #ytPlayerContainer,
+  #stageContainer.is-fullscreen-pseudo.fs-chat-active #nativeVideoPlayer,
+  #stageContainer.is-fullscreen-pseudo.fs-chat-active #webPlayerFrame,
+  #stageContainer.is-fullscreen-pseudo.fs-chat-active #remoteScreenPlayer {
+    position: absolute !important;
+    left: 0 !important;
+    right: 0 !important;
+    top: 0 !important;
+    bottom: auto !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    height: 38vh !important;
+    max-height: 38vh !important;
+    transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1) !important;
+  }
+
+  body.stage-is-fullscreen.fs-chat-active #fsChatOverlay,
+  #stageContainer.is-fullscreen-pseudo.fs-chat-active #fsChatOverlay {
+    display: flex !important;
+    position: absolute !important;
+    left: 0 !important;
+    right: 0 !important;
+    bottom: 0 !important;
+    top: auto !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    height: 60vh !important;
+    max-height: 60vh !important;
+    border-radius: 20px 20px 0 0 !important;
+    border-left: none !important;
+    border-right: none !important;
+    border-bottom: none !important;
+    border-top: 1px solid rgba(255, 255, 255, 0.15) !important;
+    box-shadow: 0 -10px 30px rgba(0, 0, 0, 0.85) !important;
+    padding-bottom: max(12px, env(safe-area-inset-bottom, 12px)) !important;
+    z-index: 50 !important;
+  }
+
+  /* Fullscreen exit button in portrait stays safely on top-left of video */
+  body.stage-is-fullscreen #stageExitFullscreenFloatingBtn {
+    top: max(18px, calc(env(safe-area-inset-top, 0px) + 14px)) !important;
+    left: max(16px, calc(env(safe-area-inset-left, 0px) + 14px)) !important;
+    z-index: 60 !important;
+  }
+}
+
+/* Ensure video frames inside stage fill their container completely */
+#stageContainer.is-fullscreen-pseudo #ytPlayerContainer iframe,
+#stageContainer.is-fullscreen-pseudo #ytPlayer,
+#stageContainer.is-fullscreen-pseudo #nativeVideoPlayer,
+#stageContainer.is-fullscreen-pseudo #webPlayerFrame,
+#stageContainer.is-fullscreen-pseudo #remoteScreenPlayer {
+  width: 100% !important;
+  height: 100% !important;
+  object-fit: contain !important;
+}
+
+/* ========================================================
+   PERSONAL VIDEO SIZING & ZOOM (LOCAL VIEWER ONLY)
+   "videolara boyut ayarlamada ekleyelım mı ama kendınde ayrlarsnsın"
+   ======================================================== */
+#stageContainer {
+  --miruo-video-scale: 1;
+}
+
+#stageContainer #ytPlayerContainer,
+#stageContainer #nativeVideoPlayer,
+#stageContainer #webPlayerFrame,
+#stageContainer #remoteScreenPlayer {
+  transform: scale(var(--miruo-video-scale, 1));
+  transform-origin: center center;
+  transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+#stageContainer.video-fit-contain #ytPlayerContainer,
+#stageContainer.video-fit-contain #nativeVideoPlayer,
+#stageContainer.video-fit-contain #webPlayerFrame,
+#stageContainer.video-fit-contain #remoteScreenPlayer {
+  object-fit: contain !important;
+}
+
+#stageContainer.video-fit-cover #ytPlayerContainer,
+#stageContainer.video-fit-cover #nativeVideoPlayer,
+#stageContainer.video-fit-cover #webPlayerFrame,
+#stageContainer.video-fit-cover #remoteScreenPlayer {
+  object-fit: cover !important;
+  transform: scale(calc(var(--miruo-video-scale, 1) * 1.18));
+}
+
+#stageContainer.video-fit-zoom #ytPlayerContainer,
+#stageContainer.video-fit-zoom #nativeVideoPlayer,
+#stageContainer.video-fit-zoom #webPlayerFrame,
+#stageContainer.video-fit-zoom #remoteScreenPlayer {
+  transform: scale(calc(var(--miruo-video-scale, 1) * 1.35));
+}
+
+/* Landscape Fullscreen with Chat Closed: Fill 100% of screen width & height edge-to-edge (no black side bars on 19.5:9 iPhones) */
+@media (orientation: landscape) {
+  body.stage-is-fullscreen:not(.fs-chat-active) #stageContainer,
+  #stageContainer:fullscreen:not(.fs-chat-active),
+  #stageContainer:-webkit-full-screen:not(.fs-chat-active),
+  #stageContainer.is-fullscreen-pseudo:not(.fs-chat-active) {
+    position: fixed !important;
+    inset: 0 !important;
+    top: 0 !important;
+    left: 0 !important;
+    right: 0 !important;
+    bottom: 0 !important;
+    width: 100vw !important;
+    height: 100dvh !important;
+    max-width: 100vw !important;
+    max-height: 100dvh !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    overflow: hidden !important;
+  }
+
+  body.stage-is-fullscreen:not(.fs-chat-active) #ytPlayerContainer,
+  #stageContainer:fullscreen:not(.fs-chat-active) #ytPlayerContainer,
+  #stageContainer:-webkit-full-screen:not(.fs-chat-active) #ytPlayerContainer,
+  #stageContainer.is-fullscreen-pseudo:not(.fs-chat-active) #ytPlayerContainer {
+    position: absolute !important;
+    inset: 0 !important;
+    top: 0 !important;
+    left: 0 !important;
+    right: 0 !important;
+    bottom: 0 !important;
+    width: 100vw !important;
+    height: 100dvh !important;
+    max-width: 100vw !important;
+    max-height: 100dvh !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    overflow: hidden !important;
+  }
+
+  body.stage-is-fullscreen:not(.fs-chat-active) #ytPlayerContainer iframe,
+  body.stage-is-fullscreen:not(.fs-chat-active) #miruoYtIframe,
+  body.stage-is-fullscreen:not(.fs-chat-active) #ytPlayer,
+  #stageContainer:fullscreen:not(.fs-chat-active) #ytPlayerContainer iframe,
+  #stageContainer:-webkit-full-screen:not(.fs-chat-active) #ytPlayerContainer iframe,
+  #stageContainer.is-fullscreen-pseudo:not(.fs-chat-active) #ytPlayerContainer iframe,
+  #stageContainer:fullscreen:not(.fs-chat-active) #miruoYtIframe,
+  #stageContainer:-webkit-full-screen:not(.fs-chat-active) #miruoYtIframe,
+  #stageContainer.is-fullscreen-pseudo:not(.fs-chat-active) #miruoYtIframe,
+  #stageContainer:fullscreen:not(.fs-chat-active) #ytPlayer,
+  #stageContainer:-webkit-full-screen:not(.fs-chat-active) #ytPlayer,
+  #stageContainer.is-fullscreen-pseudo:not(.fs-chat-active) #ytPlayer {
+    position: absolute !important;
+    inset: auto !important;
+    top: 50% !important;
+    left: 50% !important;
+    right: auto !important;
+    bottom: auto !important;
+    width: 100vw !important;
+    height: 56.25vw !important;
+    min-height: 100dvh !important;
+    min-width: 177.78dvh !important;
+    max-width: none !important;
+    max-height: none !important;
+    transform: translate(-50%, -50%) !important;
+    border: 0 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+
+  body.stage-is-fullscreen:not(.fs-chat-active) #nativeVideoPlayer,
+  body.stage-is-fullscreen:not(.fs-chat-active) #remoteScreenPlayer,
+  #stageContainer:fullscreen:not(.fs-chat-active) #nativeVideoPlayer,
+  #stageContainer:-webkit-full-screen:not(.fs-chat-active) #nativeVideoPlayer,
+  #stageContainer.is-fullscreen-pseudo:not(.fs-chat-active) #nativeVideoPlayer,
+  #stageContainer:fullscreen:not(.fs-chat-active) #remoteScreenPlayer,
+  #stageContainer:-webkit-full-screen:not(.fs-chat-active) #remoteScreenPlayer,
+  #stageContainer.is-fullscreen-pseudo:not(.fs-chat-active) #remoteScreenPlayer {
+    width: 100vw !important;
+    height: 100dvh !important;
+    max-width: 100vw !important;
+    max-height: 100dvh !important;
+    object-fit: cover !important;
+  }
+}
+
+/* Queue Modal always visible above room & fullscreen headers */
+#roomQueueModal {
+  z-index: 1000005 !important;
+}
+#roomQueueModal:not(.hidden) {
+  display: flex !important;
+  pointer-events: auto !important;
+}
+
+/* Landscape Mode In-Room Responsive Fill */
+@media (orientation: landscape) and (max-height: 520px) {
+  #stageContainer:not(.is-fullscreen-pseudo) {
+    height: calc(100vh - 120px) !important;
+    aspect-ratio: auto !important;
+  }
+}
+
+/* Sleep Mode & OLED Pitch Black Dimmer */
+#sleepModePlaceholder {
+  background-color: #030305 !important;
+}
+
+#sleepScreenDimmer {
+  background-color: #000000 !important;
+  z-index: 1000000 !important;
+  touch-action: manipulation;
+}
+
+#sleepScreenDimmer:not(.hidden) {
+  display: flex !important;
+}
+
+
+
+
+/* ========================================================
+   MASAÜSTÜ DÜZENİ (Mac & Windows & Web)
+   Yalnızca geniş ekran + fare/trackpad olan cihazlarda devreye girer.
+   Telefon / tablet (dokunmatik) görünümü KESİNLİKLE etkilenmez.
+   ======================================================== */
+@media (min-width: 1024px) and (hover: hover) and (pointer: fine) {
+  :root { --miruo-sidebar-w: 232px; }
+
+  /* Alt menü → sol kenar çubuğu */
+  #mobileBottomNav:not(.hidden) {
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: stretch !important;
+    justify-content: flex-start !important;
+    position: fixed !important;
+    top: 0 !important;
+    bottom: 0 !important;
+    left: 0 !important;
+    right: auto !important;
+    inset-inline: 0 auto !important;
+    transform: none !important;
+    width: var(--miruo-sidebar-w) !important;
+    gap: 6px !important;
+    padding: 88px 14px 20px !important;
+    border-radius: 0 !important;
+    border: none !important;
+    border-right: 1px solid rgba(255, 255, 255, 0.08) !important;
+    background: #07080D !important;
+    box-shadow: none !important;
+    z-index: 45 !important;
+  }
+
+  #mobileBottomNav:not(.hidden) > button {
+    flex-direction: row !important;
+    align-items: center !important;
+    justify-content: flex-start !important;
+    gap: 14px !important;
+    width: 100% !important;
+    padding: 12px 16px !important;
+    border-radius: 14px !important;
+    margin: 0 !important;
+    pointer-events: auto !important;
+    cursor: pointer !important;
+    transition: background 0.15s ease, color 0.15s ease !important;
+  }
+  #mobileBottomNav:not(.hidden) > button:hover { background: rgba(255, 255, 255, 0.06) !important; }
+  #mobileBottomNav:not(.hidden) > button svg { width: 20px !important; height: 20px !important; flex-shrink: 0; }
+  #mobileBottomNav:not(.hidden) > button > span { font-size: 14px !important; font-weight: 600 !important; }
+
+  /* "+" butonu: kenar çubuğunun en üstünde geniş "Yeni Oda" butonu */
+  #mobileBottomNav:not(.hidden) > #raveFabPlusBtn {
+    order: -1 !important;
+    width: 100% !important;
+    height: 48px !important;
+    margin: 0 0 14px 0 !important;
+    border: none !important;
+    border-radius: 14px !important;
+    gap: 10px !important;
+    font-size: 14px !important;
+    font-weight: 800 !important;
+    box-shadow: 0 6px 20px rgba(255, 255, 255, 0.12) !important;
+  }
+  #mobileBottomNav:not(.hidden) > #raveFabPlusBtn svg { width: 18px !important; height: 18px !important; }
+  #mobileBottomNav:not(.hidden) > #raveFabPlusBtn::after {
+    content: "Yeni Oda";
+    font-size: 14px;
+    font-weight: 800;
+    color: #000;
+  }
+
+  /* Üst başlık: logo kenar çubuğunun üstüne, sola hizalı */
+  body:has(#mobileBottomNav:not(.hidden)) #mainHeader {
+    position: fixed !important;
+    top: 0 !important;
+    left: 0 !important;
+    width: var(--miruo-sidebar-w) !important;
+    height: 76px !important;
+    min-height: 72px !important;
+    max-height: 76px !important;
+    padding: 18px 20px 0 !important;
+    background: transparent !important;
+    border-bottom: none !important;
+    z-index: 46 !important;
+    pointer-events: none !important;
+  }
+  body:has(#mobileBottomNav:not(.hidden)) #mainHeader > div { justify-content: flex-start !important; }
+  body:has(#mobileBottomNav:not(.hidden)) #mainHeader > div > div:empty { display: none !important; }
+  body:has(#mobileBottomNav:not(.hidden)) #mainHeader #navLogoBtn {
+    align-items: flex-start !important;
+    pointer-events: auto !important;
+  }
+
+  /* İçerik alanı: kenar çubuğunun sağında, geniş ve ferah */
+  body:has(#mobileBottomNav:not(.hidden)) main {
+    margin-left: var(--miruo-sidebar-w) !important;
+    width: calc(100% - var(--miruo-sidebar-w)) !important;
+    max-width: 1560px !important;
+    padding: 32px clamp(28px, 4vw, 64px) 48px !important;
+  }
+  body:has(#mobileBottomNav:not(.hidden)) #friendsTabSection,
+  body:has(#mobileBottomNav:not(.hidden)) #profileTabSection {
+    padding-bottom: 24px !important;
+  }
+
+  /* Keşfet: arama sola, oda kartları otomatik sütunlu ızgara */
+  body:has(#mobileBottomNav:not(.hidden)) #exploreLobbySection > div:first-child {
+    max-width: 640px !important;
+    margin-left: 0 !important;
+    margin-right: auto !important;
+  }
+  #publicRoomsGrid {
+    grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)) !important;
+    gap: 18px !important;
+  }
+  #tabFriendsContainer {
+    display: grid !important;
+    grid-template-columns: repeat(auto-fill, minmax(380px, 1fr)) !important;
+    gap: 14px !important;
+  }
+  #tabFriendsContainer > * { margin: 0 !important; }
+}

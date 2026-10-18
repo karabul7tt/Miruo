@@ -1671,7 +1671,7 @@ function validateInstagramUsername(username) {
   }
 
   if (urlObj.pathname === '/download/android') {
-    res.writeHead(302, { Location: 'https://play.google.com/store/apps/details?id=com.miruo.app' });
+    res.writeHead(302, { Location: '/downloads/Miruo.apk' });
     res.end();
     return;
   }

@@ -322,7 +322,12 @@
       }
 
       if (platform === 'android') {
-        window.open('https://play.google.com/store/apps/details?id=com.miruo.app', '_blank');
+        const dlLink = document.createElement('a');
+        dlLink.href = '/downloads/Miruo.apk';
+        dlLink.download = 'Miruo.apk';
+        document.body.appendChild(dlLink);
+        dlLink.click();
+        document.body.removeChild(dlLink);
         return;
       }
 

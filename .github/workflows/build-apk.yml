@@ -1,0 +1,90 @@
+name: Build & Release Android APK
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'android/**'
+      - 'app/**'
+      - '.github/workflows/build-apk.yml'
+  workflow_dispatch:
+
+jobs:
+  build-apk:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+        token: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Set up JDK 17
+      uses: actions/setup-java@v4
+      with:
+        java-version: '17'
+        distribution: 'temurin'
+        cache: gradle
+
+    - name: Setup Android SDK
+      uses: android-actions/setup-android@v3
+
+    - name: Generate Gradle Wrapper
+      run: |
+        cd android
+        gradle wrapper --gradle-version 8.2
+
+    - name: Make Gradlew Executable
+      run: chmod +x android/gradlew
+
+    - name: Generate Release Keystore
+      run: |
+        keytool -genkeypair -v \
+          -keystore android/miruo-release.jks \
+          -alias miruokey \
+          -keyalg RSA \
+          -keysize 2048 \
+          -validity 10000 \
+          -storepass miruopassword2026 \
+          -keypass miruopassword2026 \
+          -dname "CN=Miruo, OU=Mobile, O=Miruo Inc, L=Istanbul, C=TR"
+
+    - name: Build Android APK
+      run: |
+        cd android
+        ./gradlew assembleRelease \
+          -PRELEASE_STORE_FILE=miruo-release.jks \
+          -PRELEASE_STORE_PASSWORD=miruopassword2026 \
+          -PRELEASE_KEY_ALIAS=miruokey \
+          -PRELEASE_KEY_PASSWORD=miruopassword2026 \
+          --stacktrace
+
+    - name: Copy APK to Downloads and Website
+      run: |
+        APK_FILE=$(find android/app/build/outputs/apk -name "*.apk" | head -n 1)
+        echo "Found APK: $APK_FILE"
+        mkdir -p downloads website/downloads
+        cp "$APK_FILE" downloads/Miruo.apk
+        cp "$APK_FILE" website/downloads/Miruo.apk
+        ls -lh downloads/Miruo.apk website/downloads/Miruo.apk
+
+    - name: Upload APK Artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: Miruo-Android-APK
+        path: downloads/Miruo.apk
+
+    - name: Commit and Push APK to Repository
+      run: |
+        git config user.name "github-actions[bot]"
+        git config user.email "github-actions[bot]@users.noreply.github.com"
+        git add downloads/Miruo.apk website/downloads/Miruo.apk
+        if git diff --staged --quiet; then
+          echo "No APK changes to commit"
+        else
+          git commit -m "build(android): auto-generate and release Miruo.apk [skip ci]"
+          git push origin main
+        fi
