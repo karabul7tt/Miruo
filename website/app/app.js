@@ -4168,9 +4168,11 @@ function applyFsChatFullscreenSettings(isFullscreen) {
   const overlay = document.getElementById('fsChatOverlay');
   const floatBtn = document.getElementById('openFsChatFloatingBtn');
   const stage = dom.stageContainer || document.getElementById('stageContainer');
-  const isChatShowing = isFullscreen && state.isChatVisible && fsChatSettings.isFsChatOpen && fsChatSettings.showInFullscreen;
+  const isLandscape = window.matchMedia('(orientation: landscape)').matches || (window.innerWidth > window.innerHeight && window.innerHeight < 600);
+  const isCinema = isFullscreen || isLandscape;
+  const isChatShowing = isCinema && state.isChatVisible && fsChatSettings.isFsChatOpen && fsChatSettings.showInFullscreen;
 
-  if (isFullscreen) {
+  if (isCinema) {
     if (dom.openChatFloatingBtn) dom.openChatFloatingBtn.classList.add('hidden');
     if (!isChatShowing) {
       if (overlay) overlay.classList.add('hidden');
@@ -4185,7 +4187,7 @@ function applyFsChatFullscreenSettings(isFullscreen) {
     }
   } else {
     if (overlay) overlay.classList.add('hidden');
-    if (floatBtn) floatBtn.classList.add('hidden'); // ALWAYS hidden when not in fullscreen!
+    if (floatBtn) floatBtn.classList.add('hidden');
     if (dom.openChatFloatingBtn) dom.openChatFloatingBtn.classList.add('hidden');
     if (stage) stage.classList.remove('fs-chat-active');
     document.body.classList.remove('fs-chat-active');
@@ -4479,14 +4481,19 @@ function clampPipCardsToStage() {
 }
 
 window.addEventListener('resize', () => {
+  const isFs = isStageFullscreen();
+  applyFsChatFullscreenSettings(isFs);
   clampPipCardsToStage();
   setTimeout(clampPipCardsToStage, 120);
   setTimeout(clampPipCardsToStage, 350);
 });
 
 window.addEventListener('orientationchange', () => {
-  clampPipCardsToStage();
-  setTimeout(clampPipCardsToStage, 120);
+  setTimeout(() => {
+    const isFs = isStageFullscreen();
+    applyFsChatFullscreenSettings(isFs);
+    clampPipCardsToStage();
+  }, 100);
   setTimeout(clampPipCardsToStage, 380);
 });
 
@@ -5556,19 +5563,21 @@ async function toggleCam() {
 function setChatVisibility(visible) {
   state.isChatVisible = visible;
   const isFs = isStageFullscreen();
+  const isLandscape = window.matchMedia('(orientation: landscape)').matches || (window.innerWidth > window.innerHeight && window.innerHeight < 600);
+  const isCinema = isFs || isLandscape;
 
   if (dom.roomChatSidebar) {
     dom.roomChatSidebar.classList.toggle('hidden', !visible);
   }
 
   // Strictly only ONE chat button can EVER be shown:
-  // Non-fullscreen: the toolbar toggleChatToolbarBtn is always visible, so floating button is kept hidden!
-  // Fullscreen: show openFsChatFloatingBtn when fs chat overlay is closed.
+  // In portrait non-fullscreen: the toolbar toggleChatToolbarBtn is always visible, so floating button is kept hidden!
+  // In landscape / fullscreen: show openFsChatFloatingBtn when fs chat overlay is closed.
   if (dom.openChatFloatingBtn) {
     dom.openChatFloatingBtn.classList.add('hidden');
   }
   if (dom.openFsChatFloatingBtn) {
-    dom.openFsChatFloatingBtn.classList.toggle('hidden', visible || !isFs);
+    dom.openFsChatFloatingBtn.classList.toggle('hidden', visible || !isCinema);
   }
 
   if (dom.chatToolbarBtnText) {
@@ -5592,7 +5601,7 @@ function setChatVisibility(visible) {
     dom.stageContainer.classList.toggle('stage-chat-closed', !visible);
   }
 
-  if (isFs) {
+  if (isCinema) {
     if (dom.fsChatOverlay) {
       dom.fsChatOverlay.classList.toggle('hidden', !visible);
     }
@@ -13416,8 +13425,9 @@ function initEvents() {
   if (dom.openNativeYtBrowserBtn) {
     dom.openNativeYtBrowserBtn.addEventListener('click', () => {
       // In iOS App: call native script message handler
+      const hasActiveVideo = !!(state.isInRoom && state.roomId && state.currentVideoId && dom.roomWorkspaceSection && !dom.roomWorkspaceSection.classList.contains('hidden'));
       if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.openYouTube) {
-        window.webkit.messageHandlers.openYouTube.postMessage({ lang: currentLang });
+        window.webkit.messageHandlers.openYouTube.postMessage({ lang: currentLang, hasActiveVideo: hasActiveVideo });
       } else {
         window.open('https://m.youtube.com', '_blank');
       }

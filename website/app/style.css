@@ -470,66 +470,90 @@ body.stage-is-fullscreen #fsChatOverlay {
 
 /* Landscape Mode: Chat stretches full height top-to-bottom, video shifts left gracefully */
 @media (orientation: landscape) {
+  #fsChatOverlay,
   #stageContainer:fullscreen #fsChatOverlay,
   #stageContainer:-webkit-full-screen #fsChatOverlay,
   #stageContainer.is-fullscreen-pseudo #fsChatOverlay,
-  body.stage-is-fullscreen #fsChatOverlay {
+  body.stage-is-fullscreen #fsChatOverlay,
+  body.fs-chat-active #fsChatOverlay {
     position: absolute !important;
     top: 0 !important;
     bottom: 0 !important;
     right: 0 !important;
-    height: 100vh !important;
-    max-height: 100vh !important;
+    height: 100% !important;
+    max-height: 100% !important;
     border-radius: 0 !important;
     border-top: none !important;
     border-bottom: none !important;
     border-right: none !important;
     border-left: 1px solid rgba(255, 255, 255, 0.15) !important;
     width: 320px !important;
-    max-width: 360px !important;
+    max-width: 38vw !important;
+    z-index: 50 !important;
     padding-bottom: max(8px, env(safe-area-inset-bottom, 8px)) !important;
   }
 
-  /* Shift video left when chat is active in landscape fullscreen */
+  /* Shift video left when chat is active in landscape */
+  #stageContainer.fs-chat-active #player,
   #stageContainer:fullscreen.fs-chat-active #player,
   #stageContainer:-webkit-full-screen.fs-chat-active #player,
   #stageContainer.is-fullscreen-pseudo.fs-chat-active #player,
+  #stageContainer.fs-chat-active #nativeVideoPlayer,
   #stageContainer:fullscreen.fs-chat-active #nativeVideoPlayer,
   #stageContainer:-webkit-full-screen.fs-chat-active #nativeVideoPlayer,
   #stageContainer.is-fullscreen-pseudo.fs-chat-active #nativeVideoPlayer,
+  #stageContainer.fs-chat-active #webPlayerFrame,
   #stageContainer:fullscreen.fs-chat-active #webPlayerFrame,
   #stageContainer:-webkit-full-screen.fs-chat-active #webPlayerFrame,
   #stageContainer.is-fullscreen-pseudo.fs-chat-active #webPlayerFrame,
+  #stageContainer.fs-chat-active #remoteScreenPlayer,
   #stageContainer:fullscreen.fs-chat-active #remoteScreenPlayer,
   #stageContainer:-webkit-full-screen.fs-chat-active #remoteScreenPlayer,
   #stageContainer.is-fullscreen-pseudo.fs-chat-active #remoteScreenPlayer,
+  #stageContainer.fs-chat-active #ravePlayerOverlay,
   #stageContainer:fullscreen.fs-chat-active #ravePlayerOverlay,
   #stageContainer:-webkit-full-screen.fs-chat-active #ravePlayerOverlay,
-  #stageContainer.is-fullscreen-pseudo.fs-chat-active #ravePlayerOverlay {
+  #stageContainer.is-fullscreen-pseudo.fs-chat-active #ravePlayerOverlay,
+  #stageContainer.fs-chat-active #ytPlayerContainer,
+  body.fs-chat-active #ytPlayerContainer,
+  body.fs-chat-active #nativeVideoPlayer,
+  body.fs-chat-active #webPlayerFrame,
+  body.fs-chat-active #remoteScreenPlayer {
     margin-right: 320px !important;
     width: calc(100% - 320px) !important;
+    max-width: calc(100% - 320px) !important;
     transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1) !important;
   }
 
-  /* Reset margin-right and fill 100% width when chat is closed in landscape fullscreen */
+  /* Reset margin-right and fill 100% width when chat is closed in landscape */
+  #stageContainer:not(.fs-chat-active) #player,
   #stageContainer:fullscreen:not(.fs-chat-active) #player,
   #stageContainer:-webkit-full-screen:not(.fs-chat-active) #player,
   #stageContainer.is-fullscreen-pseudo:not(.fs-chat-active) #player,
+  #stageContainer:not(.fs-chat-active) #nativeVideoPlayer,
   #stageContainer:fullscreen:not(.fs-chat-active) #nativeVideoPlayer,
   #stageContainer:-webkit-full-screen:not(.fs-chat-active) #nativeVideoPlayer,
   #stageContainer.is-fullscreen-pseudo:not(.fs-chat-active) #nativeVideoPlayer,
+  #stageContainer:not(.fs-chat-active) #webPlayerFrame,
   #stageContainer:fullscreen:not(.fs-chat-active) #webPlayerFrame,
   #stageContainer:-webkit-full-screen:not(.fs-chat-active) #webPlayerFrame,
   #stageContainer.is-fullscreen-pseudo:not(.fs-chat-active) #webPlayerFrame,
+  #stageContainer:not(.fs-chat-active) #remoteScreenPlayer,
   #stageContainer:fullscreen:not(.fs-chat-active) #remoteScreenPlayer,
   #stageContainer:-webkit-full-screen:not(.fs-chat-active) #remoteScreenPlayer,
   #stageContainer.is-fullscreen-pseudo:not(.fs-chat-active) #remoteScreenPlayer,
+  #stageContainer:not(.fs-chat-active) #ravePlayerOverlay,
   #stageContainer:fullscreen:not(.fs-chat-active) #ravePlayerOverlay,
   #stageContainer:-webkit-full-screen:not(.fs-chat-active) #ravePlayerOverlay,
   #stageContainer.is-fullscreen-pseudo:not(.fs-chat-active) #ravePlayerOverlay,
+  #stageContainer:not(.fs-chat-active) #ytPlayerContainer,
   #stageContainer:fullscreen:not(.fs-chat-active) #ytPlayerContainer,
   #stageContainer:-webkit-full-screen:not(.fs-chat-active) #ytPlayerContainer,
-  #stageContainer.is-fullscreen-pseudo:not(.fs-chat-active) #ytPlayerContainer {
+  #stageContainer.is-fullscreen-pseudo:not(.fs-chat-active) #ytPlayerContainer,
+  body:not(.fs-chat-active) #ytPlayerContainer,
+  body:not(.fs-chat-active) #nativeVideoPlayer,
+  body:not(.fs-chat-active) #webPlayerFrame,
+  body:not(.fs-chat-active) #remoteScreenPlayer {
     margin-right: 0 !important;
     width: 100% !important;
     max-width: 100% !important;
@@ -537,6 +561,13 @@ body.stage-is-fullscreen #fsChatOverlay {
     left: 0 !important;
     right: 0 !important;
     transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1) !important;
+  }
+
+  #openFsChatFloatingBtn {
+    display: flex !important;
+  }
+  #openFsChatFloatingBtn.hidden {
+    display: none !important;
   }
 }
 

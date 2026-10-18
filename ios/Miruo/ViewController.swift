@@ -1248,7 +1248,16 @@ class PlatformBrowserViewController: UIViewController, WKNavigationDelegate, WKU
         // Prevent background audio overlap: stop video element in browser immediately!
         self.webView.evaluateJavaScript("try { var v = document.querySelectorAll('video, audio'); v.forEach(function(el){ el.pause(); el.src = ''; }); } catch(e) {}")
         
-        // Always prompt user to either Play Immediately or Add to Queue!
+        // If there is NO active video playing in the room yet, directly start playback without prompting!
+        if !hasActiveVideo {
+            self.webView.load(URLRequest(url: URL(string: "about:blank")!))
+            self.dismiss(animated: true) { [weak self] in
+                self?.onVideoSelected?(videoId, "play")
+            }
+            return
+        }
+        
+        // Only if a video is ALREADY actively playing in the room (2nd video), offer Play Immediately or Add to Queue!
         let alert = UIAlertController(title: "Video Seçildi", message: "Ne yapmak istersiniz?", preferredStyle: .actionSheet)
         alert.addAction(UIAlertAction(title: "Hemen Oynat", style: .default, handler: { [weak self] _ in
             self?.webView.load(URLRequest(url: URL(string: "about:blank")!))
