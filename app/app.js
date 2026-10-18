@@ -1747,6 +1747,7 @@ const state = {
   isPlaying: false,
   duration: 0,
   currentTime: 0,
+  playbackQuality: 'auto',
   isRemoteAction: false,
   
   // WebRTC
@@ -1933,8 +1934,7 @@ const dom = {
   raveRoomSettingsBtn: document.getElementById('raveRoomSettingsBtn'),
   raveRoomSettingsMenu: document.getElementById('raveRoomSettingsMenu'),
   closeRaveRoomSettingsMenuBtn: document.getElementById('closeRaveRoomSettingsMenuBtn'),
-  playerZoomSlider: document.getElementById('playerZoomSlider'),
-  playerZoomVal: document.getElementById('playerZoomVal'),
+  playerQualityVal: document.getElementById('playerQualityVal'),
   playerSpeedVal: document.getElementById('playerSpeedVal'),
   raveResyncBtn: document.getElementById('raveResyncBtn'),
   raveCopyRoomLinkBtn: document.getElementById('raveCopyRoomLinkBtn'),
@@ -3107,7 +3107,7 @@ function loadYoutubeVideo(urlOrId) {
   state.isPlaying = true;
   updatePlayPauseUI(true);
 
-  // Hook iframe load to enable postMessage events
+  // Hook iframe load to enable postMessage events & restore preferred quality
   const ytFrame = document.getElementById('miruoYtIframe');
   if (ytFrame) {
     ytFrame.addEventListener('load', () => {
@@ -3115,6 +3115,15 @@ function loadYoutubeVideo(urlOrId) {
         if (ytFrame.contentWindow) {
           ytFrame.contentWindow.postMessage(JSON.stringify({ event: 'listening' }), '*');
         }
+        try {
+          const prefQuality = localStorage.getItem('miruo_preferred_quality') || 'auto';
+          if (typeof window.setPlayerQuality === 'function') {
+            window.setPlayerQuality(prefQuality, false);
+          } else {
+            sendYtCommand('setPlaybackQuality', [prefQuality]);
+            sendYtCommand('setPlaybackQualityRange', [prefQuality, prefQuality]);
+          }
+        } catch (_) {}
       }, 500);
     });
   }
@@ -15083,10 +15092,11 @@ function validateInstagramUsername(username) {
   if (dom.stageContainer) {
     let lastTapTime = 0;
     let lastTapX = 0;
+    let singleTapTimeout = null;
 
-    dom.stageContainer.addEventListener('touchend', (e) => {
+    const handlePlayerTouchEnd = (e) => {
       if (document.body.classList.contains('has-mini-player')) return;
-      if (e.target.closest('#partnerPipCard') || e.target.closest('#selfPipCard') || e.target.closest('button') || e.target.closest('#raveRoomSettingsMenu')) return;
+      if (e.target.closest('#partnerPipCard') || e.target.closest('#selfPipCard') || e.target.closest('button') || e.target.closest('#raveRoomSettingsMenu') || e.target.closest('input')) return;
 
       const currentTime = Date.now();
       const touch = e.changedTouches ? e.changedTouches[0] : null;
@@ -15098,35 +15108,76 @@ function validateInstagramUsername(username) {
       const distDiff = Math.abs(touchX - lastTapX);
 
       if (timeDiff < 320 && distDiff < 70) {
-        // Double Tap Detected on touch screen!
+        // Double Tap Detected!
+        if (singleTapTimeout) {
+          clearTimeout(singleTapTimeout);
+          singleTapTimeout = null;
+        }
         e.preventDefault();
         e.stopPropagation();
         const normX = touchX / rect.width;
-        if (normX < 0.45) {
+        if (normX < 0.40) {
           triggerDoubleTapSeek(false); // Rewind 10s
-        } else if (normX > 0.55) {
-          triggerDoubleTapSeek(true); // Forward 10s
+        } else if (normX > 0.60) {
+          triggerDoubleTapSeek(true);  // Forward 10s
+        } else {
+          togglePlayPause();           // Center double tap = Play/Pause
         }
         lastTapTime = 0;
         return;
       }
+
       lastTapTime = currentTime;
       lastTapX = touchX;
-    });
+
+      // Single Tap after brief delay to distinguish from double-tap
+      if (singleTapTimeout) clearTimeout(singleTapTimeout);
+      singleTapTimeout = setTimeout(() => {
+        singleTapTimeout = null;
+        const isOverlayHidden = dom.ravePlayerOverlay && dom.ravePlayerOverlay.classList.contains('opacity-0');
+        if (isOverlayHidden) {
+          showStageControls();
+          resetControlsHideTimer();
+        } else {
+          hideStageControls();
+        }
+      }, 330);
+    };
+
+    dom.stageContainer.addEventListener('touchend', handlePlayerTouchEnd);
 
     dom.stageContainer.addEventListener('dblclick', (e) => {
-      if (e.target.closest('#partnerPipCard') || e.target.closest('#selfPipCard') || e.target.closest('button') || e.target.closest('#raveRoomSettingsMenu')) return;
+      if (e.target.closest('#partnerPipCard') || e.target.closest('#selfPipCard') || e.target.closest('button') || e.target.closest('#raveRoomSettingsMenu') || e.target.closest('input')) return;
       e.preventDefault();
       e.stopPropagation();
       const rect = dom.stageContainer.getBoundingClientRect();
       const clickX = e.clientX - rect.left;
       const normX = clickX / rect.width;
-      if (normX < 0.45) {
+      if (normX < 0.40) {
         triggerDoubleTapSeek(false); // Rewind 10s
-      } else if (normX > 0.55) {
+      } else if (normX > 0.60) {
         triggerDoubleTapSeek(true); // Forward 10s
+      } else {
+        togglePlayPause();
       }
     });
+
+    // Touch Guard element bindings
+    const touchGuard = document.getElementById('miruoTouchGuard');
+    if (touchGuard) {
+      touchGuard.addEventListener('touchend', handlePlayerTouchEnd);
+      touchGuard.addEventListener('click', (e) => {
+        if (e.detail === 1) {
+          const isOverlayHidden = dom.ravePlayerOverlay && dom.ravePlayerOverlay.classList.contains('opacity-0');
+          if (isOverlayHidden) {
+            showStageControls();
+            resetControlsHideTimer();
+          } else {
+            hideStageControls();
+          }
+        }
+      });
+    }
   }
 
   document.addEventListener('keydown', (e) => {
@@ -15606,17 +15657,50 @@ function validateInstagramUsername(username) {
   }
 
   function updateMenuAVStatus() {
-    const camBadge = document.getElementById('menuCameraStatusBadge');
-    const camBtnText = document.getElementById('menuToggleCamBtnText');
-    if (camBadge) {
-      camBadge.textContent = state.isCamOn ? 'Açık' : 'Kapalı';
-      camBadge.className = state.isCamOn ? 'text-[10px] font-bold text-emerald-400' : 'text-[10px] font-bold text-gray-400';
-    }
-    if (camBtnText) {
-      camBtnText.textContent = state.isCamOn ? 'Kamera Kapat' : 'Kamera Aç';
-    }
     updateCaptionsUI();
+    const currentQuality = state.playbackQuality || (function() {
+      try { return localStorage.getItem('miruo_preferred_quality'); } catch (_) { return null; }
+    })() || 'auto';
+    setPlayerQuality(currentQuality, false);
   }
+
+  function setPlayerQuality(quality, showNotification = true) {
+    if (!quality) quality = 'auto';
+    state.playbackQuality = quality;
+    try {
+      localStorage.setItem('miruo_preferred_quality', quality);
+    } catch (_) {}
+
+    if (state.activeMode === 'youtube') {
+      sendYtCommand('setPlaybackQuality', [quality]);
+      sendYtCommand('setPlaybackQualityRange', [quality, quality]);
+    }
+
+    const qualityLabelMap = {
+      'hd1080': '1080p',
+      'hd720': '720p',
+      'large': '480p',
+      'medium': '360p',
+      'auto': 'Otomatik'
+    };
+    const displayLabel = qualityLabelMap[quality] || quality;
+
+    const valBadge = document.getElementById('playerQualityVal');
+    if (valBadge) valBadge.textContent = displayLabel;
+
+    document.querySelectorAll('.player-quality-btn').forEach(btn => {
+      if (btn.dataset.quality === quality) {
+        btn.className = 'player-quality-btn py-1.5 rounded-lg bg-rose-500/30 text-rose-300 border border-rose-500/40 text-[10px] cursor-pointer transition-all active:scale-95 font-bold';
+      } else {
+        btn.className = 'player-quality-btn py-1.5 rounded-lg bg-white/5 hover:bg-white/15 text-[10px] cursor-pointer transition-all active:scale-95 text-gray-200';
+      }
+    });
+
+    if (showNotification) {
+      showToast(`Video Kalitesi: ${displayLabel}`);
+    }
+  }
+  window.setPlayerQuality = setPlayerQuality;
 
   function toggleRaveRoomSettingsMenu(show) {
     if (!dom.raveRoomSettingsMenu) return;
@@ -15737,6 +15821,14 @@ function validateInstagramUsername(username) {
     });
   }
 
+  // Quality buttons binding with instant tap
+  document.querySelectorAll('.player-quality-btn').forEach(btn => {
+    addInstantTap(btn, (e) => {
+      e.stopPropagation();
+      setPlayerQuality(btn.dataset.quality, true);
+    });
+  });
+
   // Speed buttons binding with instant tap
   document.querySelectorAll('.playback-speed-btn, .player-speed-btn').forEach(btn => {
     addInstantTap(btn, (e) => {
@@ -15753,86 +15845,10 @@ function validateInstagramUsername(username) {
     });
   });
 
-  // Camera toggle inside 3-dots menu
-  const menuToggleCamBtn = document.getElementById('menuToggleCamBtn');
-  if (menuToggleCamBtn) {
-    addInstantTap(menuToggleCamBtn, (e) => {
-      e.stopPropagation();
-      toggleCam().then(() => {
-        updateMenuAVStatus();
-      });
-    });
-  }
-
-  // Camera flip (front/back) inside 3-dots menu
-  const menuFlipCamBtn = document.getElementById('menuFlipCamBtn');
-  if (menuFlipCamBtn) {
-    addInstantTap(menuFlipCamBtn, async (e) => {
-      e.stopPropagation();
-      state.cameraFacingMode = (state.cameraFacingMode === 'environment') ? 'user' : 'environment';
-      if (!state.isCamOn) {
-        await toggleCam();
-        updateMenuAVStatus();
-        return;
-      }
-      try {
-        if (state.localStream) {
-          state.localStream.getVideoTracks().forEach(track => {
-            try { track.stop(); } catch(e) {}
-            try { state.localStream.removeTrack(track); } catch(e) {}
-          });
-        }
-        const newStream = await navigator.mediaDevices.getUserMedia({
-          video: { width: { ideal: 640 }, height: { ideal: 480 }, facingMode: state.cameraFacingMode },
-          audio: false
-        });
-        const newTrack = newStream.getVideoTracks()[0];
-        if (newTrack) {
-          state.localStream.addTrack(newTrack);
-          if (dom.selfVideo) dom.selfVideo.srcObject = state.localStream;
-          Object.values(peers || {}).forEach(peer => {
-            try {
-              const senders = peer.getSenders ? peer.getSenders() : [];
-              const videoSender = senders.find(s => s.track && s.track.kind === 'video');
-              if (videoSender) videoSender.replaceTrack(newTrack);
-            } catch(e) {}
-          });
-        }
-        showToast(state.cameraFacingMode === 'environment' ? 'Arka kamera devrede' : 'Ön kamera devrede');
-      } catch (err) {
-        showToast('Kamera çevrilemedi: ' + (err.message || 'Hata'));
-      }
-      updateMenuAVStatus();
-    });
-  }
-
   if (dom.raveResyncBtn) {
     addInstantTap(dom.raveResyncBtn, (e) => {
       e.stopPropagation();
       triggerResyncWithHost();
-    });
-  }
-
-  if (dom.raveCopyRoomLinkBtn) {
-    addInstantTap(dom.raveCopyRoomLinkBtn, (e) => {
-      e.stopPropagation();
-      const url = getMiruoRoomUrl(state.roomId || 'MIRUO-DEMO');
-      copyToClipboard(url).then(() => {
-        showToast('Oda davet linki kopyalandı!');
-      }).catch(() => {
-        showToast('Oda davet linki kopyalandı!');
-      });
-      toggleRaveRoomSettingsMenu(false);
-    });
-  }
-
-  if (dom.raveOpenParticipantsBtn) {
-    addInstantTap(dom.raveOpenParticipantsBtn, (e) => {
-      e.stopPropagation();
-      toggleRaveRoomSettingsMenu(false);
-      if (typeof openRoomParticipantsModal === 'function') {
-        openRoomParticipantsModal();
-      }
     });
   }
 
