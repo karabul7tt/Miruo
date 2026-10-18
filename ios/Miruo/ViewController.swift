@@ -1098,9 +1098,9 @@ class PlatformBrowserViewController: UIViewController, WKNavigationDelegate, WKU
         config.websiteDataStore = WKWebsiteDataStore.default()
         config.userContentController = userContentController
         config.allowsInlineMediaPlayback = true
-        config.mediaTypesRequiringUserActionForPlayback = []
-        config.allowsAirPlayForMediaPlayback = true
-        config.allowsPictureInPictureMediaPlayback = true
+        config.mediaTypesRequiringUserActionForPlayback = .all
+        config.allowsAirPlayForMediaPlayback = false
+        config.allowsPictureInPictureMediaPlayback = false
         
         webView = WKWebView(frame: .zero, configuration: config)
         webView.translatesAutoresizingMaskIntoConstraints = false
@@ -1248,15 +1248,7 @@ class PlatformBrowserViewController: UIViewController, WKNavigationDelegate, WKU
         // Prevent background audio overlap: stop video element in browser immediately!
         self.webView.evaluateJavaScript("try { var v = document.querySelectorAll('video, audio'); v.forEach(function(el){ el.pause(); el.src = ''; }); } catch(e) {}")
         
-        // If room currently has no active video, play immediately without asking!
-        if !hasActiveVideo {
-            self.webView.load(URLRequest(url: URL(string: "about:blank")!))
-            self.dismiss(animated: true) { [weak self] in
-                self?.onVideoSelected?(videoId, "play")
-            }
-            return
-        }
-        
+        // Always prompt user to either Play Immediately or Add to Queue!
         let alert = UIAlertController(title: "Video Seçildi", message: "Ne yapmak istersiniz?", preferredStyle: .actionSheet)
         alert.addAction(UIAlertAction(title: "Hemen Oynat", style: .default, handler: { [weak self] _ in
             self?.webView.load(URLRequest(url: URL(string: "about:blank")!))
@@ -1268,6 +1260,11 @@ class PlatformBrowserViewController: UIViewController, WKNavigationDelegate, WKU
             self?.onVideoSelected?(videoId, "queue")
             let generator = UINotificationFeedbackGenerator()
             generator.notificationOccurred(.success)
+            let toast = UIAlertController(title: "✓ Sıraya Eklendi", message: "Video sıraya eklendi. Odanızdaki video kesintisiz devam ediyor.", preferredStyle: .alert)
+            self?.present(toast, animated: true)
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
+                toast.dismiss(animated: true, completion: nil)
+            }
         }))
         alert.addAction(UIAlertAction(title: "İptal", style: .cancel, handler: nil))
         
@@ -1739,6 +1736,15 @@ final class MiruoPersistentAuthStore {
         return nil
     }
     
+    func deleteKeychainItem(account: String) {
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: service,
+            kSecAttrAccount as String: account
+        ]
+        SecItemDelete(query as CFDictionary)
+    }
+    
     func decodeJwtPayload(_ jwt: String) -> [String: Any]? {
         let segments = jwt.components(separatedBy: ".")
         guard segments.count > 1 else { return nil }
@@ -1923,12 +1929,14 @@ final class MiruoPersistentAuthStore {
             }
             
             if path == "/api/auth/update-profile" && method == "POST" {
-                let userId = ((body["id"] as? String) ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+                let userId = ((body["id"] as? String) ?? (body["userId"] as? String) ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
                 let email = ((body["email"] as? String) ?? "").trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+                let rawAppleSub = ((body["appleUserId"] as? String) ?? userId).replacingOccurrences(of: "apple_", with: "")
                 if let idx = users.firstIndex(where: {
                     let uid = ($0["id"] as? String) ?? ""
+                    let aid = ($0["appleUserId"] as? String) ?? ""
                     let uemail = (($0["email"] as? String) ?? "").lowercased()
-                    return (!userId.isEmpty && uid == userId) || (!email.isEmpty && uemail == email)
+                    return (!userId.isEmpty && uid == userId) || (!email.isEmpty && uemail == email) || (!rawAppleSub.isEmpty && (uid == rawAppleSub || aid == rawAppleSub))
                 }) {
                     var u = users[idx]
                     if let fn = body["fullName"] as? String, !fn.isEmpty { u["fullName"] = fn }
@@ -1937,9 +1945,46 @@ final class MiruoPersistentAuthStore {
                     if let bg = body["avatarBg"] as? String, !bg.isEmpty { u["avatarBg"] = bg }
                     users[idx] = u
                     saveUsers(users)
-                    return (200, ["ok": true, "user": u])
+                    
+                    if !rawAppleSub.isEmpty {
+                        if let fn = u["fullName"] as? String, !fn.isEmpty {
+                            UserDefaults.standard.set(fn, forKey: "apple_user_fullname_\(rawAppleSub)")
+                            saveKeychainString(fn, account: "apple_fullname_\(rawAppleSub)")
+                            saveKeychainString(fn, account: "miruo_custom_fullname_\(rawAppleSub)")
+                        }
+                        if let un = u["username"] as? String, !un.isEmpty {
+                            saveKeychainString(un, account: "miruo_custom_username_\(rawAppleSub)")
+                        }
+                        if let av = u["avatarUrl"] as? String, !av.isEmpty {
+                            saveKeychainString(av, account: "miruo_custom_avatar_\(rawAppleSub)")
+                        }
+                    }
+                    return (200, ["ok": true, "success": true, "user": u])
                 }
-                return (200, ["ok": true])
+                return (200, ["ok": true, "success": true])
+            }
+            
+            if path == "/api/auth/delete-account" && method == "POST" {
+                let userId = ((body["userId"] as? String) ?? (body["id"] as? String) ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+                let email = ((body["email"] as? String) ?? "").trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+                let rawAppleSub = ((body["appleUserId"] as? String) ?? userId).replacingOccurrences(of: "apple_", with: "")
+                users.removeAll(where: {
+                    let uid = ($0["id"] as? String) ?? ""
+                    let aid = ($0["appleUserId"] as? String) ?? ""
+                    let uemail = (($0["email"] as? String) ?? "").lowercased()
+                    return (!userId.isEmpty && uid == userId) || (!email.isEmpty && uemail == email) || (!rawAppleSub.isEmpty && (uid == rawAppleSub || aid == rawAppleSub))
+                })
+                saveUsers(users)
+                if !rawAppleSub.isEmpty {
+                    UserDefaults.standard.removeObject(forKey: "apple_user_fullname_\(rawAppleSub)")
+                    UserDefaults.standard.removeObject(forKey: "apple_user_email_\(rawAppleSub)")
+                    deleteKeychainItem(account: "apple_fullname_\(rawAppleSub)")
+                    deleteKeychainItem(account: "apple_email_\(rawAppleSub)")
+                    deleteKeychainItem(account: "miruo_custom_fullname_\(rawAppleSub)")
+                    deleteKeychainItem(account: "miruo_custom_username_\(rawAppleSub)")
+                    deleteKeychainItem(account: "miruo_custom_avatar_\(rawAppleSub)")
+                }
+                return (200, ["ok": true, "success": true, "message": "Hesabınız başarıyla silindi."])
             }
             
             return (200, ["ok": true])
@@ -2074,7 +2119,14 @@ extension ViewController: ASAuthorizationControllerDelegate, ASAuthorizationCont
             
             let store = MiruoPersistentAuthStore.shared
             // Persist & recover fullName and email in iOS Keychain + UserDefaults across reinstalls
-            if !fullName.isEmpty {
+            // If the user previously set a custom profile name, ALWAYS prioritize custom profile name!
+            let customSavedName = store.loadKeychainString(account: "miruo_custom_fullname_\(userIdentifier)")
+            let customSavedUsername = store.loadKeychainString(account: "miruo_custom_username_\(userIdentifier)")
+            let customSavedAvatar = store.loadKeychainString(account: "miruo_custom_avatar_\(userIdentifier)")
+
+            if let custom = customSavedName, !custom.isEmpty {
+                fullName = custom
+            } else if !fullName.isEmpty {
                 UserDefaults.standard.set(fullName, forKey: "apple_user_fullname_\(userIdentifier)")
                 store.saveKeychainString(fullName, account: "apple_fullname_\(userIdentifier)")
             } else {
@@ -2092,9 +2144,18 @@ extension ViewController: ASAuthorizationControllerDelegate, ASAuthorizationCont
             }
             
             // Check if this Apple account is already registered in persistent store
-            if let existingUser = store.findExistingAppleUser(userIdentifier: userIdentifier, email: email) {
-                if fullName.isEmpty, let savedName = existingUser["fullName"] as? String, !savedName.isEmpty {
+            if var existingUser = store.findExistingAppleUser(userIdentifier: userIdentifier, email: email) {
+                if let custom = customSavedName, !custom.isEmpty {
+                    existingUser["fullName"] = custom
+                    fullName = custom
+                } else if fullName.isEmpty, let savedName = existingUser["fullName"] as? String, !savedName.isEmpty {
                     fullName = savedName
+                }
+                if let customU = customSavedUsername, !customU.isEmpty {
+                    existingUser["username"] = customU
+                }
+                if let customA = customSavedAvatar, !customA.isEmpty {
+                    existingUser["avatarUrl"] = customA
                 }
                 if email.isEmpty, let savedEmail = existingUser["email"] as? String, !savedEmail.isEmpty {
                     email = savedEmail

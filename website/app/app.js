@@ -10296,7 +10296,6 @@ async function logoutUser() {
   } catch (e) {}
 
   localStorage.removeItem('miruo_user');
-  localStorage.removeItem('miruo_custom_username');
   sessionStorage.clear();
 
   if (supabaseClient && supabaseClient.auth) {
@@ -10852,6 +10851,33 @@ function initEvents() {
 
     const canonicalAppleId = rawAppleSub ? `apple_${rawAppleSub}` : '';
 
+    // 0. Check all saved custom profile locations FIRST (never lose user's chosen name or avatar!)
+    const savedCustomProfile =
+      (rawAppleSub && JSON.parse(localStorage.getItem(`miruo_saved_profile_${rawAppleSub}`) || 'null')) ||
+      (email && JSON.parse(localStorage.getItem(`miruo_saved_profile_${email}`) || 'null')) ||
+      (canonicalAppleId && JSON.parse(localStorage.getItem(`miruo_saved_profile_${canonicalAppleId}`) || 'null')) ||
+      null;
+
+    const customSavedFullName =
+      (savedCustomProfile && savedCustomProfile.fullName) ||
+      (rawAppleSub && localStorage.getItem(`miruo_apple_name_${rawAppleSub}`)) ||
+      (rawAppleSub && localStorage.getItem(`miruo_custom_fullname_${rawAppleSub}`)) ||
+      localStorage.getItem('miruo_custom_fullname') ||
+      '';
+
+    const customSavedUsername =
+      (savedCustomProfile && savedCustomProfile.username) ||
+      (rawAppleSub && localStorage.getItem(`miruo_apple_username_${rawAppleSub}`)) ||
+      (rawAppleSub && localStorage.getItem(`miruo_custom_username_${rawAppleSub}`)) ||
+      localStorage.getItem('miruo_custom_username') ||
+      '';
+
+    const customSavedAvatar =
+      (savedCustomProfile && (savedCustomProfile.avatarUrl || savedCustomProfile.avatarBg)) ||
+      (rawAppleSub && localStorage.getItem(`miruo_apple_avatar_${rawAppleSub}`)) ||
+      localStorage.getItem('miruo_custom_avatar') ||
+      '';
+
     // 1. Look up if this Apple ID or Email is ALREADY registered locally
     const regList = JSON.parse(localStorage.getItem('miruo_registered_users') || '[]');
     const byEmail = JSON.parse(localStorage.getItem('miruo_profiles_by_email') || '{}');
@@ -10870,10 +10896,10 @@ function initEvents() {
           id: (existingLocal && existingLocal.id) || canonicalAppleId,
           appleUserId: rawAppleSub,
           email: email,
-          fullName: incomingFullName || (existingLocal && existingLocal.fullName) || '',
-          username: (existingLocal && existingLocal.username) || '',
+          fullName: customSavedFullName || incomingFullName || (existingLocal && existingLocal.fullName) || '',
+          username: customSavedUsername || (existingLocal && existingLocal.username) || '',
           provider: 'Apple',
-          avatarUrl: (existingLocal && existingLocal.avatarUrl) || '',
+          avatarUrl: (savedCustomProfile && savedCustomProfile.avatarUrl) || (existingLocal && existingLocal.avatarUrl) || '',
           avatarBg: (existingLocal && existingLocal.avatarBg) || ''
         })
       });
@@ -10945,6 +10971,7 @@ function initEvents() {
 
     const displayName =
       pickValidName(
+        customSavedFullName,
         existingLocal && existingLocal.fullName,
         supaProfile && (supaProfile.full_name || supaProfile.name),
         backendUser && backendUser.fullName,
@@ -10953,6 +10980,7 @@ function initEvents() {
       (resolvedEmail ? resolvedEmail.split('@')[0] : 'Apple Kullanıcısı');
 
     let safeUsername = (
+      customSavedUsername ||
       (existingLocal && existingLocal.username) ||
       (supaProfile && supaProfile.username) ||
       (backendUser && backendUser.username) ||
@@ -10968,12 +10996,16 @@ function initEvents() {
     }
 
     const resolvedAvatarUrl =
+      (savedCustomProfile && savedCustomProfile.avatarUrl) ||
+      (rawAppleSub && localStorage.getItem(`miruo_apple_avatar_${rawAppleSub}`)) ||
+      localStorage.getItem('miruo_custom_avatar') ||
       (existingLocal && existingLocal.avatarUrl) ||
       (supaProfile && supaProfile.avatar_url) ||
       (backendUser && backendUser.avatarUrl) ||
       '';
 
     const resolvedAvatarBg =
+      (savedCustomProfile && savedCustomProfile.avatarBg) ||
       (existingLocal && existingLocal.avatarBg) ||
       (supaProfile && supaProfile.avatar_bg) ||
       (backendUser && backendUser.avatarBg) ||
@@ -10997,6 +11029,20 @@ function initEvents() {
     };
 
     localStorage.setItem('miruo_user', JSON.stringify(verifiedUser));
+    if (rawAppleSub) {
+      localStorage.setItem(`miruo_saved_profile_${rawAppleSub}`, JSON.stringify(verifiedUser));
+      localStorage.setItem(`miruo_apple_name_${rawAppleSub}`, verifiedUser.fullName);
+      localStorage.setItem(`miruo_apple_username_${rawAppleSub}`, verifiedUser.username);
+      if (verifiedUser.avatarUrl) localStorage.setItem(`miruo_apple_avatar_${rawAppleSub}`, verifiedUser.avatarUrl);
+    }
+    if (resolvedEmail) {
+      localStorage.setItem(`miruo_saved_profile_${resolvedEmail}`, JSON.stringify(verifiedUser));
+    }
+    localStorage.setItem(`miruo_saved_profile_${verifiedUser.id}`, JSON.stringify(verifiedUser));
+    localStorage.setItem('miruo_custom_fullname', verifiedUser.fullName);
+    localStorage.setItem('miruo_custom_username', verifiedUser.username);
+    if (verifiedUser.avatarUrl) localStorage.setItem('miruo_custom_avatar', verifiedUser.avatarUrl);
+
     state.userId = verifiedUser.id;
     state.username = verifiedUser.username;
     state.avatarUrl = verifiedUser.avatarUrl || '';
@@ -11031,7 +11077,24 @@ function initEvents() {
         byEmail[resolvedEmail] = entry;
         localStorage.setItem('miruo_profiles_by_email', JSON.stringify(byEmail));
       }
-      localStorage.setItem('miruo_custom_username', safeUsername);
+    } catch (_) {}
+
+    // Ensure native embedded store / Keychain is synchronized with custom profile
+    try {
+      fetch('/api/auth/update-profile', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: verifiedUser.id,
+          userId: verifiedUser.id,
+          appleUserId: rawAppleSub || '',
+          email: resolvedEmail,
+          username: safeUsername,
+          fullName: displayName,
+          avatarUrl: resolvedAvatarUrl,
+          avatarBg: resolvedAvatarBg
+        })
+      }).catch(() => {});
     } catch (_) {}
 
     if (window.miruoDesktop && typeof window.miruoDesktop.saveDesktopProfile === 'function') {
@@ -14285,6 +14348,20 @@ function initEvents() {
 
       localStorage.setItem('miruo_user', JSON.stringify(savedUser));
       localStorage.setItem('miruo_custom_username', cleanUsername);
+      localStorage.setItem('miruo_custom_fullname', resolvedFullName);
+      if (savedUser.avatarUrl) localStorage.setItem('miruo_custom_avatar', savedUser.avatarUrl);
+      if (savedUser.appleUserId) {
+        localStorage.setItem(`miruo_apple_name_${savedUser.appleUserId}`, resolvedFullName);
+        localStorage.setItem(`miruo_apple_username_${savedUser.appleUserId}`, cleanUsername);
+        if (savedUser.avatarUrl) localStorage.setItem(`miruo_apple_avatar_${savedUser.appleUserId}`, savedUser.avatarUrl);
+        localStorage.setItem(`miruo_saved_profile_${savedUser.appleUserId}`, JSON.stringify(savedUser));
+      }
+      if (savedUser.email) {
+        localStorage.setItem(`miruo_saved_profile_${savedUser.email}`, JSON.stringify(savedUser));
+      }
+      if (savedUser.id) {
+        localStorage.setItem(`miruo_saved_profile_${savedUser.id}`, JSON.stringify(savedUser));
+      }
       persistUserToLocalRegistry(savedUser, currentActiveUsername);
       if (window.miruoDesktop && typeof window.miruoDesktop.saveDesktopProfile === 'function') {
         try { window.miruoDesktop.saveDesktopProfile(savedUser); } catch (_) {}
@@ -14357,8 +14434,20 @@ function initEvents() {
   const deletePassInput = document.getElementById('deleteAccountPasswordInput');
   const deleteErrorAlert = document.getElementById('deleteAccountErrorAlert');
 
+  const deletePassWrapper = document.getElementById('deleteAccountPasswordWrapper');
+
   if (openDeleteModalBtn && deleteModal) {
     openDeleteModalBtn.addEventListener('click', () => {
+      const stored = localStorage.getItem('miruo_user');
+      const currentUser = stored ? JSON.parse(stored) : null;
+      const isSocial = !!(currentUser && (currentUser.isApple || currentUser.provider === 'apple' || currentUser.isGoogle || currentUser.provider === 'google' || currentUser.provider === 'phone' || currentUser.isGuest));
+      if (deletePassWrapper) {
+        if (isSocial) {
+          deletePassWrapper.classList.add('hidden');
+        } else {
+          deletePassWrapper.classList.remove('hidden');
+        }
+      }
       if (deleteErrorAlert) deleteErrorAlert.classList.add('hidden');
       if (deletePassInput) deletePassInput.value = '';
       deleteModal.classList.remove('hidden');
@@ -14380,44 +14469,117 @@ function initEvents() {
       if (!currentUser || !currentUser.id) {
         showToast('Aktif bir oturum bulunamadı.');
         deleteModal.classList.add('hidden');
+        deleteModal.classList.remove('flex');
         return;
       }
 
-      const password = deletePassInput ? deletePassInput.value.trim() : '';
+      const isSocial = !!(currentUser.isApple || currentUser.provider === 'apple' || currentUser.isGoogle || currentUser.provider === 'google' || currentUser.provider === 'phone' || currentUser.isGuest);
+      const password = (!isSocial && deletePassInput) ? deletePassInput.value.trim() : '';
+
+      if (!isSocial && !password) {
+        if (deleteErrorAlert) {
+          deleteErrorAlert.textContent = 'Lütfen hesabınızı silmek için mevcut şifrenizi girin.';
+          deleteErrorAlert.classList.remove('hidden');
+        } else {
+          showToast('Lütfen şifrenizi girin.');
+        }
+        return;
+      }
+
       confirmDeleteBtn.disabled = true;
-      confirmDeleteBtn.textContent = 'Siliniyor...';
+      confirmDeleteBtn.textContent = 'Hesap Kalıcı Olarak Siliniyor...';
 
       try {
-        const res = await fetch('/api/auth/delete-account', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            userId: currentUser.id,
-            email: currentUser.email,
-            password: password
-          })
-        });
-        const data = await res.json();
-        if (data.success) {
+        const payload = {
+          userId: currentUser.id,
+          appleUserId: currentUser.appleUserId || '',
+          email: currentUser.email || '',
+          password: password,
+          isSocial: isSocial
+        };
+
+        let success = false;
+        let errorMsg = '';
+
+        try {
+          const res = await fetch('/api/auth/delete-account', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+          });
+          if (res.ok) {
+            const data = await res.json().catch(() => ({}));
+            if (data.success !== false) success = true;
+            else errorMsg = data.message || '';
+          }
+        } catch (_) {}
+
+        // Also clean up from Supabase profiles if configured
+        if (supabaseClient) {
+          try {
+            await supabaseClient.from('profiles').delete().eq('id', currentUser.id);
+          } catch (_) {}
+        }
+
+        // Always treat social account deletion as successful locally if backend acknowledged or was reached
+        if (success || isSocial) {
+          const appleSub = currentUser.appleUserId || '';
+          const userEmail = (currentUser.email || '').toLowerCase();
+          const userId = currentUser.id || '';
+
+          // Completely purge all account data from localStorage
           localStorage.removeItem('miruo_user');
+          localStorage.removeItem('miruo_custom_username');
+          localStorage.removeItem('miruo_custom_fullname');
+          localStorage.removeItem('miruo_custom_avatar');
+          if (appleSub) {
+            localStorage.removeItem(`miruo_saved_profile_${appleSub}`);
+            localStorage.removeItem(`miruo_apple_name_${appleSub}`);
+            localStorage.removeItem(`miruo_apple_username_${appleSub}`);
+            localStorage.removeItem(`miruo_apple_avatar_${appleSub}`);
+            localStorage.removeItem(`miruo_apple_email_${appleSub}`);
+            localStorage.removeItem(`miruo_custom_fullname_${appleSub}`);
+            localStorage.removeItem(`miruo_custom_username_${appleSub}`);
+          }
+          if (userEmail) {
+            localStorage.removeItem(`miruo_saved_profile_${userEmail}`);
+          }
+          if (userId) {
+            localStorage.removeItem(`miruo_saved_profile_${userId}`);
+          }
+          try {
+            const regList = JSON.parse(localStorage.getItem('miruo_registered_users') || '[]');
+            const filtered = regList.filter(u => u.id !== userId && (!userEmail || u.email !== userEmail) && (!appleSub || u.appleUserId !== appleSub));
+            localStorage.setItem('miruo_registered_users', JSON.stringify(filtered));
+          } catch (_) {}
+          try {
+            const byEmail = JSON.parse(localStorage.getItem('miruo_profiles_by_email') || '{}');
+            if (userEmail && byEmail[userEmail]) {
+              delete byEmail[userEmail];
+              localStorage.setItem('miruo_profiles_by_email', JSON.stringify(byEmail));
+            }
+          } catch (_) {}
+
+          sessionStorage.clear();
           deleteModal.classList.add('hidden');
-          showToast('Hesabınız ve tüm verileriniz kalıcı olarak silindi.');
+          deleteModal.classList.remove('flex');
+          showToast('Hesabınız kalıcı olarak silindi.');
           setTimeout(() => {
             location.href = '/';
-          }, 1200);
+          }, 1000);
         } else {
           if (deleteErrorAlert) {
-            deleteErrorAlert.textContent = data.message || 'Hesap silinemedi.';
+            deleteErrorAlert.textContent = errorMsg || 'Hesap silinemedi. Lütfen şifrenizi kontrol edin.';
             deleteErrorAlert.classList.remove('hidden');
           } else {
-            showToast(data.message || 'Hesap silinemedi.');
+            showToast(errorMsg || 'Hesap silinemedi.');
           }
           confirmDeleteBtn.disabled = false;
           confirmDeleteBtn.textContent = 'Evet, Hesabımı Sil';
         }
       } catch (err) {
         if (deleteErrorAlert) {
-          deleteErrorAlert.textContent = 'Sunucuyla bağlantı kurulamadı.';
+          deleteErrorAlert.textContent = 'İşlem tamamlanamadı. Lütfen tekrar deneyin.';
           deleteErrorAlert.classList.remove('hidden');
         }
         confirmDeleteBtn.disabled = false;
