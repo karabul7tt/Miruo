@@ -305,12 +305,30 @@ body.stage-is-fullscreen #selfPipCard {
   box-shadow: 0 20px 40px rgba(0,0,0,0.8), 0 0 20px rgba(225, 29, 72, 0.4) !important;
 }
 
-/* Floating Reopen Chat Button in Fullscreen & Pseudo-Fullscreen */
+/* Persistent Stage Actions (3-Dots Settings, Fullscreen) with Safe-Area support */
+#stagePersistentActions {
+  position: absolute !important;
+  top: max(14px, calc(env(safe-area-inset-top, 0px) + 12px)) !important;
+  right: max(18px, calc(env(safe-area-inset-right, 0px) + 14px)) !important;
+  z-index: 999999 !important;
+  pointer-events: auto !important;
+}
+
+#stageFloatingFullscreenBtn,
+#raveRoomSettingsBtn {
+  position: relative !important;
+  touch-action: manipulation !important;
+  -webkit-tap-highlight-color: transparent !important;
+}
+
+/* Floating Reopen Chat Button in Fullscreen & Landscape */
 #openFsChatFloatingBtn {
   z-index: 999998 !important;
   pointer-events: auto !important;
-  bottom: max(24px, calc(16px + env(safe-area-inset-bottom, 0px))) !important;
-  right: max(16px, calc(16px + env(safe-area-inset-right, 0px))) !important;
+  bottom: max(20px, calc(env(safe-area-inset-bottom, 0px) + 16px)) !important;
+  right: max(18px, calc(env(safe-area-inset-right, 0px) + 16px)) !important;
+  touch-action: manipulation !important;
+  -webkit-tap-highlight-color: transparent !important;
 }
 
 #openChatFloatingBtn {
@@ -321,18 +339,14 @@ body.stage-is-fullscreen #selfPipCard {
 #stageExitFullscreenFloatingBtn {
   z-index: 999999 !important;
   pointer-events: auto !important;
-  top: max(22px, calc(env(safe-area-inset-top, 0px) + 16px)) !important;
-  left: max(22px, calc(env(safe-area-inset-left, 0px) + 18px)) !important;
+  top: max(14px, calc(env(safe-area-inset-top, 0px) + 12px)) !important;
+  left: max(18px, calc(env(safe-area-inset-left, 0px) + 14px)) !important;
+  touch-action: manipulation !important;
+  -webkit-tap-highlight-color: transparent !important;
 }
 
 #roomConnectionStatusBadge {
   display: none !important;
-}
-
-#stageFloatingFullscreenBtn {
-  z-index: 99995 !important;
-  top: max(20px, calc(16px + env(safe-area-inset-top, 0px))) !important;
-  right: max(20px, calc(16px + env(safe-area-inset-right, 0px))) !important;
 }
 
 /* Touch action none & direct touch dragging for camera facecam */
@@ -653,19 +667,51 @@ input, textarea {
   -webkit-user-select: text !important;
 }
 
-/* YouTube Live Format: Responsive split layout in landscape orientation */
+/* Mobile Landscape Theater Mode: Stage fills 100% viewport cleanly, zero cutoffs */
 @media (orientation: landscape) and (max-height: 600px) {
-  #roomMainSplitLayout {
-    flex-direction: row !important;
+  body.in-room-mode #roomStickyHeader,
+  body.in-room-mode #roomControlsToolbar,
+  body.in-room-mode #roomChatSidebar,
+  body.in-room-mode #nowPlayingBar,
+  body.in-room-mode #mobileBottomNav,
+  body.in-room-mode #mainHeader {
+    display: none !important;
   }
-  #roomChatSidebar {
-    width: 300px !important;
-    min-height: 240px !important;
-    max-height: calc(100vh - 48px) !important;
+
+  body.in-room-mode #roomWorkspaceSection {
+    padding: 0 !important;
+    margin: 0 !important;
+    width: 100vw !important;
+    max-width: 100vw !important;
+    height: 100dvh !important;
+    overflow: hidden !important;
   }
-  #chatMessagesContainer {
-    height: auto !important;
-    flex: 1 1 auto !important;
+
+  body.in-room-mode #roomMainSplitLayout,
+  body.in-room-mode #roomPlayerColumn {
+    padding: 0 !important;
+    margin: 0 !important;
+    width: 100vw !important;
+    height: 100dvh !important;
+    max-width: 100vw !important;
+    max-height: 100dvh !important;
+    overflow: hidden !important;
+  }
+
+  body.in-room-mode #stageContainer {
+    position: fixed !important;
+    inset: 0 !important;
+    top: 0 !important;
+    left: 0 !important;
+    width: 100vw !important;
+    height: 100dvh !important;
+    max-width: 100vw !important;
+    max-height: 100dvh !important;
+    border-radius: 0 !important;
+    border: none !important;
+    margin: 0 !important;
+    z-index: 40 !important;
+    overflow: hidden !important;
   }
 }
 

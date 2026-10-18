@@ -468,6 +468,20 @@ window.handleNativeVideoPicked = function(videoUrl, fileName) {
 window.handleNativeAppBackgroundState = function(isInBackground) {
   state.isAppInBackground = !!isInBackground;
   if (isInBackground) {
+    // Phone sleep / lock screen / background: pause active video playback
+    if (state.isPlaying) {
+      if (typeof sendYtCommand === 'function') {
+        try { sendYtCommand('pauseVideo'); } catch (_) {}
+      }
+      if (state.ytPlayer && typeof state.ytPlayer.pauseVideo === 'function') {
+        try { state.ytPlayer.pauseVideo(); } catch (_) {}
+      }
+      if (dom.nativeVideoPlayer) {
+        try { dom.nativeVideoPlayer.pause(); } catch (_) {}
+      }
+      state.isPlaying = false;
+      if (typeof updatePlayPauseUI === 'function') updatePlayPauseUI(false);
+    }
     if (state.isScreenSharing) {
       startScreenShareKeepAlive();
     }
@@ -2451,10 +2465,43 @@ function unfreezeBackgroundAfterModal(force = false) {
 window.unfreezeBackgroundAfterModal = unfreezeBackgroundAfterModal;
 window.areAnyModalsVisible = areAnyModalsVisible;
 
-// Universal responsive click & tap handler
+// Universal responsive click & tap handler (0ms touch latency, micro-drag tolerant for all mobile devices)
 function addInstantTap(el, handler) {
   if (!el) return;
+  let startX = 0;
+  let startY = 0;
+  let moved = false;
+  let lastTouchEndTime = 0;
+
+  el.addEventListener('touchstart', (e) => {
+    if (e.touches.length > 1) return;
+    startX = e.touches[0].clientX;
+    startY = e.touches[0].clientY;
+    moved = false;
+  }, { passive: true });
+
+  el.addEventListener('touchmove', (e) => {
+    if (!e.touches.length) return;
+    const dx = Math.abs(e.touches[0].clientX - startX);
+    const dy = Math.abs(e.touches[0].clientY - startY);
+    if (dx > 10 || dy > 10) {
+      moved = true;
+    }
+  }, { passive: true });
+
+  el.addEventListener('touchend', (e) => {
+    if (!moved) {
+      lastTouchEndTime = Date.now();
+      handler(e);
+    }
+  });
+
   el.addEventListener('click', (e) => {
+    if (Date.now() - lastTouchEndTime < 450) {
+      e.preventDefault();
+      e.stopPropagation();
+      return;
+    }
     handler(e);
   });
 }
@@ -3647,7 +3694,22 @@ function handleAppForegroundResume() {
 }
 
 document.addEventListener('visibilitychange', () => {
-  if (document.visibilityState === 'visible') {
+  if (document.visibilityState === 'hidden') {
+    // Screen locked or tab/app hidden - pause video playback
+    if (state.isPlaying) {
+      if (typeof sendYtCommand === 'function') {
+        try { sendYtCommand('pauseVideo'); } catch (_) {}
+      }
+      if (state.ytPlayer && typeof state.ytPlayer.pauseVideo === 'function') {
+        try { state.ytPlayer.pauseVideo(); } catch (_) {}
+      }
+      if (dom.nativeVideoPlayer) {
+        try { dom.nativeVideoPlayer.pause(); } catch (_) {}
+      }
+      state.isPlaying = false;
+      if (typeof updatePlayPauseUI === 'function') updatePlayPauseUI(false);
+    }
+  } else if (document.visibilityState === 'visible') {
     handleAppForegroundResume();
   }
 });
@@ -4825,12 +4887,13 @@ function applySleepMode(enabled, isLocal = true) {
   state.isSleepMode = !!enabled;
 
   if (enabled) {
-    // 1. Pause active videos (YouTube, HTML5, Web)
-    if (state.ytPlayer && typeof state.ytPlayer.pauseVideo === 'function') {
-      try { state.ytPlayer.pauseVideo(); } catch (_) {}
-    }
+    // 1. Immediately pause and stop background video
     if (typeof sendYtCommand === 'function') {
       try { sendYtCommand('pauseVideo'); } catch (_) {}
+      try { sendYtCommand('stopVideo'); } catch (_) {}
+    }
+    if (state.ytPlayer && typeof state.ytPlayer.pauseVideo === 'function') {
+      try { state.ytPlayer.pauseVideo(); } catch (_) {}
     }
     if (dom.nativeVideoPlayer) {
       try { dom.nativeVideoPlayer.pause(); } catch (_) {}
@@ -4880,8 +4943,8 @@ function applySleepMode(enabled, isLocal = true) {
     if (sleepClockInterval) clearInterval(sleepClockInterval);
     sleepClockInterval = setInterval(updateSleepClock, 1000);
 
-    // 6. Request screen wake lock so WebRTC audio/video call stays connected all night
-    requestScreenWakeLock();
+    // 6. Release wake lock so the phone screen can naturally sleep without hindrance
+    releaseScreenWakeLock();
 
     // 7. Ensure PiP webcam and audio stay visible & clamped to stage
     if (typeof clampPipCardsToStage === 'function') {
@@ -15168,19 +15231,81 @@ function initEvents() {
   });
 
   // Player Settings & Playback Rate Functions
+  function updateCaptionsUI() {
+    const isEnabled = !!state.captionsEnabled;
+    const badge = document.getElementById('playerSubtitleStatusBadge');
+    const btnText = document.getElementById('toggleCaptionsBtnText');
+    const indicator = document.getElementById('toggleCaptionsIndicator');
+    if (badge) {
+      badge.textContent = isEnabled ? 'Açık' : 'Kapalı';
+      badge.className = isEnabled ? 'text-[10px] font-bold text-emerald-400' : 'text-[10px] font-bold text-gray-400';
+    }
+    if (btnText) {
+      btnText.textContent = isEnabled ? 'Altyazıyı Kapat' : 'Altyazıyı Aç';
+    }
+    if (indicator) {
+      indicator.className = isEnabled ? 'w-2 h-2 rounded-full bg-emerald-400 animate-pulse' : 'w-2 h-2 rounded-full bg-gray-500';
+    }
+  }
+
+  function toggleCaptions() {
+    state.captionsEnabled = !state.captionsEnabled;
+    const isEnabled = state.captionsEnabled;
+
+    if (state.activeMode === 'youtube') {
+      if (isEnabled) {
+        sendYtCommand('loadModule', ['captions']);
+        sendYtCommand('setOption', ['captions', 'track', { languageCode: 'tr' }]);
+        setTimeout(() => {
+          try {
+            sendYtCommand('setOption', ['captions', 'reload', true]);
+          } catch (_) {}
+        }, 300);
+        showToast('Altyazı açıldı');
+      } else {
+        sendYtCommand('unloadModule', ['captions']);
+        sendYtCommand('setOption', ['captions', 'track', {}]);
+        showToast('Altyazı kapatıldı');
+      }
+    } else if (dom.nativeVideoPlayer) {
+      const tracks = dom.nativeVideoPlayer.textTracks || [];
+      for (let i = 0; i < tracks.length; i++) {
+        tracks[i].mode = isEnabled ? 'showing' : 'hidden';
+      }
+      showToast(isEnabled ? 'Altyazı açıldı' : 'Altyazı kapatıldı');
+    }
+
+    updateCaptionsUI();
+  }
+
+  function updateMenuAVStatus() {
+    const camBadge = document.getElementById('menuCameraStatusBadge');
+    const camBtnText = document.getElementById('menuToggleCamBtnText');
+    if (camBadge) {
+      camBadge.textContent = state.isCamOn ? 'Açık' : 'Kapalı';
+      camBadge.className = state.isCamOn ? 'text-[10px] font-bold text-emerald-400' : 'text-[10px] font-bold text-gray-400';
+    }
+    if (camBtnText) {
+      camBtnText.textContent = state.isCamOn ? 'Kamera Kapat' : 'Kamera Aç';
+    }
+    updateCaptionsUI();
+  }
+
   function toggleRaveRoomSettingsMenu(show) {
     if (!dom.raveRoomSettingsMenu) return;
     const isHidden = dom.raveRoomSettingsMenu.classList.contains('hidden');
     const target = (typeof show === 'boolean') ? show : isHidden;
     if (target) {
       dom.raveRoomSettingsMenu.classList.remove('hidden');
+      updateMenuAVStatus();
     } else {
       dom.raveRoomSettingsMenu.classList.add('hidden');
     }
   }
 
   function canControlPlayback() {
-    return state.isHost || state.controlMode === 'everyone' || state.hasDjPermission || state.userRole === 'owner' || state.userRole === 'admin' || state.userRole === 'dj';
+    if (!state.roomId) return true;
+    return state.isHost || state.controlMode === 'everyone' || state.hasDjPermission || state.userRole === 'owner' || state.userRole === 'admin' || state.userRole === 'dj' || !state.roomMembers || state.roomMembers.length <= 1;
   }
 
   function setPlayerPlaybackRate(rate, broadcast = true) {
@@ -15221,12 +15346,12 @@ function initEvents() {
     if (dom.playerSpeedVal) {
       dom.playerSpeedVal.textContent = `${rate}x`;
     }
-    document.querySelectorAll('.player-speed-btn').forEach(btn => {
+    document.querySelectorAll('.playback-speed-btn, .player-speed-btn').forEach(btn => {
       const bSpeed = parseFloat(btn.dataset.speed);
       if (Math.abs(bSpeed - rate) < 0.05) {
-        btn.className = 'player-speed-btn py-1 rounded-lg bg-rose-500/30 text-rose-300 border border-rose-500/40 transition-all text-[10px] cursor-pointer font-black';
+        btn.className = 'playback-speed-btn player-speed-btn py-1.5 rounded-lg bg-rose-500/30 text-rose-300 border border-rose-500/40 transition-all text-[10px] cursor-pointer font-black';
       } else {
-        btn.className = 'player-speed-btn py-1 rounded-lg bg-white/5 hover:bg-rose-500/20 hover:text-rose-300 transition-all text-[10px] cursor-pointer';
+        btn.className = 'playback-speed-btn player-speed-btn py-1.5 rounded-lg bg-white/5 hover:bg-rose-500/20 hover:text-rose-300 transition-all text-[10px] cursor-pointer';
       }
     });
 
@@ -15272,35 +15397,98 @@ function initEvents() {
   }
 
   if (dom.raveRoomSettingsBtn) {
-    dom.raveRoomSettingsBtn.addEventListener('click', (e) => {
+    addInstantTap(dom.raveRoomSettingsBtn, (e) => {
       e.stopPropagation();
       toggleRaveRoomSettingsMenu();
     });
   }
 
   if (dom.closeRaveRoomSettingsMenuBtn) {
-    dom.closeRaveRoomSettingsMenuBtn.addEventListener('click', (e) => {
+    addInstantTap(dom.closeRaveRoomSettingsMenuBtn, (e) => {
       e.stopPropagation();
       toggleRaveRoomSettingsMenu(false);
     });
   }
 
-  document.querySelectorAll('.player-speed-btn').forEach(btn => {
-    btn.addEventListener('click', (e) => {
+  // Speed buttons binding with instant tap
+  document.querySelectorAll('.playback-speed-btn, .player-speed-btn').forEach(btn => {
+    addInstantTap(btn, (e) => {
       e.stopPropagation();
       setPlayerPlaybackRate(btn.dataset.speed, true);
     });
   });
 
+  // Subtitles / Captions toggle binding
+  const toggleCaptionsBtn = document.getElementById('toggleCaptionsBtn');
+  if (toggleCaptionsBtn) {
+    addInstantTap(toggleCaptionsBtn, (e) => {
+      e.stopPropagation();
+      toggleCaptions();
+    });
+  }
+
+  // Camera toggle inside 3-dots menu
+  const menuToggleCamBtn = document.getElementById('menuToggleCamBtn');
+  if (menuToggleCamBtn) {
+    addInstantTap(menuToggleCamBtn, (e) => {
+      e.stopPropagation();
+      toggleCam().then(() => {
+        updateMenuAVStatus();
+      });
+    });
+  }
+
+  // Camera flip (front/back) inside 3-dots menu
+  const menuFlipCamBtn = document.getElementById('menuFlipCamBtn');
+  if (menuFlipCamBtn) {
+    addInstantTap(menuFlipCamBtn, async (e) => {
+      e.stopPropagation();
+      state.cameraFacingMode = (state.cameraFacingMode === 'environment') ? 'user' : 'environment';
+      if (!state.isCamOn) {
+        await toggleCam();
+        updateMenuAVStatus();
+        return;
+      }
+      try {
+        if (state.localStream) {
+          state.localStream.getVideoTracks().forEach(track => {
+            try { track.stop(); } catch(e) {}
+            try { state.localStream.removeTrack(track); } catch(e) {}
+          });
+        }
+        const newStream = await navigator.mediaDevices.getUserMedia({
+          video: { width: { ideal: 640 }, height: { ideal: 480 }, facingMode: state.cameraFacingMode },
+          audio: false
+        });
+        const newTrack = newStream.getVideoTracks()[0];
+        if (newTrack) {
+          state.localStream.addTrack(newTrack);
+          if (dom.selfVideo) dom.selfVideo.srcObject = state.localStream;
+          Object.values(peers || {}).forEach(peer => {
+            try {
+              const senders = peer.getSenders ? peer.getSenders() : [];
+              const videoSender = senders.find(s => s.track && s.track.kind === 'video');
+              if (videoSender) videoSender.replaceTrack(newTrack);
+            } catch(e) {}
+          });
+        }
+        showToast(state.cameraFacingMode === 'environment' ? 'Arka kamera devrede' : 'Ön kamera devrede');
+      } catch (err) {
+        showToast('Kamera çevrilemedi: ' + (err.message || 'Hata'));
+      }
+      updateMenuAVStatus();
+    });
+  }
+
   if (dom.raveResyncBtn) {
-    dom.raveResyncBtn.addEventListener('click', (e) => {
+    addInstantTap(dom.raveResyncBtn, (e) => {
       e.stopPropagation();
       triggerResyncWithHost();
     });
   }
 
   if (dom.raveCopyRoomLinkBtn) {
-    dom.raveCopyRoomLinkBtn.addEventListener('click', (e) => {
+    addInstantTap(dom.raveCopyRoomLinkBtn, (e) => {
       e.stopPropagation();
       const url = getMiruoRoomUrl(state.roomId || 'MIRUO-DEMO');
       copyToClipboard(url).then(() => {
@@ -15313,7 +15501,7 @@ function initEvents() {
   }
 
   if (dom.raveOpenParticipantsBtn) {
-    dom.raveOpenParticipantsBtn.addEventListener('click', (e) => {
+    addInstantTap(dom.raveOpenParticipantsBtn, (e) => {
       e.stopPropagation();
       toggleRaveRoomSettingsMenu(false);
       if (typeof openRoomParticipantsModal === 'function') {
