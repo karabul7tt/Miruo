@@ -4,6 +4,7 @@ contextBridge.exposeInMainWorld('miruoDesktop', {
   isDesktop: true,
   platform: process.platform,
   promptAppleTouchID: (details) => ipcRenderer.invoke('mac-touch-id-apple-sign-in', details),
+  openOAuthWindow: (opts) => ipcRenderer.invoke('desktop-oauth-login', opts),
   getSystemUserInfo: () => ipcRenderer.invoke('get-system-user-info'),
   getDesktopProfile: () => ipcRenderer.invoke('get-desktop-profile'),
   saveDesktopProfile: (profile) => ipcRenderer.invoke('save-desktop-profile', profile),

@@ -3090,10 +3090,11 @@ function loadYoutubeVideo(urlOrId) {
     dom.ytPlayerContainer.innerHTML = '';
   }
 
-  // Direct responsive embed iframe that plays 100% reliably in WKWebView
-  // Only append origin if it is http/https (WKWebView file:// origin causes YouTube Error 150/153)
-  const isHttpOrigin = window.location.origin && (window.location.origin.startsWith('http://') || window.location.origin.startsWith('https://'));
-  const originParam = isHttpOrigin ? `&origin=${encodeURIComponent(window.location.origin)}` : '';
+  // Direct responsive embed iframe that plays 100% reliably in WKWebView & Electron Desktop
+  // Never pass localhost or 127.0.0.1 as originParam because YouTube CMS blocks restricted videos on local origins
+  const isLocalOrigin = !window.location.origin || window.location.origin.includes('127.0.0.1') || window.location.origin.includes('localhost') || window.location.protocol === 'file:';
+  const effectiveOrigin = isLocalOrigin ? 'https://www.youtube.com' : window.location.origin;
+  const originParam = `&origin=${encodeURIComponent(effectiveOrigin)}&widget_referrer=${encodeURIComponent('https://www.youtube.com')}`;
   dom.ytPlayerContainer.innerHTML = `
     <iframe id="miruoYtIframe" 
             src="https://www.youtube.com/embed/${videoId}?autoplay=1&playsinline=1&enablejsapi=1&controls=0&disablekb=1&fs=0&rel=0&modestbranding=1&iv_load_policy=3${originParam}" 
@@ -3651,7 +3652,68 @@ window.addEventListener('message', (event) => {
   } else if (data.event === 'onReady') {
     sendYtCommand('addEventListener', ['onStateChange']);
   }
+
+  // Handle YouTube Error events (150/101 embed copyright restriction, 100 not found, etc.)
+  const errCode = (data.info && typeof data.info.errorCode === 'number' ? data.info.errorCode : null) ||
+                  (data.info && typeof data.info.error === 'number' ? data.info.error : null) ||
+                  (data.event === 'onError' && typeof data.info === 'number' ? data.info : null);
+  if (errCode === 150 || errCode === 101 || errCode === 153) {
+    console.warn('[Miruo] YouTube Embed Restriction Error:', errCode);
+    showEmbedRestrictionFallback(state.currentVideoId);
+  }
 });
+
+function showEmbedRestrictionFallback(videoId) {
+  if (!videoId || !dom.ytPlayerContainer) return;
+  const existingFallback = document.getElementById('miruoEmbedFallback');
+  if (existingFallback) return;
+
+  const fallbackDiv = document.createElement('div');
+  fallbackDiv.id = 'miruoEmbedFallback';
+  fallbackDiv.className = 'absolute inset-0 z-30 flex flex-col items-center justify-center p-6 text-center bg-black/85 backdrop-blur-md transition-all duration-300';
+  fallbackDiv.innerHTML = `
+    <div class="w-16 h-16 rounded-2xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-amber-400 mb-4 shadow-lg shadow-amber-500/10 animate-pulse">
+      <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/>
+      </svg>
+    </div>
+    <h3 class="text-white text-base md:text-lg font-bold mb-2">Telif Korumalı Yayın</h3>
+    <p class="text-zinc-300 text-xs md:text-sm max-w-sm mb-5 leading-relaxed">
+      Yayıncı bu videonun gömülü oynatıcılarda çalışmasını kısıtlamıştır. Web modunda veya doğrudan YouTube üzerinde kesintisiz izleyebilirsiniz.
+    </p>
+    <div class="flex items-center gap-3">
+      <button id="btnOpenWebMode" class="px-4 py-2.5 rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white text-xs font-semibold shadow-lg shadow-purple-500/25 transition-all">
+        Web Modunda İzle
+      </button>
+      <button id="btnDismissFallback" class="px-4 py-2.5 rounded-xl bg-white/10 hover:bg-white/20 text-zinc-300 text-xs font-medium transition-all">
+        Kapat
+      </button>
+    </div>
+  `;
+
+  dom.ytPlayerContainer.appendChild(fallbackDiv);
+
+  const openBtn = fallbackDiv.querySelector('#btnOpenWebMode');
+  if (openBtn) {
+    openBtn.addEventListener('click', () => {
+      fallbackDiv.remove();
+      if (typeof openInAppBrowser === 'function') {
+        openInAppBrowser(`https://www.youtube.com/watch?v=${videoId}`);
+      } else if (window.miruoDesktop && window.shell) {
+        window.shell.openExternal(`https://www.youtube.com/watch?v=${videoId}`);
+      } else {
+        window.open(`https://www.youtube.com/watch?v=${videoId}`, '_blank');
+      }
+    });
+  }
+
+  const dismissBtn = fallbackDiv.querySelector('#btnDismissFallback');
+  if (dismissBtn) {
+    dismissBtn.addEventListener('click', () => {
+      fallbackDiv.remove();
+    });
+  }
+}
 
 // App Lifecycle Foreground Resume & Tab Switch Resynchronization
 function handleAppForegroundResume() {
@@ -11241,6 +11303,10 @@ function initEvents() {
         dom.authContactInput.value = user.email;
       }
 
+      const isApple = (user.app_metadata?.provider === 'apple') ||
+                      (user.identities && user.identities.some(i => i.provider === 'apple')) ||
+                      Boolean(user.user_metadata?.iss && user.user_metadata.iss.includes('apple'));
+
       const verifiedUser = {
         id: user.id,
         name: displayName,
@@ -11249,22 +11315,49 @@ function initEvents() {
         email: user.email || '',
         avatarChar: avatarChar,
         avatarUrl: profile.avatar || null,
-        avatarBg: 'from-rose-500 to-indigo-600',
-        isGoogle: true,
-        provider: 'google',
+        avatarBg: isApple ? 'linear-gradient(135deg, #ec4899, #8b5cf6)' : 'from-rose-500 to-indigo-600',
+        isApple: isApple,
+        isGoogle: !isApple,
+        provider: isApple ? 'apple' : 'google',
         isGuest: false
       };
 
       localStorage.setItem('miruo_user', JSON.stringify(verifiedUser));
+      localStorage.setItem(`miruo_saved_profile_${verifiedUser.id}`, JSON.stringify(verifiedUser));
+      if (verifiedUser.email) {
+        localStorage.setItem(`miruo_saved_profile_${verifiedUser.email}`, JSON.stringify(verifiedUser));
+      }
       state.userId = verifiedUser.id;
       state.username = verifiedUser.username;
+      state.avatarUrl = verifiedUser.avatarUrl || '';
+      state.avatarBg = verifiedUser.avatarBg;
+
+      if (window.miruoDesktop && typeof window.miruoDesktop.saveDesktopProfile === 'function') {
+        try { window.miruoDesktop.saveDesktopProfile(verifiedUser); } catch (_) {}
+      }
+      try {
+        fetch('/api/auth/social-sync', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            id: verifiedUser.id,
+            email: verifiedUser.email,
+            fullName: verifiedUser.fullName,
+            username: verifiedUser.username,
+            provider: verifiedUser.provider,
+            avatarUrl: verifiedUser.avatarUrl || '',
+            avatarBg: verifiedUser.avatarBg
+          })
+        }).catch(() => {});
+      } catch (_) {}
+
       updateUserUI(verifiedUser);
 
       if (dom.authModal) {
         dom.authModal.classList.add('hidden');
         unfreezeBackgroundAfterModal();
       }
-      showToast(`Hoş geldin, ${displayName}`);
+      showToast(`${isApple ? 'Apple' : 'Google'} ile giriş yapıldı: ${displayName}`);
       syncUserProfileToSupabase(verifiedUser);
     } catch (e) {
       console.error('[Miruo] handleNativeOAuthResponse error:', e);
@@ -11290,28 +11383,71 @@ function initEvents() {
       return;
     }
 
-    // 1b. Native macOS Desktop Apple Sign In (via ASAuthorizationController in MiruoAppleAuth.app)
-    if (!isGoogle && window.miruoDesktop && typeof window.miruoDesktop.promptAppleTouchID === 'function') {
+    // 1b. Desktop App (macOS & Windows) OAuth & Native Auth
+    if (window.miruoDesktop) {
       hideAuthAlert();
       if (btn) btn.classList.add('opacity-60', 'pointer-events-none');
-      try {
-        const res = await window.miruoDesktop.promptAppleTouchID();
-        if (btn) btn.classList.remove('opacity-60', 'pointer-events-none');
-        if (res && res.success) {
-          window.handleNativeAppleSignInResponse(res);
-          return;
-        } else if (res && (res.canceled || res.error === 'canceled' || (typeof res.error === 'string' && res.error.includes('1001')))) {
-          console.log('[Miruo] Apple Sign In dismissed by user');
-          hideAuthAlert();
-          return;
-        } else {
-          console.warn('[Miruo] Native macOS Apple Sign-In unavailable or failed, falling back to Apple Web OAuth:', res?.error);
-        }
-      } catch (err) {
-        if (btn) btn.classList.remove('opacity-60', 'pointer-events-none');
-        console.warn('[Miruo] Native macOS Apple Sign-In exception, falling back to Apple Web OAuth:', err);
+
+      // If Apple on macOS, try native ASAuthorizationController first if available
+      if (!isGoogle && typeof window.miruoDesktop.promptAppleTouchID === 'function') {
+        try {
+          const res = await window.miruoDesktop.promptAppleTouchID();
+          if (res && res.success) {
+            if (btn) btn.classList.remove('opacity-60', 'pointer-events-none');
+            window.handleNativeAppleSignInResponse(res);
+            return;
+          } else if (res && (res.canceled || res.error === 'canceled' || (typeof res.error === 'string' && res.error.includes('1001')))) {
+            console.log('[Miruo] Apple Sign In dismissed by user');
+            if (btn) btn.classList.remove('opacity-60', 'pointer-events-none');
+            hideAuthAlert();
+            return;
+          }
+        } catch (_) {}
       }
-      // If native Touch ID failed or returned an error, seamlessly proceed to section 3 (Apple OAuth)
+
+      // If openOAuthWindow is supported (Desktop modal window)
+      if (typeof window.miruoDesktop.openOAuthWindow === 'function') {
+        try {
+          const redirectUrl = 'https://miruo.com.tr/app';
+          const { data, error } = await supabaseClient.auth.signInWithOAuth({
+            provider: isGoogle ? 'google' : 'apple',
+            options: {
+              redirectTo: redirectUrl,
+              skipBrowserRedirect: true,
+              queryParams: {
+                prompt: 'select_account'
+              }
+            }
+          });
+
+          if (error || !data?.url) {
+            throw new Error(error?.message || 'Giriş bağlantısı oluşturulamadı.');
+          }
+
+          const oauthRes = await window.miruoDesktop.openOAuthWindow({
+            provider: isGoogle ? 'google' : 'apple',
+            authUrl: data.url
+          });
+
+          if (btn) btn.classList.remove('opacity-60', 'pointer-events-none');
+
+          if (oauthRes && oauthRes.success && oauthRes.url) {
+            window.handleNativeOAuthResponse(oauthRes);
+            return;
+          } else if (oauthRes && (oauthRes.canceled || oauthRes.error === 'Pencere kapatıldı.')) {
+            console.log('[Miruo] OAuth popup dismissed');
+            return;
+          } else {
+            showAuthAlert(oauthRes?.error || 'Giriş tamamlanamadı.', false);
+            return;
+          }
+        } catch (err) {
+          if (btn) btn.classList.remove('opacity-60', 'pointer-events-none');
+          console.warn(`[Miruo] Desktop ${provider} OAuth exception:`, err);
+          showAuthAlert('Giriş başlatılamadı: ' + (err.message || err), false);
+          return;
+        }
+      }
     }
 
     // 2. Native iOS Google OAuth (via ASWebAuthenticationSession)

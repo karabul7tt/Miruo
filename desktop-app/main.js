@@ -223,6 +223,74 @@ ipcMain.handle('mac-touch-id-apple-sign-in', async () => {
   });
 });
 
+// Dedicated Desktop OAuth Modal Window for 100% Reliable Apple & Google Sign-In
+ipcMain.handle('desktop-oauth-login', async (event, { provider, authUrl }) => {
+  return new Promise((resolve) => {
+    const parentWin = BrowserWindow.getFocusedWindow() || mainWindow;
+    const authWin = new BrowserWindow({
+      width: 500,
+      height: 680,
+      parent: parentWin || undefined,
+      modal: Boolean(parentWin),
+      title: provider === 'apple' ? 'Apple ile Giriş Yap' : 'Google ile Giriş Yap',
+      show: true,
+      backgroundColor: '#0E0512',
+      webPreferences: {
+        nodeIntegration: false,
+        contextIsolation: true,
+        webSecurity: true
+      }
+    });
+
+    let finished = false;
+    const finish = (result) => {
+      if (finished) return;
+      finished = true;
+      try {
+        if (!authWin.isDestroyed()) {
+          authWin.destroy();
+        }
+      } catch (_) {}
+      resolve(result);
+    };
+
+    const handleCallbackUrl = (targetUrl) => {
+      if (!targetUrl || finished) return;
+      if (
+        targetUrl.includes('access_token=') ||
+        targetUrl.includes('code=') ||
+        targetUrl.includes('error=') ||
+        targetUrl.includes('miruo.com.tr') ||
+        targetUrl.includes('miruo://auth/callback')
+      ) {
+        const isError = targetUrl.includes('error=') && !targetUrl.includes('access_token=');
+        finish({
+          success: !isError,
+          url: targetUrl,
+          canceled: false,
+          error: isError ? 'Giriş işlemi iptal edildi veya onaylanmadı.' : null
+        });
+      }
+    };
+
+    authWin.webContents.on('will-navigate', (e, targetUrl) => {
+      handleCallbackUrl(targetUrl);
+    });
+    authWin.webContents.on('will-redirect', (e, targetUrl) => {
+      handleCallbackUrl(targetUrl);
+    });
+    authWin.webContents.on('did-navigate', (e, targetUrl) => {
+      handleCallbackUrl(targetUrl);
+    });
+
+    authWin.on('closed', () => {
+      finish({ success: false, canceled: true, error: 'Pencere kapatıldı.' });
+    });
+
+    authWin.loadURL(authUrl);
+  });
+});
+
 ipcMain.handle('get-system-user-info', async () => {
   return { username: '', fullName: '', email: '' };
 });
@@ -659,6 +727,26 @@ function createWindow(port) {
     }
     callback(false);
   });
+
+  // YouTube Embed & Copyright Restrictions Bypass (Fixes "Bu video kullanılamıyor" Error 150/101)
+  session.defaultSession.webRequest.onBeforeSendHeaders(
+    { urls: ['*://*.youtube.com/*', '*://*.youtube-nocookie.com/*', '*://*.googlevideo.com/*'] },
+    (details, callback) => {
+      details.requestHeaders['Referer'] = 'https://www.youtube.com/';
+      details.requestHeaders['Origin'] = 'https://www.youtube.com';
+      callback({ cancel: false, requestHeaders: details.requestHeaders });
+    }
+  );
+
+  session.defaultSession.webRequest.onHeadersReceived(
+    { urls: ['*://*.youtube.com/*', '*://*.youtube-nocookie.com/*', '*://*.googlevideo.com/*'] },
+    (details, callback) => {
+      const responseHeaders = Object.assign({}, details.responseHeaders);
+      delete responseHeaders['x-frame-options'];
+      delete responseHeaders['X-Frame-Options'];
+      callback({ responseHeaders });
+    }
+  );
 
   // Handle external links by opening them in default system browser
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
