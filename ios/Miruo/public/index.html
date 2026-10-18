@@ -474,6 +474,25 @@
           <span>Tam Ekrandan Çık</span>
         </button>
 
+        <!-- YouTube-Style Double Tap Seek (-10s Left, +10s Right) Animated Indicators -->
+        <div id="doubleTapSeekLeft" class="pointer-events-none absolute left-0 top-0 bottom-0 w-1/3 flex items-center justify-center bg-white/10 rounded-r-full opacity-0 transition-opacity duration-200 z-20">
+          <div class="flex flex-col items-center justify-center text-white space-y-1">
+            <div class="flex items-center gap-1 text-2xl font-black">
+              <span>◀◀</span>
+            </div>
+            <span id="doubleTapSeekLeftText" class="text-xs font-bold bg-black/70 px-2.5 py-0.5 rounded-full border border-white/20">10 saniye</span>
+          </div>
+        </div>
+
+        <div id="doubleTapSeekRight" class="pointer-events-none absolute right-0 top-0 bottom-0 w-1/3 flex items-center justify-center bg-white/10 rounded-l-full opacity-0 transition-opacity duration-200 z-20">
+          <div class="flex flex-col items-center justify-center text-white space-y-1">
+            <div class="flex items-center gap-1 text-2xl font-black">
+              <span>▶▶</span>
+            </div>
+            <span id="doubleTapSeekRightText" class="text-xs font-bold bg-black/70 px-2.5 py-0.5 rounded-full border border-white/20">10 saniye</span>
+          </div>
+        </div>
+
         <!-- YouTube Player Target Container -->
         <div id="ytPlayerContainer" class="w-full h-full">
           <div id="ytPlayer"></div>
@@ -647,22 +666,27 @@
                 <p class="text-[9px] text-gray-400 mt-1">Odadaki herkesin oynatma hızını senkronize değiştirir.</p>
               </div>
 
-              <!-- Altyazı (CC) Kontrolü -->
-              <div class="pt-2 border-t border-white/10">
-                <div class="flex items-center justify-between mb-1.5">
-                  <label class="text-[10px] text-gray-400 font-medium">Altyazı (CC)</label>
-                  <span id="playerSubtitleStatusBadge" class="text-[10px] font-bold text-gray-400">Kapalı</span>
-                </div>
-                <button type="button" id="toggleCaptionsBtn" class="w-full flex items-center justify-between px-3 py-2 rounded-xl bg-white/5 hover:bg-white/10 active:scale-98 transition-all text-[11px] font-semibold text-left cursor-pointer border border-white/10">
-                  <div class="flex items-center gap-2">
-                    <svg class="w-4 h-4 text-amber-400 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <!-- Altyazı (CC) & Dil Seçimi -->
+              <div class="pt-2 border-t border-white/10 space-y-1.5">
+                <div class="flex items-center justify-between mb-1">
+                  <div class="flex items-center gap-1.5">
+                    <svg class="w-3.5 h-3.5 text-amber-400 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                       <rect x="2" y="4" width="20" height="16" rx="2" ry="2"/>
                       <path d="M7 15h3M7 11h2M14 15h3M14 11h3"/>
                     </svg>
-                    <span id="toggleCaptionsBtnText">Altyazıyı Aç</span>
+                    <label class="text-[10px] text-gray-300 font-bold uppercase tracking-wider">Altyazı Dili</label>
                   </div>
-                  <span id="toggleCaptionsIndicator" class="w-2 h-2 rounded-full bg-gray-500"></span>
-                </button>
+                  <span id="playerSubtitleStatusBadge" class="text-[10px] font-bold text-gray-400">Kapalı</span>
+                </div>
+                <!-- Language Choices (Grid of clean pills) -->
+                <div id="captionLanguagesGrid" class="grid grid-cols-3 gap-1 text-center font-semibold">
+                  <button type="button" class="caption-lang-btn py-1.5 rounded-lg bg-rose-500/30 text-rose-300 border border-rose-500/40 text-[10px] cursor-pointer transition-all active:scale-95 font-bold" data-lang="off">Kapalı</button>
+                  <button type="button" class="caption-lang-btn py-1.5 rounded-lg bg-white/5 hover:bg-white/15 text-[10px] cursor-pointer transition-all active:scale-95 text-gray-200" data-lang="tr">Türkçe</button>
+                  <button type="button" class="caption-lang-btn py-1.5 rounded-lg bg-white/5 hover:bg-white/15 text-[10px] cursor-pointer transition-all active:scale-95 text-gray-200" data-lang="en">İngilizce</button>
+                  <button type="button" class="caption-lang-btn py-1.5 rounded-lg bg-white/5 hover:bg-white/15 text-[10px] cursor-pointer transition-all active:scale-95 text-gray-200" data-lang="de">Almanca</button>
+                  <button type="button" class="caption-lang-btn py-1.5 rounded-lg bg-white/5 hover:bg-white/15 text-[10px] cursor-pointer transition-all active:scale-95 text-gray-200" data-lang="es">İspanyolca</button>
+                  <button type="button" class="caption-lang-btn py-1.5 rounded-lg bg-white/5 hover:bg-white/15 text-[10px] cursor-pointer transition-all active:scale-95 text-gray-200" data-lang="auto">Otomatik</button>
+                </div>
               </div>
 
               <!-- Kamera Kontrolü (Aç/Kapat & Çevir) -->

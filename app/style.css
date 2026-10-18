@@ -305,13 +305,59 @@ body.stage-is-fullscreen #selfPipCard {
   box-shadow: 0 20px 40px rgba(0,0,0,0.8), 0 0 20px rgba(225, 29, 72, 0.4) !important;
 }
 
-/* Persistent Stage Actions (3-Dots Settings, Fullscreen) with Safe-Area support */
+/* Persistent Stage Actions (3-Dots Settings, Fullscreen) with Safe-Area & Chat Separation */
 #stagePersistentActions {
   position: absolute !important;
-  top: max(14px, calc(env(safe-area-inset-top, 0px) + 12px)) !important;
-  right: max(18px, calc(env(safe-area-inset-right, 0px) + 14px)) !important;
+  top: 10px !important;
+  right: 12px !important;
   z-index: 999999 !important;
   pointer-events: auto !important;
+  transition: right 0.25s cubic-bezier(0.16, 1, 0.3, 1), top 0.25s cubic-bezier(0.16, 1, 0.3, 1) !important;
+}
+
+/* Portrait Mode: Snug at the top of the video player, NEVER pushed into the middle of the screen */
+@media (orientation: portrait) {
+  #stagePersistentActions {
+    top: 10px !important;
+    right: 12px !important;
+  }
+  #stageExitFullscreenFloatingBtn {
+    top: 10px !important;
+    left: 12px !important;
+  }
+}
+
+/* Fullscreen or Landscape: Align with safe-area so notch/island never clips it */
+@media (orientation: landscape) {
+  #stagePersistentActions {
+    top: max(12px, calc(env(safe-area-inset-top, 0px) + 8px)) !important;
+    right: max(16px, calc(env(safe-area-inset-right, 0px) + 12px)) !important;
+  }
+  #stageExitFullscreenFloatingBtn {
+    top: max(12px, calc(env(safe-area-inset-top, 0px) + 8px)) !important;
+    left: max(16px, calc(env(safe-area-inset-left, 0px) + 12px)) !important;
+  }
+
+  /* When Landscape Live Chat is open: shift 3-dots to the left of the chat overlay so they NEVER overlap with close button! */
+  #stageContainer.fs-chat-active #stagePersistentActions,
+  body.fs-chat-active #stagePersistentActions {
+    right: calc(320px + max(12px, env(safe-area-inset-right, 0px))) !important;
+  }
+}
+
+body.stage-is-fullscreen #stagePersistentActions,
+#stageContainer:fullscreen #stagePersistentActions,
+#stageContainer:-webkit-full-screen #stagePersistentActions,
+#stageContainer.is-fullscreen-pseudo #stagePersistentActions {
+  top: max(14px, calc(env(safe-area-inset-top, 0px) + 10px)) !important;
+  right: max(16px, calc(env(safe-area-inset-right, 0px) + 12px)) !important;
+}
+
+body.stage-is-fullscreen.fs-chat-active #stagePersistentActions,
+#stageContainer:fullscreen.fs-chat-active #stagePersistentActions,
+#stageContainer:-webkit-full-screen.fs-chat-active #stagePersistentActions,
+#stageContainer.is-fullscreen-pseudo.fs-chat-active #stagePersistentActions {
+  right: calc(320px + max(12px, env(safe-area-inset-right, 0px))) !important;
 }
 
 #stageFloatingFullscreenBtn,
@@ -319,6 +365,19 @@ body.stage-is-fullscreen #selfPipCard {
   position: relative !important;
   touch-action: manipulation !important;
   -webkit-tap-highlight-color: transparent !important;
+}
+
+/* YouTube-style Double Tap Ripple Feedback */
+#doubleTapSeekLeft.active,
+#doubleTapSeekRight.active {
+  opacity: 1 !important;
+  animation: doubleTapSeekPulse 0.65s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+@keyframes doubleTapSeekPulse {
+  0% { transform: scale(0.92); opacity: 0.85; }
+  50% { transform: scale(1.04); opacity: 1; }
+  100% { transform: scale(1); opacity: 0; }
 }
 
 /* Floating Reopen Chat Button in Fullscreen & Landscape */

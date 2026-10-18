@@ -746,7 +746,7 @@ const I18N = {
     video_placeholder_desc: '"Video Seç" butonuna basarak dilediğiniz videoyu veya platformu başlatın.',
     miruo_player: 'Miruo Oynatıcı',
     video_title_default: 'Video Başlığı',
-    video_subtitle_default: "YouTube'da Miruo",
+    video_subtitle_default: "Miruo Canlı",
     fullscreen_title: 'Tam Ekran',
     live_cam_feed: 'Canlı Kamera Feed',
     self_camera_badge: 'Sen (Kamera)',
@@ -14810,10 +14810,69 @@ function initEvents() {
     });
   }
 
+  // YouTube-Style Double Tap to Seek (10s Left/Right)
+  function triggerDoubleTapSeek(isRight) {
+    const delta = isRight ? 10 : -10;
+    seekRelative(delta);
+
+    const indicator = document.getElementById(isRight ? 'doubleTapSeekRight' : 'doubleTapSeekLeft');
+    if (indicator) {
+      indicator.classList.remove('active');
+      void indicator.offsetWidth; // force animation restart
+      indicator.classList.add('active');
+      setTimeout(() => {
+        indicator.classList.remove('active');
+      }, 650);
+    }
+    showToast(isRight ? '+10 saniye ileri' : '-10 saniye geri');
+  }
+
   if (dom.stageContainer) {
+    let lastTapTime = 0;
+    let lastTapX = 0;
+
+    dom.stageContainer.addEventListener('touchend', (e) => {
+      if (document.body.classList.contains('has-mini-player')) return;
+      if (e.target.closest('#partnerPipCard') || e.target.closest('#selfPipCard') || e.target.closest('button') || e.target.closest('#raveRoomSettingsMenu')) return;
+
+      const currentTime = Date.now();
+      const touch = e.changedTouches ? e.changedTouches[0] : null;
+      if (!touch) return;
+
+      const rect = dom.stageContainer.getBoundingClientRect();
+      const touchX = touch.clientX - rect.left;
+      const timeDiff = currentTime - lastTapTime;
+      const distDiff = Math.abs(touchX - lastTapX);
+
+      if (timeDiff < 320 && distDiff < 70) {
+        // Double Tap Detected on touch screen!
+        e.preventDefault();
+        e.stopPropagation();
+        const normX = touchX / rect.width;
+        if (normX < 0.45) {
+          triggerDoubleTapSeek(false); // Rewind 10s
+        } else if (normX > 0.55) {
+          triggerDoubleTapSeek(true); // Forward 10s
+        }
+        lastTapTime = 0;
+        return;
+      }
+      lastTapTime = currentTime;
+      lastTapX = touchX;
+    });
+
     dom.stageContainer.addEventListener('dblclick', (e) => {
-      if (e.target.closest('#partnerPipCard') || e.target.closest('#selfPipCard') || e.target.closest('button')) return;
-      toggleFullscreen();
+      if (e.target.closest('#partnerPipCard') || e.target.closest('#selfPipCard') || e.target.closest('button') || e.target.closest('#raveRoomSettingsMenu')) return;
+      e.preventDefault();
+      e.stopPropagation();
+      const rect = dom.stageContainer.getBoundingClientRect();
+      const clickX = e.clientX - rect.left;
+      const normX = clickX / rect.width;
+      if (normX < 0.45) {
+        triggerDoubleTapSeek(false); // Rewind 10s
+      } else if (normX > 0.55) {
+        triggerDoubleTapSeek(true); // Forward 10s
+      }
     });
   }
 
@@ -15231,48 +15290,63 @@ function initEvents() {
   });
 
   // Player Settings & Playback Rate Functions
+  const CAPTION_LANG_LABELS = {
+    off: 'Kapalı',
+    tr: 'Türkçe',
+    en: 'İngilizce',
+    de: 'Almanca',
+    es: 'İspanyolca',
+    auto: 'Otomatik'
+  };
+
   function updateCaptionsUI() {
-    const isEnabled = !!state.captionsEnabled;
+    const currentLang = state.captionLanguage || (state.captionsEnabled ? 'tr' : 'off');
+    const isOff = currentLang === 'off';
     const badge = document.getElementById('playerSubtitleStatusBadge');
-    const btnText = document.getElementById('toggleCaptionsBtnText');
-    const indicator = document.getElementById('toggleCaptionsIndicator');
     if (badge) {
-      badge.textContent = isEnabled ? 'Açık' : 'Kapalı';
-      badge.className = isEnabled ? 'text-[10px] font-bold text-emerald-400' : 'text-[10px] font-bold text-gray-400';
+      badge.textContent = CAPTION_LANG_LABELS[currentLang] || currentLang.toUpperCase();
+      badge.className = isOff ? 'text-[10px] font-bold text-gray-400' : 'text-[10px] font-bold text-emerald-400';
     }
-    if (btnText) {
-      btnText.textContent = isEnabled ? 'Altyazıyı Kapat' : 'Altyazıyı Aç';
-    }
-    if (indicator) {
-      indicator.className = isEnabled ? 'w-2 h-2 rounded-full bg-emerald-400 animate-pulse' : 'w-2 h-2 rounded-full bg-gray-500';
-    }
+    document.querySelectorAll('.caption-lang-btn').forEach(btn => {
+      const bLang = btn.dataset.lang;
+      if (bLang === currentLang) {
+        btn.className = 'caption-lang-btn py-1.5 rounded-lg bg-rose-500/30 text-rose-300 border border-rose-500/40 text-[10px] cursor-pointer transition-all active:scale-95 font-bold';
+      } else {
+        btn.className = 'caption-lang-btn py-1.5 rounded-lg bg-white/5 hover:bg-white/15 text-[10px] cursor-pointer transition-all active:scale-95 text-gray-200';
+      }
+    });
   }
 
-  function toggleCaptions() {
-    state.captionsEnabled = !state.captionsEnabled;
-    const isEnabled = state.captionsEnabled;
+  function setCaptionLanguage(langCode) {
+    state.captionLanguage = langCode;
+    state.captionsEnabled = (langCode !== 'off');
 
-    if (state.activeMode === 'youtube') {
-      if (isEnabled) {
+    if (langCode === 'off') {
+      if (state.activeMode === 'youtube') {
+        sendYtCommand('unloadModule', ['captions']);
+        sendYtCommand('setOption', ['captions', 'track', {}]);
+      } else if (dom.nativeVideoPlayer) {
+        const tracks = dom.nativeVideoPlayer.textTracks || [];
+        for (let i = 0; i < tracks.length; i++) tracks[i].mode = 'hidden';
+      }
+      showToast('Altyazı kapatıldı');
+    } else {
+      if (state.activeMode === 'youtube') {
         sendYtCommand('loadModule', ['captions']);
-        sendYtCommand('setOption', ['captions', 'track', { languageCode: 'tr' }]);
+        const trackOpt = (langCode === 'auto') ? {} : { languageCode: langCode };
+        sendYtCommand('setOption', ['captions', 'track', trackOpt]);
         setTimeout(() => {
           try {
             sendYtCommand('setOption', ['captions', 'reload', true]);
           } catch (_) {}
         }, 300);
-        showToast('Altyazı açıldı');
-      } else {
-        sendYtCommand('unloadModule', ['captions']);
-        sendYtCommand('setOption', ['captions', 'track', {}]);
-        showToast('Altyazı kapatıldı');
+      } else if (dom.nativeVideoPlayer) {
+        const tracks = dom.nativeVideoPlayer.textTracks || [];
+        for (let i = 0; i < tracks.length; i++) {
+          tracks[i].mode = (tracks[i].language === langCode || langCode === 'auto') ? 'showing' : 'hidden';
+        }
       }
-    } else if (dom.nativeVideoPlayer) {
-      const tracks = dom.nativeVideoPlayer.textTracks || [];
-      for (let i = 0; i < tracks.length; i++) {
-        tracks[i].mode = isEnabled ? 'showing' : 'hidden';
-      }
-      showToast(isEnabled ? 'Altyazı açıldı' : 'Altyazı kapatıldı');
+      showToast(`Altyazı: ${CAPTION_LANG_LABELS[langCode] || langCode} seçildi`);
     }
 
     updateCaptionsUI();
@@ -15418,14 +15492,13 @@ function initEvents() {
     });
   });
 
-  // Subtitles / Captions toggle binding
-  const toggleCaptionsBtn = document.getElementById('toggleCaptionsBtn');
-  if (toggleCaptionsBtn) {
-    addInstantTap(toggleCaptionsBtn, (e) => {
+  // Subtitles / Captions language choices binding
+  document.querySelectorAll('.caption-lang-btn').forEach(btn => {
+    addInstantTap(btn, (e) => {
       e.stopPropagation();
-      toggleCaptions();
+      setCaptionLanguage(btn.dataset.lang);
     });
-  }
+  });
 
   // Camera toggle inside 3-dots menu
   const menuToggleCamBtn = document.getElementById('menuToggleCamBtn');
