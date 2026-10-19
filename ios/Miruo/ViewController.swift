@@ -880,6 +880,9 @@ class PlatformBrowserViewController: UIViewController, WKNavigationDelegate, WKU
     private var searchBar: UISearchBar!
     private var progressView: UIProgressView!
     private var progressObservation: NSKeyValueObservation?
+    private var syncBtn: UIButton?
+    private var lastCapturedStreamUrl: String? = nil
+    private var lastCapturedStreamTitle: String? = nil
     
     override func viewDidLoad() {
         super.viewDidLoad()
@@ -972,6 +975,76 @@ class PlatformBrowserViewController: UIViewController, WKNavigationDelegate, WKU
     private func setupWebView() {
         let userContentController = WKUserContentController()
         userContentController.add(self, name: "videoIntercepted")
+        userContentController.add(self, name: "streamDetected")
+        
+        let streamScriptSource = """
+        (function() {
+            function postMedia(src, title) {
+                if (!src || typeof src !== 'string' || src.length < 8) return;
+                if (src.indexOf('blob:') === 0 || src.indexOf('data:') === 0) return;
+                try {
+                    if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.streamDetected) {
+                        window.webkit.messageHandlers.streamDetected.postMessage({
+                            url: src,
+                            title: title || document.title || 'Video'
+                        });
+                    }
+                } catch(e) {}
+            }
+
+            function scanVideos() {
+                var vids = document.querySelectorAll('video');
+                for (var i = 0; i < vids.length; i++) {
+                    var v = vids[i];
+                    var s = v.currentSrc || v.src;
+                    if (s) postMedia(s, document.title);
+                    var sources = v.querySelectorAll('source');
+                    for (var j = 0; j < sources.length; j++) {
+                        var ss = sources[j].src;
+                        if (ss) postMedia(ss, document.title);
+                    }
+                    if (!v.__miruoBound) {
+                        v.__miruoBound = true;
+                        ['play', 'playing', 'loadeddata', 'loadedmetadata', 'canplay'].forEach(function(evt) {
+                            v.addEventListener(evt, function() {
+                                var cur = v.currentSrc || v.src;
+                                if (cur) postMedia(cur, document.title);
+                            }, true);
+                        });
+                    }
+                }
+            }
+
+            try {
+                var _origFetch = window.fetch;
+                if (_origFetch) {
+                    window.fetch = function() {
+                        var args = arguments;
+                        var u = (args[0] instanceof Request) ? args[0].url : args[0];
+                        if (typeof u === 'string' && (u.indexOf('.m3u8') !== -1 || u.indexOf('.mp4') !== -1 || u.indexOf('/hls/') !== -1 || u.indexOf('/stream/') !== -1)) {
+                            postMedia(u, document.title);
+                        }
+                        return _origFetch.apply(this, args);
+                    };
+                }
+            } catch(e) {}
+
+            try {
+                var _origXHR = XMLHttpRequest.prototype.open;
+                XMLHttpRequest.prototype.open = function(method, url) {
+                    if (typeof url === 'string' && (url.indexOf('.m3u8') !== -1 || url.indexOf('.mp4') !== -1 || url.indexOf('/hls/') !== -1 || url.indexOf('/stream/') !== -1)) {
+                        postMedia(url, document.title);
+                    }
+                    return _origXHR.apply(this, arguments);
+                };
+            } catch(e) {}
+
+            setInterval(scanVideos, 1500);
+            document.addEventListener('DOMContentLoaded', scanVideos);
+        })();
+        """
+        let streamScript = WKUserScript(source: streamScriptSource, injectionTime: .atDocumentEnd, forMainFrameOnly: false)
+        userContentController.addUserScript(streamScript)
         
         let scriptSource = """
         (function() {
@@ -1147,6 +1220,7 @@ class PlatformBrowserViewController: UIViewController, WKNavigationDelegate, WKU
         syncBtn.layer.cornerRadius = 14
         syncBtn.addTarget(self, action: #selector(syncCurrentContentTapped), for: .touchUpInside)
         bottomBar.addSubview(syncBtn)
+        self.syncBtn = syncBtn
         
         NSLayoutConstraint.activate([
             webView.topAnchor.constraint(equalTo: progressView.bottomAnchor),
@@ -1294,8 +1368,14 @@ class PlatformBrowserViewController: UIViewController, WKNavigationDelegate, WKU
             handleSelectedVideo(ytId)
             return
         }
+
+        // 2. Direct captured media stream (.m3u8 / .mp4 / video stream) from any frame
+        if let captured = lastCapturedStreamUrl, !captured.isEmpty {
+            handleSelectedVideo(captured)
+            return
+        }
         
-        // 2. Extract media stream or player iframe URL from free movie/streaming sites
+        // 3. Extract media stream or player iframe URL from free movie/streaming sites
         let extractJs = """
         (function() {
             // A. Direct <video> tags
@@ -1449,6 +1529,27 @@ class PlatformBrowserViewController: UIViewController, WKNavigationDelegate, WKU
     func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
         if message.name == "videoIntercepted", let videoId = message.body as? String, !videoId.isEmpty {
             handleSelectedVideo(videoId)
+        } else if message.name == "streamDetected" {
+            var detectedUrl = ""
+            var detectedTitle = ""
+            if let dict = message.body as? [String: Any] {
+                detectedUrl = dict["url"] as? String ?? ""
+                detectedTitle = dict["title"] as? String ?? ""
+            } else if let s = message.body as? String {
+                detectedUrl = s
+            }
+            if !detectedUrl.isEmpty && detectedUrl.count > 8 {
+                self.lastCapturedStreamUrl = detectedUrl
+                if !detectedTitle.isEmpty {
+                    self.lastCapturedStreamTitle = detectedTitle
+                }
+                DispatchQueue.main.async { [weak self] in
+                    guard let self = self else { return }
+                    let readyTitle = self.currentLang == "en" ? "✓ Video Ready! Stream to Room" : (self.currentLang == "de" ? "✓ Video Bereit! Übertragen" : "✓ Video Hazır! Odaya Aktar")
+                    self.syncBtn?.setTitle(readyTitle, for: .normal)
+                    self.syncBtn?.backgroundColor = UIColor(red: 0.16, green: 0.65, blue: 0.27, alpha: 1.0)
+                }
+            }
         }
     }
     

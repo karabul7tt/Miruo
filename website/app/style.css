@@ -1780,3 +1780,34 @@ body.has-mini-player #stageContainer #miniPlayerOverlay {
   }
   #tabFriendsContainer > * { margin: 0 !important; }
 }
+
+/* Rave Room Settings Bottom Sheet / Popover Smooth Scrolling on Touch */
+#raveRoomSettingsMenu {
+  -webkit-overflow-scrolling: touch !important;
+  touch-action: pan-y !important;
+  overscroll-behavior: contain !important;
+}
+
+/* High-Contrast Touch-Friendly Seek Bar Thumbs */
+#nowPlayingSeekSlider::-webkit-slider-thumb,
+#seekSlider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #f43f5e;
+  cursor: pointer;
+  box-shadow: 0 0 6px rgba(244, 63, 94, 0.6);
+  border: 2px solid #ffffff;
+}
+#nowPlayingSeekSlider::-moz-range-thumb,
+#seekSlider::-moz-range-thumb {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #f43f5e;
+  cursor: pointer;
+  box-shadow: 0 0 6px rgba(244, 63, 94, 0.6);
+  border: 2px solid #ffffff;
+}

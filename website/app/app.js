@@ -1949,7 +1949,17 @@ const dom = {
   camIcon: document.getElementById('camIcon'),
   raveRoomSettingsBtn: document.getElementById('raveRoomSettingsBtn'),
   raveRoomSettingsMenu: document.getElementById('raveRoomSettingsMenu'),
+  raveRoomSettingsBackdrop: document.getElementById('raveRoomSettingsBackdrop'),
   closeRaveRoomSettingsMenuBtn: document.getElementById('closeRaveRoomSettingsMenuBtn'),
+  stageBottomMiniProgressContainer: document.getElementById('stageBottomMiniProgressContainer'),
+  stageBottomMiniProgressBar: document.getElementById('stageBottomMiniProgressBar'),
+  nowPlayingScrubberRow: document.getElementById('nowPlayingScrubberRow'),
+  nowPlayingPlayPauseQuickBtn: document.getElementById('nowPlayingPlayPauseQuickBtn'),
+  nowPlayingPlayIcon: document.getElementById('nowPlayingPlayIcon'),
+  nowPlayingPauseIcon: document.getElementById('nowPlayingPauseIcon'),
+  nowPlayingCurrentTime: document.getElementById('nowPlayingCurrentTime'),
+  nowPlayingSeekSlider: document.getElementById('nowPlayingSeekSlider'),
+  nowPlayingDuration: document.getElementById('nowPlayingDuration'),
   playerQualityVal: document.getElementById('playerQualityVal'),
   playerSpeedVal: document.getElementById('playerSpeedVal'),
   raveResyncBtn: document.getElementById('raveResyncBtn'),
@@ -3255,6 +3265,8 @@ function loadDirectVideo(url, title) {
   hideIframeFallback();
   
   dom.nativeVideoPlayer.classList.remove('hidden');
+  dom.nativeVideoPlayer.setAttribute('playsinline', 'true');
+  dom.nativeVideoPlayer.setAttribute('webkit-playsinline', 'true');
 
   if (url && (url.includes('.m3u8') || url.includes('/hls/'))) {
     if (dom.nativeVideoPlayer.canPlayType('application/vnd.apple.mpegurl')) {
@@ -3568,11 +3580,20 @@ function startPlaybackTracking() {
     }
 
     if (state.duration > 0) {
+      const pct = (state.currentTime / state.duration) * 100;
       if (dom.currentTimeDisplay) dom.currentTimeDisplay.textContent = formatTime(state.currentTime);
       if (dom.durationDisplay) dom.durationDisplay.textContent = formatTime(state.duration);
       if (dom.seekSlider && !state.isUserDraggingSeek) {
-        dom.seekSlider.value = (state.currentTime / state.duration) * 100;
+        dom.seekSlider.value = pct;
       }
+      if (dom.stageBottomMiniProgressBar) {
+        dom.stageBottomMiniProgressBar.style.width = `${Math.min(100, Math.max(0, pct))}%`;
+      }
+      if (dom.nowPlayingSeekSlider && !state.isUserDraggingSeek) {
+        dom.nowPlayingSeekSlider.value = pct;
+      }
+      if (dom.nowPlayingCurrentTime) dom.nowPlayingCurrentTime.textContent = formatTime(state.currentTime);
+      if (dom.nowPlayingDuration) dom.nowPlayingDuration.textContent = formatTime(state.duration);
     }
   }, 500);
 }
@@ -3585,14 +3606,18 @@ function formatTime(seconds) {
 
 function updatePlayPauseUI(playing) {
   if (playing) {
-    dom.playIcon.classList.add('hidden');
-    dom.pauseIcon.classList.remove('hidden');
+    if (dom.playIcon) dom.playIcon.classList.add('hidden');
+    if (dom.pauseIcon) dom.pauseIcon.classList.remove('hidden');
+    if (dom.nowPlayingPlayIcon) dom.nowPlayingPlayIcon.classList.add('hidden');
+    if (dom.nowPlayingPauseIcon) dom.nowPlayingPauseIcon.classList.remove('hidden');
     if (typeof resetControlsHideTimer === 'function') {
       resetControlsHideTimer();
     }
   } else {
-    dom.playIcon.classList.remove('hidden');
-    dom.pauseIcon.classList.add('hidden');
+    if (dom.playIcon) dom.playIcon.classList.remove('hidden');
+    if (dom.pauseIcon) dom.pauseIcon.classList.add('hidden');
+    if (dom.nowPlayingPlayIcon) dom.nowPlayingPlayIcon.classList.remove('hidden');
+    if (dom.nowPlayingPauseIcon) dom.nowPlayingPauseIcon.classList.add('hidden');
     if (typeof showStageControls === 'function') {
       showStageControls();
     }
@@ -3651,8 +3676,19 @@ window.addEventListener('message', (event) => {
       state.lastReportedYtAt = Date.now();
 
       if (dom.currentTimeDisplay) dom.currentTimeDisplay.textContent = formatTime(state.currentTime);
-      if (dom.seekSlider && !state.isUserDraggingSeek && state.duration > 0) {
-        dom.seekSlider.value = (state.currentTime / state.duration) * 100;
+      if (state.duration > 0) {
+        const pct = (state.currentTime / state.duration) * 100;
+        if (dom.seekSlider && !state.isUserDraggingSeek) {
+          dom.seekSlider.value = pct;
+        }
+        if (dom.stageBottomMiniProgressBar) {
+          dom.stageBottomMiniProgressBar.style.width = `${Math.min(100, Math.max(0, pct))}%`;
+        }
+        if (dom.nowPlayingSeekSlider && !state.isUserDraggingSeek) {
+          dom.nowPlayingSeekSlider.value = pct;
+        }
+        if (dom.nowPlayingCurrentTime) dom.nowPlayingCurrentTime.textContent = formatTime(state.currentTime);
+        if (dom.nowPlayingDuration) dom.nowPlayingDuration.textContent = formatTime(state.duration);
       }
 
       // Check if user scrubbed inside YouTube iframe progress bar directly
@@ -13602,6 +13638,9 @@ function initEvents() {
           videoIdOrUrl.includes('.mp4') ||
           videoIdOrUrl.includes('/hls/') ||
           videoIdOrUrl.includes('/stream/') ||
+          videoIdOrUrl.includes('/video/') ||
+          videoIdOrUrl.includes('playlist') ||
+          videoIdOrUrl.includes('manifest') ||
           videoIdOrUrl.includes('googlevideo.com')
         );
         if (platformName.toLowerCase().includes('twitch') || videoIdOrUrl.includes('twitch.tv') || videoIdOrUrl.startsWith('twitch:')) {
@@ -15580,6 +15619,21 @@ function validateInstagramUsername(username) {
   }
 
   // Seek Slider (Miruo Custom Unified Scrubber)
+  const finishSeek = (e) => {
+    state.isUserDraggingSeek = false;
+    const targetPercent = parseFloat(e.target.value);
+    if (state.duration > 0) {
+      const targetTime = (targetPercent / 100) * state.duration;
+      state.currentTime = targetTime;
+      if (state.activeMode === 'youtube') {
+        sendYtCommand('seekTo', [targetTime, true]);
+      } else if (state.activeMode === 'direct' && dom.nativeVideoPlayer) {
+        dom.nativeVideoPlayer.currentTime = targetTime;
+      }
+      sendP2PData('sync', { action: 'seek', time: targetTime, sentAt: Date.now() });
+    }
+  };
+
   if (dom.seekSlider) {
     dom.seekSlider.addEventListener('input', (e) => {
       state.isUserDraggingSeek = true;
@@ -15587,27 +15641,87 @@ function validateInstagramUsername(username) {
       if (state.duration > 0) {
         const targetTime = (targetPercent / 100) * state.duration;
         if (dom.currentTimeDisplay) dom.currentTimeDisplay.textContent = formatTime(targetTime);
+        if (dom.nowPlayingCurrentTime) dom.nowPlayingCurrentTime.textContent = formatTime(targetTime);
       }
     });
-
-    const finishSeek = (e) => {
-      state.isUserDraggingSeek = false;
-      const targetPercent = parseFloat(e.target.value);
-      if (state.duration > 0) {
-        const targetTime = (targetPercent / 100) * state.duration;
-        state.currentTime = targetTime;
-        if (state.activeMode === 'youtube') {
-          sendYtCommand('seekTo', [targetTime, true]);
-        } else if (state.activeMode === 'direct' && dom.nativeVideoPlayer) {
-          dom.nativeVideoPlayer.currentTime = targetTime;
-        }
-        sendP2PData('sync', { action: 'seek', time: targetTime, sentAt: Date.now() });
-      }
-    };
 
     dom.seekSlider.addEventListener('change', finishSeek);
     dom.seekSlider.addEventListener('mouseup', finishSeek);
     dom.seekSlider.addEventListener('touchend', finishSeek);
+  }
+
+  // Dedicated Now-Playing Bottom Bar Scrubber (Always Accessible on iPhone & Mobile)
+  if (dom.nowPlayingSeekSlider) {
+    dom.nowPlayingSeekSlider.addEventListener('input', (e) => {
+      state.isUserDraggingSeek = true;
+      const targetPercent = parseFloat(e.target.value);
+      if (state.duration > 0) {
+        const targetTime = (targetPercent / 100) * state.duration;
+        if (dom.nowPlayingCurrentTime) dom.nowPlayingCurrentTime.textContent = formatTime(targetTime);
+        if (dom.currentTimeDisplay) dom.currentTimeDisplay.textContent = formatTime(targetTime);
+      }
+    });
+
+    dom.nowPlayingSeekSlider.addEventListener('change', finishSeek);
+    dom.nowPlayingSeekSlider.addEventListener('mouseup', finishSeek);
+    dom.nowPlayingSeekSlider.addEventListener('touchend', finishSeek);
+  }
+
+  if (dom.nowPlayingPlayPauseQuickBtn) {
+    addInstantTap(dom.nowPlayingPlayPauseQuickBtn, (e) => {
+      if (e && e.stopPropagation) e.stopPropagation();
+      togglePlayPause();
+    });
+  }
+
+  // Native Video Player (Direct Streams & Screen Share) Event Bindings
+  if (dom.nativeVideoPlayer) {
+    dom.nativeVideoPlayer.addEventListener('timeupdate', () => {
+      if (state.activeMode === 'direct') {
+        state.currentTime = dom.nativeVideoPlayer.currentTime || 0;
+        state.duration = dom.nativeVideoPlayer.duration || 0;
+        if (state.duration > 0) {
+          const pct = (state.currentTime / state.duration) * 100;
+          if (dom.currentTimeDisplay) dom.currentTimeDisplay.textContent = formatTime(state.currentTime);
+          if (dom.durationDisplay) dom.durationDisplay.textContent = formatTime(state.duration);
+          if (dom.seekSlider && !state.isUserDraggingSeek) dom.seekSlider.value = pct;
+          if (dom.stageBottomMiniProgressBar) dom.stageBottomMiniProgressBar.style.width = `${Math.min(100, Math.max(0, pct))}%`;
+          if (dom.nowPlayingSeekSlider && !state.isUserDraggingSeek) dom.nowPlayingSeekSlider.value = pct;
+          if (dom.nowPlayingCurrentTime) dom.nowPlayingCurrentTime.textContent = formatTime(state.currentTime);
+          if (dom.nowPlayingDuration) dom.nowPlayingDuration.textContent = formatTime(state.duration);
+        }
+      }
+    });
+
+    dom.nativeVideoPlayer.addEventListener('loadedmetadata', () => {
+      if (state.activeMode === 'direct') {
+        state.duration = dom.nativeVideoPlayer.duration || 0;
+        if (dom.durationDisplay) dom.durationDisplay.textContent = formatTime(state.duration);
+        if (dom.nowPlayingDuration) dom.nowPlayingDuration.textContent = formatTime(state.duration);
+      }
+    });
+
+    dom.nativeVideoPlayer.addEventListener('play', () => {
+      if (state.activeMode === 'direct') {
+        state.isPlaying = true;
+        updatePlayPauseUI(true);
+      }
+    });
+
+    dom.nativeVideoPlayer.addEventListener('pause', () => {
+      if (state.activeMode === 'direct') {
+        state.isPlaying = false;
+        updatePlayPauseUI(false);
+      }
+    });
+
+    dom.nativeVideoPlayer.addEventListener('ended', () => {
+      if (state.activeMode === 'direct') {
+        state.isPlaying = false;
+        updatePlayPauseUI(false);
+        handleNextTrack();
+      }
+    });
   }
 
   // Floating Emoji Reactions
@@ -15740,17 +15854,14 @@ function validateInstagramUsername(username) {
     if (!dom.raveRoomSettingsMenu) return;
     const isHidden = dom.raveRoomSettingsMenu.classList.contains('hidden');
     const target = (typeof show === 'boolean') ? show : isHidden;
+    const backdrop = dom.raveRoomSettingsBackdrop || document.getElementById('raveRoomSettingsBackdrop');
     if (target) {
       dom.raveRoomSettingsMenu.classList.remove('hidden');
-      if (dom.stageContainer) {
-        dom.stageContainer.style.overflow = 'visible';
-      }
+      if (backdrop) backdrop.classList.remove('hidden');
       updateMenuAVStatus();
     } else {
       dom.raveRoomSettingsMenu.classList.add('hidden');
-      if (dom.stageContainer) {
-        dom.stageContainer.style.overflow = '';
-      }
+      if (backdrop) backdrop.classList.add('hidden');
     }
   }
 
@@ -15856,6 +15967,13 @@ function validateInstagramUsername(username) {
 
   if (dom.closeRaveRoomSettingsMenuBtn) {
     addInstantTap(dom.closeRaveRoomSettingsMenuBtn, (e) => {
+      e.stopPropagation();
+      toggleRaveRoomSettingsMenu(false);
+    });
+  }
+
+  if (dom.raveRoomSettingsBackdrop) {
+    addInstantTap(dom.raveRoomSettingsBackdrop, (e) => {
       e.stopPropagation();
       toggleRaveRoomSettingsMenu(false);
     });
