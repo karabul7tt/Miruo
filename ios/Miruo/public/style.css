@@ -840,15 +840,15 @@ input, textarea {
   -webkit-overflow-scrolling: touch !important;
 }
 
+#authModal {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
 #authModal::-webkit-scrollbar {
-  width: 6px;
-}
-#authModal::-webkit-scrollbar-track {
-  background: rgba(255, 255, 255, 0.05);
-}
-#authModal::-webkit-scrollbar-thumb {
-  background: rgba(166, 77, 121, 0.6);
-  border-radius: 4px;
+  display: none !important;
+  width: 0 !important;
+  height: 0 !important;
+  background: transparent !important;
 }
 
 .owl3d {

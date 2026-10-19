@@ -124,22 +124,38 @@ async function authenticateFromUrl(url) {
   }
 
   let session = null;
-  if (parsed.accessToken && parsed.refreshToken && supabaseClient && supabaseClient.auth) {
-    const { data, error } = await supabaseClient.auth.setSession({
-      access_token: parsed.accessToken,
-      refresh_token: parsed.refreshToken
-    });
-    if (!error && data && data.session) session = data.session;
+  if (parsed.accessToken && supabaseClient && supabaseClient.auth) {
+    try {
+      const { data, error } = await supabaseClient.auth.setSession({
+        access_token: parsed.accessToken,
+        refresh_token: parsed.refreshToken || parsed.accessToken
+      });
+      if (!error && data && data.session) session = data.session;
+    } catch (_) {}
   }
 
   if (!session && parsed.code && supabaseClient && supabaseClient.auth) {
-    const { data, error } = await supabaseClient.auth.exchangeCodeForSession(parsed.code);
-    if (!error && data && data.session) session = data.session;
+    try {
+      const { data, error } = await supabaseClient.auth.exchangeCodeForSession(parsed.code);
+      if (!error && data && data.session) session = data.session;
+    } catch (_) {}
   }
 
   if (!session && supabaseClient && supabaseClient.auth) {
-    const { data: cur } = await supabaseClient.auth.getSession();
-    if (cur && cur.session) session = cur.session;
+    try {
+      const { data: cur } = await supabaseClient.auth.getSession();
+      if (cur && cur.session) session = cur.session;
+    } catch (_) {}
+  }
+
+  // Fallback: If session not built yet but we have accessToken, verify user directly
+  if (!session && parsed.accessToken && supabaseClient && supabaseClient.auth) {
+    try {
+      const { data: uData } = await supabaseClient.auth.getUser(parsed.accessToken);
+      if (uData && uData.user) {
+        session = { user: uData.user, access_token: parsed.accessToken };
+      }
+    } catch (_) {}
   }
 
   return session;
@@ -11466,7 +11482,12 @@ function initEvents() {
         } catch (err) {
           if (btn) btn.classList.remove('opacity-60', 'pointer-events-none');
           console.warn(`[Miruo] Desktop ${provider} OAuth exception:`, err);
-          showAuthAlert('Giriş başlatılamadı: ' + (err.message || err), false);
+          const errMsg = err?.message || String(err);
+          if (errMsg.includes('missing OAuth secret') || errMsg.includes('Unsupported provider')) {
+            showAuthAlert('Apple ile Giriş henüz bu platform için yapılandırılmamış (Geliştirici anahtarı gerekiyor). Lütfen Google veya E-posta ile giriş yapın.', false);
+          } else {
+            showAuthAlert('Giriş başlatılamadı: ' + errMsg, false);
+          }
           return;
         }
       }

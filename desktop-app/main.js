@@ -228,8 +228,8 @@ ipcMain.handle('desktop-oauth-login', async (event, { provider, authUrl }) => {
   return new Promise((resolve) => {
     const parentWin = BrowserWindow.getFocusedWindow() || mainWindow;
     const authWin = new BrowserWindow({
-      width: 500,
-      height: 680,
+      width: 520,
+      height: 700,
       parent: parentWin || undefined,
       modal: Boolean(parentWin),
       title: provider === 'apple' ? 'Apple ile Giriş Yap' : 'Google ile Giriş Yap',
@@ -254,33 +254,87 @@ ipcMain.handle('desktop-oauth-login', async (event, { provider, authUrl }) => {
       resolve(result);
     };
 
-    const handleCallbackUrl = (targetUrl) => {
-      if (!targetUrl || finished) return;
-      if (
-        targetUrl.includes('access_token=') ||
-        targetUrl.includes('code=') ||
-        targetUrl.includes('error=') ||
-        targetUrl.includes('miruo.com.tr') ||
-        targetUrl.includes('miruo://auth/callback')
-      ) {
-        const isError = targetUrl.includes('error=') && !targetUrl.includes('access_token=');
-        finish({
-          success: !isError,
-          url: targetUrl,
-          canceled: false,
-          error: isError ? 'Giriş işlemi iptal edildi veya onaylanmadı.' : null
-        });
-      }
+    const checkAuthCompletion = async (explicitUrl) => {
+      if (finished || authWin.isDestroyed()) return;
+      try {
+        let currentUrl = explicitUrl || '';
+        if (!currentUrl && !authWin.isDestroyed()) {
+          currentUrl = authWin.webContents.getURL() || '';
+        }
+
+        let pageHref = '';
+        try {
+          if (!authWin.isDestroyed()) {
+            pageHref = await authWin.webContents.executeJavaScript('window.location.href').catch(() => '');
+          }
+        } catch (_) {}
+
+        const bestUrl = (pageHref && (pageHref.includes('access_token=') || pageHref.includes('code=')))
+          ? pageHref
+          : (currentUrl || pageHref);
+
+        if (bestUrl.includes('access_token=') || bestUrl.includes('code=')) {
+          finish({
+            success: true,
+            url: bestUrl,
+            canceled: false,
+            error: null
+          });
+          return;
+        }
+
+        if (bestUrl.includes('error=') && !bestUrl.includes('access_token=')) {
+          finish({
+            success: false,
+            url: bestUrl,
+            canceled: false,
+            error: 'Giriş işlemi iptal edildi veya onaylanmadı.'
+          });
+          return;
+        }
+
+        // If it landed on callback redirect (miruo.com.tr), give DOM 600ms to settle hash tokens
+        if (bestUrl.includes('miruo.com.tr') || bestUrl.includes('miruo://')) {
+          setTimeout(async () => {
+            if (finished || authWin.isDestroyed()) return;
+            try {
+              const delayedHref = await authWin.webContents.executeJavaScript('window.location.href').catch(() => '');
+              if (delayedHref.includes('access_token=') || delayedHref.includes('code=')) {
+                finish({
+                  success: true,
+                  url: delayedHref,
+                  canceled: false,
+                  error: null
+                });
+              }
+            } catch (_) {}
+          }, 600);
+        }
+      } catch (_) {}
     };
 
-    authWin.webContents.on('will-navigate', (e, targetUrl) => {
-      handleCallbackUrl(targetUrl);
-    });
     authWin.webContents.on('will-redirect', (e, targetUrl) => {
-      handleCallbackUrl(targetUrl);
+      if (targetUrl && (targetUrl.includes('access_token=') || targetUrl.includes('code='))) {
+        finish({ success: true, url: targetUrl, canceled: false, error: null });
+      }
     });
+
+    authWin.webContents.on('will-navigate', (e, targetUrl) => {
+      if (targetUrl && (targetUrl.includes('access_token=') || targetUrl.includes('code='))) {
+        finish({ success: true, url: targetUrl, canceled: false, error: null });
+      }
+    });
+
     authWin.webContents.on('did-navigate', (e, targetUrl) => {
-      handleCallbackUrl(targetUrl);
+      checkAuthCompletion(targetUrl);
+    });
+
+    authWin.webContents.on('did-redirect-navigation', (e, targetUrl) => {
+      checkAuthCompletion(targetUrl);
+    });
+
+    authWin.webContents.on('did-finish-load', () => {
+      checkAuthCompletion();
     });
 
     authWin.on('closed', () => {
