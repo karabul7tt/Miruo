@@ -641,7 +641,7 @@
             <button id="raveRoomSettingsBtn" type="button" class="w-9 h-9 sm:w-10 sm:h-10 rounded-full bg-black/75 hover:bg-black/95 active:scale-95 text-white hover:text-rose-400 backdrop-blur-md border border-white/25 flex items-center justify-center transition-all text-lg font-bold cursor-pointer shadow-xl hover:border-rose-500/50" title="Oynatıcı Ayarları, Hız & Kamera">⋮</button>
             
             <!-- Quick Room & Player Popover Menu -->
-            <div id="raveRoomSettingsMenu" class="absolute right-0 top-12 w-64 max-h-[80vh] overflow-y-auto no-scrollbar bg-[#0E0D14]/98 backdrop-blur-xl border border-white/15 rounded-2xl p-3 shadow-2xl z-50 hidden text-xs text-white space-y-3 select-none animate-fade-in">
+            <div id="raveRoomSettingsMenu" class="fixed sm:absolute top-14 sm:top-12 right-2 sm:right-0 w-72 max-w-[calc(100vw-16px)] max-h-[80vh] overflow-y-auto bg-[#0E0D14]/98 backdrop-blur-2xl border border-white/20 rounded-2xl p-3.5 shadow-2xl z-[99999] hidden text-xs text-white space-y-3.5 select-none animate-fade-in" style="-webkit-overflow-scrolling: touch; touch-action: pan-y;">
               <div class="flex items-center justify-between border-b border-white/10 pb-2">
                 <span class="font-extrabold text-[11px] text-gray-300 uppercase tracking-wider">Oynatıcı Ayarları</span>
                 <button id="closeRaveRoomSettingsMenuBtn" type="button" class="text-gray-400 hover:text-white p-1 cursor-pointer">
@@ -922,14 +922,13 @@
                   <span id="nowPlayingPrefixText" data-i18n="now_playing_prefix">Şimdi</span> <strong id="nowPlayingTitle" class="text-white font-semibold">Video</strong> <span id="nowPlayingSuffixText" data-i18n="now_playing_suffix">oynatılıyor</span>
                 </div>
                 <div class="flex items-center gap-1.5 text-[10px] text-gray-400 mt-0.5">
-                  <span id="nowPlayingProviderBadge" class="px-1.5 py-0.2 rounded bg-rose-500/20 text-rose-300 font-semibold">YouTube</span>
-                  <span id="nowPlayingAccountBadge" class="hidden px-1.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 text-[9px] font-bold items-center gap-1 shadow-xs"></span>
+                  <span id="nowPlayingProviderBadge" class="px-1.5 py-0.5 rounded bg-rose-500/20 text-rose-300 font-semibold">YouTube</span>
                   <span>•</span>
-                  <button id="openRoomPrivacyBtn" type="button" class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-lg bg-white/5 hover:bg-white/15 active:scale-95 border border-white/10 text-[10px] font-semibold text-gray-200 transition-all cursor-pointer hover:border-cyan-500/40" title="Katılım ve Gizlilik Ayarları" data-i18n-title="who_can_join">
+                  <button id="openRoomPrivacyBtn" type="button" class="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-lg bg-white/5 hover:bg-white/15 active:scale-95 border border-white/15 text-[10px] font-bold text-gray-200 transition-all cursor-pointer hover:border-emerald-500/50 shadow-sm" title="Katılım ve Gizlilik Ayarları" data-i18n-title="who_can_join">
                     <span id="privacyStatusIcon">
                       <svg class="w-3 h-3 inline text-emerald-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
                     </span>
-                    <span id="privacyStatusText" data-i18n="privacy_public">Açık Oda</span>
+                    <span id="privacyStatusText" class="font-bold text-emerald-400" data-i18n="privacy_public">Herkese Açık</span>
                     <svg class="w-2.5 h-2.5 text-gray-400 ml-0.5 opacity-70" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
                   </button>
                 </div>

@@ -3095,9 +3095,17 @@ function loadYoutubeVideo(urlOrId) {
   const isLocalOrigin = !window.location.origin || window.location.origin.includes('127.0.0.1') || window.location.origin.includes('localhost') || window.location.protocol === 'file:';
   const effectiveOrigin = isLocalOrigin ? 'https://www.youtube.com' : window.location.origin;
   const originParam = `&origin=${encodeURIComponent(effectiveOrigin)}&widget_referrer=${encodeURIComponent('https://www.youtube.com')}`;
+  
+  const prefCaptionLang = (function() {
+    try { return localStorage.getItem('miruo_caption_lang'); } catch (_) { return null; }
+  })();
+  const ccParam = (prefCaptionLang && prefCaptionLang !== 'off')
+    ? `&cc_load_policy=1&cc_lang_pref=${encodeURIComponent(prefCaptionLang)}`
+    : '';
+
   dom.ytPlayerContainer.innerHTML = `
     <iframe id="miruoYtIframe" 
-            src="https://www.youtube.com/embed/${videoId}?autoplay=1&playsinline=1&enablejsapi=1&controls=0&disablekb=1&fs=0&rel=0&modestbranding=1&iv_load_policy=3${originParam}" 
+            src="https://www.youtube.com/embed/${videoId}?autoplay=1&playsinline=1&enablejsapi=1&controls=0&disablekb=1&fs=0&rel=0&modestbranding=1&iv_load_policy=3${ccParam}${originParam}" 
             allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" 
             allowfullscreen 
             class="w-full h-full border-0 pointer-events-none select-none">
@@ -3107,7 +3115,7 @@ function loadYoutubeVideo(urlOrId) {
   state.isPlaying = true;
   updatePlayPauseUI(true);
 
-  // Hook iframe load to enable postMessage events & restore preferred quality
+  // Hook iframe load to enable postMessage events & restore preferred quality and captions
   const ytFrame = document.getElementById('miruoYtIframe');
   if (ytFrame) {
     ytFrame.addEventListener('load', () => {
@@ -3122,6 +3130,11 @@ function loadYoutubeVideo(urlOrId) {
           } else {
             sendYtCommand('setPlaybackQuality', [prefQuality]);
             sendYtCommand('setPlaybackQualityRange', [prefQuality, prefQuality]);
+          }
+
+          const savedCap = localStorage.getItem('miruo_caption_lang');
+          if (savedCap && savedCap !== 'off' && typeof window.setCaptionLanguage === 'function') {
+            window.setCaptionLanguage(savedCap);
           }
         } catch (_) {}
       }, 500);
@@ -15282,19 +15295,9 @@ function validateInstagramUsername(username) {
   function updateNowPlayingAccountBadge(account) {
     const badge = dom.nowPlayingAccountBadge || document.getElementById('nowPlayingAccountBadge');
     if (!badge) return;
-    if (account) {
-      badge.innerHTML = `
-        <svg class="w-2.5 h-2.5 text-emerald-400 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
-        <span class="truncate max-w-[130px] sm:max-w-none font-bold">${account} devrede</span>
-      `;
-      badge.classList.remove('hidden');
-      badge.classList.add('inline-flex');
-      badge.title = `Bu oda ${account} hesabı üzerinden birlikte izleniyor`;
-    } else {
-      badge.classList.add('hidden');
-      badge.classList.remove('inline-flex');
-      badge.innerHTML = '';
-    }
+    badge.classList.add('hidden');
+    badge.classList.remove('inline-flex');
+    badge.innerHTML = '';
   }
   window.updateNowPlayingAccountBadge = updateNowPlayingAccountBadge;
 
@@ -15604,7 +15607,10 @@ function validateInstagramUsername(username) {
   };
 
   function updateCaptionsUI() {
-    const currentLang = state.captionLanguage || (state.captionsEnabled ? 'tr' : 'off');
+    const savedLang = (function() {
+      try { return localStorage.getItem('miruo_caption_lang'); } catch (_) { return null; }
+    })();
+    const currentLang = state.captionLanguage || (savedLang ? savedLang : (state.captionsEnabled ? 'auto' : 'off'));
     const isOff = currentLang === 'off';
     const badge = document.getElementById('playerSubtitleStatusBadge');
     if (badge) {
@@ -15624,6 +15630,9 @@ function validateInstagramUsername(username) {
   function setCaptionLanguage(langCode) {
     state.captionLanguage = langCode;
     state.captionsEnabled = (langCode !== 'off');
+    try {
+      localStorage.setItem('miruo_caption_lang', langCode);
+    } catch (_) {}
 
     if (langCode === 'off') {
       if (state.activeMode === 'youtube') {
@@ -15637,8 +15646,12 @@ function validateInstagramUsername(username) {
     } else {
       if (state.activeMode === 'youtube') {
         sendYtCommand('loadModule', ['captions']);
-        const trackOpt = (langCode === 'auto') ? {} : { languageCode: langCode };
-        sendYtCommand('setOption', ['captions', 'track', trackOpt]);
+        if (langCode === 'auto') {
+          sendYtCommand('setOption', ['captions', 'track', {}]);
+        } else {
+          sendYtCommand('setOption', ['captions', 'track', { languageCode: langCode }]);
+          sendYtCommand('setOption', ['captions', 'translationLanguage', { languageCode: langCode }]);
+        }
         setTimeout(() => {
           try {
             sendYtCommand('setOption', ['captions', 'reload', true]);
@@ -15708,9 +15721,15 @@ function validateInstagramUsername(username) {
     const target = (typeof show === 'boolean') ? show : isHidden;
     if (target) {
       dom.raveRoomSettingsMenu.classList.remove('hidden');
+      if (dom.stageContainer) {
+        dom.stageContainer.style.overflow = 'visible';
+      }
       updateMenuAVStatus();
     } else {
       dom.raveRoomSettingsMenu.classList.add('hidden');
+      if (dom.stageContainer) {
+        dom.stageContainer.style.overflow = '';
+      }
     }
   }
 
@@ -15821,6 +15840,13 @@ function validateInstagramUsername(username) {
     });
   }
 
+  // Close Rave settings menu when tapping outside of it
+  document.addEventListener('pointerdown', (e) => {
+    if (!dom.raveRoomSettingsMenu || dom.raveRoomSettingsMenu.classList.contains('hidden')) return;
+    if (e.target.closest('#raveRoomSettingsMenu') || e.target.closest('#raveRoomSettingsBtn')) return;
+    toggleRaveRoomSettingsMenu(false);
+  });
+
   // Quality buttons binding with instant tap
   document.querySelectorAll('.player-quality-btn').forEach(btn => {
     addInstantTap(btn, (e) => {
@@ -15902,7 +15928,7 @@ function validateInstagramUsername(username) {
   }
   if (dom.raveToggleSleepModeBtn) {
     addInstantTap(dom.raveToggleSleepModeBtn, () => {
-      if (dom.raveRoomSettingsMenu) dom.raveRoomSettingsMenu.classList.add('hidden');
+      toggleRaveRoomSettingsMenu(false);
       applySleepMode(!state.isSleepMode, true);
     });
   }
@@ -17925,7 +17951,7 @@ function initStageAutoHideEvents() {
     const isMenuOpen = menu && !menu.classList.contains('hidden');
 
     if (isMenuOpen) {
-      menu.classList.add('hidden');
+      toggleRaveRoomSettingsMenu(false);
       resetControlsHideTimer();
       return;
     }

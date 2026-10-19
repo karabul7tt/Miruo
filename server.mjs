@@ -414,6 +414,18 @@ function handleWebSocketConnection(socket, req) {
             }
           }
 
+          if (msg.videoId && isHostOrAdmin) {
+            room.meta.videoId = sanitizeText(msg.videoId, 50);
+            room.meta.thumb = 'https://img.youtube.com/vi/' + room.meta.videoId + '/hqdefault.jpg';
+          }
+
+          if (msg.type === 'privacy-change' && typeof msg.isPrivate === 'boolean') {
+            if (isHostOrAdmin) {
+              room.meta.isPrivate = msg.isPrivate;
+              safeLog('WS', `Oda gizliliği güncellendi: ${roomId} -> isPrivate: ${msg.isPrivate}`);
+            }
+          }
+
           broadcastToRoom(roomId, userId, msg);
         } catch (e) {
           // Bad JSON or frame ignored safely
