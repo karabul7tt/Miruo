@@ -74,6 +74,19 @@ function decodeJwtPayload(jwt) {
   }
 }
 
+// Global Instagram-style username validator (accessible everywhere in main process)
+function validateInstagramUsername(username) {
+  const raw = String(username || '').trim().replace(/^@/, '');
+  if (!raw) return { valid: false, error: 'Kullanıcı adı boş bırakılamaz.' };
+  if (raw.length < 3) return { valid: false, error: 'Kullanıcı adı en az 3 karakter olmalıdır.' };
+  if (raw.length > 30) return { valid: false, error: 'Kullanıcı adı en fazla 30 karakter olabilir.' };
+  if (!/^[a-zA-Z0-9_.]+$/.test(raw)) return { valid: false, error: 'Kullanıcı adı yalnızca harf, rakam, alt çizgi (_) ve nokta (.) içerebilir.' };
+  if (raw.startsWith('.')) return { valid: false, error: 'Kullanıcı adı nokta (.) ile başlayamaz.' };
+  if (raw.endsWith('.')) return { valid: false, error: 'Kullanıcı adı nokta (.) ile bitemez.' };
+  if (raw.includes('..')) return { valid: false, error: 'Kullanıcı adında yan yana iki nokta (..) bulunamaz.' };
+  return { valid: true, cleanUsername: raw.toLowerCase() };
+}
+
 function resolveAppleAuthHelperBinary() {
   const candidates = [
     path.join(process.resourcesPath || '', 'MiruoAppleAuth.app', 'Contents', 'MacOS', 'MiruoAppleAuth'),
@@ -120,13 +133,120 @@ function resolveAppleAuthHelperBinary() {
   return null;
 }
 
-// Real Native macOS Sign in with Apple (Native Touch ID via systemPreferences & ASAuthorizationAppleIDProvider)
+// Real Native macOS Sign in with Apple (ASAuthorizationAppleIDProvider via MiruoAppleAuth.app with Touch ID)
 ipcMain.handle('mac-touch-id-apple-sign-in', async () => {
   if (process.platform !== 'darwin') {
     return { success: false, error: 'Apple ile Giriş yalnızca macOS ve iOS üzerinde kullanılabilir.' };
   }
 
-  // 1. Native macOS Apple Touch ID / Password Verification
+  // 1. Primary: Genuine Native macOS ASAuthorizationAppleIDProvider (MiruoAppleAuth.app)
+  const helperBin = resolveAppleAuthHelperBinary();
+  if (helperBin) {
+    try {
+      const helperRes = await new Promise((resolve) => {
+        let stdoutBuf = '';
+        let stderrBuf = '';
+        let finished = false;
+
+        const child = spawn(helperBin, [], {
+          stdio: ['ignore', 'pipe', 'pipe']
+        });
+
+        const finish = (result) => {
+          if (finished) return;
+          finished = true;
+          resolve(result);
+        };
+
+        child.stdout.on('data', (chunk) => {
+          stdoutBuf += chunk.toString('utf8');
+          const lines = stdoutBuf.split('\n');
+          for (const line of lines) {
+            const trimmed = line.trim();
+            if (trimmed.startsWith('MIRUO_APPLE_AUTH_JSON:')) {
+              const jsonStr = trimmed.slice('MIRUO_APPLE_AUTH_JSON:'.length);
+              try {
+                const payload = JSON.parse(jsonStr);
+                if (payload && payload.success) {
+                  let userIdentifier = String(payload.userIdentifier || '').trim();
+                  let email = String(payload.email || '').trim().toLowerCase();
+                  let fullName = String(payload.fullName || '').trim();
+                  const identityToken = String(payload.identityToken || '');
+
+                  if (identityToken) {
+                    const claims = decodeJwtPayload(identityToken);
+                    if (claims) {
+                      if (!email && claims.email) email = String(claims.email).trim().toLowerCase();
+                      if (!userIdentifier && claims.sub) userIdentifier = String(claims.sub).trim();
+                    }
+                  }
+
+                  const canonicalId = userIdentifier.startsWith('apple_') ? userIdentifier : `apple_${userIdentifier}`;
+                  const users = loadLocalUsers();
+                  const existingUser = users.find(u =>
+                    (userIdentifier && (u.id === canonicalId || u.id === userIdentifier || u.appleUserId === userIdentifier)) ||
+                    (email && (u.email || '').toLowerCase() === email)
+                  );
+
+                  if (existingUser) {
+                    if (!fullName && existingUser.fullName) fullName = existingUser.fullName;
+                    if (!email && existingUser.email) email = existingUser.email;
+                  }
+
+                  finish({
+                    success: true,
+                    userIdentifier,
+                    email,
+                    fullName,
+                    identityToken,
+                    authorizationCode: payload.authorizationCode || '',
+                    existingUser: existingUser || null
+                  });
+                  return;
+                } else if (payload && (payload.canceled || payload.error === 'canceled')) {
+                  finish({ success: false, canceled: true, error: 'canceled' });
+                  return;
+                } else {
+                  finish({
+                    success: false,
+                    canceled: false,
+                    error: (payload && payload.error) || 'Giriş tamamlanamadı.'
+                  });
+                  return;
+                }
+              } catch (_) {}
+            }
+          }
+        });
+
+        child.stderr.on('data', (chunk) => {
+          stderrBuf += chunk.toString('utf8');
+        });
+
+        child.on('error', (err) => {
+          finish({ success: false, canceled: false, error: err.message });
+        });
+
+        child.on('close', () => {
+          if (!finished) {
+            finish({
+              success: false,
+              canceled: true,
+              error: stderrBuf.trim() || 'canceled'
+            });
+          }
+        });
+      });
+
+      if (helperRes && (helperRes.success || helperRes.canceled)) {
+        return helperRes;
+      }
+    } catch (helperErr) {
+      console.warn('[Miruo Desktop] Helper invocation failed, falling back to Touch ID:', helperErr);
+    }
+  }
+
+  // 2. Fallback: Native macOS Touch ID / Password Verification
   if (systemPreferences && typeof systemPreferences.promptTouchID === 'function') {
     try {
       if (typeof systemPreferences.canPromptTouchID === 'function' && systemPreferences.canPromptTouchID()) {
@@ -161,106 +281,10 @@ ipcMain.handle('mac-touch-id-apple-sign-in', async () => {
       if (errStr.includes('canceled') || errStr.includes('User canceled') || errStr.includes('1001')) {
         return { success: false, canceled: true, error: 'canceled' };
       }
-      console.warn('[Miruo Desktop] Touch ID error, falling back to helper:', touchErr);
     }
   }
 
-  const helperBin = resolveAppleAuthHelperBinary();
-  if (!helperBin) {
-    return { success: false, error: 'Native Apple Sign-In bileşeni (MiruoAppleAuth) bulunamadı.' };
-  }
-
-  return new Promise((resolve) => {
-    let stdoutBuf = '';
-    let stderrBuf = '';
-    let finished = false;
-
-    const child = spawn(helperBin, [], {
-      stdio: ['ignore', 'pipe', 'pipe']
-    });
-
-    const finish = (result) => {
-      if (finished) return;
-      finished = true;
-      resolve(result);
-    };
-
-    child.stdout.on('data', (chunk) => {
-      stdoutBuf += chunk.toString('utf8');
-      const lines = stdoutBuf.split('\n');
-      for (const line of lines) {
-        const trimmed = line.trim();
-        if (trimmed.startsWith('MIRUO_APPLE_AUTH_JSON:')) {
-          const jsonStr = trimmed.slice('MIRUO_APPLE_AUTH_JSON:'.length);
-          try {
-            const payload = JSON.parse(jsonStr);
-            if (payload && payload.success) {
-              let userIdentifier = String(payload.userIdentifier || '').trim();
-              let email = String(payload.email || '').trim().toLowerCase();
-              let fullName = String(payload.fullName || '').trim();
-              const identityToken = String(payload.identityToken || '');
-
-              if (identityToken) {
-                const claims = decodeJwtPayload(identityToken);
-                if (claims) {
-                  if (!email && claims.email) email = String(claims.email).trim().toLowerCase();
-                  if (!userIdentifier && claims.sub) userIdentifier = String(claims.sub).trim();
-                }
-              }
-
-              const canonicalId = userIdentifier.startsWith('apple_') ? userIdentifier : `apple_${userIdentifier}`;
-              const users = loadLocalUsers();
-              const existingUser = users.find(u =>
-                (userIdentifier && (u.id === canonicalId || u.id === userIdentifier || u.appleUserId === userIdentifier)) ||
-                (email && (u.email || '').toLowerCase() === email)
-              );
-
-              if (existingUser) {
-                if (!fullName && existingUser.fullName) fullName = existingUser.fullName;
-                if (!email && existingUser.email) email = existingUser.email;
-              }
-
-              finish({
-                success: true,
-                userIdentifier,
-                email,
-                fullName,
-                identityToken,
-                authorizationCode: payload.authorizationCode || '',
-                existingUser: existingUser || null
-              });
-              return;
-            } else {
-              finish({
-                success: false,
-                canceled: Boolean(payload && payload.canceled),
-                error: (payload && payload.error) || 'canceled'
-              });
-              return;
-            }
-          } catch (_) {}
-        }
-      }
-    });
-
-    child.stderr.on('data', (chunk) => {
-      stderrBuf += chunk.toString('utf8');
-    });
-
-    child.on('error', (err) => {
-      finish({ success: false, canceled: false, error: err.message });
-    });
-
-    child.on('close', () => {
-      if (!finished) {
-        finish({
-          success: false,
-          canceled: true,
-          error: stderrBuf.trim() || 'canceled'
-        });
-      }
-    });
-  });
+  return { success: false, error: 'Apple ile Giriş başlatılamadı.' };
 });
 
 // Dedicated Desktop OAuth Modal Window for 100% Reliable Apple & Google Sign-In
@@ -416,7 +440,7 @@ ipcMain.handle('save-desktop-profile', async (e, profile) => {
       const uid = String(profile.id || '').trim();
       const uemail = String(profile.email || '').trim().toLowerCase();
       const idx = users.findIndex(u =>
-        (uid && (u.id === uid || `apple_${u.appleUserId}` === uid)) ||
+        (uid && (u.id === uid || u.appleUserId === uid || `apple_${u.appleUserId}` === uid || u.id === `apple_${uid}`)) ||
         (uemail && (u.email || '').toLowerCase() === uemail)
       );
       if (idx !== -1) {
@@ -424,8 +448,18 @@ ipcMain.handle('save-desktop-profile', async (e, profile) => {
         if (profile.username) users[idx].username = String(profile.username).replace(/^@/, '').toLowerCase();
         if (profile.avatarUrl !== undefined) users[idx].avatarUrl = profile.avatarUrl;
         if (profile.avatarBg) users[idx].avatarBg = profile.avatarBg;
-        saveLocalUsers(users);
+      } else {
+        users.push({
+          id: uid || `usr_${Date.now()}`,
+          fullName: profile.fullName || profile.name || 'Mehmet Karabulut',
+          username: String(profile.username || '').replace(/^@/, '').toLowerCase() || 'mehmetkarabul',
+          email: uemail || '',
+          avatarUrl: profile.avatarUrl || '',
+          avatarBg: profile.avatarBg || '',
+          createdAt: new Date().toISOString()
+        });
       }
+      saveLocalUsers(users);
       return { success: true };
     }
   } catch (err) {
@@ -572,18 +606,6 @@ function handleLocalAuthRequest(req, res, pathname, bodyStr) {
     return true;
   }
 
-function validateInstagramUsername(username) {
-  const raw = String(username || '').trim().replace(/^@/, '');
-  if (!raw) return { valid: false, error: 'Kullanıcı adı boş bırakılamaz.' };
-  if (raw.length < 3) return { valid: false, error: 'Kullanıcı adı en az 3 karakter olmalıdır.' };
-  if (raw.length > 30) return { valid: false, error: 'Kullanıcı adı en fazla 30 karakter olabilir.' };
-  if (!/^[a-zA-Z0-9_.]+$/.test(raw)) return { valid: false, error: 'Kullanıcı adı yalnızca harf, rakam, alt çizgi (_) ve nokta (.) içerebilir.' };
-  if (raw.startsWith('.')) return { valid: false, error: 'Kullanıcı adı nokta (.) ile başlayamaz.' };
-  if (raw.endsWith('.')) return { valid: false, error: 'Kullanıcı adı nokta (.) ile bitemez.' };
-  if (raw.includes('..')) return { valid: false, error: 'Kullanıcı adında yan yana iki nokta (..) bulunamaz.' };
-  return { valid: true, cleanUsername: raw.toLowerCase() };
-}
-
   if (pathname === '/api/auth/update-profile' && req.method === 'POST') {
     const uid = String(body.id || body.userId || '').trim();
     const uemail = String(body.email || '').trim().toLowerCase();
@@ -598,8 +620,8 @@ function validateInstagramUsername(username) {
       }
       cleanUsername = userCheck.cleanUsername;
     }
-    const found = users.find(u =>
-      (uid && (u.id === uid || `apple_${u.appleUserId}` === uid)) ||
+    let found = users.find(u =>
+      (uid && (u.id === uid || u.appleUserId === uid || `apple_${u.appleUserId}` === uid || u.id === `apple_${uid}`)) ||
       (uemail && (u.email || '').toLowerCase() === uemail)
     );
     if (cleanUsername) {
@@ -619,10 +641,27 @@ function validateInstagramUsername(username) {
       if (cleanUsername) found.username = cleanUsername;
       if (body.avatarUrl !== undefined) found.avatarUrl = body.avatarUrl;
       if (body.avatarBg) found.avatarBg = body.avatarBg;
-      saveLocalUsers(users);
+    } else {
+      found = {
+        id: uid || `usr_${Date.now()}`,
+        fullName: String(body.fullName || '').trim() || 'Mehmet Karabulut',
+        username: cleanUsername || 'mehmetkarabul',
+        email: uemail || '',
+        avatarUrl: body.avatarUrl || '',
+        avatarBg: body.avatarBg || '',
+        createdAt: new Date().toISOString()
+      };
+      users.push(found);
     }
+    saveLocalUsers(users);
+
+    // Also persist directly into desktopProfilePath so getDesktopProfile always has the latest avatar and username
+    try {
+      fs.writeFileSync(desktopProfilePath, JSON.stringify(found, null, 2), 'utf8');
+    } catch (_) {}
+
     res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
-    res.end(JSON.stringify({ ok: true, success: true, user: found || null }));
+    res.end(JSON.stringify({ ok: true, success: true, user: found }));
     return true;
   }
 

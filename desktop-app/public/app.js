@@ -6771,10 +6771,8 @@ function loadFriends() {
   const saved = localStorage.getItem('miruo_friends');
   if (saved) {
     try {
-      state.friends = JSON.parse(saved);
-      if (!Array.isArray(state.friends) || state.friends.length === 0) {
-        state.friends = DEFAULT_FRIENDS;
-      }
+      const parsed = JSON.parse(saved);
+      state.friends = Array.isArray(parsed) ? parsed : DEFAULT_FRIENDS;
     } catch (e) {
       state.friends = DEFAULT_FRIENDS;
     }
@@ -10178,18 +10176,18 @@ function loadUserSession() {
     window.miruoDesktop.getDesktopProfile().then(deskUser => {
       if (deskUser && (deskUser.avatarUrl || deskUser.username || deskUser.fullName)) {
         let changed = false;
-        if (!user.avatarUrl && deskUser.avatarUrl) {
+        if (deskUser.avatarUrl && deskUser.avatarUrl !== user.avatarUrl) {
           user.avatarUrl = deskUser.avatarUrl;
           state.avatarUrl = deskUser.avatarUrl;
           localStorage.setItem('miruo_avatar', deskUser.avatarUrl);
           changed = true;
         }
-        if ((!user.fullName || user.fullName.startsWith('@')) && deskUser.fullName) {
+        if (deskUser.fullName && deskUser.fullName !== user.fullName && !deskUser.fullName.startsWith('@')) {
           user.fullName = deskUser.fullName;
           user.name = deskUser.fullName;
           changed = true;
         }
-        if ((!user.username || user.username.startsWith('user_')) && deskUser.username) {
+        if (deskUser.username && deskUser.username !== user.username) {
           user.username = deskUser.username;
           state.username = deskUser.username;
           changed = true;
