@@ -1513,68 +1513,7 @@
     </div> <!-- End Scrollable Content Wrapper -->
   </div> <!-- End #authModal -->
 
-  <!-- SPOTIFY-STYLE APPLE SIGN IN SHEET (macOS & Web) -->
-  <div id="appleSignInModal" class="hidden fixed inset-0 z-[100000] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm transition-all duration-300 select-none" style="z-index: 100000 !important;">
-    <div class="relative w-full max-w-[390px] bg-[#1F1F1F] text-white rounded-2xl p-6 shadow-2xl border border-white/10 text-center animate-in fade-in zoom-in duration-200">
-      
-      <!-- Top header with Vazgeç (Cancel) -->
-      <div class="flex items-center justify-between mb-4">
-        <div class="w-12"></div>
-        <div class="w-11 h-11 bg-white text-black rounded-full flex items-center justify-center shadow-md">
-          <svg class="w-6 h-6 fill-current" viewBox="0 0 24 24">
-            <path d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.81-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83M15.97 6.84c.66-.82 1.11-1.96.99-3.1-.96.04-2.12.64-2.8 1.44-.6.69-1.12 1.83-.98 2.94 1.07.08 2.15-.56 2.79-1.28z"/>
-          </svg>
-        </div>
-        <button id="cancelAppleSignInBtn" type="button" class="text-xs text-gray-400 hover:text-white font-medium px-2 py-1 transition-colors cursor-pointer">
-          Vazgeç
-        </button>
-      </div>
 
-      <h3 class="text-base font-bold text-white tracking-tight mb-1">Apple ile Giriş Yapın</h3>
-      <p class="text-xs text-gray-300 mb-5">Apple Hesabı'nızı kullanarak Miruo girişi yapın.</p>
-
-      <!-- Account Info Pill (Spotify Card) -->
-      <div id="appleAccountCard" class="bg-[#2D2D2D] hover:bg-[#383838] rounded-xl p-3 mb-5 flex items-center gap-3 transition-colors text-left border border-white/5 cursor-pointer">
-        <div class="w-10 h-10 rounded-full bg-gradient-to-tr from-[#007AFF] to-[#5856D6] flex items-center justify-center text-white font-bold text-sm shrink-0 shadow">
-          <span id="appleAccountInitials">MK</span>
-        </div>
-        <div class="min-w-0 flex-1">
-          <div id="appleAccountName" class="text-sm font-semibold text-white truncate">Mehmet Karabulut</div>
-          <div id="appleAccountEmail" class="text-xs text-gray-400 truncate">dythin.app@gmail.com</div>
-        </div>
-        <svg class="w-4 h-4 text-gray-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <path d="M9 18l6-6-6-6"/>
-        </svg>
-      </div>
-
-      <!-- Custom Account Form (Hidden by default, shown if user clicks "Farklı Bir Apple Hesabı Kullan") -->
-      <div id="appleCustomAccountForm" class="hidden bg-[#282828] rounded-xl p-3 mb-5 text-left border border-white/10 space-y-2.5">
-        <div>
-          <label class="block text-[11px] font-medium text-gray-400 mb-1">Ad Soyad</label>
-          <input id="appleModalFullName" type="text" class="w-full bg-[#181818] border border-white/10 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:ring-1 focus:ring-white transition-all" placeholder="Mehmet Karabulut" value="Mehmet Karabulut" />
-        </div>
-        <div>
-          <label class="block text-[11px] font-medium text-gray-400 mb-1">Apple ID E-posta</label>
-          <input id="appleModalEmail" type="email" class="w-full bg-[#181818] border border-white/10 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:ring-1 focus:ring-white transition-all" placeholder="dythin.app@gmail.com" value="dythin.app@gmail.com" />
-        </div>
-      </div>
-
-      <!-- Action Buttons -->
-      <div class="space-y-3">
-        <button id="confirmAppleSignInBtn" type="button" class="w-full py-3 bg-[#007AFF] hover:bg-[#0071E3] active:scale-[0.98] text-white font-semibold text-sm rounded-xl shadow-md transition-all flex items-center justify-center gap-2 cursor-pointer">
-          <svg class="w-5 h-5 fill-current" viewBox="0 0 24 24">
-            <path d="M17.81 4.87c-.11-.17-.29-.28-.49-.31-.2-.02-.4.04-.55.18l-1.04.99c-2.18-1.54-5.26-1.54-7.46 0l-1.04-.99c-.15-.14-.35-.2-.55-.18-.2.03-.38.14-.49.31C4.42 8.52 4.49 14.07 6.94 17.78c.13.2.35.31.58.31.11 0 .22-.03.32-.08.28-.15.39-.49.25-.77-2.2-3.33-2.26-8.32-.14-11.75l.65.62c-1.42 2.68-1.43 5.96-.03 8.65.12.23.36.37.61.37.1 0 .2-.02.29-.07.3-.16.42-.52.26-.82-1.24-2.38-1.23-5.28.02-7.65l.67.64c-.87 2.06-.88 4.41-.01 6.48.11.26.37.42.65.42.08 0 .16-.01.24-.05.33-.14.48-.52.34-.85-.75-1.78-.74-3.8.01-5.57l.68.65c-.32 1.45-.33 2.97-.01 4.42.06.27.3.46.57.46.06 0 .11 0 .17-.03.32-.07.52-.39.45-.71-.27-1.26-.26-2.58.02-3.84l.69.66c.2.19.51.19.7 0 .19-.19.19-.51 0-.7l-.69-.66c.32-1.26.33-2.58.02-3.84-.07-.32-.39-.52-.71-.45-.32.07-.52.39-.45.71.26 1.05.25 2.15-.01 3.2l-.68-.65c.75-1.77.76-3.79.01-5.57-.14-.33-.52-.48-.85-.34-.33.14-.48.52-.34.85.87 2.07.86 4.42-.01 6.48-.11.26-.06.56.12.77l-.67-.64c1.25-2.37 1.26-5.27.02-7.65-.16-.3-.52-.42-.82-.26-.3.16-.42.52-.26.82 1.4 2.69 1.39 5.97-.03 8.65l-.65-.62c2.12-3.43 2.06-8.42-.14-11.75-.14-.28-.47-.39-.77-.25-.28.15-.39.49-.25.77 2.45 3.71 2.52 9.26.2 12.91-.11.17-.12.38-.03.56.09.18.26.29.46.3.2.01.39-.08.5-.25 2.68-4.06 2.6-10.14-.07-14.13z"/>
-          </svg>
-          <span id="confirmAppleSignInBtnText">Touch ID ile Sürdür</span>
-        </button>
-
-        <button id="toggleAppleCustomAccountBtn" type="button" class="w-full py-1 text-xs text-gray-400 hover:text-white font-medium transition-colors cursor-pointer">
-          Farklı Bir Apple Hesabı Kullan
-        </button>
-      </div>
-
-    </div>
-  </div>
 
   <!-- FORGOT PASSWORD & RECOVERY MODAL (Solid Opaque Backdrop, Zero Lobby Leak) -->
   <div id="resetPasswordModal" class="fixed inset-0 z-[100] flex flex-col justify-end sm:justify-center items-center bg-[#090B10] p-0 sm:p-4 overflow-y-auto hidden select-none" style="position: fixed !important; top: 0 !important; left: 0 !important; right: 0 !important; bottom: 0 !important; width: 100vw !important; height: 100vh !important; background-color: #090B10 !important; z-index: 100 !important;">
