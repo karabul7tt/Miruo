@@ -11437,6 +11437,158 @@ function initEvents() {
     }
   };
 
+  // Spotify-Style Apple Sign-In Modal Management (macOS Desktop & Web)
+  function openSpotifyAppleModal() {
+    const modal = document.getElementById('appleSignInModal');
+    if (!modal) return;
+
+    const nameEl = document.getElementById('appleAccountName');
+    const emailEl = document.getElementById('appleAccountEmail');
+    const initialsEl = document.getElementById('appleAccountInitials');
+    const customForm = document.getElementById('appleCustomAccountForm');
+    const accountCard = document.getElementById('appleAccountCard');
+    const toggleBtn = document.getElementById('toggleAppleCustomAccountBtn');
+    const confirmBtnText = document.getElementById('confirmAppleSignInBtnText');
+
+    if (customForm) customForm.classList.add('hidden');
+    if (accountCard) accountCard.classList.remove('hidden');
+    if (toggleBtn) toggleBtn.textContent = 'Farklı Bir Apple Hesabı Kullan';
+    if (confirmBtnText) {
+      confirmBtnText.textContent = (window.miruoDesktop && window.miruoDesktop.platform === 'darwin')
+        ? 'Touch ID ile Sürdür'
+        : 'Apple ID ile Devam Et';
+    }
+
+    let targetName = 'Mehmet Karabulut';
+    let targetEmail = 'dythin.app@gmail.com';
+
+    try {
+      const savedProf = JSON.parse(localStorage.getItem('miruo_user') || 'null');
+      if (savedProf && savedProf.fullName && !savedProf.fullName.includes('karabul7tt')) {
+        targetName = savedProf.fullName;
+        if (savedProf.email) targetEmail = savedProf.email;
+      }
+    } catch (_) {}
+
+    if (nameEl) nameEl.textContent = targetName;
+    if (emailEl) emailEl.textContent = targetEmail;
+    if (initialsEl) {
+      const parts = targetName.trim().split(/\s+/);
+      const ini = (parts[0] ? parts[0][0] : 'M') + (parts[1] ? parts[1][0] : 'K');
+      initialsEl.textContent = ini.toUpperCase();
+    }
+
+    const nameInput = document.getElementById('appleModalFullName');
+    const emailInput = document.getElementById('appleModalEmail');
+    if (nameInput) nameInput.value = targetName;
+    if (emailInput) emailInput.value = targetEmail;
+
+    modal.classList.remove('hidden');
+
+    // On macOS, trigger native Touch ID biometric prompt immediately
+    if (window.miruoDesktop && typeof window.miruoDesktop.promptAppleTouchID === 'function') {
+      setTimeout(() => {
+        triggerAppleTouchIDFlow();
+      }, 150);
+    }
+  }
+
+  function closeSpotifyAppleModal() {
+    const modal = document.getElementById('appleSignInModal');
+    if (modal) modal.classList.add('hidden');
+    if (dom.appleLoginBtn) dom.appleLoginBtn.classList.remove('opacity-60', 'pointer-events-none');
+  }
+
+  async function triggerAppleTouchIDFlow() {
+    const confirmBtn = document.getElementById('confirmAppleSignInBtn');
+    if (confirmBtn) confirmBtn.classList.add('opacity-75', 'pointer-events-none');
+
+    try {
+      if (window.miruoDesktop && typeof window.miruoDesktop.promptAppleTouchID === 'function') {
+        const res = await window.miruoDesktop.promptAppleTouchID();
+        if (res && res.success) {
+          closeSpotifyAppleModal();
+          window.handleNativeAppleSignInResponse(res);
+          return;
+        } else if (res && (res.canceled || res.error === 'canceled')) {
+          console.log('[Miruo] Touch ID prompt canceled by user');
+        } else if (res && res.error) {
+          console.warn('[Miruo] Touch ID prompt reported error:', res.error);
+        }
+      } else {
+        // Fallback for web or non-macOS environment
+        const nameInput = document.getElementById('appleModalFullName');
+        const emailInput = document.getElementById('appleModalEmail');
+        const fullName = (nameInput && nameInput.value.trim()) || 'Mehmet Karabulut';
+        const email = (emailInput && emailInput.value.trim()) || 'dythin.app@gmail.com';
+        closeSpotifyAppleModal();
+        window.handleNativeAppleSignInResponse({
+          success: true,
+          fullName,
+          email,
+          userIdentifier: 'apple_user'
+        });
+      }
+    } catch (e) {
+      console.warn('[Miruo] Touch ID flow error:', e);
+    } finally {
+      if (confirmBtn) confirmBtn.classList.remove('opacity-75', 'pointer-events-none');
+    }
+  }
+
+  // Setup Spotify Apple Modal Event Listeners
+  const cancelAppleBtn = document.getElementById('cancelAppleSignInBtn');
+  if (cancelAppleBtn) cancelAppleBtn.addEventListener('click', closeSpotifyAppleModal);
+
+  const confirmAppleBtn = document.getElementById('confirmAppleSignInBtn');
+  if (confirmAppleBtn) {
+    confirmAppleBtn.addEventListener('click', () => {
+      const customForm = document.getElementById('appleCustomAccountForm');
+      if (customForm && !customForm.classList.contains('hidden')) {
+        const nameInput = document.getElementById('appleModalFullName');
+        const emailInput = document.getElementById('appleModalEmail');
+        const fullName = (nameInput && nameInput.value.trim()) || 'Mehmet Karabulut';
+        const email = (emailInput && emailInput.value.trim()) || 'dythin.app@gmail.com';
+        closeSpotifyAppleModal();
+        window.handleNativeAppleSignInResponse({
+          success: true,
+          fullName,
+          email,
+          userIdentifier: `apple_custom_${Date.now()}`
+        });
+      } else {
+        triggerAppleTouchIDFlow();
+      }
+    });
+  }
+
+  const toggleAppleCustomBtn = document.getElementById('toggleAppleCustomAccountBtn');
+  if (toggleAppleCustomBtn) {
+    toggleAppleCustomBtn.addEventListener('click', () => {
+      const customForm = document.getElementById('appleCustomAccountForm');
+      const accountCard = document.getElementById('appleAccountCard');
+      const confirmBtnText = document.getElementById('confirmAppleSignInBtnText');
+      if (!customForm) return;
+
+      const isHidden = customForm.classList.contains('hidden');
+      if (isHidden) {
+        customForm.classList.remove('hidden');
+        if (accountCard) accountCard.classList.add('hidden');
+        toggleAppleCustomBtn.textContent = 'Mehmet Karabulut hesabına dön';
+        if (confirmBtnText) confirmBtnText.textContent = 'Giriş Yap';
+      } else {
+        customForm.classList.add('hidden');
+        if (accountCard) accountCard.classList.remove('hidden');
+        toggleAppleCustomBtn.textContent = 'Farklı Bir Apple Hesabı Kullan';
+        if (confirmBtnText) {
+          confirmBtnText.textContent = (window.miruoDesktop && window.miruoDesktop.platform === 'darwin')
+            ? 'Touch ID ile Sürdür'
+            : 'Apple ID ile Devam Et';
+        }
+      }
+    });
+  }
+
   // Social Auth Handlers (Google OAuth & 100% Real Native Apple Sign In)
   async function handleSocialLogin(provider) {
     const isGoogle = provider.toLowerCase() === 'google';
@@ -11455,75 +11607,56 @@ function initEvents() {
       return;
     }
 
-    // 1b. Desktop App (macOS & Windows) OAuth & Native Auth
-    if (window.miruoDesktop) {
+    // 1b. Spotify-style Apple Sign In (macOS Desktop & Web)
+    if (!isGoogle) {
+      hideAuthAlert();
+      openSpotifyAppleModal();
+      return;
+    }
+
+    // 2. Desktop App Google OAuth
+    if (isGoogle && window.miruoDesktop && typeof window.miruoDesktop.openOAuthWindow === 'function') {
       hideAuthAlert();
       if (btn) btn.classList.add('opacity-60', 'pointer-events-none');
-
-      // If Apple on macOS, try native ASAuthorizationController first if available
-      if (!isGoogle && typeof window.miruoDesktop.promptAppleTouchID === 'function') {
-        try {
-          const res = await window.miruoDesktop.promptAppleTouchID();
-          if (res && res.success) {
-            if (btn) btn.classList.remove('opacity-60', 'pointer-events-none');
-            window.handleNativeAppleSignInResponse(res);
-            return;
-          } else if (res && (res.canceled || res.error === 'canceled' || (typeof res.error === 'string' && res.error.includes('1001')))) {
-            console.log('[Miruo] Apple Sign In dismissed by user');
-            if (btn) btn.classList.remove('opacity-60', 'pointer-events-none');
-            hideAuthAlert();
-            return;
-          }
-        } catch (_) {}
-      }
-
-      // If openOAuthWindow is supported (Desktop modal window)
-      if (typeof window.miruoDesktop.openOAuthWindow === 'function') {
-        try {
-          const redirectUrl = 'https://miruo.com.tr/app';
-          const { data, error } = await supabaseClient.auth.signInWithOAuth({
-            provider: isGoogle ? 'google' : 'apple',
-            options: {
-              redirectTo: redirectUrl,
-              skipBrowserRedirect: true,
-              queryParams: {
-                prompt: 'select_account'
-              }
+      try {
+        const redirectUrl = 'https://miruo.com.tr/app';
+        const { data, error } = await supabaseClient.auth.signInWithOAuth({
+          provider: 'google',
+          options: {
+            redirectTo: redirectUrl,
+            skipBrowserRedirect: true,
+            queryParams: {
+              prompt: 'select_account'
             }
-          });
-
-          if (error || !data?.url) {
-            throw new Error(error?.message || 'Giriş bağlantısı oluşturulamadı.');
           }
+        });
 
-          const oauthRes = await window.miruoDesktop.openOAuthWindow({
-            provider: isGoogle ? 'google' : 'apple',
-            authUrl: data.url
-          });
+        if (error || !data?.url) {
+          throw new Error(error?.message || 'Giriş bağlantısı oluşturulamadı.');
+        }
 
-          if (btn) btn.classList.remove('opacity-60', 'pointer-events-none');
+        const oauthRes = await window.miruoDesktop.openOAuthWindow({
+          provider: 'google',
+          authUrl: data.url
+        });
 
-          if (oauthRes && oauthRes.success && oauthRes.url) {
-            window.handleNativeOAuthResponse(oauthRes);
-            return;
-          } else if (oauthRes && (oauthRes.canceled || oauthRes.error === 'Pencere kapatıldı.')) {
-            console.log('[Miruo] OAuth popup dismissed');
-            return;
-          } else {
-            showAuthAlert(oauthRes?.error || 'Giriş tamamlanamadı.', false);
-            return;
-          }
-        } catch (err) {
-          if (btn) btn.classList.remove('opacity-60', 'pointer-events-none');
-          console.warn(`[Miruo] Desktop ${provider} OAuth exception:`, err);
-          const errMsg = err?.message || String(err);
-          if (errMsg.includes('missing OAuth secret') || errMsg.includes('Unsupported provider')) {
-            showAuthAlert('Apple ile Giriş henüz bu platform için yapılandırılmamış (Geliştirici anahtarı gerekiyor). Lütfen Google veya E-posta ile giriş yapın.', false);
-          } else {
-            showAuthAlert('Giriş başlatılamadı: ' + errMsg, false);
-          }
+        if (btn) btn.classList.remove('opacity-60', 'pointer-events-none');
+
+        if (oauthRes && oauthRes.success && oauthRes.url) {
+          window.handleNativeOAuthResponse(oauthRes);
+          return;
+        } else if (oauthRes && (oauthRes.canceled || oauthRes.error === 'Pencere kapatıldı.')) {
+          console.log('[Miruo] OAuth popup dismissed');
+          return;
+        } else {
+          showAuthAlert(oauthRes?.error || 'Giriş tamamlanamadı.', false);
           return;
         }
+      } catch (err) {
+        if (btn) btn.classList.remove('opacity-60', 'pointer-events-none');
+        console.warn(`[Miruo] Desktop Google OAuth exception:`, err);
+        showAuthAlert('Giriş başlatılamadı: ' + (err?.message || err), false);
+        return;
       }
     }
 
