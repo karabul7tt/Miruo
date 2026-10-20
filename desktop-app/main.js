@@ -184,7 +184,7 @@ ipcMain.handle('mac-touch-id-apple-sign-in', async () => {
 
                   if (!fullName) {
                     try { fullName = execFileSync('/usr/bin/id', ['-F']).toString('utf8').trim(); } catch (_) {}
-                    if (!fullName || fullName === 'Karabul7tt') fullName = 'Mehmet Karabulut';
+                    if (!fullName || fullName === 'Karabul7tt') fullName = (email ? email.split('@')[0] : 'Apple Kullanıcısı');
                   }
 
                   const canonicalId = userIdentifier.startsWith('apple_') ? userIdentifier : `apple_${userIdentifier}`;
@@ -432,8 +432,8 @@ ipcMain.handle('save-desktop-profile', async (e, profile) => {
       } else {
         users.push({
           id: uid || `usr_${Date.now()}`,
-          fullName: profile.fullName || profile.name || 'Mehmet Karabulut',
-          username: String(profile.username || '').replace(/^@/, '').toLowerCase() || 'mehmetkarabul',
+          fullName: profile.fullName || profile.name || 'Miruo Kullanıcısı',
+          username: String(profile.username || '').replace(/^@/, '').toLowerCase() || (uemail ? uemail.split('@')[0] : ('user_' + Math.random().toString(36).substring(2, 6))),
           email: uemail || '',
           avatarUrl: profile.avatarUrl || '',
           avatarBg: profile.avatarBg || '',
@@ -625,8 +625,8 @@ function handleLocalAuthRequest(req, res, pathname, bodyStr) {
     } else {
       found = {
         id: uid || `usr_${Date.now()}`,
-        fullName: String(body.fullName || '').trim() || 'Mehmet Karabulut',
-        username: cleanUsername || 'mehmetkarabul',
+        fullName: String(body.fullName || '').trim() || 'Miruo Kullanıcısı',
+        username: cleanUsername || (uemail ? uemail.split('@')[0] : ('user_' + Math.random().toString(36).substring(2, 6))),
         email: uemail || '',
         avatarUrl: body.avatarUrl || '',
         avatarBg: body.avatarBg || '',
