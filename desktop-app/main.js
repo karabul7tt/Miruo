@@ -161,6 +161,7 @@ ipcMain.handle('mac-touch-id-apple-sign-in', async () => {
       if (errStr.includes('canceled') || errStr.includes('User canceled') || errStr.includes('1001')) {
         return { success: false, canceled: true, error: 'canceled' };
       }
+      console.warn('[Miruo Desktop] Touch ID error, falling back to helper:', touchErr);
     }
   }
 
@@ -267,8 +268,8 @@ ipcMain.handle('desktop-oauth-login', async (event, { provider, authUrl }) => {
   return new Promise((resolve) => {
     const parentWin = BrowserWindow.getFocusedWindow() || mainWindow;
     const authWin = new BrowserWindow({
-      width: 520,
-      height: 700,
+      width: 500,
+      height: 680,
       parent: parentWin || undefined,
       modal: Boolean(parentWin),
       title: provider === 'apple' ? 'Apple ile Giriş Yap' : 'Google ile Giriş Yap',
@@ -332,7 +333,6 @@ ipcMain.handle('desktop-oauth-login', async (event, { provider, authUrl }) => {
           return;
         }
 
-        // If it landed on callback redirect (miruo.com.tr), give DOM 600ms to settle hash tokens
         if (bestUrl.includes('miruo.com.tr') || bestUrl.includes('miruo://')) {
           setTimeout(async () => {
             if (finished || authWin.isDestroyed()) return;
@@ -347,7 +347,7 @@ ipcMain.handle('desktop-oauth-login', async (event, { provider, authUrl }) => {
                 });
               }
             } catch (_) {}
-          }, 600);
+          }, 800);
         }
       } catch (_) {}
     };
@@ -355,12 +355,16 @@ ipcMain.handle('desktop-oauth-login', async (event, { provider, authUrl }) => {
     authWin.webContents.on('will-redirect', (e, targetUrl) => {
       if (targetUrl && (targetUrl.includes('access_token=') || targetUrl.includes('code='))) {
         finish({ success: true, url: targetUrl, canceled: false, error: null });
+      } else {
+        checkAuthCompletion(targetUrl);
       }
     });
 
     authWin.webContents.on('will-navigate', (e, targetUrl) => {
       if (targetUrl && (targetUrl.includes('access_token=') || targetUrl.includes('code='))) {
         finish({ success: true, url: targetUrl, canceled: false, error: null });
+      } else {
+        checkAuthCompletion(targetUrl);
       }
     });
 

@@ -840,11 +840,24 @@ input, textarea {
   -webkit-overflow-scrolling: touch !important;
 }
 
-#authModal {
-  -ms-overflow-style: none;
-  scrollbar-width: none;
+#closeAuthModalBtn {
+  display: none !important;
+  visibility: hidden !important;
+  pointer-events: none !important;
 }
-#authModal::-webkit-scrollbar {
+
+#authModal,
+#authModal *,
+body,
+html {
+  scrollbar-width: none !important;
+  -ms-overflow-style: none !important;
+}
+
+#authModal::-webkit-scrollbar,
+#authModal *::-webkit-scrollbar,
+body::-webkit-scrollbar,
+html::-webkit-scrollbar {
   display: none !important;
   width: 0 !important;
   height: 0 !important;
