@@ -855,15 +855,27 @@ function createWindow(port) {
     }
   );
 
-  session.defaultSession.webRequest.onHeadersReceived(
-    { urls: ['*://*.youtube.com/*', '*://*.youtube-nocookie.com/*', '*://*.googlevideo.com/*'] },
-    (details, callback) => {
-      const responseHeaders = Object.assign({}, details.responseHeaders);
-      delete responseHeaders['x-frame-options'];
-      delete responseHeaders['X-Frame-Options'];
-      callback({ responseHeaders });
-    }
-  );
+  // Bypass X-Frame-Options & CSP frame-ancestors for all web streams, movie sites (HDFilmcehennemi, Vidmoly vb.) and embedded players
+  const stripFrameRestrictions = (details, callback) => {
+    const responseHeaders = Object.assign({}, details.responseHeaders);
+    delete responseHeaders['x-frame-options'];
+    delete responseHeaders['X-Frame-Options'];
+
+    ['content-security-policy', 'Content-Security-Policy'].forEach(cspKey => {
+      if (responseHeaders[cspKey]) {
+        responseHeaders[cspKey] = responseHeaders[cspKey].map(val =>
+          val.replace(/frame-ancestors\s+[^;]+;?/gi, '')
+        );
+      }
+    });
+
+    callback({ responseHeaders });
+  };
+
+  session.defaultSession.webRequest.onHeadersReceived(stripFrameRestrictions);
+
+  const browserSession = session.fromPartition('persist:miruo-browser');
+  browserSession.webRequest.onHeadersReceived(stripFrameRestrictions);
 
   // Handle external links by opening them in default system browser
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {

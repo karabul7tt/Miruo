@@ -505,7 +505,7 @@
         <video id="nativeVideoPlayer" class="w-full h-full object-contain hidden" playsinline controls></video>
 
         <!-- Web Stream / Platform Embed Player (Twitch, Web video streams) -->
-        <iframe id="webPlayerFrame" class="w-full h-full border-0 hidden" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen referrerpolicy="no-referrer"></iframe>
+        <iframe id="webPlayerFrame" class="w-full h-full border-0 hidden" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share; fullscreen" allowfullscreen referrerpolicy="no-referrer-when-downgrade" sandbox="allow-scripts allow-same-origin allow-forms allow-presentation allow-popups allow-popups-to-escape-sandbox"></iframe>
 
         <!-- Smart Stream / Iframe Fallback Overlay -->
         <div id="webPlayerFallbackCard" class="hidden absolute inset-0 flex flex-col items-center justify-center p-6 text-center bg-black/92 backdrop-blur-md z-20 pointer-events-auto">
