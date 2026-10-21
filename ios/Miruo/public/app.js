@@ -12972,8 +12972,8 @@ function initEvents() {
     ov.style.cssText = 'position:fixed;inset:0;z-index:2147483000;background:#000;display:flex;flex-direction:column;';
     ov.innerHTML = `
       <div style="display:flex;align-items:center;gap:10px;padding:10px 16px 10px ${isMac ? 84 : 16}px;background:#0B0D14;border-bottom:1px solid rgba(255,255,255,.1);-webkit-app-region:drag;">
-        <button id="dbCloseBtn" type="button" title="Odaya dön (video arka planda kesintisiz devam eder)" style="${btnCss}background:rgba(239,68,68,.18);border-color:rgba(239,68,68,.3);color:#fca5a5;">✕ Odaya Dön</button>
-        <button id="dbBackBtn" type="button" title="Önceki Sayfa (Geri)" style="${btnCss}">← Geri</button>
+        <button id="dbPlatformBtn" type="button" title="Farklı bir platform seç (YouTube, Web Tarayıcı vb.)" style="${btnCss}background:rgba(225,29,72,.22);border-color:rgba(225,29,72,.45);color:#fda4af;font-weight:700;">☰ Platform Seç</button>
+        <button id="dbBackBtn" type="button" title="Önceki Sayfa (Geri - en başa gelince odaya döner)" style="${btnCss}">← Geri</button>
         <button id="dbFwdBtn" type="button" title="Sonraki Sayfa (İleri)" style="${btnCss}">→ İleri</button>
         <div style="flex:1;min-width:0;display:flex;flex-direction:column;align-items:center;text-align:center;">
           <span id="dbTitle" style="width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#e5e7eb;font:700 14px system-ui,sans-serif;">${platformTitle}</span>
@@ -12986,7 +12986,7 @@ function initEvents() {
 
     const wv = ov.querySelector('#dbWebview');
     const titleEl = ov.querySelector('#dbTitle');
-    const closeBtn = ov.querySelector('#dbCloseBtn');
+    const platformBtn = ov.querySelector('#dbPlatformBtn');
     const backBtn = ov.querySelector('#dbBackBtn');
     const fwdBtn = ov.querySelector('#dbFwdBtn');
     const playBtn = ov.querySelector('#dbPlayBtn');
@@ -13041,7 +13041,12 @@ function initEvents() {
       } catch (e) {}
     };
 
-    closeBtn.addEventListener('click', close);
+    if (platformBtn) {
+      platformBtn.addEventListener('click', () => {
+        close();
+        if (dom.roomPlatformChooserModal) dom.roomPlatformChooserModal.classList.remove('hidden');
+      });
+    }
     backBtn.addEventListener('click', handleBack);
     fwdBtn.addEventListener('click', handleForward);
 
