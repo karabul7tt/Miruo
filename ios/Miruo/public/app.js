@@ -14851,19 +14851,27 @@ function initEvents() {
 
 // Instagram-style Username Validation
 function validateInstagramUsername(username) {
-  let raw = String(username || '').trim().replace(/^@+/, '');
-  // Auto-convert spaces to underscores so spaces are never rejected as invalid
-  raw = raw.replace(/\s+/g, '_').toLowerCase();
-  // Strip any characters other than letters, numbers, underscores and dots
-  raw = raw.replace(/[^a-z0-9_.]/g, '');
+  const raw = String(username || '').trim().replace(/^@+/, '');
   if (!raw) {
     return { valid: false, error: 'Kullanıcı adı boş bırakılamaz.' };
+  }
+  // Clear, specific check for spaces
+  if (/\s/.test(raw)) {
+    return { valid: false, error: 'Kullanıcı adı boşluk içeremez.' };
+  }
+  // Clear, specific check for Turkish non-ASCII characters
+  if (/[ığüşöçİĞÜŞÖÇ]/.test(raw)) {
+    return { valid: false, error: 'Kullanıcı adı Türkçe karakter (ı, ğ, ü, ş, ö, ç) içeremez; İngilizce harfler kullanın.' };
   }
   if (raw.length < 3) {
     return { valid: false, error: 'Kullanıcı adı en az 3 karakter olmalıdır.' };
   }
   if (raw.length > 30) {
     return { valid: false, error: 'Kullanıcı adı en fazla 30 karakter olabilir.' };
+  }
+  // Instagram rules: Only lowercase/uppercase ASCII letters, numbers, underscores (_), and periods (.)
+  if (!/^[a-zA-Z0-9_.]+$/.test(raw)) {
+    return { valid: false, error: 'Kullanıcı adı yalnızca harf, rakam, alt çizgi (_) ve nokta (.) içerebilir.' };
   }
   // Cannot start with a period
   if (raw.startsWith('.')) {
@@ -14877,13 +14885,13 @@ function validateInstagramUsername(username) {
   if (raw.includes('..')) {
     return { valid: false, error: 'Kullanıcı adında yan yana iki nokta (..) bulunamaz.' };
   }
-  return { valid: true, cleanUsername: raw };
+  return { valid: true, cleanUsername: raw.toLowerCase() };
 }
 
   if (dom.saveProfileBtn) {
     dom.saveProfileBtn.addEventListener('click', async () => {
       const fullNameVal = (dom.editProfileFullNameInput && dom.editProfileFullNameInput.value.trim()) || '';
-      const rawUsername = (dom.editProfileUsernameInput && dom.editProfileUsernameInput.value.trim().replace(/^@+/, '').replace(/\s+/g, '_')) || (dom.editProfileNameInput && dom.editProfileNameInput.value.trim().replace(/^@+/, '').replace(/\s+/g, '_')) || '';
+      const rawUsername = (dom.editProfileUsernameInput && dom.editProfileUsernameInput.value.trim().replace(/^@+/, '')) || (dom.editProfileNameInput && dom.editProfileNameInput.value.trim().replace(/^@+/, '')) || '';
 
       const dict = I18N[currentLang] || I18N.tr;
       const statusEl = document.getElementById('editProfileUsernameStatus');
@@ -15069,13 +15077,6 @@ function validateInstagramUsername(username) {
     dom.editProfileUsernameInput.addEventListener('input', () => {
       clearTimeout(usernameCheckDebounce);
       const statusEl = document.getElementById('editProfileUsernameStatus');
-      const val = dom.editProfileUsernameInput.value;
-      // Auto-convert spaces to underscores immediately on typing
-      if (/\s/.test(val)) {
-        const sel = dom.editProfileUsernameInput.selectionStart;
-        dom.editProfileUsernameInput.value = val.replace(/\s+/g, '_');
-        try { dom.editProfileUsernameInput.setSelectionRange(sel, sel); } catch (_) {}
-      }
       const rawVal = dom.editProfileUsernameInput.value.trim().replace(/^@+/, '');
       if (!rawVal) {
         if (statusEl) {
