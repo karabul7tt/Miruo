@@ -1822,13 +1822,24 @@ const state = {
   isChatVisible: true
 };
 
-// ICE Configuration (Public STUN servers)
+// ICE Configuration (Public STUN + Reliable TURN servers for cross-network NAT traversal)
 const rtcConfig = {
   iceServers: [
     { urls: 'stun:stun.l.google.com:19302' },
     { urls: 'stun:stun1.l.google.com:19302' },
-    { urls: 'stun:stun2.l.google.com:19302' }
-  ]
+    { urls: 'stun:stun2.l.google.com:19302' },
+    { urls: 'stun:stun.cloudflare.com:3478' },
+    {
+      urls: [
+        'turn:openrelay.metered.ca:80',
+        'turn:openrelay.metered.ca:443',
+        'turn:openrelay.metered.ca:443?transport=tcp'
+      ],
+      username: 'openrelayproject',
+      credential: 'openrelayproject'
+    }
+  ],
+  iceCandidatePoolSize: 10
 };
 
 // DOM References
@@ -2815,6 +2826,7 @@ function handleSignalMessage(msg) {
       renderChatMessage(msg.sender, msg.text, false, msg.time, msg.imageUrl, msg.avatarUrl);
       break;
 
+    case 'media_status':
     case 'media-status':
       updateRemoteParticipantStatus(msg.userId, msg.username, msg.isMicOn, msg.isCamOn);
       break;
@@ -2907,8 +2919,18 @@ function setupWebRTC() {
         dom.nativeVideoPlayer.classList.add('hidden');
         dom.emptyStatePlaceholder.classList.add('hidden');
       } else if (hasVideo) {
-        dom.partnerVideo.srcObject = stream;
-        dom.partnerVideoPlaceholder.classList.add('hidden');
+        if (dom.partnerVideo) {
+          dom.partnerVideo.srcObject = stream;
+          dom.partnerVideo.playsInline = true;
+          dom.partnerVideo.autoplay = true;
+          const p = dom.partnerVideo.play();
+          if (p && p.catch) p.catch(() => {});
+        }
+        if (dom.partnerVideoPlaceholder) dom.partnerVideoPlaceholder.classList.add('hidden');
+        if (dom.partnerPipCard) {
+          dom.partnerPipCard.classList.remove('hidden', 'pip-hidden-fullscreen');
+        }
+        clampPipCardsToStage();
       }
 
       // Route audio to ducking analyzer
@@ -2964,10 +2986,14 @@ function initiateWebRTC(isInitiator) {
 
     // Add local tracks if available
     if (state.localStream) {
-      state.localStream.getTracks().forEach(track => state.pc.addTrack(track, state.localStream));
+      state.localStream.getTracks().forEach(track => {
+        try { state.pc.addTrack(track, state.localStream); } catch (_) {}
+      });
     }
     if (state.screenStream) {
-      state.screenStream.getTracks().forEach(track => state.pc.addTrack(track, state.screenStream));
+      state.screenStream.getTracks().forEach(track => {
+        try { state.pc.addTrack(track, state.screenStream); } catch (_) {}
+      });
     }
 
     state.pc.createOffer().then(offer => {
@@ -2978,14 +3004,43 @@ function initiateWebRTC(isInitiator) {
   }
 }
 
+async function renegotiateWebRTC() {
+  if (!state.pc || state.pc.signalingState === 'closed') {
+    initiateWebRTC(state.isHost);
+    return;
+  }
+  try {
+    const offer = await state.pc.createOffer();
+    await state.pc.setLocalDescription(offer);
+    sendSignal({ type: 'offer', offer: state.pc.localDescription });
+  } catch (err) {
+    console.warn('WebRTC renegotiation error:', err);
+  }
+}
+window.renegotiateWebRTC = renegotiateWebRTC;
+
 function handleRtcOffer(offer) {
-  setupWebRTC();
+  if (!state.pc || state.pc.signalingState === 'closed') {
+    setupWebRTC();
+  }
 
   if (state.localStream) {
-    state.localStream.getTracks().forEach(track => state.pc.addTrack(track, state.localStream));
+    state.localStream.getTracks().forEach(track => {
+      const senders = state.pc.getSenders ? state.pc.getSenders() : [];
+      const exists = senders.some(s => s.track && s.track.kind === track.kind);
+      if (!exists) {
+        try { state.pc.addTrack(track, state.localStream); } catch (_) {}
+      }
+    });
   }
   if (state.screenStream) {
-    state.screenStream.getTracks().forEach(track => state.pc.addTrack(track, state.screenStream));
+    state.screenStream.getTracks().forEach(track => {
+      const senders = state.pc.getSenders ? state.pc.getSenders() : [];
+      const exists = senders.some(s => s.track && s.track.kind === track.kind);
+      if (!exists) {
+        try { state.pc.addTrack(track, state.screenStream); } catch (_) {}
+      }
+    });
   }
 
   state.pc.setRemoteDescription(new RTCSessionDescription(offer)).then(() => {
@@ -3216,10 +3271,9 @@ function loadYoutubeVideo(urlOrId) {
   }
 
   // Direct responsive embed iframe that plays 100% reliably in WKWebView & Electron Desktop
-  // Never pass localhost or 127.0.0.1 as originParam because YouTube CMS blocks restricted videos on local origins
+  _altYtAttempted = false;
   const isLocalOrigin = !window.location.origin || window.location.origin.includes('127.0.0.1') || window.location.origin.includes('localhost') || window.location.protocol === 'file:';
-  const effectiveOrigin = isLocalOrigin ? 'https://miruo.com.tr' : window.location.origin;
-  const originParam = `&origin=${encodeURIComponent(effectiveOrigin)}&widget_referrer=${encodeURIComponent('https://miruo.com.tr')}`;
+  const effectiveOrigin = isLocalOrigin ? '' : `&origin=${encodeURIComponent(window.location.origin)}`;
   
   const prefCaptionLang = (function() {
     try { return localStorage.getItem('miruo_caption_lang'); } catch (_) { return null; }
@@ -3230,11 +3284,10 @@ function loadYoutubeVideo(urlOrId) {
 
   dom.ytPlayerContainer.innerHTML = `
     <iframe id="miruoYtIframe" 
-            src="https://www.youtube-nocookie.com/embed/${videoId}?autoplay=1&playsinline=1&enablejsapi=1&controls=0&disablekb=1&fs=0&rel=0&modestbranding=1&iv_load_policy=3${ccParam}${originParam}" 
-            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" 
-            referrerpolicy="strict-origin-when-cross-origin"
+            src="https://www.youtube.com/embed/${videoId}?autoplay=1&playsinline=1&enablejsapi=1&controls=0&disablekb=1&fs=0&rel=0&modestbranding=1&iv_load_policy=3${ccParam}${effectiveOrigin}" 
+            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share; fullscreen" 
             allowfullscreen 
-            class="w-full h-full border-0 pointer-events-none select-none">
+            class="w-full h-full border-0 select-none">
     </iframe>
   `;
 
@@ -3736,6 +3789,10 @@ function updateDurationUI(dur) {
 }
 
 function togglePlayPause() {
+  if (!canUserControlPlayback()) {
+    showToast('Oynatma ve durdurma yetkisi sadece Oda Sahibi ve Yöneticilere aittir.');
+    return;
+  }
   if (state.activeMode === 'youtube') {
     state.isPlaying = !state.isPlaying;
     sendYtCommand(state.isPlaying ? 'playVideo' : 'pauseVideo');
@@ -3843,8 +3900,28 @@ window.addEventListener('message', (event) => {
   }
 });
 
+// YouTube Fallback tracker
+let _altYtAttempted = false;
+
 function showEmbedRestrictionFallback(videoId) {
   if (!videoId || !dom.ytPlayerContainer) return;
+
+  // Seamless fallback without showing dead-end telif blocker
+  if (!_altYtAttempted) {
+    _altYtAttempted = true;
+    console.log('[Miruo] Telif/gömme kısıtı aşılarak alternatif temiz oynatıcıya aktarılıyor:', videoId);
+    dom.ytPlayerContainer.innerHTML = `
+      <iframe id="miruoYtIframe" 
+              src="https://yewtu.be/embed/${videoId}?autoplay=1" 
+              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share; fullscreen" 
+              allowfullscreen 
+              class="w-full h-full border-0 select-none">
+      </iframe>
+    `;
+    showToast('Telif kısıtı otomatik aşıldı, alternatif akış açılıyor...');
+    return;
+  }
+
   const existingFallback = document.getElementById('miruoEmbedFallback');
   if (existingFallback) return;
 
@@ -3857,13 +3934,13 @@ function showEmbedRestrictionFallback(videoId) {
         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/>
       </svg>
     </div>
-    <h3 class="text-white text-base md:text-lg font-bold mb-2">Telif Korumalı Yayın</h3>
+    <h3 class="text-white text-base md:text-lg font-bold mb-2">Alternatif Akış Modu</h3>
     <p class="text-zinc-300 text-xs md:text-sm max-w-sm mb-5 leading-relaxed">
-      Yayıncı bu videonun gömülü oynatıcılarda çalışmasını kısıtlamıştır. Web modunda veya doğrudan YouTube üzerinde kesintisiz izleyebilirsiniz.
+      Yayıncı bu videoyu standart oynatıcıda kısıtlamış olabilir. Web veya alternatif oynatıcı ile devam edebilirsiniz.
     </p>
     <div class="flex items-center gap-3">
       <button id="btnOpenWebMode" class="px-4 py-2.5 rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white text-xs font-semibold shadow-lg shadow-purple-500/25 transition-all">
-        Web Modunda İzle
+        Alternatif Yayını Başlat
       </button>
       <button id="btnDismissFallback" class="px-4 py-2.5 rounded-xl bg-white/10 hover:bg-white/20 text-zinc-300 text-xs font-medium transition-all">
         Kapat
@@ -3877,15 +3954,14 @@ function showEmbedRestrictionFallback(videoId) {
   if (openBtn) {
     openBtn.addEventListener('click', () => {
       fallbackDiv.remove();
-      if (typeof loadWebStream === 'function') {
-        loadWebStream(`https://www.youtube.com/watch?v=${videoId}`, 'YouTube', 'YouTube');
-      } else if (typeof openInAppBrowser === 'function') {
-        openInAppBrowser(`https://www.youtube.com/watch?v=${videoId}`);
-      } else if (window.miruoDesktop && window.shell) {
-        window.shell.openExternal(`https://www.youtube.com/watch?v=${videoId}`);
-      } else {
-        window.open(`https://www.youtube.com/watch?v=${videoId}`, '_blank');
-      }
+      dom.ytPlayerContainer.innerHTML = `
+        <iframe id="miruoYtIframe" 
+                src="https://piped.video/embed/${videoId}?autoplay=1" 
+                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share; fullscreen" 
+                allowfullscreen 
+                class="w-full h-full border-0 select-none">
+        </iframe>
+      `;
     });
   }
 
@@ -5776,6 +5852,15 @@ async function toggleCam() {
         try { state.localStream.removeTrack(track); } catch (e) {}
       });
     }
+    if (state.pc) {
+      try {
+        const senders = state.pc.getSenders ? state.pc.getSenders() : [];
+        const videoSender = senders.find(s => s.track && s.track.kind === 'video');
+        if (videoSender) {
+          videoSender.replaceTrack(null);
+        }
+      } catch (_) {}
+    }
     if (dom.selfVideo) {
       dom.selfVideo.srcObject = null;
     }
@@ -5867,11 +5952,17 @@ async function toggleCam() {
             videoSender.replaceTrack(videoTrack);
           } else {
             state.pc.addTrack(videoTrack, state.localStream);
-            initiateWebRTC(true);
+            if (typeof renegotiateWebRTC === 'function') {
+              renegotiateWebRTC();
+            } else {
+              initiateWebRTC(true);
+            }
           }
         } catch (err) {
           console.warn('WebRTC cam track error:', err);
         }
+      } else if (state.peerId) {
+        initiateWebRTC(state.isHost);
       }
 
       broadcastMyMediaStatus();
@@ -6673,27 +6764,15 @@ function renderRoomList(roomsToRender) {
   if (!roomsToRender || roomsToRender.length === 0) {
     dom.publicRoomsGrid.innerHTML = `
       <div class="col-span-full py-12 px-6 flex flex-col items-center justify-center text-center bg-[#0C0E17]/60 border border-white/5 rounded-3xl">
-        <div class="w-14 h-14 rounded-2xl bg-rose-500/10 border border-rose-500/20 flex items-center justify-center text-rose-400 mb-4 shadow-lg shadow-rose-500/5 animate-pulse">
+        <div class="w-14 h-14 rounded-2xl bg-rose-500/10 border border-rose-500/20 flex items-center justify-center text-rose-400 mb-4 shadow-lg shadow-rose-500/5">
           <svg class="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"/>
           </svg>
         </div>
         <h3 class="text-white text-sm sm:text-base font-bold mb-1">Şu an Canlı Açık Oda Yok</h3>
-        <p class="text-gray-400 text-xs max-w-xs mb-5">İlk odayı sen aç, arkadaşların veya tüm dünya anında bağlansın!</p>
-        <button id="btnExploreCreateRoom" type="button" class="px-5 py-2.5 rounded-xl bg-gradient-to-r from-rose-600 via-pink-600 to-[#A64D79] text-white text-xs font-bold shadow-lg shadow-rose-600/25 hover:opacity-95 active:scale-95 transition-all cursor-pointer">
-          + Canlı Oda Başlat
-        </button>
+        <p class="text-gray-400 text-xs max-w-xs">Şu anda herkese açık bir yayın odası bulunmuyor. Yeni bir canlı oda açıldığında burada listelenecektir.</p>
       </div>
     `;
-    const btn = dom.publicRoomsGrid.querySelector('#btnExploreCreateRoom');
-    if (btn) {
-      btn.addEventListener('click', () => {
-        if (dom.createRoomModal) {
-          dom.createRoomModal.classList.remove('hidden');
-          dom.createRoomModal.classList.add('flex');
-        }
-      });
-    }
     return;
   }
   
@@ -7027,6 +7106,13 @@ window.handleRemotePrivacyChange = handleRemotePrivacyChange;
 // ==========================================
 // 5.8 ROOM HOST, DJ PERMISSIONS & FRIENDS SYSTEM
 // ==========================================
+function canUserControlPlayback() {
+  if (state.isHost) return true;
+  const role = state.userRole || 'member';
+  return role === 'owner' || role === 'admin';
+}
+window.canUserControlPlayback = canUserControlPlayback;
+
 function updatePermissionUI() {
   const dict = I18N[currentLang] || I18N.tr;
   if (dom.roomHostName) {
@@ -7057,6 +7143,27 @@ function updatePermissionUI() {
 
   if (dom.roomQuickSearchBtnText) {
     dom.roomQuickSearchBtnText.textContent = canControl ? (dict.room_change_video || 'Değiştir') : (currentLang === 'en' ? 'Suggest' : (currentLang === 'de' ? 'Vorschlagen' : 'Öner'));
+  }
+
+  // Visual state of seek sliders and advance controls (Only Owner & Admins can seek)
+  const hasPlaybackRights = canUserControlPlayback();
+  [dom.seekSlider, dom.nowPlayingSeekSlider].forEach(slider => {
+    if (!slider) return;
+    if (hasPlaybackRights) {
+      slider.classList.remove('opacity-40', 'cursor-not-allowed');
+    } else {
+      slider.classList.add('opacity-40', 'cursor-not-allowed');
+    }
+  });
+  const advBtn = document.getElementById('stageAdvanceNextBtn');
+  if (advBtn) {
+    if (hasPlaybackRights) advBtn.classList.remove('opacity-40', 'cursor-not-allowed');
+    else advBtn.classList.add('opacity-40', 'cursor-not-allowed');
+  }
+  const seekBack = document.getElementById('stageSeekBackBtn');
+  if (seekBack) {
+    if (hasPlaybackRights) seekBack.classList.remove('opacity-40', 'cursor-not-allowed');
+    else seekBack.classList.add('opacity-40', 'cursor-not-allowed');
   }
 
   // Toggle input controls and notice bar
@@ -9736,16 +9843,29 @@ function updateRemoteParticipantStatus(userId, username, isMicOn, isCamOn) {
     isHost: false,
     lastSeen: Date.now()
   };
+  if (dom.partnerPipCard) {
+    if (isCamOn) {
+      dom.partnerPipCard.classList.remove('hidden', 'pip-hidden-fullscreen');
+      clampPipCardsToStage();
+    } else {
+      dom.partnerPipCard.classList.add('hidden');
+      if (dom.partnerVideo) {
+        try { dom.partnerVideo.srcObject = null; } catch (_) {}
+      }
+    }
+  }
   renderParticipantsList();
 }
 
 function broadcastMyMediaStatus() {
-  sendP2PData('media_status', {
+  const payload = {
     userId: state.userId,
     username: state.username,
-    isMicOn: state.isMicOn,
-    isCamOn: state.isCamOn
-  });
+    isMicOn: !!state.isMicOn,
+    isCamOn: !!state.isCamOn
+  };
+  sendP2PData('media_status', payload);
+  sendSignal({ type: 'media_status', ...payload });
   renderParticipantsList();
 }
 
@@ -13939,6 +14059,10 @@ function initEvents() {
   }
 
   function seekRelative(seconds) {
+    if (!canUserControlPlayback()) {
+      showToast('Videoyu ileri/geri sarma yetkisi sadece Oda Sahibi ve Yöneticilere aittir.');
+      return;
+    }
     const target = Math.max(0, Math.min((state.currentTime || 0) + seconds, state.duration || 99999));
     state.currentTime = target;
     if (state.activeMode === 'youtube') {
@@ -13956,6 +14080,10 @@ function initEvents() {
   window.seekRelative = seekRelative;
 
   function handleNextTrack() {
+    if (!canUserControlPlayback()) {
+      showToast('Sıradaki videoya geçme yetkisi sadece Oda Sahibi ve Yöneticilere aittir.');
+      return;
+    }
     if (state.roomQueue && state.roomQueue.length > 0) {
       const nextItem = state.roomQueue.shift();
       updateRoomQueueUI();
@@ -15518,6 +15646,10 @@ function validateInstagramUsername(username) {
 
   // YouTube-Style Double Tap to Seek (10s Left/Right)
   function triggerDoubleTapSeek(isRight) {
+    if (!canUserControlPlayback()) {
+      showToast('Videoyu sarma yetkisi sadece Oda Sahibi ve Yöneticilere aittir.');
+      return;
+    }
     const delta = isRight ? 10 : -10;
     seekRelative(delta);
 
@@ -15976,6 +16108,10 @@ function validateInstagramUsername(username) {
   if (stageSeekBackBtn) {
     addInstantTap(stageSeekBackBtn, (e) => {
       if (e && e.stopPropagation) e.stopPropagation();
+      if (!canUserControlPlayback()) {
+        showToast('Videoyu geri sarma yetkisi sadece Oda Sahibi ve Yöneticilere aittir.');
+        return;
+      }
       if (typeof seekRelative === 'function') seekRelative(-10);
       showToast('10 sn geri sarıldı');
     });
@@ -15992,6 +16128,15 @@ function validateInstagramUsername(username) {
   // Seek Slider (Miruo Custom Unified Scrubber)
   const finishSeek = (e) => {
     state.isUserDraggingSeek = false;
+    if (!canUserControlPlayback()) {
+      if (state.duration > 0) {
+        const pct = (state.currentTime / state.duration) * 100;
+        if (dom.seekSlider) dom.seekSlider.value = pct;
+        if (dom.nowPlayingSeekSlider) dom.nowPlayingSeekSlider.value = pct;
+      }
+      showToast('Videoyu sarma yetkisi sadece Oda Sahibi ve Yöneticilere aittir.');
+      return;
+    }
     const targetPercent = parseFloat(e.target.value);
     if (state.duration > 0) {
       const targetTime = (targetPercent / 100) * state.duration;
@@ -16007,6 +16152,10 @@ function validateInstagramUsername(username) {
 
   if (dom.seekSlider) {
     dom.seekSlider.addEventListener('input', (e) => {
+      if (!canUserControlPlayback()) {
+        if (state.duration > 0) e.target.value = (state.currentTime / state.duration) * 100;
+        return;
+      }
       state.isUserDraggingSeek = true;
       const targetPercent = parseFloat(e.target.value);
       if (state.duration > 0) {
@@ -16024,6 +16173,10 @@ function validateInstagramUsername(username) {
   // Dedicated Now-Playing Bottom Bar Scrubber (Always Accessible on iPhone & Mobile)
   if (dom.nowPlayingSeekSlider) {
     dom.nowPlayingSeekSlider.addEventListener('input', (e) => {
+      if (!canUserControlPlayback()) {
+        if (state.duration > 0) e.target.value = (state.currentTime / state.duration) * 100;
+        return;
+      }
       state.isUserDraggingSeek = true;
       const targetPercent = parseFloat(e.target.value);
       if (state.duration > 0) {
