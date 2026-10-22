@@ -162,6 +162,7 @@ async function authenticateFromUrl(url) {
 }
 
 function initSupabase() {
+  if (supabaseClient) return;
   try {
     if (window.supabase && typeof window.supabase.createClient === 'function') {
       supabaseClient = window.supabase.createClient(SUPABASE_CONFIG.url, SUPABASE_CONFIG.anonKey, {
@@ -224,6 +225,22 @@ function initSupabase() {
           applySupabaseSessionUser(session.user);
         }
       });
+    } else {
+      // Retry in case CDN script loads asynchronously
+      if (!window._sbRetryInterval) {
+        let attempts = 0;
+        window._sbRetryInterval = setInterval(() => {
+          attempts++;
+          if (window.supabase && typeof window.supabase.createClient === 'function') {
+            clearInterval(window._sbRetryInterval);
+            window._sbRetryInterval = null;
+            initSupabase();
+          } else if (attempts > 60) {
+            clearInterval(window._sbRetryInterval);
+            window._sbRetryInterval = null;
+          }
+        }, 200);
+      }
     }
   } catch (err) {
     console.warn('[Miruo] Supabase init warning:', err);
@@ -4665,6 +4682,14 @@ function leaveRoom() {
     roomSupabaseChannel = null;
   }
 
+  // Clear local room state so closed room never lingers in Explore
+  try {
+    localStorage.removeItem('miruo_my_public_rooms');
+    if (state.roomId) {
+      removeGlobalRealtimeRoom(state.roomId);
+    }
+  } catch (_) {}
+
   // Stop bots for this room
   stopBotsForActiveRoom();
 
@@ -6645,6 +6670,33 @@ function renderRoomList(roomsToRender) {
   if (!dom.publicRoomsGrid) return;
   dom.publicRoomsGrid.innerHTML = '';
   
+  if (!roomsToRender || roomsToRender.length === 0) {
+    dom.publicRoomsGrid.innerHTML = `
+      <div class="col-span-full py-12 px-6 flex flex-col items-center justify-center text-center bg-[#0C0E17]/60 border border-white/5 rounded-3xl">
+        <div class="w-14 h-14 rounded-2xl bg-rose-500/10 border border-rose-500/20 flex items-center justify-center text-rose-400 mb-4 shadow-lg shadow-rose-500/5 animate-pulse">
+          <svg class="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"/>
+          </svg>
+        </div>
+        <h3 class="text-white text-sm sm:text-base font-bold mb-1">Şu an Canlı Açık Oda Yok</h3>
+        <p class="text-gray-400 text-xs max-w-xs mb-5">İlk odayı sen aç, arkadaşların veya tüm dünya anında bağlansın!</p>
+        <button id="btnExploreCreateRoom" type="button" class="px-5 py-2.5 rounded-xl bg-gradient-to-r from-rose-600 via-pink-600 to-[#A64D79] text-white text-xs font-bold shadow-lg shadow-rose-600/25 hover:opacity-95 active:scale-95 transition-all cursor-pointer">
+          + Canlı Oda Başlat
+        </button>
+      </div>
+    `;
+    const btn = dom.publicRoomsGrid.querySelector('#btnExploreCreateRoom');
+    if (btn) {
+      btn.addEventListener('click', () => {
+        if (dom.createRoomModal) {
+          dom.createRoomModal.classList.remove('hidden');
+          dom.createRoomModal.classList.add('flex');
+        }
+      });
+    }
+    return;
+  }
+  
   roomsToRender.forEach(r => {
     const card = document.createElement('button');
     card.type = 'button';
@@ -6697,6 +6749,7 @@ function renderRoomList(roomsToRender) {
       state.isHost = (r.host === state.username);
       state.controlMode = 'host_only';
       state.hasDjPermission = state.isHost;
+      state.isInRoom = true;
       if (dom.currentRoomDisplay) dom.currentRoomDisplay.textContent = roomId;
       switchToMyRoom();
       connectSignaling();
@@ -6711,25 +6764,22 @@ function renderRoomList(roomsToRender) {
   });
 }
 
-// Bu cihazdan açılan herkese açık odalar (sunucu yokken de Keşfet'te görünsün).
+// Bu cihazdan açılan oda SADECE o sırada kullanıcı odanın içindeyse geçerlidir
 function getMyPublicRooms() {
+  if (!state.isInRoom || !state.roomId || state.isPrivateRoom) return [];
   try {
     const list = JSON.parse(localStorage.getItem('miruo_my_public_rooms') || '[]');
-    const fresh = list.filter(r => r && r.id && (Date.now() - (r.ts || 0)) < 6 * 3600 * 1000);
-    if (fresh.length !== list.length) localStorage.setItem('miruo_my_public_rooms', JSON.stringify(fresh));
-    return fresh;
+    return list.filter(r => r && r.id === state.roomId);
   } catch (_) { return []; }
 }
 function saveMyPublicRoom(room) {
   try {
-    const list = getMyPublicRooms().filter(r => r.id !== room.id);
-    list.unshift({ ...room, ts: Date.now() });
-    localStorage.setItem('miruo_my_public_rooms', JSON.stringify(list.slice(0, 10)));
+    localStorage.setItem('miruo_my_public_rooms', JSON.stringify([{ ...room, ts: Date.now() }]));
   } catch (_) {}
 }
 function removeMyPublicRoom(id) {
   try {
-    localStorage.setItem('miruo_my_public_rooms', JSON.stringify(getMyPublicRooms().filter(r => r.id !== id)));
+    localStorage.removeItem('miruo_my_public_rooms');
   } catch (_) {}
 }
 
@@ -6881,26 +6931,26 @@ function mergeAllPublicRooms(serverRooms = []) {
   (globalRealtimeRooms || []).forEach(r => {
     if (r && r.id) roomMap.set(r.id, r);
   });
-  // 2. Add local device rooms
-  getMyPublicRooms().forEach(r => {
-    if (r && r.id && !roomMap.has(r.id)) {
-      roomMap.set(r.id, {
-        id: r.id, name: r.name, category: r.category, host: r.host,
-        mediaTitle: r.mediaTitle || r.name, videoId: r.videoId || '', thumb: r.thumb || '',
-        viewers: 1, avatars: [{ initial: (r.host || 'U').charAt(0).toUpperCase(), bg: 'from-purple-500 to-indigo-600' }]
-      });
-    }
-  });
-  // 3. Add server rooms if any
+  // 2. Add local device room ONLY IF CURRENTLY IN AN ACTIVE PUBLIC ROOM!
+  if (state.isInRoom && state.roomId && !state.isPrivateRoom) {
+    const myCurrentRoom = {
+      id: state.roomId,
+      name: state.roomName || (state.isHost ? `${state.username} Odası` : 'Canlı Oda'),
+      category: state.roomCategory || (state.activeMode === 'youtube' ? 'YouTube' : 'Müzik & Sohbet'),
+      host: state.isHost ? (state.username || 'Yönetici') : (state.hostName || 'Yönetici'),
+      mediaTitle: state.currentVideoTitle || (state.activeMode === 'youtube' ? 'YouTube Yayını' : 'Canlı Yayın'),
+      videoId: state.currentVideoId || '',
+      thumb: state.currentVideoThumb || (state.currentVideoId ? `https://img.youtube.com/vi/${state.currentVideoId}/mqdefault.jpg` : ''),
+      viewers: Math.max(1, (state.remotePeers ? Object.keys(state.remotePeers).length + 1 : 1)),
+      avatars: [{ initial: (state.username || 'U').charAt(0).toUpperCase(), bg: 'from-purple-500 to-indigo-600' }]
+    };
+    roomMap.set(state.roomId, myCurrentRoom);
+  }
+  // 3. Add server rooms if any (from backend server if configured)
   (serverRooms || []).forEach(r => {
     if (r && r.id && !roomMap.has(r.id)) roomMap.set(r.id, r);
   });
-  // 4. If still empty, add default community rooms
-  if (roomMap.size === 0) {
-    DEFAULT_COMMUNITY_ROOMS.forEach(r => {
-      if (r && r.id) roomMap.set(r.id, r);
-    });
-  }
+  // Sadece gerçek canlı odalar döner, eski/sahte statik odalar ASLA dönmez
   return Array.from(roomMap.values());
 }
 
@@ -18769,6 +18819,33 @@ window.setParticipantRole = setParticipantRole;
 window.toggleCam = toggleCam;
 window.initAffinityEvents = initAffinityEvents;
 window.setChatVisibility = setChatVisibility;
+
+// Broadcast room closure on window exit / tab close
+window.addEventListener('beforeunload', () => {
+  if (state.isInRoom && state.isHost && state.roomId && globalRoomsChannel) {
+    try {
+      globalRoomsChannel.send({
+        type: 'broadcast',
+        event: 'room_closed',
+        payload: { id: state.roomId }
+      });
+      globalRoomsChannel.untrack();
+    } catch (_) {}
+  }
+});
+
+window.addEventListener('pagehide', () => {
+  if (state.isInRoom && state.isHost && state.roomId && globalRoomsChannel) {
+    try {
+      globalRoomsChannel.send({
+        type: 'broadcast',
+        event: 'room_closed',
+        payload: { id: state.roomId }
+      });
+      globalRoomsChannel.untrack();
+    } catch (_) {}
+  }
+});
 
 // Start
 document.addEventListener('DOMContentLoaded', initEvents);
