@@ -824,12 +824,15 @@ function createWindow(port) {
     callback(false);
   });
 
-  // YouTube Embed & Copyright Restrictions Bypass (Fixes "Bu video kullanılamıyor" Error 150/101)
+  // YouTube Embed & Web Referrer Bypass (Fixes Error 152/150/101)
   session.defaultSession.webRequest.onBeforeSendHeaders(
     { urls: ['*://*.youtube.com/*', '*://*.youtube-nocookie.com/*', '*://*.googlevideo.com/*'] },
     (details, callback) => {
-      details.requestHeaders['Referer'] = 'https://www.youtube.com/';
-      details.requestHeaders['Origin'] = 'https://www.youtube.com';
+      const url = details.url || '';
+      if (url.includes('/embed/') || url.includes('/v/') || url.includes('googlevideo.com')) {
+        details.requestHeaders['Referer'] = 'https://miruo.com.tr/';
+        details.requestHeaders['Origin'] = 'https://miruo.com.tr';
+      }
       callback({ cancel: false, requestHeaders: details.requestHeaders });
     }
   );

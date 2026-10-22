@@ -173,6 +173,9 @@ function initSupabase() {
         }
       });
       console.log('[Miruo] Supabase Auth initialized successfully with project:', SUPABASE_CONFIG.url);
+      try {
+        if (typeof initGlobalPublicRoomsSync === 'function') initGlobalPublicRoomsSync();
+      } catch (_) {}
 
       // Check existing session from Supabase
       supabaseClient.auth.getSession().then(({ data: { session } }) => {
@@ -2560,18 +2563,86 @@ function scheduleWsReconnect() {
   }, delay);
 }
 
+let roomSupabaseChannel = null;
+
+function connectSupabaseRoomSignaling() {
+  if (!supabaseClient || !state.roomId) return;
+  if (roomSupabaseChannel) {
+    try { roomSupabaseChannel.unsubscribe(); } catch (_) {}
+    roomSupabaseChannel = null;
+  }
+  try {
+    const chName = `miruo_room_${state.roomId}`;
+    roomSupabaseChannel = supabaseClient.channel(chName, {
+      config: {
+        presence: { key: (state && state.userId) ? String(state.userId) : ('user_' + Math.random().toString(36).substring(2, 9)) },
+        broadcast: { ack: false, self: false }
+      }
+    });
+
+    roomSupabaseChannel
+      .on('broadcast', { event: 'signal' }, ({ payload }) => {
+        if (!payload || payload.userId === state.userId) return;
+        handleSignalMessage(payload);
+      })
+      .on('presence', { event: 'sync' }, () => {
+        const pState = roomSupabaseChannel.presenceState();
+        const peerKeys = Object.keys(pState).filter(k => k !== String(state.userId));
+        if (peerKeys.length > 0) {
+          if (!state.peerId) {
+            state.peerId = peerKeys[0];
+            updatePeerStatus(true);
+            if (state.isHost) {
+              initiateWebRTC(true);
+            }
+          }
+        }
+      })
+      .on('presence', { event: 'join' }, ({ key }) => {
+        if (key && key !== String(state.userId)) {
+          state.peerId = key;
+          updatePeerStatus(true);
+          showToast('Partner odaya katıldı');
+          if (state.isHost) {
+            initiateWebRTC(true);
+          }
+        }
+      })
+      .on('presence', { event: 'leave' }, ({ key }) => {
+        if (key && key === state.peerId) {
+          state.peerId = null;
+          updatePeerStatus(false);
+          showToast('Partner odadan ayrıldı');
+        }
+      })
+      .subscribe((status) => {
+        if (status === 'SUBSCRIBED') {
+          roomSupabaseChannel.track({
+            userId: state.userId,
+            username: state.username,
+            isHost: !!state.isHost
+          }).catch(() => {});
+          if (!state.isHost) {
+            sendSignal({ type: 'peer-joined', userId: state.userId, username: state.username });
+          }
+        }
+      });
+  } catch (e) {
+    console.warn('[Miruo] Room Supabase signaling error:', e);
+  }
+}
+
 function connectSignaling() {
   state.isIntentionalLeave = false;
   if (ws) {
     try { ws.close(); } catch (e) {}
     ws = null;
   }
+  // Connect to Supabase Room Channel for instant cross-device broadcast & signaling
+  connectSupabaseRoomSignaling();
+
   if (MIRUO_STANDALONE || window.location.protocol === 'file:' || !window.location.host) {
-    console.log('Miruo Bağımsız Cihaz Modunda Çalışıyor');
-    if (!window._standaloneToastShown && typeof showToast === 'function') {
-      window._standaloneToastShown = true;
-      showToast('Sunucu bağlı değil: oda yalnızca bu cihazda çalışır, arkadaşların katılamaz.');
-    }
+    console.log('[Miruo] Running with Supabase Realtime signaling');
     return;
   }
   let wsUrl;
@@ -2626,13 +2697,22 @@ function sendSignal(msg) {
   const payload = { ...msg, roomId: state.roomId, userId: state.userId };
   if (ws && ws.readyState === WebSocket.OPEN) {
     ws.send(JSON.stringify(payload));
-  } else if (window.location.host && window.location.protocol !== 'file:') {
+  } else if (window.location.host && window.location.protocol !== 'file:' && MIRUO_API_BASE) {
     // HTTP POST fallback
     fetch('/api/signal', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ roomId: state.roomId, userId: state.userId, data: payload })
     }).catch(() => {});
+  }
+  if (roomSupabaseChannel) {
+    try {
+      roomSupabaseChannel.send({
+        type: 'broadcast',
+        event: 'signal',
+        payload
+      }).catch(() => {});
+    } catch (_) {}
   }
 }
 
@@ -3091,7 +3171,9 @@ function loadYoutubeVideo(urlOrId) {
 
   state.activeMode = 'youtube';
   state.currentVideoId = videoId;
+  state.currentVideoThumb = `https://img.youtube.com/vi/${videoId}/mqdefault.jpg`;
   state.currentProvider = 'YouTube';
+  if (typeof syncCurrentRoomToGlobalPresence === 'function') syncCurrentRoomToGlobalPresence();
   if (dom.nowPlayingProviderBadge) dom.nowPlayingProviderBadge.textContent = 'YouTube';
   if (typeof updateNowPlayingLikeState === 'function') updateNowPlayingLikeState();
   switchActiveTab('youtube');
@@ -3119,8 +3201,8 @@ function loadYoutubeVideo(urlOrId) {
   // Direct responsive embed iframe that plays 100% reliably in WKWebView & Electron Desktop
   // Never pass localhost or 127.0.0.1 as originParam because YouTube CMS blocks restricted videos on local origins
   const isLocalOrigin = !window.location.origin || window.location.origin.includes('127.0.0.1') || window.location.origin.includes('localhost') || window.location.protocol === 'file:';
-  const effectiveOrigin = isLocalOrigin ? 'https://www.youtube.com' : window.location.origin;
-  const originParam = `&origin=${encodeURIComponent(effectiveOrigin)}&widget_referrer=${encodeURIComponent('https://www.youtube.com')}`;
+  const effectiveOrigin = isLocalOrigin ? 'https://miruo.com.tr' : window.location.origin;
+  const originParam = `&origin=${encodeURIComponent(effectiveOrigin)}&widget_referrer=${encodeURIComponent('https://miruo.com.tr')}`;
   
   const prefCaptionLang = (function() {
     try { return localStorage.getItem('miruo_caption_lang'); } catch (_) { return null; }
@@ -3131,8 +3213,9 @@ function loadYoutubeVideo(urlOrId) {
 
   dom.ytPlayerContainer.innerHTML = `
     <iframe id="miruoYtIframe" 
-            src="https://www.youtube.com/embed/${videoId}?autoplay=1&playsinline=1&enablejsapi=1&controls=0&disablekb=1&fs=0&rel=0&modestbranding=1&iv_load_policy=3${ccParam}${originParam}" 
+            src="https://www.youtube-nocookie.com/embed/${videoId}?autoplay=1&playsinline=1&enablejsapi=1&controls=0&disablekb=1&fs=0&rel=0&modestbranding=1&iv_load_policy=3${ccParam}${originParam}" 
             allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" 
+            referrerpolicy="strict-origin-when-cross-origin"
             allowfullscreen 
             class="w-full h-full border-0 pointer-events-none select-none">
     </iframe>
@@ -3172,6 +3255,8 @@ function loadYoutubeVideo(urlOrId) {
     .then(r => r.json())
     .then(d => {
       const vTitle = d.title || 'Video';
+      state.currentVideoTitle = vTitle;
+      if (typeof syncCurrentRoomToGlobalPresence === 'function') syncCurrentRoomToGlobalPresence();
       const vAuthor = d.author_name || '';
       if (dom.raveOverlayTitle) dom.raveOverlayTitle.textContent = vTitle;
       const stageSubtitle = document.getElementById('stageSubtitleText');
@@ -3255,6 +3340,7 @@ function loadDirectVideo(url, title) {
   state.currentProvider = 'Web Video';
   state.currentVideoId = url;
   state.currentVideoTitle = title || 'Video İçeriği';
+  if (typeof syncCurrentRoomToGlobalPresence === 'function') syncCurrentRoomToGlobalPresence();
   if (dom.nowPlayingProviderBadge) dom.nowPlayingProviderBadge.textContent = 'Web Video';
   if (dom.nowPlayingTitle) dom.nowPlayingTitle.textContent = title || 'Video İçeriği';
   if (typeof updateNowPlayingLikeState === 'function') updateNowPlayingLikeState();
@@ -3331,6 +3417,9 @@ function hideIframeFallback() {
 function loadWebStream(url, title, provider = 'Web') {
   state.activeMode = 'web';
   state.currentProvider = provider;
+  state.currentVideoId = url;
+  state.currentVideoTitle = title || `${provider} İçeriği`;
+  if (typeof syncCurrentRoomToGlobalPresence === 'function') syncCurrentRoomToGlobalPresence();
   if (dom.nowPlayingProviderBadge) dom.nowPlayingProviderBadge.textContent = provider;
   if (dom.nowPlayingTitle) dom.nowPlayingTitle.textContent = title || `${provider} İçeriği`;
   
@@ -3727,11 +3816,11 @@ window.addEventListener('message', (event) => {
     sendYtCommand('addEventListener', ['onStateChange']);
   }
 
-  // Handle YouTube Error events (150/101 embed copyright restriction, 100 not found, etc.)
+  // Handle YouTube Error events (150/152/101 embed copyright restriction, 100 not found, etc.)
   const errCode = (data.info && typeof data.info.errorCode === 'number' ? data.info.errorCode : null) ||
                   (data.info && typeof data.info.error === 'number' ? data.info.error : null) ||
                   (data.event === 'onError' && typeof data.info === 'number' ? data.info : null);
-  if (errCode === 150 || errCode === 101 || errCode === 153) {
+  if (errCode === 150 || errCode === 152 || errCode === 101 || errCode === 153 || errCode === 154) {
     console.warn('[Miruo] YouTube Embed Restriction Error:', errCode);
     showEmbedRestrictionFallback(state.currentVideoId);
   }
@@ -3771,7 +3860,9 @@ function showEmbedRestrictionFallback(videoId) {
   if (openBtn) {
     openBtn.addEventListener('click', () => {
       fallbackDiv.remove();
-      if (typeof openInAppBrowser === 'function') {
+      if (typeof loadWebStream === 'function') {
+        loadWebStream(`https://www.youtube.com/watch?v=${videoId}`, 'YouTube', 'YouTube');
+      } else if (typeof openInAppBrowser === 'function') {
         openInAppBrowser(`https://www.youtube.com/watch?v=${videoId}`);
       } else if (window.miruoDesktop && window.shell) {
         window.shell.openExternal(`https://www.youtube.com/watch?v=${videoId}`);
@@ -4554,6 +4645,25 @@ function leaveRoom() {
       ws = null;
     }
   } catch (e) {}
+
+  // Cleanup Supabase room presence & channels
+  if (globalRoomsChannel && state.isHost) {
+    try {
+      globalRoomsChannel.send({
+        type: 'broadcast',
+        event: 'room_closed',
+        payload: { id: state.roomId }
+      }).catch(() => {});
+      globalRoomsChannel.untrack().catch(() => {});
+    } catch (_) {}
+  }
+  if (roomSupabaseChannel) {
+    try {
+      roomSupabaseChannel.untrack().catch(() => {});
+      roomSupabaseChannel.unsubscribe();
+    } catch (_) {}
+    roomSupabaseChannel = null;
+  }
 
   // Stop bots for this room
   stopBotsForActiveRoom();
@@ -6303,6 +6413,9 @@ function createAndJoinRoom(title, isPrivate = false, category = 'YouTube', video
     connectedAccount: activeConn
   }).then(code => {
     state.roomId = code;
+    state.isInRoom = true;
+    state.roomName = title || `${category} Partisi`;
+    state.roomCategory = category;
     if (!isPrivate) {
       saveMyPublicRoom({
         id: code,
@@ -6312,6 +6425,7 @@ function createAndJoinRoom(title, isPrivate = false, category = 'YouTube', video
         videoId: videoId || '',
         mediaTitle: title || ''
       });
+      syncCurrentRoomToGlobalPresence();
     }
     if (dom.activeRoomTitle) dom.activeRoomTitle.textContent = state.roomId;
     if (dom.currentRoomDisplay) dom.currentRoomDisplay.textContent = state.roomId;
@@ -6619,28 +6733,189 @@ function removeMyPublicRoom(id) {
   } catch (_) {}
 }
 
-function loadPublicRooms() {
-  const withMine = (serverRooms) => {
-    const ids = new Set(serverRooms.map(r => r.id));
-    const mine = getMyPublicRooms().filter(r => !ids.has(r.id)).map(r => ({
-      id: r.id, name: r.name, category: r.category, host: r.host,
-      mediaTitle: r.mediaTitle || r.name, videoId: r.videoId || '', thumb: r.thumb || '',
-      viewers: 1, avatars: [{ initial: (r.host || 'U').charAt(0).toUpperCase(), bg: 'from-purple-500 to-indigo-600' }]
-    }));
-    return mine.concat(serverRooms);
+// Global Public Rooms Discovery via Supabase Realtime Channels (Cross-Device Worldwide)
+let globalRealtimeRooms = [];
+let globalRoomsChannel = null;
+
+function initGlobalPublicRoomsSync() {
+  if (!supabaseClient || globalRoomsChannel) return;
+  try {
+    const presenceKey = (state && state.userId) ? String(state.userId) : ('guest_' + Math.random().toString(36).substring(2, 9));
+    globalRoomsChannel = supabaseClient.channel('miruo_global_public_rooms', {
+      config: {
+        presence: { key: presenceKey }
+      }
+    });
+
+    globalRoomsChannel
+      .on('presence', { event: 'sync' }, () => {
+        const presenceState = globalRoomsChannel.presenceState();
+        parseGlobalRoomsFromPresence(presenceState);
+      })
+      .on('presence', { event: 'join' }, () => {
+        parseGlobalRoomsFromPresence(globalRoomsChannel.presenceState());
+      })
+      .on('presence', { event: 'leave' }, () => {
+        parseGlobalRoomsFromPresence(globalRoomsChannel.presenceState());
+      })
+      .on('broadcast', { event: 'room_announced' }, ({ payload }) => {
+        if (payload && payload.id) {
+          upsertGlobalRealtimeRoom(payload);
+        }
+      })
+      .on('broadcast', { event: 'room_closed' }, ({ payload }) => {
+        if (payload && payload.id) {
+          removeGlobalRealtimeRoom(payload.id);
+        }
+      })
+      .subscribe((status) => {
+        if (status === 'SUBSCRIBED') {
+          syncCurrentRoomToGlobalPresence();
+        }
+      });
+  } catch (e) {
+    console.warn('[Miruo] Global rooms channel error:', e);
+  }
+}
+
+function parseGlobalRoomsFromPresence(presenceState) {
+  if (!presenceState) return;
+  const roomMap = new Map();
+  Object.keys(presenceState).forEach(key => {
+    const presences = presenceState[key] || [];
+    presences.forEach(p => {
+      if (p && p.id && p.isPublic) {
+        roomMap.set(p.id, {
+          id: p.id,
+          name: p.name || 'Canlı Oda',
+          category: p.category || 'Müzik & Sohbet',
+          host: p.host || 'Yönetici',
+          mediaTitle: p.mediaTitle || p.name || 'Canlı Yayın',
+          videoId: p.videoId || '',
+          thumb: p.thumb || (p.videoId ? `https://img.youtube.com/vi/${p.videoId}/mqdefault.jpg` : ''),
+          viewers: Math.max(1, p.viewers || 1),
+          avatars: [{ initial: (p.host || 'U').charAt(0).toUpperCase(), bg: 'from-purple-500 to-indigo-600' }],
+          ts: p.updatedAt || Date.now()
+        });
+      }
+    });
+  });
+  globalRealtimeRooms = Array.from(roomMap.values());
+  if (dom.publicRoomsGrid) {
+    renderRoomList(mergeAllPublicRooms([]));
+  }
+}
+
+function upsertGlobalRealtimeRoom(room) {
+  if (!room || !room.id) return;
+  const formatted = {
+    id: room.id,
+    name: room.name || 'Canlı Oda',
+    category: room.category || 'Müzik & Sohbet',
+    host: room.host || 'Yönetici',
+    mediaTitle: room.mediaTitle || room.name || 'Canlı Yayın',
+    videoId: room.videoId || '',
+    thumb: room.thumb || (room.videoId ? `https://img.youtube.com/vi/${room.videoId}/mqdefault.jpg` : ''),
+    viewers: Math.max(1, room.viewers || 1),
+    avatars: [{ initial: (room.host || 'U').charAt(0).toUpperCase(), bg: 'from-purple-500 to-indigo-600' }],
+    ts: Date.now()
   };
+  const idx = globalRealtimeRooms.findIndex(r => r.id === room.id);
+  if (idx >= 0) {
+    globalRealtimeRooms[idx] = formatted;
+  } else {
+    globalRealtimeRooms.unshift(formatted);
+  }
+  if (dom.publicRoomsGrid) {
+    renderRoomList(mergeAllPublicRooms([]));
+  }
+}
+
+function removeGlobalRealtimeRoom(roomId) {
+  globalRealtimeRooms = globalRealtimeRooms.filter(r => r.id !== roomId);
+  if (dom.publicRoomsGrid) {
+    renderRoomList(mergeAllPublicRooms([]));
+  }
+}
+
+function syncCurrentRoomToGlobalPresence() {
+  if (!globalRoomsChannel || !state.roomId || !state.isInRoom) return;
+  if (state.isPrivateRoom) {
+    try {
+      globalRoomsChannel.send({
+        type: 'broadcast',
+        event: 'room_closed',
+        payload: { id: state.roomId }
+      }).catch(() => {});
+      globalRoomsChannel.untrack().catch(() => {});
+    } catch (_) {}
+    return;
+  }
+  const payload = {
+    id: state.roomId,
+    name: state.roomName || (state.isHost ? `${state.username} Odası` : 'Canlı Oda'),
+    category: state.roomCategory || (state.activeMode === 'youtube' ? 'YouTube' : 'Müzik & Sohbet'),
+    host: state.isHost ? (state.username || 'Yönetici') : (state.hostName || 'Yönetici'),
+    mediaTitle: state.currentVideoTitle || (state.activeMode === 'youtube' ? 'YouTube Yayını' : 'Canlı Yayın'),
+    videoId: state.currentVideoId || '',
+    thumb: state.currentVideoThumb || (state.currentVideoId ? `https://img.youtube.com/vi/${state.currentVideoId}/mqdefault.jpg` : ''),
+    viewers: Math.max(1, (state.remotePeers ? Object.keys(state.remotePeers).length + 1 : 1)),
+    isPublic: true,
+    updatedAt: Date.now()
+  };
+  try {
+    globalRoomsChannel.track(payload).catch(e => console.warn('[Presence] track error:', e));
+    globalRoomsChannel.send({
+      type: 'broadcast',
+      event: 'room_announced',
+      payload
+    }).catch(() => {});
+  } catch (e) {
+    console.warn('[Presence] sync error:', e);
+  }
+}
+
+function mergeAllPublicRooms(serverRooms = []) {
+  const roomMap = new Map();
+  // 1. Add global realtime presence rooms first (live from all devices worldwide!)
+  (globalRealtimeRooms || []).forEach(r => {
+    if (r && r.id) roomMap.set(r.id, r);
+  });
+  // 2. Add local device rooms
+  getMyPublicRooms().forEach(r => {
+    if (r && r.id && !roomMap.has(r.id)) {
+      roomMap.set(r.id, {
+        id: r.id, name: r.name, category: r.category, host: r.host,
+        mediaTitle: r.mediaTitle || r.name, videoId: r.videoId || '', thumb: r.thumb || '',
+        viewers: 1, avatars: [{ initial: (r.host || 'U').charAt(0).toUpperCase(), bg: 'from-purple-500 to-indigo-600' }]
+      });
+    }
+  });
+  // 3. Add server rooms if any
+  (serverRooms || []).forEach(r => {
+    if (r && r.id && !roomMap.has(r.id)) roomMap.set(r.id, r);
+  });
+  // 4. If still empty, add default community rooms
+  if (roomMap.size === 0) {
+    DEFAULT_COMMUNITY_ROOMS.forEach(r => {
+      if (r && r.id) roomMap.set(r.id, r);
+    });
+  }
+  return Array.from(roomMap.values());
+}
+
+function loadPublicRooms() {
   fetch('/api/public-rooms')
     .then(res => res.json())
     .then(data => {
       if (data && data.rooms && data.rooms.length > 0) {
-        renderRoomList(withMine(data.rooms));
+        renderRoomList(mergeAllPublicRooms(data.rooms));
       } else {
-        renderRoomList(withMine(DEFAULT_COMMUNITY_ROOMS));
+        renderRoomList(mergeAllPublicRooms([]));
       }
     })
     .catch(err => {
-      console.warn('API fetch failed, rendering fallback community rooms:', err);
-      renderRoomList(withMine(DEFAULT_COMMUNITY_ROOMS));
+      renderRoomList(mergeAllPublicRooms([]));
     });
 }
 
@@ -6656,6 +6931,22 @@ function updateRoomPrivacyUI(isPrivate) {
     pIcon.innerHTML = isPrivate
       ? '<svg class="w-3 h-3 inline text-purple-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>'
       : '<svg class="w-3 h-3 inline text-emerald-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1 4-10z"/></svg>';
+  }
+  
+  if (isPrivate) {
+    if (globalRoomsChannel && state.isHost) {
+      try {
+        globalRoomsChannel.send({
+          type: 'broadcast',
+          event: 'room_closed',
+          payload: { id: state.roomId }
+        }).catch(() => {});
+        globalRoomsChannel.untrack().catch(() => {});
+      } catch (_) {}
+    }
+    removeMyPublicRoom(state.roomId);
+  } else {
+    syncCurrentRoomToGlobalPresence();
   }
   
   // Sync radio in roomAccessModal
@@ -10873,6 +11164,9 @@ window.initMobileKeyboardProtection = initMobileKeyboardProtection;
 
 function initEvents() {
   initMobileKeyboardProtection();
+  try {
+    if (typeof initGlobalPublicRoomsSync === 'function') initGlobalPublicRoomsSync();
+  } catch (_) {}
   // Welcome / Onboarding Avatar Selection
   document.querySelectorAll('.welcome-avatar-btn').forEach(btn => {
     btn.addEventListener('click', () => {
@@ -14557,7 +14851,11 @@ function initEvents() {
 
 // Instagram-style Username Validation
 function validateInstagramUsername(username) {
-  const raw = String(username || '').trim().replace(/^@/, '');
+  let raw = String(username || '').trim().replace(/^@+/, '');
+  // Auto-convert spaces to underscores so spaces are never rejected as invalid
+  raw = raw.replace(/\s+/g, '_').toLowerCase();
+  // Strip any characters other than letters, numbers, underscores and dots
+  raw = raw.replace(/[^a-z0-9_.]/g, '');
   if (!raw) {
     return { valid: false, error: 'Kullanıcı adı boş bırakılamaz.' };
   }
@@ -14566,10 +14864,6 @@ function validateInstagramUsername(username) {
   }
   if (raw.length > 30) {
     return { valid: false, error: 'Kullanıcı adı en fazla 30 karakter olabilir.' };
-  }
-  // Instagram rules: Only lowercase/uppercase letters, numbers, underscores (_), and periods (.)
-  if (!/^[a-zA-Z0-9_.]+$/.test(raw)) {
-    return { valid: false, error: 'Kullanıcı adı yalnızca harf, rakam, alt çizgi (_) ve nokta (.) içerebilir.' };
   }
   // Cannot start with a period
   if (raw.startsWith('.')) {
@@ -14583,13 +14877,13 @@ function validateInstagramUsername(username) {
   if (raw.includes('..')) {
     return { valid: false, error: 'Kullanıcı adında yan yana iki nokta (..) bulunamaz.' };
   }
-  return { valid: true, cleanUsername: raw.toLowerCase() };
+  return { valid: true, cleanUsername: raw };
 }
 
   if (dom.saveProfileBtn) {
     dom.saveProfileBtn.addEventListener('click', async () => {
       const fullNameVal = (dom.editProfileFullNameInput && dom.editProfileFullNameInput.value.trim()) || '';
-      const rawUsername = (dom.editProfileUsernameInput && dom.editProfileUsernameInput.value.trim().replace(/^@/, '')) || (dom.editProfileNameInput && dom.editProfileNameInput.value.trim().replace(/^@/, '')) || '';
+      const rawUsername = (dom.editProfileUsernameInput && dom.editProfileUsernameInput.value.trim().replace(/^@+/, '').replace(/\s+/g, '_')) || (dom.editProfileNameInput && dom.editProfileNameInput.value.trim().replace(/^@+/, '').replace(/\s+/g, '_')) || '';
 
       const dict = I18N[currentLang] || I18N.tr;
       const statusEl = document.getElementById('editProfileUsernameStatus');
@@ -14775,7 +15069,14 @@ function validateInstagramUsername(username) {
     dom.editProfileUsernameInput.addEventListener('input', () => {
       clearTimeout(usernameCheckDebounce);
       const statusEl = document.getElementById('editProfileUsernameStatus');
-      const rawVal = dom.editProfileUsernameInput.value.trim().replace(/^@/, '');
+      const val = dom.editProfileUsernameInput.value;
+      // Auto-convert spaces to underscores immediately on typing
+      if (/\s/.test(val)) {
+        const sel = dom.editProfileUsernameInput.selectionStart;
+        dom.editProfileUsernameInput.value = val.replace(/\s+/g, '_');
+        try { dom.editProfileUsernameInput.setSelectionRange(sel, sel); } catch (_) {}
+      }
+      const rawVal = dom.editProfileUsernameInput.value.trim().replace(/^@+/, '');
       if (!rawVal) {
         if (statusEl) {
           statusEl.textContent = '';
