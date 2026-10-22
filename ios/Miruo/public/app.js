@@ -14330,13 +14330,10 @@ function initEvents() {
 
   // Unified Profile, Settings & Accounts Hub
   function switchProfileTab(tabName) {
-    // Kept for backward compatibility
-    if (tabName === 'accounts') {
-      const el = document.getElementById('settingsSectionAccounts');
-      if (el) el.scrollIntoView({ behavior: 'smooth' });
-    } else if (tabName === 'settings') {
-      const el = document.getElementById('settingsSectionApp');
-      if (el) el.scrollIntoView({ behavior: 'smooth' });
+    const sb = dom.profileEditModalScrollBody || document.getElementById('profileEditModalScrollBody');
+    if (sb) {
+      sb.scrollTop = 0;
+      try { sb.scrollTo({ top: 0, left: 0, behavior: 'instant' }); } catch (_) { sb.scrollTop = 0; }
     }
   }
 
@@ -14474,19 +14471,18 @@ function initEvents() {
       if (typeof renderConnectedAccountsUI === 'function') {
         renderConnectedAccountsUI();
       }
-      if (section === 'accounts') {
-        const el = document.getElementById('settingsSectionAccounts');
-        if (el) el.scrollIntoView({ behavior: 'smooth' });
-      } else if (section === 'settings') {
-        const el = document.getElementById('settingsSectionApp');
-        if (el) el.scrollIntoView({ behavior: 'smooth' });
-      } else if (section === 'notif') {
-        const el = document.getElementById('settingsSectionNotif');
-        if (el) el.scrollIntoView({ behavior: 'smooth' });
-      } else if (section === 'legal') {
-        const el = document.getElementById('settingsSectionLegal');
-        if (el) el.scrollIntoView({ behavior: 'smooth' });
-      } else if (section === 'privacy') {
+
+      // Always start strictly from the very top (never auto-scroll down to the middle)
+      const sb = dom.profileEditModalScrollBody || document.getElementById('profileEditModalScrollBody');
+      if (sb) {
+        sb.scrollTop = 0;
+        try { sb.scrollTo({ top: 0, left: 0, behavior: 'instant' }); } catch (_) { sb.scrollTop = 0; }
+        requestAnimationFrame(() => {
+          if (sb) sb.scrollTop = 0;
+        });
+      }
+
+      if (section === 'privacy') {
         if (dom.privacyPolicyModal) dom.privacyPolicyModal.classList.remove('hidden');
       } else if (section === 'terms') {
         if (dom.termsModal) dom.termsModal.classList.remove('hidden');
@@ -14495,11 +14491,6 @@ function initEvents() {
         if (dom.changeEmailChevron) dom.changeEmailChevron.classList.add('rotate-180');
         if (dom.changePasswordCollapseArea) dom.changePasswordCollapseArea.classList.remove('hidden');
         if (dom.changePassChevron) dom.changePassChevron.classList.add('rotate-180');
-        const el = document.getElementById('settingsSectionSecurity');
-        if (el) el.scrollIntoView({ behavior: 'smooth' });
-      } else {
-        const sb = dom.profileEditModalScrollBody || document.getElementById('profileEditModalScrollBody');
-        if (sb) sb.scrollTop = 0;
       }
 
       // Refresh microphone and audio settings upon opening modal
