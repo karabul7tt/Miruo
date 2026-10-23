@@ -2601,12 +2601,63 @@ function connectSupabaseRoomSignaling() {
   }
   try {
     const chName = `miruo_room_${state.roomId}`;
+    const myPresenceKey = (state && state.userId) ? String(state.userId) : ('user_' + Math.random().toString(36).substring(2, 9));
     roomSupabaseChannel = supabaseClient.channel(chName, {
       config: {
-        presence: { key: (state && state.userId) ? String(state.userId) : ('user_' + Math.random().toString(36).substring(2, 9)) },
+        presence: { key: myPresenceKey },
         broadcast: { ack: false, self: false }
       }
     });
+
+    const syncParticipantsFromPresence = (pState) => {
+      if (!pState) return;
+      const currentKeys = Object.keys(pState);
+      const peerKeys = currentKeys.filter(k => k !== String(state.userId));
+      
+      // Update peer status for WebRTC
+      if (peerKeys.length > 0) {
+        if (!state.peerId) {
+          state.peerId = peerKeys[0];
+          updatePeerStatus(true);
+          if (state.isHost) {
+            initiateWebRTC(true);
+          }
+        }
+      } else {
+        if (!state.peerId) updatePeerStatus(false);
+      }
+
+      // Sync state.participants
+      peerKeys.forEach(pk => {
+        const presences = pState[pk];
+        if (presences && presences.length > 0) {
+          const info = presences[0];
+          const existing = state.participants[pk] || {};
+          state.participants[pk] = {
+            ...existing,
+            userId: info.userId || pk,
+            username: info.username || existing.username || 'Misafir',
+            avatar: info.avatar || existing.avatar || '',
+            avatarColor: info.avatarColor || existing.avatarColor || 'from-rose-500 to-indigo-600',
+            isMicOn: typeof info.isMicOn === 'boolean' ? info.isMicOn : !!existing.isMicOn,
+            isCamOn: typeof info.isCamOn === 'boolean' ? info.isCamOn : !!existing.isCamOn,
+            isHost: typeof info.isHost === 'boolean' ? info.isHost : !!existing.isHost,
+            role: info.role || existing.role || (info.isHost ? 'owner' : 'member'),
+            isSelf: false
+          };
+        }
+      });
+
+      // Remove vanished peers from state.participants
+      Object.keys(state.participants).forEach(pid => {
+        if (!pid.startsWith('bot_') && pid !== String(state.userId) && !pState[pid]) {
+          delete state.participants[pid];
+        }
+      });
+
+      renderParticipantsList();
+      renderVideoGrid();
+    };
 
     roomSupabaseChannel
       .on('broadcast', { event: 'signal' }, ({ payload }) => {
@@ -2615,41 +2666,45 @@ function connectSupabaseRoomSignaling() {
       })
       .on('presence', { event: 'sync' }, () => {
         const pState = roomSupabaseChannel.presenceState();
-        const peerKeys = Object.keys(pState).filter(k => k !== String(state.userId));
-        if (peerKeys.length > 0) {
-          if (!state.peerId) {
-            state.peerId = peerKeys[0];
-            updatePeerStatus(true);
-            if (state.isHost) {
-              initiateWebRTC(true);
-            }
-          }
-        }
+        syncParticipantsFromPresence(pState);
       })
-      .on('presence', { event: 'join' }, ({ key }) => {
+      .on('presence', { event: 'join' }, ({ key, newPresences }) => {
+        const pState = roomSupabaseChannel.presenceState();
+        syncParticipantsFromPresence(pState);
         if (key && key !== String(state.userId)) {
-          state.peerId = key;
-          updatePeerStatus(true);
-          showToast('Partner odaya katıldı');
+          showToast('Katılımcı odaya katıldı');
           if (state.isHost) {
-            initiateWebRTC(true);
+            sendSignal({
+              type: 'room-roster',
+              roster: state.participants
+            });
           }
         }
       })
       .on('presence', { event: 'leave' }, ({ key }) => {
+        const pState = roomSupabaseChannel.presenceState();
+        syncParticipantsFromPresence(pState);
         if (key && key === state.peerId) {
-          state.peerId = null;
-          updatePeerStatus(false);
-          showToast('Partner odadan ayrıldı');
+          const remaining = Object.keys(pState).filter(k => k !== String(state.userId));
+          state.peerId = remaining.length > 0 ? remaining[0] : null;
+          updatePeerStatus(!!state.peerId);
         }
+        showToast('Katılımcı odadan ayrıldı');
       })
       .subscribe((status) => {
         if (status === 'SUBSCRIBED') {
-          roomSupabaseChannel.track({
+          const savedUserObj = JSON.parse(localStorage.getItem('miruo_user') || '{}');
+          const myData = {
             userId: state.userId,
             username: state.username,
-            isHost: !!state.isHost
-          }).catch(() => {});
+            avatar: state.avatarUrl || savedUserObj.avatarUrl || '',
+            avatarColor: state.avatarBg || savedUserObj.avatarBg || 'from-rose-500 to-indigo-600',
+            isMicOn: !!state.isMicOn,
+            isCamOn: !!state.isCamOn,
+            isHost: !!state.isHost,
+            role: state.userRole || (state.isHost ? 'owner' : 'member')
+          };
+          roomSupabaseChannel.track(myData).catch(() => {});
           if (!state.isHost) {
             sendSignal({ type: 'peer-joined', userId: state.userId, username: state.username });
           }
@@ -2774,6 +2829,24 @@ function handleSignalMessage(msg) {
       updatePeerStatus(true);
       showToast('Partner odaya katıldı');
       initiateWebRTC(true);
+      if (state.isHost) {
+        sendSignal({
+          type: 'room-roster',
+          roster: state.participants
+        });
+      }
+      break;
+
+    case 'room-roster':
+      if (msg.roster && typeof msg.roster === 'object') {
+        Object.keys(msg.roster).forEach(uid => {
+          if (uid !== state.userId) {
+            state.participants[uid] = Object.assign(state.participants[uid] || {}, msg.roster[uid]);
+          }
+        });
+        renderParticipantsList();
+        renderVideoGrid();
+      }
       break;
 
     case 'peer-left':
@@ -7182,14 +7255,167 @@ function handleRemotePrivacyChange(isPrivate) {
 window.handleRemotePrivacyChange = handleRemotePrivacyChange;
 
 // ==========================================
-// 5.8 ROOM HOST, DJ PERMISSIONS & FRIENDS SYSTEM
+// 5.8 ROOM ROLES, PERMISSIONS & BLOCKED USERS
 // ==========================================
+function isRoomOwner() {
+  return !!(state.isHost || state.userRole === 'owner');
+}
+window.isRoomOwner = isRoomOwner;
+
+function isRoomAdminOrOwner() {
+  return isRoomOwner() || state.userRole === 'admin';
+}
+window.isRoomAdminOrOwner = isRoomAdminOrOwner;
+
+function canUserManageRoom() {
+  return isRoomAdminOrOwner();
+}
+window.canUserManageRoom = canUserManageRoom;
+
 function canUserControlPlayback() {
   if (state.isHost) return true;
+  if (state.controlMode === 'everyone') return true;
   const role = state.userRole || 'member';
-  return role === 'owner' || role === 'admin';
+  return role === 'owner' || role === 'admin' || role === 'video_control' || role === 'dj' || !!state.hasDjPermission;
 }
 window.canUserControlPlayback = canUserControlPlayback;
+
+function canUserChooseVideo() {
+  if (state.isHost) return true;
+  if (state.controlMode === 'everyone') return true;
+  const role = state.userRole || 'member';
+  return role === 'owner' || role === 'admin' || role === 'video_control' || role === 'dj' || !!state.hasDjPermission;
+}
+window.canUserChooseVideo = canUserChooseVideo;
+
+// ==========================================
+// BLOCKED USERS SYSTEM (STORAGE & MANAGEMENT)
+// ==========================================
+function getBlockedUsers() {
+  try {
+    const raw = localStorage.getItem('miruo_blocked_users');
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch (e) {
+    return [];
+  }
+}
+
+function saveBlockedUsers(list) {
+  try {
+    localStorage.setItem('miruo_blocked_users', JSON.stringify(list || []));
+  } catch (e) {}
+}
+
+function isUserBlocked(usernameOrId) {
+  if (!usernameOrId) return false;
+  const clean = String(usernameOrId).replace(/^@/, '').toLowerCase().trim();
+  const list = getBlockedUsers();
+  return list.some(b => {
+    const bName = (b.username || b.name || '').replace(/^@/, '').toLowerCase().trim();
+    const bId = b.id ? String(b.id).toLowerCase().trim() : '';
+    return (bName && bName === clean) || (bId && bId === clean);
+  });
+}
+
+function blockUser(username, userId = null, avatar = null, avatarColor = null) {
+  if (!username) return;
+  const cleanName = String(username).replace(/^@/, '').replace(/\s*\(Sen\)/gi, '').replace(/\s*\(Simüle\)/gi, '').replace(/\s*\(Partner\)/gi, '').trim();
+  const myClean = (state.username || '').replace(/^@/, '').trim();
+  if (cleanName.toLowerCase() === myClean.toLowerCase()) {
+    showToast('Kendinizi engelleyemezsiniz!');
+    return;
+  }
+  let list = getBlockedUsers();
+  if (list.some(b => (b.username || '').toLowerCase() === cleanName.toLowerCase())) {
+    showToast(`@${cleanName} zaten engellenenler listesinde.`);
+    return;
+  }
+  list.unshift({
+    id: userId || ('blocked_' + Date.now()),
+    username: cleanName,
+    avatar: avatar || null,
+    avatarColor: avatarColor || 'from-gray-600 to-gray-800',
+    blockedAt: Date.now()
+  });
+  saveBlockedUsers(list);
+  renderBlockedUsersList();
+  renderParticipantsList();
+  showToast(`@${cleanName} engellendi.`);
+}
+
+function unblockUser(usernameOrId) {
+  if (!usernameOrId) return;
+  const clean = String(usernameOrId).replace(/^@/, '').toLowerCase().trim();
+  let list = getBlockedUsers();
+  list = list.filter(b => {
+    const bName = (b.username || b.name || '').replace(/^@/, '').toLowerCase().trim();
+    const bId = b.id ? String(b.id).toLowerCase().trim() : '';
+    return bName !== clean && bId !== clean;
+  });
+  saveBlockedUsers(list);
+  renderBlockedUsersList();
+  renderParticipantsList();
+  showToast(`Engelleme kaldırıldı.`);
+}
+
+function renderBlockedUsersList() {
+  const container = document.getElementById('blockedUsersListContainer');
+  const badge = document.getElementById('blockedUsersCountBadge');
+  const list = getBlockedUsers();
+
+  if (badge) badge.textContent = list.length;
+  if (!container) return;
+
+  if (list.length === 0) {
+    container.innerHTML = `
+      <div class="py-4 text-center">
+        <p class="text-xs text-gray-400">Henüz engellenen kullanıcı yok.</p>
+      </div>
+    `;
+    return;
+  }
+
+  container.innerHTML = '';
+  list.forEach(item => {
+    const row = document.createElement('div');
+    row.className = 'flex items-center justify-between p-2.5 rounded-xl bg-white/5 border border-white/5 hover:border-white/10 transition-all';
+    const initial = (item.username || 'K').charAt(0).toUpperCase();
+    const avHtml = item.avatar 
+      ? `<img src="${item.avatar}" class="w-7 h-7 rounded-full object-cover shrink-0 border border-white/10" alt="PP">`
+      : `<div class="w-7 h-7 rounded-full bg-gradient-to-tr ${item.avatarColor || 'from-gray-600 to-gray-800'} flex items-center justify-center text-[11px] font-bold text-white shrink-0">${initial}</div>`;
+
+    row.innerHTML = `
+      <div class="flex items-center gap-2.5 min-w-0">
+        ${avHtml}
+        <div class="truncate">
+          <span class="text-xs font-semibold text-white block truncate">@${escapeHtml(item.username)}</span>
+          <span class="text-[9px] text-gray-500">Engellendi</span>
+        </div>
+      </div>
+      <button type="button" class="unblock-btn px-2.5 py-1 rounded-lg bg-red-500/15 hover:bg-red-500/25 active:scale-95 text-red-400 hover:text-red-300 border border-red-500/25 text-[11px] font-semibold transition-all cursor-pointer flex items-center gap-1" data-username="${escapeHtml(item.username)}">
+        <svg class="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/></svg>
+        <span>Engeli Kaldır</span>
+      </button>
+    `;
+
+    const unblockBtn = row.querySelector('.unblock-btn');
+    if (unblockBtn) {
+      addInstantTap(unblockBtn, (e) => {
+        if (e && e.stopPropagation) e.stopPropagation();
+        unblockUser(item.username);
+      });
+    }
+
+    container.appendChild(row);
+  });
+}
+window.getBlockedUsers = getBlockedUsers;
+window.isUserBlocked = isUserBlocked;
+window.blockUser = blockUser;
+window.unblockUser = unblockUser;
+window.renderBlockedUsersList = renderBlockedUsersList;
 
 function updatePermissionUI() {
   const dict = I18N[currentLang] || I18N.tr;
@@ -8000,7 +8226,7 @@ async function addFriend(nameOrUsername) {
   const query = (nameOrUsername || '').trim();
   if (!query) return;
 
-  const cleanUsername = query.replace(/^@/, '').trim();
+  const cleanUsername = query.replace(/^@/, '').replace(/\s*\(Sen\)/gi, '').replace(/\s*\(Simüle\)/gi, '').replace(/\s*\(Partner\)/gi, '').trim();
   const currentMyUsername = (state.username || '').replace(/^@/, '').trim();
 
   if (cleanUsername.toLowerCase() === currentMyUsername.toLowerCase()) {
@@ -8045,6 +8271,7 @@ async function addFriend(nameOrUsername) {
   localStorage.setItem('miruo_friends', JSON.stringify(state.friends));
   renderFriendsList(dom.friendSearchInput ? dom.friendSearchInput.value : '');
   renderFriendsTab(dom.tabFriendSearchInput ? dom.tabFriendSearchInput.value : '');
+  if (typeof renderParticipantsList === 'function') renderParticipantsList();
   if (dom.addFriendInput) dom.addFriendInput.value = '';
   if (dom.tabAddFriendInput) dom.tabAddFriendInput.value = '';
   showToast(`@${cleanUsername} arkadaşlarına eklendi!`);
@@ -9913,12 +10140,14 @@ function toggleParticipantsPanel(forceOpen) {
 
 function updateRemoteParticipantStatus(userId, username, isMicOn, isCamOn) {
   if (!userId) return;
+  const existing = state.participants[userId] || {};
   state.participants[userId] = {
+    ...existing,
     userId,
-    username: username || 'Partner',
-    isMicOn: !!isMicOn,
-    isCamOn: !!isCamOn,
-    isHost: false,
+    username: username || existing.username || 'Partner',
+    isMicOn: typeof isMicOn === 'boolean' ? isMicOn : !!existing.isMicOn,
+    isCamOn: typeof isCamOn === 'boolean' ? isCamOn : !!existing.isCamOn,
+    role: existing.role || (existing.isHost ? 'owner' : 'member'),
     lastSeen: Date.now()
   };
   if (dom.partnerPipCard) {
@@ -9936,14 +10165,22 @@ function updateRemoteParticipantStatus(userId, username, isMicOn, isCamOn) {
 }
 
 function broadcastMyMediaStatus() {
+  const savedUserObj = JSON.parse(localStorage.getItem('miruo_user') || '{}');
   const payload = {
     userId: state.userId,
     username: state.username,
+    avatar: state.avatarUrl || savedUserObj.avatarUrl || '',
+    avatarColor: state.avatarBg || savedUserObj.avatarBg || 'from-rose-500 to-indigo-600',
     isMicOn: !!state.isMicOn,
-    isCamOn: !!state.isCamOn
+    isCamOn: !!state.isCamOn,
+    isHost: !!state.isHost,
+    role: state.userRole || (state.isHost ? 'owner' : 'member')
   };
   sendP2PData('media_status', payload);
   sendSignal({ type: 'media_status', ...payload });
+  if (roomSupabaseChannel && roomSupabaseChannel.track) {
+    roomSupabaseChannel.track(payload).catch(() => {});
+  }
   renderParticipantsList();
 }
 
@@ -9963,7 +10200,17 @@ function closeRoomParticipantsModal() {
 }
 
 function kickParticipant(userId, username) {
+  if (!canUserManageRoom()) {
+    showToast('Odadan çıkarma yetkisi sadece Oda Sahibi ve Yöneticilere aittir.');
+    return;
+  }
   if (!userId && !username) return;
+
+  // Protect room owner
+  if (state.participants[userId] && (state.participants[userId].role === 'owner' || state.participants[userId].isHost)) {
+    showToast('Oda sahibi odadan çıkarılamaz.');
+    return;
+  }
 
   // 1. If simulated bot
   if ((userId && userId.startsWith('bot_')) || (activeRoomBots && activeRoomBots.some(b => ('bot_' + b.name) === userId || b.name === username))) {
@@ -9971,7 +10218,7 @@ function kickParticipant(userId, username) {
     renderParticipantsList();
     renderVideoGrid();
     showToast(`${username} odadan çıkarıldı.`);
-    renderChatMessage('Sistem', `${username} oda sahibi tarafından odadan çıkarıldı.`, false, null);
+    renderChatMessage('Sistem', `${username} odadan çıkarıldı.`, false, null);
     return;
   }
 
@@ -9980,15 +10227,31 @@ function kickParticipant(userId, username) {
     targetUserId: userId,
     targetUsername: username
   });
+  sendSignal({
+    type: 'kick-user',
+    targetUserId: userId,
+    targetUsername: username
+  });
 
   if (userId) delete state.participants[userId];
   renderParticipantsList();
   renderVideoGrid();
   showToast(`"${username}" odadan çıkarıldı.`);
-  renderChatMessage('Sistem', `"${username}" oda sahibi tarafından odadan çıkarıldı.`, false, null);
+  renderChatMessage('Sistem', `"${username}" odadan çıkarıldı.`, false, null);
 }
 
 function setParticipantRole(userId, username, newRole) {
+  if (!canUserManageRoom()) {
+    showToast('Yetki değiştirme sadece Oda Sahibi ve Yöneticilere aittir.');
+    return;
+  }
+
+  // Protect room owner
+  if (state.participants[userId] && (state.participants[userId].role === 'owner' || state.participants[userId].isHost)) {
+    showToast('Oda sahibinin yetkisi değiştirilemez.');
+    return;
+  }
+
   const roleLabels = {
     owner: 'Oda Sahibi',
     admin: 'Yönetici',
@@ -10014,6 +10277,12 @@ function setParticipantRole(userId, username, newRole) {
   }
 
   sendP2PData('role_update', {
+    targetUserId: userId,
+    targetUsername: username,
+    newRole: newRole
+  });
+  sendSignal({
+    type: 'role-update',
     targetUserId: userId,
     targetUsername: username,
     newRole: newRole
@@ -10083,7 +10352,7 @@ function renderParticipantsList() {
 
   const selfMember = {
     userId: state.userId,
-    username: `${state.username} (${dictPart.you_badge || 'Sen'})`,
+    username: state.username || 'Sen',
     avatar: selfAvatar,
     avatarColor: selfAvatarBg,
     isMicOn: state.isMicOn,
@@ -10175,17 +10444,20 @@ function renderParticipantsList() {
       member: `<span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-[10px] bg-white/10 text-gray-300 font-medium border border-white/10"><svg class="w-3 h-3 text-gray-400 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg><span>${dictPart.role_member || 'İzleyici'}</span></span>`
     };
 
+    const cleanTargetName = (m.username || '').replace(/^@/, '').replace(/\s*\(Sen\)/gi, '').replace(/\s*\(Simüle\)/gi, '').replace(/\s*\(Partner\)/gi, '').trim();
+    const isTargetOwner = currentRole === 'owner' || m.isHost;
+
     let actionsHtml = '';
-    if ((isCurrentUserOwner || isCurrentUserAdmin) && !m.isSelf) {
+    if (canUserManageRoom() && !m.isSelf && !isTargetOwner) {
       actionsHtml = `
         <div class="flex items-center gap-1.5 shrink-0">
-          <select class="role-selector-dropdown bg-[#141824] hover:bg-[#1a2030] text-gray-200 text-[11px] font-semibold py-1.5 px-2 rounded-xl border border-white/15 focus:outline-none focus:border-rose-500 transition-all cursor-pointer" data-user-id="${m.userId}" data-username="${m.username}">
+          <select class="role-selector-dropdown bg-[#141824] hover:bg-[#1a2030] text-gray-200 text-[11px] font-semibold py-1.5 px-2 rounded-xl border border-white/15 focus:outline-none focus:border-rose-500 transition-all cursor-pointer" data-user-id="${m.userId}" data-username="${cleanTargetName}">
             <option value="admin" ${currentRole === 'admin' ? 'selected' : ''}>${dictPart.role_admin || 'Yönetici'}</option>
             <option value="video_control" ${currentRole === 'video_control' || currentRole === 'dj' ? 'selected' : ''}>${dictPart.role_video_control || 'Video Açabilir'}</option>
             <option value="member" ${currentRole === 'member' || !currentRole ? 'selected' : ''}>${dictPart.role_member || 'İzleyici'}</option>
           </select>
 
-          <button class="kick-participant-btn p-1.5 rounded-xl bg-red-500/15 hover:bg-red-500/25 active:scale-95 text-red-400 hover:text-red-300 border border-red-500/25 transition-all cursor-pointer flex items-center gap-1 text-[11px] font-semibold" data-user-id="${m.userId}" data-username="${m.username}" title="${dictPart.kick_title || 'Odadan Çıkar'}">
+          <button class="kick-participant-btn p-1.5 rounded-xl bg-red-500/15 hover:bg-red-500/25 active:scale-95 text-red-400 hover:text-red-300 border border-red-500/25 transition-all cursor-pointer flex items-center gap-1 text-[11px] font-semibold" data-user-id="${m.userId}" data-username="${cleanTargetName}" title="${dictPart.kick_title || 'Odadan Çıkar'}">
             <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/></svg>
             <span class="hidden sm:inline">${dictPart.kick_btn || 'Çıkar'}</span>
           </button>
@@ -10200,8 +10472,8 @@ function renderParticipantsList() {
     }
 
     let friendBtnHtml = '';
+    let blockBtnHtml = '';
     if (!m.isSelf) {
-      const cleanTargetName = (m.username || '').replace(/^@/, '').trim();
       const isAlreadyFriend = state.friends.some(f => (f.username || f.name).toLowerCase().replace(/^@/, '') === cleanTargetName.toLowerCase());
       if (isAlreadyFriend) {
         friendBtnHtml = `<span class="px-2 py-0.5 rounded-lg text-[9px] bg-white/5 text-emerald-400 border border-emerald-500/20 font-medium shrink-0">${dictPart.friend_badge || '✓ Arkadaş'}</span>`;
@@ -10210,6 +10482,23 @@ function renderParticipantsList() {
           <button type="button" class="add-friend-from-participant-btn px-2 py-1 rounded-xl bg-gradient-to-r from-rose-500 to-indigo-600 hover:opacity-90 active:scale-95 text-white text-[10px] font-bold shadow-sm transition-all cursor-pointer flex items-center gap-1 shrink-0" data-username="${cleanTargetName}" title="${dictPart.add_friend_title || 'Arkadaş Ekle'}">
             <svg class="w-3 h-3 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="8.5" cy="7" r="4"/><line x1="20" y1="8" x2="20" y2="14"/><line x1="23" y1="11" x2="17" y2="11"/></svg>
             <span>${dictPart.add_friend_btn_short || 'Ekle'}</span>
+          </button>
+        `;
+      }
+
+      const blocked = isUserBlocked(cleanTargetName) || (m.userId && isUserBlocked(m.userId));
+      if (blocked) {
+        blockBtnHtml = `
+          <button type="button" class="unblock-participant-btn px-2 py-1 rounded-xl bg-red-500/20 hover:bg-red-500/30 active:scale-95 text-red-300 border border-red-500/30 text-[10px] font-bold flex items-center gap-1 shrink-0 transition-all cursor-pointer" data-username="${cleanTargetName}" title="Engeli Kaldır">
+            <svg class="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/></svg>
+            <span class="hidden sm:inline">Engelli</span>
+          </button>
+        `;
+      } else {
+        blockBtnHtml = `
+          <button type="button" class="block-participant-btn px-2 py-1 rounded-xl bg-white/5 hover:bg-red-500/20 active:scale-95 text-gray-400 hover:text-red-300 border border-white/10 hover:border-red-500/30 text-[10px] font-medium flex items-center gap-1 shrink-0 transition-all cursor-pointer" data-username="${cleanTargetName}" data-user-id="${m.userId}" title="Kullanıcıyı Engelle">
+            <svg class="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/></svg>
+            <span class="hidden sm:inline">Engelle</span>
           </button>
         `;
       }
@@ -10228,12 +10517,13 @@ function renderParticipantsList() {
         </div>
       </div>
 
-      <div class="flex items-center gap-2 shrink-0">
+      <div class="flex items-center gap-1.5 sm:gap-2 shrink-0 flex-wrap justify-end">
         <div class="flex items-center gap-1">
           ${micSvg}
           ${camSvg}
         </div>
         ${friendBtnHtml}
+        ${blockBtnHtml}
         ${actionsHtml}
       </div>
     `;
@@ -10242,7 +10532,7 @@ function renderParticipantsList() {
     if (pTrigger) {
       addInstantTap(pTrigger, () => {
         if (!m.isSelf) {
-          openPublicUserProfile(m.username);
+          openPublicUserProfile(cleanTargetName);
         } else {
           switchTab('profile');
           closeRoomParticipantsModal();
@@ -10252,11 +10542,41 @@ function renderParticipantsList() {
 
     const addFrBtn = card.querySelector('.add-friend-from-participant-btn');
     if (addFrBtn) {
-      addFrBtn.addEventListener('click', (e) => {
-        e.stopPropagation();
+      addInstantTap(addFrBtn, async (e) => {
+        if (e && e.stopPropagation) e.stopPropagation();
         const uName = addFrBtn.getAttribute('data-username');
-        addFriend(uName);
+        await addFriend(uName);
         renderParticipantsList();
+      });
+    }
+
+    const blkBtn = card.querySelector('.block-participant-btn');
+    if (blkBtn) {
+      addInstantTap(blkBtn, (e) => {
+        if (e && e.stopPropagation) e.stopPropagation();
+        const uName = blkBtn.getAttribute('data-username');
+        const uId = blkBtn.getAttribute('data-user-id');
+        if (typeof showMiruoConfirm === 'function') {
+          showMiruoConfirm({
+            title: 'Kullanıcıyı Engelle',
+            message: `@${uName} adlı kullanıcıyı engellemek istediğinize emin misiniz? Sohbet mesajları gizlenecektir.`,
+            actionText: 'Evet, Engelle',
+            onConfirm: () => {
+              blockUser(uName, uId, m.avatar, m.avatarColor);
+            }
+          });
+        } else {
+          blockUser(uName, uId, m.avatar, m.avatarColor);
+        }
+      });
+    }
+
+    const unblkBtn = card.querySelector('.unblock-participant-btn');
+    if (unblkBtn) {
+      addInstantTap(unblkBtn, (e) => {
+        if (e && e.stopPropagation) e.stopPropagation();
+        const uName = unblkBtn.getAttribute('data-username');
+        unblockUser(uName);
       });
     }
 
@@ -10322,6 +10642,9 @@ function sendChatMessage(text, imageUrl = null) {
 
 function renderChatMessage(sender, text, isSelf, timeStr, imageUrl = null, avatarUrl = null) {
   if (!dom.chatMessagesContainer) return;
+  if (!isSelf && sender && typeof isUserBlocked === 'function' && isUserBlocked(sender)) {
+    return; // Blocked user chat message suppressed
+  }
 
   const time = timeStr || new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   const msgEl = document.createElement('div');
@@ -13669,6 +13992,10 @@ function initEvents() {
   }
 
   function launchPlatform(providerKey) {
+    if (state.roomId && dom.roomWorkspaceSection && !dom.roomWorkspaceSection.classList.contains('hidden') && !canUserChooseVideo()) {
+      showToast('Odaya video seçme yetkisi sadece Oda Sahibi, Yöneticiler ve Video Açabilenlerdedir.');
+      return;
+    }
     if (providerKey === 'photos' || providerKey === 'gallery') {
       triggerRoomGalleryPicker();
       return;
@@ -14181,6 +14508,10 @@ function initEvents() {
 
   function selectAndPlayYoutubeVideo(videoIdOrUrl, title, provider = 'YouTube') {
     if (!videoIdOrUrl) return;
+    if (state.roomId && dom.roomWorkspaceSection && !dom.roomWorkspaceSection.classList.contains('hidden') && !canUserChooseVideo()) {
+      showToast('Odaya video seçme yetkisi sadece Oda Sahibi, Yöneticiler ve Video Açabilenlerdedir.');
+      return;
+    }
     closeRaveYoutubeModal();
 
     const cleanYtId = extractYtId(videoIdOrUrl);
@@ -14548,6 +14879,9 @@ function initEvents() {
       dom.profileEditModal.classList.remove('hidden');
       if (typeof renderConnectedAccountsUI === 'function') {
         renderConnectedAccountsUI();
+      }
+      if (typeof renderBlockedUsersList === 'function') {
+        renderBlockedUsersList();
       }
 
       // Always start strictly from the very top (never auto-scroll down to the middle)
@@ -16460,7 +16794,7 @@ function validateInstagramUsername(username) {
 
   function canControlPlayback() {
     if (!state.roomId) return true;
-    return state.isHost || state.controlMode === 'everyone' || state.hasDjPermission || state.userRole === 'owner' || state.userRole === 'admin' || state.userRole === 'dj' || !state.roomMembers || state.roomMembers.length <= 1;
+    return canUserControlPlayback();
   }
 
   function setPlayerPlaybackRate(rate, broadcast = true) {
@@ -17273,6 +17607,10 @@ function validateInstagramUsername(username) {
 
   // Stage Video / Platform Chooser Modal
   const openVideoChooser = () => {
+    if (state.roomId && dom.roomWorkspaceSection && !dom.roomWorkspaceSection.classList.contains('hidden') && !canUserChooseVideo()) {
+      showToast('Odaya video seçme yetkisi sadece Oda Sahibi, Yöneticiler ve Video Açabilenlerdedir.');
+      return;
+    }
     // "vıdeo seç dıyınce direk o artı tusunda oldugu gıbı atsın mesela ılk vıdeo yt seçtyisem yt ekranına atsın gerı üstte geri tusu olsun ona basınca seçım ekranına atsın sen bu şekilde video falan önerme"
     if (dom.roomEpisodesModal) dom.roomEpisodesModal.classList.add('hidden');
     const lastProvider = state.currentProvider?.toLowerCase() || 'youtube';
