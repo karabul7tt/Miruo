@@ -4,6 +4,10 @@ const fs = require('fs');
 const http = require('http');
 const { spawn, execFileSync } = require('child_process');
 
+// Hardware acceleration tuning & video rendering fix for Apple Silicon & Windows (fixes black video canvas inside iframes)
+app.commandLine.appendSwitch('disable-accelerated-video-decode');
+app.commandLine.appendSwitch('disable-features', 'CalculateNativeWinOcclusion');
+
 let mainWindow = null;
 let localServer = null;
 let localPort = 0;
@@ -797,7 +801,8 @@ function createWindow(port) {
       allowsRunningInsecureContent: false,
       webSecurity: true,
       preload: path.join(__dirname, 'preload.js'),
-      webviewTag: true
+      webviewTag: true,
+      backgroundThrottling: false
     }
   });
 
@@ -826,10 +831,10 @@ function createWindow(port) {
 
   // YouTube Embed & Web Referrer Bypass (Fixes Error 152/150/101)
   session.defaultSession.webRequest.onBeforeSendHeaders(
-    { urls: ['*://*.youtube.com/*', '*://*.youtube-nocookie.com/*', '*://*.googlevideo.com/*'] },
+    { urls: ['*://*.youtube.com/*', '*://*.youtube-nocookie.com/*'] },
     (details, callback) => {
       const url = details.url || '';
-      if (url.includes('/embed/') || url.includes('/v/') || url.includes('googlevideo.com')) {
+      if (url.includes('/embed/') || url.includes('/v/')) {
         details.requestHeaders['Referer'] = 'https://miruo.com.tr/';
         details.requestHeaders['Origin'] = 'https://miruo.com.tr';
       }

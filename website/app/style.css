@@ -221,6 +221,10 @@ body.stage-is-fullscreen #roomPlayerColumn {
   border: 0 !important;
   margin: 0 !important;
   padding: 0 !important;
+  transform: translateZ(0);
+  -webkit-transform: translateZ(0);
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
 }
 
 #stageContainer:fullscreen #ytPlayerContainer,

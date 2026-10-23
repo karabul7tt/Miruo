@@ -2996,6 +2996,14 @@ function initiateWebRTC(isInitiator) {
       });
     }
 
+    if (state.pc.getSenders) {
+      state.pc.getSenders().forEach(s => {
+        if (s.track && s.track.kind === 'video' && typeof optimizeVideoSender === 'function') {
+          optimizeVideoSender(s);
+        }
+      });
+    }
+
     state.pc.createOffer().then(offer => {
       return state.pc.setLocalDescription(offer);
     }).then(() => {
@@ -3039,6 +3047,14 @@ function handleRtcOffer(offer) {
       const exists = senders.some(s => s.track && s.track.kind === track.kind);
       if (!exists) {
         try { state.pc.addTrack(track, state.screenStream); } catch (_) {}
+      }
+    });
+  }
+
+  if (state.pc.getSenders) {
+    state.pc.getSenders().forEach(s => {
+      if (s.track && s.track.kind === 'video' && typeof optimizeVideoSender === 'function') {
+        optimizeVideoSender(s);
       }
     });
   }
@@ -3139,6 +3155,10 @@ function sendP2PData(type, payload) {
 // ==========================================
 function setupAudioDucking(remoteAudioStream) {
   try {
+    if (state.duckingInterval) {
+      clearInterval(state.duckingInterval);
+      state.duckingInterval = null;
+    }
     if (!state.audioCtx) {
       const AudioCtx = window.AudioContext || window.webkitAudioContext;
       state.audioCtx = new AudioCtx();
@@ -3149,37 +3169,41 @@ function setupAudioDucking(remoteAudioStream) {
 
     const source = state.audioCtx.createMediaStreamSource(remoteAudioStream);
     const analyser = state.audioCtx.createAnalyser();
-    analyser.fftSize = 256;
+    analyser.fftSize = 128;
     source.connect(analyser);
 
     const bufferLength = analyser.frequencyBinCount;
     const dataArray = new Uint8Array(bufferLength);
 
-    // Audio Analysis Loop
-    function analyzeVoice() {
-      analyser.getByteFrequencyData(dataArray);
-      let sum = 0;
-      for (let i = 0; i < bufferLength; i++) {
-        sum += dataArray[i];
+    // Throttled analysis interval (100ms) to prevent UI/video thread starvation
+    state.duckingInterval = setInterval(() => {
+      if (!state.isInRoom) {
+        clearInterval(state.duckingInterval);
+        state.duckingInterval = null;
+        return;
       }
-      const avg = sum / bufferLength;
-      const normalizedLevel = avg / 255;
+      try {
+        analyser.getByteFrequencyData(dataArray);
+        let sum = 0;
+        for (let i = 0; i < bufferLength; i++) {
+          sum += dataArray[i];
+        }
+        const avg = sum / bufferLength;
+        const normalizedLevel = avg / 255;
 
-      // Update partner audio visualizer
-      dom.partnerAudioMeter.style.width = `${Math.min(100, normalizedLevel * 250)}%`;
+        // Update partner audio visualizer
+        if (dom.partnerAudioMeter) {
+          dom.partnerAudioMeter.style.width = `${Math.min(100, Math.round(normalizedLevel * 250))}%`;
+        }
 
-      if (normalizedLevel > state.speechThreshold) {
-        // Partner is speaking!
-        dom.partnerVoiceIndicator.className = 'w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse';
-        triggerAudioDucking(true);
-      } else {
-        dom.partnerVoiceIndicator.className = 'w-1.5 h-1.5 rounded-full bg-gray-500';
-      }
-
-      requestAnimationFrame(analyzeVoice);
-    }
-
-    analyzeVoice();
+        if (normalizedLevel > state.speechThreshold) {
+          if (dom.partnerVoiceIndicator) dom.partnerVoiceIndicator.className = 'w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse';
+          triggerAudioDucking(true);
+        } else {
+          if (dom.partnerVoiceIndicator) dom.partnerVoiceIndicator.className = 'w-1.5 h-1.5 rounded-full bg-gray-500';
+        }
+      } catch (_) {}
+    }, 100);
   } catch (err) {
     console.warn('Audio Ducking başlatılamadı:', err);
   }
@@ -3255,6 +3279,10 @@ function loadYoutubeVideo(urlOrId) {
   dom.nativeVideoPlayer.classList.add('hidden');
   dom.remoteScreenPlayer.classList.add('hidden');
   if (dom.webPlayerFrame) dom.webPlayerFrame.classList.add('hidden');
+  if (dom.sleepModePlaceholder) dom.sleepModePlaceholder.classList.add('hidden');
+  if (dom.audioOnlyPlaceholder) dom.audioOnlyPlaceholder.classList.add('hidden');
+  const photoStage = document.getElementById('photoStageContainer');
+  if (photoStage) photoStage.classList.add('hidden');
 
   // Immediately hide the overlay so video is visible and touchable!
   if (dom.ravePlayerOverlay) {
@@ -5821,19 +5849,61 @@ async function toggleMic() {
   syncMicSettingsValues();
 }
 
+function optimizeVideoSender(sender) {
+  if (!sender || typeof sender.getParameters !== 'function') return;
+  try {
+    const params = sender.getParameters();
+    if (!params.encodings || params.encodings.length === 0) {
+      params.encodings = [{}];
+    }
+    params.encodings[0].maxBitrate = 350000; // 350 kbps lightweight & crisp for PiP
+    params.encodings[0].maxFramerate = 24;
+    params.encodings[0].scaleResolutionDownBy = 1.0;
+    params.encodings[0].networkPriority = 'medium';
+    params.degradationPreference = 'maintain-framerate'; // Smooth fluid video without freezing
+    sender.setParameters(params).catch(() => {});
+  } catch (_) {}
+}
+
 async function getLiveCameraStream() {
   if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
     throw new Error('navigator.mediaDevices.getUserMedia not supported');
   }
   const tryConstraints = [
-    { video: { width: { ideal: 640 }, height: { ideal: 480 }, facingMode: 'user' }, audio: false },
-    { video: { width: { ideal: 640 }, height: { ideal: 480 } }, audio: false },
+    {
+      video: {
+        width: { ideal: 480, max: 640 },
+        height: { ideal: 360, max: 480 },
+        frameRate: { ideal: 24, max: 30 },
+        facingMode: 'user'
+      },
+      audio: false
+    },
+    {
+      video: {
+        width: { ideal: 480, max: 640 },
+        height: { ideal: 360, max: 480 },
+        frameRate: { ideal: 24, max: 30 }
+      },
+      audio: false
+    },
+    {
+      video: {
+        frameRate: { ideal: 20, max: 24 }
+      },
+      audio: false
+    },
     { video: true, audio: false }
   ];
   let lastErr = null;
   for (const c of tryConstraints) {
     try {
-      return await navigator.mediaDevices.getUserMedia(c);
+      const stream = await navigator.mediaDevices.getUserMedia(c);
+      const track = stream.getVideoTracks()[0];
+      if (track) {
+        try { track.contentHint = 'motion'; } catch (_) {}
+      }
+      return stream;
     } catch (err) {
       lastErr = err;
     }
@@ -5947,17 +6017,18 @@ async function toggleCam() {
       if (state.pc) {
         try {
           const senders = state.pc.getSenders ? state.pc.getSenders() : [];
-          const videoSender = senders.find(s => s.track && s.track.kind === 'video');
+          let videoSender = senders.find(s => s.track && s.track.kind === 'video');
           if (videoSender) {
             videoSender.replaceTrack(videoTrack);
           } else {
-            state.pc.addTrack(videoTrack, state.localStream);
+            videoSender = state.pc.addTrack(videoTrack, state.localStream);
             if (typeof renegotiateWebRTC === 'function') {
               renegotiateWebRTC();
             } else {
               initiateWebRTC(true);
             }
           }
+          if (videoSender) optimizeVideoSender(videoSender);
         } catch (err) {
           console.warn('WebRTC cam track error:', err);
         }
@@ -6080,10 +6151,17 @@ function renderVideoGrid() {
   const anyCamOn = state.isCamOn || Object.values(state.participants).some(p => p.isCamOn);
   if (!anyCamOn && !state.isMicOn) {
     dom.roomVideoGrid.classList.add('hidden');
+    dom.roomVideoGrid.querySelectorAll('video').forEach(vid => {
+      try { vid.pause(); vid.srcObject = null; } catch (_) {}
+    });
+    dom.roomVideoGrid.innerHTML = '';
     return;
   }
 
   dom.roomVideoGrid.classList.remove('hidden');
+  dom.roomVideoGrid.querySelectorAll('video').forEach(vid => {
+    try { vid.pause(); vid.srcObject = null; } catch (_) {}
+  });
   dom.roomVideoGrid.innerHTML = '';
 
   // 1. Self Tile
