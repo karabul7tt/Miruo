@@ -2593,15 +2593,32 @@ function scheduleWsReconnect() {
 }
 
 let roomSupabaseChannel = null;
+let currentRoomSubscribed = null;
+const processedSignalKeys = new Set();
 
 function connectSupabaseRoomSignaling() {
   if (!supabaseClient || !state.roomId) return;
+  const cleanRoom = (state.roomId || 'ODA-77').trim().toUpperCase().replace(/[^A-Z0-9_-]/g, '_');
+  state.roomId = cleanRoom;
+
+  // If already connected to this exact room, keep existing channel alive (avoid teardown loops)
+  if (roomSupabaseChannel && currentRoomSubscribed === cleanRoom) {
+    return;
+  }
+
   if (roomSupabaseChannel) {
-    try { roomSupabaseChannel.unsubscribe(); } catch (_) {}
+    try {
+      roomSupabaseChannel.unsubscribe();
+      if (typeof supabaseClient.removeChannel === 'function') {
+        supabaseClient.removeChannel(roomSupabaseChannel);
+      }
+    } catch (_) {}
     roomSupabaseChannel = null;
   }
+  currentRoomSubscribed = cleanRoom;
+
   try {
-    const chName = `miruo_room_${state.roomId}`;
+    const chName = `miruo_room_${cleanRoom}`;
     const myPresenceKey = (state && state.userId) ? String(state.userId) : ('user_' + Math.random().toString(36).substring(2, 9));
     roomSupabaseChannel = supabaseClient.channel(chName, {
       config: {
@@ -2615,13 +2632,16 @@ function connectSupabaseRoomSignaling() {
       const currentKeys = Object.keys(pState);
       const peerKeys = currentKeys.filter(k => k !== String(state.userId));
       
-      // Update peer status for WebRTC
+      // Update peer status for WebRTC with strict single initiator (Polite Peer)
       if (peerKeys.length > 0) {
         if (!state.peerId) {
           state.peerId = peerKeys[0];
           updatePeerStatus(true);
-          if (state.isHost) {
+          const isInitiator = state.isHost || (String(state.userId) < String(state.peerId));
+          if (isInitiator) {
             initiateWebRTC(true);
+          } else {
+            setupWebRTC();
           }
         }
       } else {
@@ -2778,22 +2798,42 @@ function connectSignaling() {
 }
 
 function sendSignal(msg) {
-  const payload = { ...msg, roomId: state.roomId, userId: state.userId };
+  const cleanRoom = (state.roomId || 'ODA-77').trim().toUpperCase().replace(/[^A-Z0-9_-]/g, '_');
+  const payload = {
+    ...msg,
+    roomId: cleanRoom,
+    userId: state.userId,
+    sentAt: msg.sentAt || Date.now()
+  };
+
+  // 1. Local WebSocket if connected
   if (ws && ws.readyState === WebSocket.OPEN) {
-    ws.send(JSON.stringify(payload));
+    try { ws.send(JSON.stringify(payload)); } catch (_) {}
   } else if (window.location.host && window.location.protocol !== 'file:' && MIRUO_API_BASE) {
-    // HTTP POST fallback
     fetch('/api/signal', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ roomId: state.roomId, userId: state.userId, data: payload })
+      body: JSON.stringify({ roomId: cleanRoom, userId: state.userId, data: payload })
     }).catch(() => {});
   }
+
+  // 2. Room Dedicated Channel Rail
   if (roomSupabaseChannel) {
     try {
       roomSupabaseChannel.send({
         type: 'broadcast',
         event: 'signal',
+        payload
+      }).catch(() => {});
+    } catch (_) {}
+  }
+
+  // 3. Global Dual-Rail (Always online across all peers, 0% packet drop)
+  if (globalUsersChannel) {
+    try {
+      globalUsersChannel.send({
+        type: 'broadcast',
+        event: 'room_signal',
         payload
       }).catch(() => {});
     } catch (_) {}
@@ -2813,6 +2853,17 @@ function connectFallbackSSE() {
 }
 
 function handleSignalMessage(msg) {
+  if (!msg || !msg.type) return;
+  if (msg.userId && msg.userId === state.userId) return;
+
+  // Deduplicate signals received across Dual-Rail (Room Channel + Global Channel)
+  const sigKey = `${msg.type}_${msg.userId || ''}_${msg.sentAt || ''}_${msg.action || ''}_${(msg.text || '').substring(0, 20)}_${msg.videoId || ''}`;
+  if (processedSignalKeys.has(sigKey)) return;
+  processedSignalKeys.add(sigKey);
+  if (processedSignalKeys.size > 250) {
+    const oldest = processedSignalKeys.values().next().value;
+    processedSignalKeys.delete(oldest);
+  }
   switch (msg.type) {
     case 'init':
       if (typeof msg.isHost === 'boolean') state.isHost = msg.isHost;
@@ -2843,7 +2894,12 @@ function handleSignalMessage(msg) {
       };
       renderParticipantsList();
       showToast(`${joinedName} odaya katıldı`);
-      initiateWebRTC(true);
+      const isInitiator = state.isHost || (String(state.userId) < String(state.peerId));
+      if (isInitiator) {
+        initiateWebRTC(true);
+      } else {
+        setupWebRTC();
+      }
       broadcastMyMediaStatus();
       if (state.isHost) {
         sendSignal({
@@ -3012,6 +3068,14 @@ function setupWebRTC() {
   }
 
   state.pc = new RTCPeerConnection(rtcConfig);
+  state.iceCandidateQueue = [];
+
+  // Pre-allocate audio transceiver so RTP audio pipeline is warm & ready
+  try {
+    if (typeof state.pc.addTransceiver === 'function') {
+      state.pc.addTransceiver('audio', { direction: 'sendrecv' });
+    }
+  } catch (_) {}
 
   // Send ICE candidates
   state.pc.onicecandidate = (event) => {
@@ -3022,7 +3086,8 @@ function setupWebRTC() {
 
   // Remote Tracks (Webcam, Mic, Screen Share)
   state.pc.ontrack = (event) => {
-    const stream = event.streams[0];
+    // Robust track/stream recovery for iOS Safari/WebKit & Desktop
+    const stream = (event.streams && event.streams[0]) ? event.streams[0] : new MediaStream([event.track]);
     if (stream) {
       const hasVideo = stream.getVideoTracks().length > 0;
       const isScreenTrack = event.track.label.toLowerCase().includes('screen') || 
@@ -3050,8 +3115,8 @@ function setupWebRTC() {
         clampPipCardsToStage();
       }
 
-      // Route audio to ducking analyzer and play remote voice through audio element
-      if (event.track.kind === 'audio' || stream.getAudioTracks().length > 0) {
+      // Route audio to remoteVoiceAudio element & ducking analyzer
+      if (event.track.kind === 'audio' || (stream.getAudioTracks && stream.getAudioTracks().length > 0)) {
         let remoteAudio = document.getElementById('remoteVoiceAudio');
         if (!remoteAudio) {
           remoteAudio = document.createElement('audio');
@@ -3062,6 +3127,8 @@ function setupWebRTC() {
           document.body.appendChild(remoteAudio);
         }
         remoteAudio.srcObject = stream;
+        remoteAudio.muted = false;
+        remoteAudio.volume = 1.0;
         const playPromise = remoteAudio.play();
         if (playPromise !== undefined) {
           playPromise.catch(err => {
@@ -3200,6 +3267,7 @@ function handleRtcOffer(offer) {
   }
 
   state.pc.setRemoteDescription(new RTCSessionDescription(offer)).then(() => {
+    flushQueuedIceCandidates();
     return state.pc.createAnswer();
   }).then(answer => {
     return state.pc.setLocalDescription(answer);
@@ -3210,17 +3278,35 @@ function handleRtcOffer(offer) {
 
 function handleRtcAnswer(answer) {
   if (state.pc) {
-    state.pc.setRemoteDescription(new RTCSessionDescription(answer)).catch(err => {
+    state.pc.setRemoteDescription(new RTCSessionDescription(answer)).then(() => {
+      flushQueuedIceCandidates();
+    }).catch(err => {
       console.error('Handle answer error:', err);
     });
   }
 }
 
-function handleRtcCandidate(candidate) {
-  if (state.pc) {
-    state.pc.addIceCandidate(new RTCIceCandidate(candidate)).catch(err => {
-      console.error('Add ICE error:', err);
+function flushQueuedIceCandidates() {
+  if (state.pc && state.iceCandidateQueue && state.iceCandidateQueue.length > 0) {
+    const list = [...state.iceCandidateQueue];
+    state.iceCandidateQueue = [];
+    list.forEach(c => {
+      try {
+        state.pc.addIceCandidate(new RTCIceCandidate(c)).catch(() => {});
+      } catch (_) {}
     });
+  }
+}
+
+function handleRtcCandidate(candidate) {
+  if (!candidate) return;
+  if (state.pc && state.pc.remoteDescription && state.pc.remoteDescription.type) {
+    state.pc.addIceCandidate(new RTCIceCandidate(candidate)).catch(err => {
+      console.warn('Add ICE error:', err);
+    });
+  } else {
+    state.iceCandidateQueue = state.iceCandidateQueue || [];
+    state.iceCandidateQueue.push(candidate);
   }
 }
 
@@ -3715,15 +3801,24 @@ function onYtStateChange(event) {
 }
 
 function sendYtCommand(func, args = []) {
+  if (state.ytPlayer && typeof state.ytPlayer[func] === 'function') {
+    try { state.ytPlayer[func](...args); } catch (_) {}
+  }
   const ytFrame = document.getElementById('miruoYtIframe');
   if (ytFrame && ytFrame.contentWindow) {
-    ytFrame.contentWindow.postMessage(JSON.stringify({
-      event: 'command',
-      func: func,
-      args: args
-    }), '*');
-  } else if (state.ytPlayer && typeof state.ytPlayer[func] === 'function') {
-    state.ytPlayer[func](...args);
+    try {
+      ytFrame.contentWindow.postMessage(JSON.stringify({
+        event: 'command',
+        func: func,
+        args: args
+      }), '*');
+    } catch (_) {}
+  }
+  if (dom.nativeVideoPlayer) {
+    try {
+      if (func === 'pauseVideo') dom.nativeVideoPlayer.pause();
+      else if (func === 'playVideo') dom.nativeVideoPlayer.play();
+    } catch (_) {}
   }
 }
 
@@ -3835,19 +3930,17 @@ function handleRemoteSync(payload) {
     const targetTime = typeof payload.time === 'number' ? payload.time : state.currentTime;
     state.isPlaying = false;
     updatePlayPauseUI(false);
+    sendYtCommand('pauseVideo');
     if (state.activeMode === 'youtube') {
-      sendYtCommand('pauseVideo');
       if (typeof payload.time === 'number' && Math.abs(state.currentTime - targetTime) > 0.35) {
         sendYtCommand('seekTo', [targetTime, true]);
         state.currentTime = targetTime;
       }
-      // Re-assert pause to eliminate YouTube Iframe auto-resume on seek
-      setTimeout(() => {
-        if (!state.isPlaying) sendYtCommand('pauseVideo');
-      }, 60);
-      setTimeout(() => {
-        if (!state.isPlaying) sendYtCommand('pauseVideo');
-      }, 200);
+      // Triple re-assert pause to eliminate YouTube Iframe auto-resume on seek/buffer
+      setTimeout(() => { if (!state.isPlaying) sendYtCommand('pauseVideo'); }, 50);
+      setTimeout(() => { if (!state.isPlaying) sendYtCommand('pauseVideo'); }, 150);
+      setTimeout(() => { if (!state.isPlaying) sendYtCommand('pauseVideo'); }, 350);
+      setTimeout(() => { if (!state.isPlaying) sendYtCommand('pauseVideo'); }, 700);
     } else if (dom.nativeVideoPlayer) {
       dom.nativeVideoPlayer.pause();
       if (typeof payload.time === 'number') dom.nativeVideoPlayer.currentTime = targetTime;
@@ -5833,7 +5926,7 @@ function getAudioConstraints() {
     autoGainControl: true
   };
   if (deviceId) {
-    audioObj.deviceId = { exact: deviceId };
+    audioObj.deviceId = { ideal: deviceId };
   }
   return { audio: audioObj, video: false };
 }
@@ -5985,42 +6078,44 @@ async function toggleMic() {
   state.isMicOn = !state.isMicOn;
 
   if (state.isMicOn) {
-    if (!state.localStream && navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
-      try {
+    try {
+      if (!state.localStream && navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
         state.localStream = await navigator.mediaDevices.getUserMedia(getAudioConstraints());
-        if (dom.selfVideo) dom.selfVideo.srcObject = state.localStream;
-        if (state.pc) {
-          state.localStream.getAudioTracks().forEach(t => {
-            const senders = state.pc.getSenders ? state.pc.getSenders() : [];
-            const exists = senders.some(s => s.track && s.track.kind === 'audio');
-            if (!exists) {
-              try { state.pc.addTrack(t, state.localStream); } catch (_) {}
-            }
-          });
-          renegotiateWebRTC();
-        }
-      } catch (e) {
-        console.warn('Microphone hardware error:', e);
-      }
-    } else if (state.localStream) {
-      const audioTrack = state.localStream.getAudioTracks()[0];
-      if (audioTrack) {
-        audioTrack.enabled = true;
-      } else if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
-        try {
+      } else if (state.localStream) {
+        const audioTracks = state.localStream.getAudioTracks();
+        if (audioTracks.length > 0) {
+          audioTracks.forEach(t => { t.enabled = true; });
+        } else if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
           const micStream = await navigator.mediaDevices.getUserMedia(getAudioConstraints());
           const newTrack = micStream.getAudioTracks()[0];
-          if (newTrack) {
-            state.localStream.addTrack(newTrack);
-            if (state.pc) {
-              state.pc.addTrack(newTrack, state.localStream);
-              renegotiateWebRTC();
-            }
-          }
-        } catch (_) {}
+          if (newTrack) state.localStream.addTrack(newTrack);
+        }
       }
+
+      if (dom.selfVideo && state.localStream) dom.selfVideo.srcObject = state.localStream;
+
+      if (state.pc && state.localStream) {
+        const audioTrack = state.localStream.getAudioTracks()[0];
+        if (audioTrack) {
+          audioTrack.enabled = true;
+          const senders = state.pc.getSenders ? state.pc.getSenders() : [];
+          const audioSender = senders.find(s => s.track && s.track.kind === 'audio');
+          if (audioSender) {
+            audioSender.replaceTrack(audioTrack);
+          } else {
+            state.pc.addTrack(audioTrack, state.localStream);
+            await renegotiateWebRTC();
+          }
+        }
+      } else if (!state.pc && state.peerId) {
+        initiateWebRTC(state.isHost);
+      }
+      showToast('Mikrofon Açık (Canlı)');
+    } catch (e) {
+      console.warn('Microphone hardware error:', e);
+      state.isMicOn = false;
+      showToast('Mikrofona erişilemedi: ' + (e.message || 'İzin verilmedi'));
     }
-    showToast('Mikrofon Açık (Canlı)');
   } else {
     if (state.localStream) {
       state.localStream.getAudioTracks().forEach(t => { t.enabled = false; });
@@ -8114,6 +8209,14 @@ function initGlobalUsersChannel() {
       })
       .on('broadcast', { event: 'friend_declined' }, ({ payload }) => {
         handleIncomingFriendDeclined(payload);
+      })
+      .on('broadcast', { event: 'room_signal' }, ({ payload }) => {
+        if (!payload || payload.userId === state.userId) return;
+        const myRoom = (state.roomId || '').trim().toUpperCase().replace(/[^A-Z0-9_-]/g, '_');
+        const targetRoom = (payload.roomId || '').trim().toUpperCase().replace(/[^A-Z0-9_-]/g, '_');
+        if (myRoom && targetRoom && myRoom === targetRoom) {
+          handleSignalMessage(payload);
+        }
       })
       .subscribe((status) => {
         if (status === 'SUBSCRIBED') {
@@ -20124,6 +20227,23 @@ window.addEventListener('pagehide', () => {
     } catch (_) {}
   }
 });
+
+// Global Audio Unlocker for Mobile Safari, WKWebView and Desktop
+const unlockAudioSystem = () => {
+  try {
+    if (state.audioCtx && state.audioCtx.state === 'suspended') {
+      state.audioCtx.resume();
+    }
+    const remoteAudio = document.getElementById('remoteVoiceAudio');
+    if (remoteAudio && remoteAudio.srcObject) {
+      remoteAudio.muted = false;
+      remoteAudio.volume = 1.0;
+      remoteAudio.play().catch(() => {});
+    }
+  } catch (_) {}
+};
+window.addEventListener('click', unlockAudioSystem, { passive: true });
+window.addEventListener('touchstart', unlockAudioSystem, { passive: true });
 
 // Start
 document.addEventListener('DOMContentLoaded', initEvents);
