@@ -159,7 +159,7 @@
 
       <!-- Single Search Friends Filter (Tek Arama Çubuğu) -->
       <div class="relative">
-        <input type="text" id="tabFriendSearchInput" placeholder="Kayıtlı arkadaşlarında ara..." data-i18n-placeholder="search_friends_ph" class="w-full bg-[#0C0E17] border border-white/10 rounded-xl pl-9 pr-4 py-2.5 text-xs text-white placeholder-gray-500 focus:outline-none focus:border-rose-500 transition-all font-medium shadow-sm">
+        <input type="text" id="tabFriendSearchInput" placeholder="Kullanıcı veya arkadaş ara (@kullanici)..." data-i18n-placeholder="search_friends_ph" class="w-full bg-[#0C0E17] border border-white/10 rounded-xl pl-9 pr-4 py-2.5 text-xs text-white placeholder-gray-500 focus:outline-none focus:border-rose-500 transition-all font-medium shadow-sm">
         <svg class="w-4 h-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
       </div>
 
@@ -721,6 +721,9 @@
           <span class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
           <span id="syncToastMsg">Senkronize Edildi</span>
         </div>
+
+        <!-- Dedicated Remote Voice Audio Sink (Full Duplex VoIP / WebRTC) -->
+        <audio id="remoteVoiceAudio" autoplay playsinline class="hidden"></audio>
 
         <!-- Floating Draggable Partner Webcam PIP (Circular Floating Bubble) -->
         <div id="partnerPipCard" class="absolute w-28 h-28 sm:w-36 sm:h-36 rounded-full aspect-square bg-[#0E111A]/95 border-2 border-indigo-500/60 hover:border-indigo-400 shadow-2xl overflow-visible cursor-grab active:cursor-grabbing select-none z-[9999] backdrop-blur-md hidden transition-shadow duration-200" style="touch-action: none; top: 16px; left: 16px;">

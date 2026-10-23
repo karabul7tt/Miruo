@@ -176,6 +176,7 @@ function initSupabase() {
       console.log('[Miruo] Supabase Auth initialized successfully with project:', SUPABASE_CONFIG.url);
       try {
         if (typeof initGlobalPublicRoomsSync === 'function') initGlobalPublicRoomsSync();
+        if (typeof initGlobalUsersChannel === 'function') initGlobalUsersChannel();
       } catch (_) {}
 
       // Check existing session from Supabase
@@ -1807,11 +1808,11 @@ const state = {
   isSleepMode: false,
 
   // Room Host & DJ Permissions
-  isHost: true,
-  hostName: 'Sen',
-  userRole: 'owner', // 'owner' | 'admin' | 'dj' | 'member'
+  isHost: false,
+  hostName: '',
+  userRole: 'member', // 'owner' | 'admin' | 'video_control' | 'dj' | 'member'
   controlMode: 'host_only', // 'host_only' | 'everyone'
-  hasDjPermission: true,    // Whether current user can control media
+  hasDjPermission: false,   // Whether current user can control media
 
   // Friends & Invite
   friendCode: '',
@@ -2814,6 +2815,9 @@ function connectFallbackSSE() {
 function handleSignalMessage(msg) {
   switch (msg.type) {
     case 'init':
+      if (typeof msg.isHost === 'boolean') state.isHost = msg.isHost;
+      if (!state.isHost && (state.userRole === 'owner' || !state.userRole)) state.userRole = 'member';
+      updatePermissionUI();
       if (msg.peers && msg.peers.length > 0) {
         state.peerId = msg.peers[0];
         updatePeerStatus(true);
@@ -2822,18 +2826,40 @@ function handleSignalMessage(msg) {
       } else {
         updatePeerStatus(false);
       }
+      renderParticipantsList();
       break;
 
     case 'peer-joined':
       state.peerId = msg.userId;
       updatePeerStatus(true);
-      showToast('Partner odaya katıldı');
+      const joinedName = msg.name || msg.username || 'Katılımcı';
+      state.participants[msg.userId] = {
+        userId: msg.userId,
+        username: joinedName,
+        isMicOn: false,
+        isCamOn: false,
+        isHost: false,
+        role: 'member'
+      };
+      renderParticipantsList();
+      showToast(`${joinedName} odaya katıldı`);
       initiateWebRTC(true);
+      broadcastMyMediaStatus();
       if (state.isHost) {
         sendSignal({
           type: 'room-roster',
           roster: state.participants
         });
+        if (state.currentVideoId) {
+          sendP2PData('sync', {
+            action: 'full_sync',
+            videoId: state.currentVideoId,
+            time: state.currentTime,
+            isPlaying: state.isPlaying,
+            rate: state.playbackRate || 1.0,
+            sentAt: Date.now()
+          });
+        }
       }
       break;
 
@@ -2850,9 +2876,15 @@ function handleSignalMessage(msg) {
       break;
 
     case 'peer-left':
-      state.peerId = null;
-      updatePeerStatus(false);
-      showToast('Partner odadan ayrıldı');
+      if (msg.userId) {
+        delete state.participants[msg.userId];
+      }
+      if (state.peerId === msg.userId) {
+        state.peerId = null;
+      }
+      updatePeerStatus(Object.keys(state.participants).length > 0);
+      renderParticipantsList();
+      showToast('Katılımcı odadan ayrıldı');
       break;
 
     case 'offer':
@@ -2869,6 +2901,18 @@ function handleSignalMessage(msg) {
 
     case 'sync-event':
       handleRemoteSync(msg.payload);
+      break;
+
+    case 'friend-request':
+      if (typeof handleIncomingFriendRequest === 'function') handleIncomingFriendRequest(msg.payload);
+      break;
+
+    case 'friend-accepted':
+      if (typeof handleIncomingFriendAccepted === 'function') handleIncomingFriendAccepted(msg.payload);
+      break;
+
+    case 'friend-declined':
+      if (typeof handleIncomingFriendDeclined === 'function') handleIncomingFriendDeclined(msg.payload);
       break;
 
     case 'touch-event':
@@ -3006,8 +3050,31 @@ function setupWebRTC() {
         clampPipCardsToStage();
       }
 
-      // Route audio to ducking analyzer
-      if (event.track.kind === 'audio') {
+      // Route audio to ducking analyzer and play remote voice through audio element
+      if (event.track.kind === 'audio' || stream.getAudioTracks().length > 0) {
+        let remoteAudio = document.getElementById('remoteVoiceAudio');
+        if (!remoteAudio) {
+          remoteAudio = document.createElement('audio');
+          remoteAudio.id = 'remoteVoiceAudio';
+          remoteAudio.autoplay = true;
+          remoteAudio.playsInline = true;
+          remoteAudio.className = 'hidden';
+          document.body.appendChild(remoteAudio);
+        }
+        remoteAudio.srcObject = stream;
+        const playPromise = remoteAudio.play();
+        if (playPromise !== undefined) {
+          playPromise.catch(err => {
+            console.log('[WebRTC Audio] Play waiting for user interaction:', err);
+            const resumeAudio = () => {
+              remoteAudio.play().catch(() => {});
+              window.removeEventListener('click', resumeAudio);
+              window.removeEventListener('touchstart', resumeAudio);
+            };
+            window.addEventListener('click', resumeAudio, { once: true });
+            window.addEventListener('touchstart', resumeAudio, { once: true });
+          });
+        }
         setupAudioDucking(stream);
       }
     }
@@ -3162,65 +3229,73 @@ function setupDataChannelEvents(channel) {
   channel.onmessage = (e) => {
     try {
       const data = JSON.parse(e.data);
-      if (data.type === 'sync') handleRemoteSync(data.payload);
-      if (data.type === 'touch') renderTouchEffect(data.x, data.y, false);
-      if (data.type === 'reaction') spawnFloatingReaction(data.emoji, false);
-      if (data.type === 'sleep') applySleepMode(data.enabled, false);
-      if (data.type === 'perm_change') handleRemotePermissionChange(data.mode, data.hostName);
-      if (data.type === 'request_dj') handleDjPermissionRequested(data.fromUser);
-      if (data.type === 'grant_dj') handleDjPermissionGranted(data.toUser);
-      if (data.type === 'chat') renderChatMessage(data.sender, data.text, false, data.time, data.imageUrl, data.avatarUrl);
-      if (data.type === 'media_status') updateRemoteParticipantStatus(data.userId, data.username, data.isMicOn, data.isCamOn);
+      const payload = data.payload || data;
+      if (data.type === 'sync') handleRemoteSync(payload);
+      if (data.type === 'touch') renderTouchEffect(data.x || payload.x, data.y || payload.y, false);
+      if (data.type === 'reaction') spawnFloatingReaction(data.emoji || payload.emoji, false);
+      if (data.type === 'sleep') applySleepMode(data.enabled !== undefined ? data.enabled : payload.enabled, false);
+      if (data.type === 'perm_change') handleRemotePermissionChange(data.mode || payload.mode, data.hostName || payload.hostName);
+      if (data.type === 'request_dj') handleDjPermissionRequested(data.fromUser || payload.fromUser);
+      if (data.type === 'grant_dj') handleDjPermissionGranted(data.toUser || payload.toUser);
+      if (data.type === 'chat') renderChatMessage(data.sender || payload.sender, data.text || payload.text, false, data.time || payload.time, data.imageUrl || payload.imageUrl, data.avatarUrl || payload.avatarUrl);
+      if (data.type === 'media_status') updateRemoteParticipantStatus(data.userId || payload.userId, data.username || payload.username, data.isMicOn !== undefined ? data.isMicOn : payload.isMicOn, data.isCamOn !== undefined ? data.isCamOn : payload.isCamOn);
       if (data.type === 'platform_switch') {
-        switchRoomPlatform(data.platform);
-        showToast(`Partner platformu değiştirdi: ${data.platform}`);
+        switchRoomPlatform(data.platform || payload.platform);
+        showToast(`Partner platformu değiştirdi: ${data.platform || payload.platform}`);
       }
-      if (data.type === 'kick_user') handleRemoteUserKicked(data.targetUserId, data.targetUsername);
-      if (data.type === 'role_update') handleRemoteRoleUpdate(data.targetUserId, data.newRole, data.targetUsername);
-      if (data.type === 'host_browsing') handleRemoteBrowsingNotice(data.isBrowsing, data.user);
+      if (data.type === 'kick_user') handleRemoteUserKicked(data.targetUserId || payload.targetUserId, data.targetUsername || payload.targetUsername);
+      if (data.type === 'role_update') handleRemoteRoleUpdate(data.targetUserId || payload.targetUserId, data.newRole || payload.newRole, data.targetUsername || payload.targetUsername);
+      if (data.type === 'host_browsing') handleRemoteBrowsingNotice(data.isBrowsing !== undefined ? data.isBrowsing : payload.isBrowsing, data.user || payload.user);
       if (data.type === 'video_suggestion') handleIncomingVideoSuggestion(data);
-      if (data.type === 'queue_update') handleRemoteQueueUpdate(data.queue);
-      if (data.type === 'video_changed') handleRemoteVideoChanged(data.user, data.title, data.videoId);
+      if (data.type === 'queue_update') handleRemoteQueueUpdate(data.queue || payload.queue);
+      if (data.type === 'video_changed') handleRemoteVideoChanged(data.user || payload.user, data.title || payload.title, data.videoId || payload.videoId);
       if (data.type === 'photo_share') {
-        displayPhotoOnStage(data.dataUrl, data.title, false);
-        if (data.sender) showToast(`${data.sender} bir fotoğraf paylaştı!`);
+        displayPhotoOnStage(data.dataUrl || payload.dataUrl, data.title || payload.title, false);
+        if (data.sender || payload.sender) showToast(`${data.sender || payload.sender} bir fotoğraf paylaştı!`);
       }
       if (data.type === 'photo_close') {
         closePhotoStage(false);
       }
       if (data.type === 'privacy_change') {
-        if (typeof handleRemotePrivacyChange === 'function') handleRemotePrivacyChange(data.isPrivate);
+        if (typeof handleRemotePrivacyChange === 'function') handleRemotePrivacyChange(data.isPrivate !== undefined ? data.isPrivate : payload.isPrivate);
       }
     } catch (err) {}
   };
 }
 
-function sendP2PData(type, payload) {
-  const data = JSON.stringify({ type, ...payload });
+function sendP2PData(type, payload = {}) {
+  const enrichedPayload = {
+    ...payload,
+    sentAt: payload.sentAt || Date.now()
+  };
+  const data = JSON.stringify({ type, payload: enrichedPayload, ...enrichedPayload });
+
   if (state.dataChannel && state.dataChannel.readyState === 'open') {
-    state.dataChannel.send(data);
-  } else {
-    // Fallback to signaling server
-    if (type === 'sync') sendSignal({ type: 'sync-event', payload });
-    if (type === 'touch') sendSignal({ type: 'touch-event', x: payload.x, y: payload.y });
-    if (type === 'reaction') sendSignal({ type: 'reaction-event', emoji: payload.emoji });
-    if (type === 'sleep') sendSignal({ type: 'sleep-mode', enabled: payload.enabled });
-    if (type === 'photo_share') sendSignal({ type: 'photo-share', dataUrl: payload.dataUrl, title: payload.title, sender: payload.sender });
-    if (type === 'photo_close') sendSignal({ type: 'photo-close' });
-    if (type === 'perm_change') sendSignal({ type: 'perm-change', mode: payload.mode, hostName: payload.hostName });
-    if (type === 'privacy_change') sendSignal({ type: 'privacy-change', isPrivate: payload.isPrivate });
-    if (type === 'request_dj') sendSignal({ type: 'request-dj', fromUser: payload.fromUser });
-    if (type === 'grant_dj') sendSignal({ type: 'grant-dj', toUser: payload.toUser });
-    if (type === 'chat') sendSignal({ type: 'chat-message', sender: payload.sender, text: payload.text, time: payload.time, imageUrl: payload.imageUrl, avatarUrl: payload.avatarUrl });
-    if (type === 'media_status') sendSignal({ type: 'media-status', userId: payload.userId, username: payload.username, isMicOn: payload.isMicOn, isCamOn: payload.isCamOn });
-    if (type === 'platform_switch') sendSignal({ type: 'platform-switch', platform: payload.platform });
-    if (type === 'kick_user') sendSignal({ type: 'kick-user', targetUserId: payload.targetUserId, targetUsername: payload.targetUsername });
-    if (type === 'role_update') sendSignal({ type: 'role-update', targetUserId: payload.targetUserId, newRole: payload.newRole, targetUsername: payload.targetUsername });
-    if (type === 'host_browsing') sendSignal({ type: 'host-browsing', isBrowsing: payload.isBrowsing, user: payload.user });
-    if (type === 'video_suggestion') sendSignal({ type: 'video-suggestion', videoId: payload.videoId, title: payload.title, thumb: payload.thumb, fromUser: payload.fromUser });
-    if (type === 'queue_update') sendSignal({ type: 'queue-update', queue: payload.queue });
-    if (type === 'video_changed') sendSignal({ type: 'video-changed', user: payload.user, title: payload.title, videoId: payload.videoId });
+    try {
+      state.dataChannel.send(data);
+    } catch (_) {}
   }
+
+  // Always send via signaling to ensure reliable delivery across all peers, mobile/desktop cross-NAT
+  if (type === 'sync') sendSignal({ type: 'sync-event', payload: enrichedPayload });
+  else if (type === 'touch') sendSignal({ type: 'touch-event', x: enrichedPayload.x, y: enrichedPayload.y });
+  else if (type === 'reaction') sendSignal({ type: 'reaction-event', emoji: enrichedPayload.emoji });
+  else if (type === 'sleep') sendSignal({ type: 'sleep-mode', enabled: enrichedPayload.enabled });
+  else if (type === 'photo_share') sendSignal({ type: 'photo-share', dataUrl: enrichedPayload.dataUrl, title: enrichedPayload.title, sender: enrichedPayload.sender });
+  else if (type === 'photo_close') sendSignal({ type: 'photo-close' });
+  else if (type === 'perm_change') sendSignal({ type: 'perm-change', mode: enrichedPayload.mode, hostName: enrichedPayload.hostName });
+  else if (type === 'privacy_change') sendSignal({ type: 'privacy-change', isPrivate: enrichedPayload.isPrivate });
+  else if (type === 'request_dj') sendSignal({ type: 'request-dj', fromUser: enrichedPayload.fromUser });
+  else if (type === 'grant_dj') sendSignal({ type: 'grant-dj', toUser: enrichedPayload.toUser });
+  else if (type === 'chat') sendSignal({ type: 'chat-message', sender: enrichedPayload.sender, text: enrichedPayload.text, time: enrichedPayload.time, imageUrl: enrichedPayload.imageUrl, avatarUrl: enrichedPayload.avatarUrl });
+  else if (type === 'media_status') sendSignal({ type: 'media-status', userId: enrichedPayload.userId, username: enrichedPayload.username, isMicOn: enrichedPayload.isMicOn, isCamOn: enrichedPayload.isCamOn });
+  else if (type === 'platform_switch') sendSignal({ type: 'platform-switch', platform: enrichedPayload.platform });
+  else if (type === 'kick_user') sendSignal({ type: 'kick-user', targetUserId: enrichedPayload.targetUserId, targetUsername: enrichedPayload.targetUsername });
+  else if (type === 'role_update') sendSignal({ type: 'role-update', targetUserId: enrichedPayload.targetUserId, newRole: enrichedPayload.newRole, targetUsername: enrichedPayload.targetUsername });
+  else if (type === 'host_browsing') sendSignal({ type: 'host-browsing', isBrowsing: enrichedPayload.isBrowsing, user: enrichedPayload.user });
+  else if (type === 'video_suggestion') sendSignal({ type: 'video-suggestion', videoId: enrichedPayload.videoId, title: enrichedPayload.title, thumb: enrichedPayload.thumb, fromUser: enrichedPayload.fromUser });
+  else if (type === 'queue_update') sendSignal({ type: 'queue-update', queue: enrichedPayload.queue });
+  else if (type === 'video_changed') sendSignal({ type: 'video-changed', user: enrichedPayload.user, title: enrichedPayload.title, videoId: enrichedPayload.videoId });
 }
 
 // ==========================================
@@ -3625,13 +3700,17 @@ function onYtStateChange(event) {
   if (state.isRemoteAction) return;
 
   if (event.data === YT.PlayerState.PLAYING) {
-    state.isPlaying = true;
-    updatePlayPauseUI(true);
-    sendP2PData('sync', { action: 'play', time: state.ytPlayer.getCurrentTime() });
+    if (!state.isPlaying) {
+      state.isPlaying = true;
+      updatePlayPauseUI(true);
+      sendP2PData('sync', { action: 'play', time: state.ytPlayer ? state.ytPlayer.getCurrentTime() : state.currentTime, sentAt: Date.now() });
+    }
   } else if (event.data === YT.PlayerState.PAUSED) {
-    state.isPlaying = false;
-    updatePlayPauseUI(false);
-    sendP2PData('sync', { action: 'pause', time: state.ytPlayer.getCurrentTime() });
+    if (state.isPlaying) {
+      state.isPlaying = false;
+      updatePlayPauseUI(false);
+      sendP2PData('sync', { action: 'pause', time: state.ytPlayer ? state.ytPlayer.getCurrentTime() : state.currentTime, sentAt: Date.now() });
+    }
   }
 }
 
@@ -3650,6 +3729,15 @@ function sendYtCommand(func, args = []) {
 
 function handleRemoteSync(payload) {
   if (!payload) return;
+
+  // Deduplicate identical events received both via WebRTC dataChannel and Signaling
+  const syncKey = `${payload.action}_${payload.sentAt || ''}_${Math.round((payload.time || 0) * 10)}`;
+  if (state.lastSyncKey === syncKey && (Date.now() - (state.lastSyncProcessedAt || 0)) < 350) {
+    return;
+  }
+  state.lastSyncKey = syncKey;
+  state.lastSyncProcessedAt = Date.now();
+
   state.isRemoteAction = true;
   clearTimeout(state.remoteActionTimer);
   state.remoteActionTimer = setTimeout(() => {
@@ -3674,6 +3762,7 @@ function handleRemoteSync(payload) {
         videoId: state.currentVideoId,
         time: state.currentTime,
         isPlaying: state.isPlaying,
+        rate: state.playbackRate || 1.0,
         sentAt: Date.now()
       });
     }
@@ -3744,18 +3833,25 @@ function handleRemoteSync(payload) {
 
   if (payload.action === 'pause') {
     const targetTime = typeof payload.time === 'number' ? payload.time : state.currentTime;
+    state.isPlaying = false;
+    updatePlayPauseUI(false);
     if (state.activeMode === 'youtube') {
       sendYtCommand('pauseVideo');
-      if (typeof payload.time === 'number') {
+      if (typeof payload.time === 'number' && Math.abs(state.currentTime - targetTime) > 0.35) {
         sendYtCommand('seekTo', [targetTime, true]);
         state.currentTime = targetTime;
       }
+      // Re-assert pause to eliminate YouTube Iframe auto-resume on seek
+      setTimeout(() => {
+        if (!state.isPlaying) sendYtCommand('pauseVideo');
+      }, 60);
+      setTimeout(() => {
+        if (!state.isPlaying) sendYtCommand('pauseVideo');
+      }, 200);
     } else if (dom.nativeVideoPlayer) {
       dom.nativeVideoPlayer.pause();
       if (typeof payload.time === 'number') dom.nativeVideoPlayer.currentTime = targetTime;
     }
-    state.isPlaying = false;
-    updatePlayPauseUI(false);
     showToast('Durduruldu');
   }
 
@@ -3780,7 +3876,7 @@ function handleRemoteSync(payload) {
     if (payload.isPlaying) {
       const targetTime = (payload.time || 0) + transit;
       const drift = Math.abs(state.currentTime - targetTime);
-      if (drift > 0.35) {
+      if (drift > 0.4) {
         if (state.activeMode === 'youtube') {
           sendYtCommand('seekTo', [targetTime, true]);
         } else if (dom.nativeVideoPlayer) {
@@ -3803,12 +3899,12 @@ function handleRemoteSync(payload) {
   }
 }
 
-// 2.5s Sync Heartbeat to guarantee zero drift between host and peers
+// 1.5s Sync Heartbeat to guarantee zero drift between host and peers
 let syncHeartbeatInterval = null;
 function startSyncHeartbeat() {
   if (syncHeartbeatInterval) clearInterval(syncHeartbeatInterval);
   syncHeartbeatInterval = setInterval(() => {
-    if (state.isHost && state.isPlaying && (state.activeMode === 'youtube' || state.activeMode === 'direct')) {
+    if (state.isInRoom && state.isPlaying && (state.isHost || state.hasDjPermission || state.controlMode === 'everyone') && (state.activeMode === 'youtube' || state.activeMode === 'direct')) {
       sendP2PData('sync', {
         action: 'heartbeat',
         time: state.currentTime,
@@ -3817,7 +3913,7 @@ function startSyncHeartbeat() {
         sentAt: Date.now()
       });
     }
-  }, 2500);
+  }, 1500);
 }
 
 // Playback Tracking (Timeline Slider & Duration - Drift-Free Hardware Sync)
@@ -5894,21 +5990,40 @@ async function toggleMic() {
         state.localStream = await navigator.mediaDevices.getUserMedia(getAudioConstraints());
         if (dom.selfVideo) dom.selfVideo.srcObject = state.localStream;
         if (state.pc) {
-          state.localStream.getAudioTracks().forEach(t => state.pc.addTrack(t, state.localStream));
-          initiateWebRTC(true);
+          state.localStream.getAudioTracks().forEach(t => {
+            const senders = state.pc.getSenders ? state.pc.getSenders() : [];
+            const exists = senders.some(s => s.track && s.track.kind === 'audio');
+            if (!exists) {
+              try { state.pc.addTrack(t, state.localStream); } catch (_) {}
+            }
+          });
+          renegotiateWebRTC();
         }
       } catch (e) {
-        console.warn('Microphone hardware not available in simulator/environment:', e);
+        console.warn('Microphone hardware error:', e);
       }
     } else if (state.localStream) {
       const audioTrack = state.localStream.getAudioTracks()[0];
-      if (audioTrack) audioTrack.enabled = true;
+      if (audioTrack) {
+        audioTrack.enabled = true;
+      } else if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+        try {
+          const micStream = await navigator.mediaDevices.getUserMedia(getAudioConstraints());
+          const newTrack = micStream.getAudioTracks()[0];
+          if (newTrack) {
+            state.localStream.addTrack(newTrack);
+            if (state.pc) {
+              state.pc.addTrack(newTrack, state.localStream);
+              renegotiateWebRTC();
+            }
+          }
+        } catch (_) {}
+      }
     }
     showToast('Mikrofon Açık (Canlı)');
   } else {
     if (state.localStream) {
-      const audioTrack = state.localStream.getAudioTracks()[0];
-      if (audioTrack) audioTrack.enabled = false;
+      state.localStream.getAudioTracks().forEach(t => { t.enabled = false; });
     }
     showToast('Mikrofon Kapatıldı');
   }
@@ -6586,6 +6701,9 @@ function switchToMyRoom() {
   document.body.classList.add('in-room-mode');
   document.documentElement.classList.add('in-room-mode');
   state.isInRoom = true;
+  if (!state.isHost && (state.userRole === 'owner' || !state.userRole)) {
+    state.userRole = 'member';
+  }
   // Hide explore header, provider picker, friends, profile and bottom nav when inside a room!
   const mainWorkspace = document.querySelector('main');
   if (mainWorkspace) {
@@ -6660,6 +6778,7 @@ function requestRoomCode(meta) {
 function createAndJoinRoom(title, isPrivate = false, category = 'YouTube', videoId = null) {
   state.isHost = true;
   state.hostName = state.username;
+  state.userRole = 'owner';
   state.controlMode = 'host_only';
   state.hasDjPermission = true;
 
@@ -6723,6 +6842,8 @@ function joinRoomByCode(rawCode) {
     .then(d => {
       if (!d.exists) { showToast('Bu kodla bir oda bulunamadı'); return; }
       state.isHost = false;
+      state.userRole = 'member';
+      state.hasDjPermission = false;
       state.roomId = d.room.id;
       state.hostName = d.room.host;
       state.connectedAccount = d.room.connectedAccount || '';
@@ -6977,6 +7098,7 @@ function renderRoomList(roomsToRender) {
       state.roomId = roomId;
       state.hostName = r.host || 'Yönetici';
       state.isHost = (r.host === state.username);
+      state.userRole = state.isHost ? 'owner' : 'member';
       state.controlMode = 'host_only';
       state.hasDjPermission = state.isHost;
       state.isInRoom = true;
@@ -7879,6 +8001,9 @@ function acceptRoomInvite(inviteId, targetRoomId) {
   localStorage.setItem('miruo_room_invites', JSON.stringify(invites.filter(inv => inv.id !== inviteId)));
   showToast(`Odaya katılınıyor: ${targetRoomId}`);
   state.roomId = (targetRoomId || 'ODA-77').toUpperCase();
+  state.isHost = false;
+  state.userRole = 'member';
+  state.hasDjPermission = false;
   switchToMyRoom();
   connectSignaling();
   renderIncomingRequests();
@@ -7945,14 +8070,433 @@ function sendAffinityRequest(slotKey, friend) {
 }
 window.sendAffinityRequest = sendAffinityRequest;
 
+// ==========================================
+// GLOBAL USERS & REALTIME FRIEND REQUESTS SYSTEM
+// ==========================================
+let globalUsersChannel = null;
+window.miruoGlobalUsersMap = new Map();
+
+function initGlobalUsersChannel() {
+  if (!supabaseClient) return;
+  if (globalUsersChannel) return;
+  try {
+    const myCleanUsername = (state.username || 'user').toLowerCase().replace(/^@/, '');
+    globalUsersChannel = supabaseClient.channel('miruo_global_users', {
+      config: {
+        presence: { key: myCleanUsername }
+      }
+    });
+
+    globalUsersChannel
+      .on('presence', { event: 'sync' }, () => {
+        handleGlobalPresenceSync(globalUsersChannel.presenceState());
+      })
+      .on('presence', { event: 'join' }, ({ key, newPresences }) => {
+        handleGlobalPresenceJoin(key, newPresences);
+      })
+      .on('presence', { event: 'leave' }, ({ key, leftPresences }) => {
+        handleGlobalPresenceLeave(key, leftPresences);
+      })
+      .on('broadcast', { event: 'user_announced' }, ({ payload }) => {
+        if (payload && payload.username) {
+          upsertGlobalUserCache(payload);
+          if (typeof renderFriendsTab === 'function') {
+            const searchInput = document.getElementById('tabFriendSearchInput');
+            if (searchInput && searchInput.value) renderFriendsTab(searchInput.value);
+          }
+        }
+      })
+      .on('broadcast', { event: 'friend_request' }, ({ payload }) => {
+        handleIncomingFriendRequest(payload);
+      })
+      .on('broadcast', { event: 'friend_accepted' }, ({ payload }) => {
+        handleIncomingFriendAccepted(payload);
+      })
+      .on('broadcast', { event: 'friend_declined' }, ({ payload }) => {
+        handleIncomingFriendDeclined(payload);
+      })
+      .subscribe((status) => {
+        if (status === 'SUBSCRIBED') {
+          console.log('[Miruo Global Users] Channel connected & active');
+          announceMyPresence();
+        }
+      });
+  } catch (e) {
+    console.warn('[Miruo] initGlobalUsersChannel error:', e);
+  }
+}
+window.initGlobalUsersChannel = initGlobalUsersChannel;
+
+function announceMyPresence() {
+  if (!globalUsersChannel) return;
+  try {
+    const myCleanUsername = (state.username || 'user').toLowerCase().replace(/^@/, '');
+    const savedUserObj = JSON.parse(localStorage.getItem('miruo_user') || '{}');
+    const myProfile = {
+      id: state.userId || ('user_' + myCleanUsername),
+      username: myCleanUsername,
+      fullName: (state.fullName && !state.fullName.startsWith('@')) ? state.fullName : (state.name || myCleanUsername),
+      avatarUrl: state.avatarUrl || savedUserObj.avatarUrl || localStorage.getItem('miruo_avatar') || '',
+      avatarBg: state.avatarBg || savedUserObj.avatarBg || localStorage.getItem('miruo_avatar_bg') || 'from-rose-500 to-[#A64D79]',
+      status: state.isInRoom ? 'in_room' : 'online',
+      currentRoom: state.roomId || '',
+      updatedAt: Date.now()
+    };
+    upsertGlobalUserCache(myProfile);
+    globalUsersChannel.track(myProfile).catch(() => {});
+    globalUsersChannel.send({
+      type: 'broadcast',
+      event: 'user_announced',
+      payload: myProfile
+    }).catch(() => {});
+  } catch (_) {}
+}
+window.announceMyPresence = announceMyPresence;
+
+function upsertGlobalUserCache(user) {
+  if (!user || !user.username) return;
+  const cleanU = String(user.username).toLowerCase().replace(/^@/, '').trim();
+  window.miruoGlobalUsersMap.set(cleanU, user);
+  try {
+    const cache = JSON.parse(localStorage.getItem('miruo_global_users_cache') || '{}');
+    cache[cleanU] = { ...cache[cleanU], ...user, updatedAt: Date.now() };
+    localStorage.setItem('miruo_global_users_cache', JSON.stringify(cache));
+  } catch (_) {}
+}
+
+function handleGlobalPresenceSync(presenceState) {
+  if (!presenceState) return;
+  const cache = JSON.parse(localStorage.getItem('miruo_global_users_cache') || '{}');
+  Object.keys(presenceState).forEach(key => {
+    const list = presenceState[key] || [];
+    if (list.length > 0) {
+      const u = list[0];
+      const cleanU = (u.username || key).toLowerCase().replace(/^@/, '');
+      const userData = {
+        id: u.id || ('user_' + cleanU),
+        username: cleanU,
+        fullName: u.fullName || cleanU,
+        avatarUrl: u.avatarUrl || '',
+        avatarBg: u.avatarBg || 'from-rose-500 to-indigo-600',
+        status: u.status || 'online',
+        currentRoom: u.currentRoom || '',
+        updatedAt: u.updatedAt || Date.now()
+      };
+      cache[cleanU] = userData;
+      window.miruoGlobalUsersMap.set(cleanU, userData);
+
+      // If user is in local friends, update their status to online!
+      const friend = state.friends.find(f => (f.username || f.name || '').toLowerCase().replace(/^@/, '') === cleanU);
+      if (friend) {
+        friend.status = u.status || 'online';
+        friend.currentRoom = u.currentRoom || '';
+        friend.lastActive = Date.now();
+        if (u.avatarUrl && !friend.avatarUrl) friend.avatarUrl = u.avatarUrl;
+      }
+    }
+  });
+  try {
+    localStorage.setItem('miruo_global_users_cache', JSON.stringify(cache));
+    localStorage.setItem('miruo_friends', JSON.stringify(state.friends));
+  } catch (_) {}
+  if (typeof renderFriendsTab === 'function') {
+    const searchInput = document.getElementById('tabFriendSearchInput');
+    renderFriendsTab(searchInput ? searchInput.value : '');
+  }
+}
+
+function handleGlobalPresenceJoin(key, newPresences) {
+  if (!key) return;
+  const cleanU = key.toLowerCase().replace(/^@/, '');
+  const u = (newPresences && newPresences[0]) ? newPresences[0] : null;
+  if (u) upsertGlobalUserCache(u);
+  const friend = state.friends.find(f => (f.username || f.name || '').toLowerCase().replace(/^@/, '') === cleanU);
+  if (friend) {
+    friend.status = (u && u.status) ? u.status : 'online';
+    friend.lastActive = Date.now();
+    try { localStorage.setItem('miruo_friends', JSON.stringify(state.friends)); } catch (_) {}
+    if (typeof renderFriendsTab === 'function') renderFriendsTab();
+  }
+}
+
+function handleGlobalPresenceLeave(key, leftPresences) {
+  if (!key) return;
+  const cleanU = key.toLowerCase().replace(/^@/, '');
+  const friend = state.friends.find(f => (f.username || f.name || '').toLowerCase().replace(/^@/, '') === cleanU);
+  if (friend) {
+    friend.status = 'offline';
+    friend.lastActive = Date.now();
+    try { localStorage.setItem('miruo_friends', JSON.stringify(state.friends)); } catch (_) {}
+    if (typeof renderFriendsTab === 'function') renderFriendsTab();
+  }
+}
+
+function getIncomingFriendRequests() {
+  try {
+    const raw = localStorage.getItem('miruo_incoming_friend_requests');
+    if (!raw) return [];
+    const list = JSON.parse(raw);
+    return Array.isArray(list) ? list : [];
+  } catch (_) {
+    return [];
+  }
+}
+
+function getOutgoingFriendRequests() {
+  try {
+    const raw = localStorage.getItem('miruo_outgoing_friend_requests');
+    if (!raw) return [];
+    const list = JSON.parse(raw);
+    return Array.isArray(list) ? list : [];
+  } catch (_) {
+    return [];
+  }
+}
+
+async function sendFriendRequest(targetUsername) {
+  const cleanTarget = String(targetUsername || '').toLowerCase().replace(/^@/, '').trim();
+  const myClean = (state.username || 'user').toLowerCase().replace(/^@/, '').trim();
+
+  if (!cleanTarget) {
+    showToast('Lütfen geçerli bir kullanıcı adı girin.');
+    return;
+  }
+  if (cleanTarget === myClean) {
+    showToast('Kendine arkadaşlık isteği gönderemezsin.');
+    return;
+  }
+  if (state.friends.some(f => (f.username || f.name || '').toLowerCase().replace(/^@/, '') === cleanTarget)) {
+    showToast(`@${cleanTarget} zaten arkadaş listenizde!`);
+    return;
+  }
+
+  const outgoing = getOutgoingFriendRequests();
+  if (outgoing.some(r => (r.toUsername || '').toLowerCase() === cleanTarget)) {
+    showToast(`@${cleanTarget} kullanıcısına zaten istek gönderildi.`);
+    return;
+  }
+
+  // Lookup target info in cache or registered users
+  const cache = JSON.parse(localStorage.getItem('miruo_global_users_cache') || '{}');
+  const targetInfo = cache[cleanTarget] || {};
+  const savedUserObj = JSON.parse(localStorage.getItem('miruo_user') || '{}');
+
+  const reqPayload = {
+    id: 'freq_' + Date.now() + '_' + Math.random().toString(36).substring(2, 6),
+    fromUsername: myClean,
+    fromName: (state.fullName && !state.fullName.startsWith('@')) ? state.fullName : (state.name || myClean),
+    fromAvatarUrl: state.avatarUrl || savedUserObj.avatarUrl || localStorage.getItem('miruo_avatar') || '',
+    fromAvatarBg: state.avatarBg || savedUserObj.avatarBg || 'from-rose-500 to-[#A64D79]',
+    toUsername: cleanTarget,
+    targetName: targetInfo.fullName || cleanTarget,
+    targetAvatarUrl: targetInfo.avatarUrl || '',
+    timestamp: Date.now()
+  };
+
+  outgoing.unshift(reqPayload);
+  localStorage.setItem('miruo_outgoing_friend_requests', JSON.stringify(outgoing));
+
+  // Broadcast over global users channel
+  if (globalUsersChannel) {
+    try {
+      globalUsersChannel.send({
+        type: 'broadcast',
+        event: 'friend_request',
+        payload: reqPayload
+      }).catch(err => console.warn('[FriendRequest Send Error]:', err));
+    } catch (_) {}
+  }
+
+  // Also broadcast via signaling server if connected
+  sendSignal({ type: 'friend-request', payload: reqPayload });
+
+  showToast(`@${cleanTarget} kullanıcısına arkadaşlık isteği gönderildi!`);
+  const searchInput = document.getElementById('tabFriendSearchInput');
+  if (typeof renderFriendsTab === 'function') renderFriendsTab(searchInput ? searchInput.value : '');
+}
+window.sendFriendRequest = sendFriendRequest;
+
+function handleIncomingFriendRequest(req) {
+  if (!req || !req.toUsername) return;
+  const myUsername = (state.username || '').toLowerCase().replace(/^@/, '');
+  if (req.toUsername.toLowerCase().replace(/^@/, '') !== myUsername) return;
+
+  const cleanFrom = (req.fromUsername || '').toLowerCase().replace(/^@/, '');
+  if (state.friends.some(f => (f.username || f.name || '').toLowerCase().replace(/^@/, '') === cleanFrom)) return;
+
+  const incoming = getIncomingFriendRequests();
+  if (incoming.some(r => r.id === req.id || (r.fromUsername || '').toLowerCase() === cleanFrom)) {
+    return;
+  }
+
+  incoming.unshift(req);
+  localStorage.setItem('miruo_incoming_friend_requests', JSON.stringify(incoming));
+
+  showToast(`@${cleanFrom} sana arkadaşlık isteği gönderdi!`);
+  updateFriendRequestBadge();
+
+  if (typeof renderIncomingRequests === 'function') renderIncomingRequests();
+  if (typeof renderFriendsTab === 'function') {
+    const searchInput = document.getElementById('tabFriendSearchInput');
+    renderFriendsTab(searchInput ? searchInput.value : '');
+  }
+}
+window.handleIncomingFriendRequest = handleIncomingFriendRequest;
+
+function acceptFriendRequest(reqId) {
+  const incoming = getIncomingFriendRequests();
+  const req = incoming.find(r => r.id === reqId);
+  if (!req) return;
+
+  const updated = incoming.filter(r => r.id !== reqId);
+  localStorage.setItem('miruo_incoming_friend_requests', JSON.stringify(updated));
+
+  const cleanFrom = (req.fromUsername || '').replace(/^@/, '').trim();
+  if (!state.friends.some(f => (f.username || f.name || '').toLowerCase().replace(/^@/, '') === cleanFrom.toLowerCase())) {
+    const newFriend = {
+      id: 'f_' + Date.now(),
+      name: req.fromName || cleanFrom,
+      username: cleanFrom,
+      avatarUrl: req.fromAvatarUrl || null,
+      avatarBg: req.fromAvatarBg || 'from-rose-500 to-indigo-600',
+      status: 'online',
+      statusText: 'Çevrimiçi',
+      avatar: (cleanFrom.charAt(0) || 'A').toUpperCase(),
+      lastActive: Date.now()
+    };
+    state.friends.unshift(newFriend);
+    localStorage.setItem('miruo_friends', JSON.stringify(state.friends));
+  }
+
+  const myClean = (state.username || 'user').replace(/^@/, '');
+  const savedUserObj = JSON.parse(localStorage.getItem('miruo_user') || '{}');
+  const acceptPayload = {
+    requestId: reqId,
+    fromUsername: myClean,
+    fromName: (state.fullName && !state.fullName.startsWith('@')) ? state.fullName : (state.name || myClean),
+    fromAvatarUrl: state.avatarUrl || savedUserObj.avatarUrl || localStorage.getItem('miruo_avatar') || '',
+    fromAvatarBg: state.avatarBg || savedUserObj.avatarBg || '',
+    toUsername: req.fromUsername,
+    timestamp: Date.now()
+  };
+
+  if (globalUsersChannel) {
+    try {
+      globalUsersChannel.send({
+        type: 'broadcast',
+        event: 'friend_accepted',
+        payload: acceptPayload
+      }).catch(() => {});
+    } catch (_) {}
+  }
+  sendSignal({ type: 'friend-accepted', payload: acceptPayload });
+
+  showToast(`@${cleanFrom} ile artık arkadaşsınız!`);
+  updateFriendRequestBadge();
+  renderIncomingRequests();
+  renderFriendsTab();
+  if (typeof renderParticipantsList === 'function') renderParticipantsList();
+}
+window.acceptFriendRequest = acceptFriendRequest;
+
+function handleIncomingFriendAccepted(payload) {
+  if (!payload || !payload.toUsername) return;
+  const myUsername = (state.username || '').toLowerCase().replace(/^@/, '');
+  if (payload.toUsername.toLowerCase().replace(/^@/, '') !== myUsername) return;
+
+  const cleanFriend = (payload.fromUsername || '').replace(/^@/, '').trim();
+  const outgoing = getOutgoingFriendRequests();
+  const filtered = outgoing.filter(r => (r.toUsername || '').toLowerCase().replace(/^@/, '') !== cleanFriend.toLowerCase());
+  localStorage.setItem('miruo_outgoing_friend_requests', JSON.stringify(filtered));
+
+  if (!state.friends.some(f => (f.username || f.name || '').toLowerCase().replace(/^@/, '') === cleanFriend.toLowerCase())) {
+    const newFriend = {
+      id: 'f_' + Date.now(),
+      name: payload.fromName || cleanFriend,
+      username: cleanFriend,
+      avatarUrl: payload.fromAvatarUrl || null,
+      avatarBg: payload.fromAvatarBg || 'from-rose-500 to-indigo-600',
+      status: 'online',
+      statusText: 'Çevrimiçi',
+      avatar: (cleanFriend.charAt(0) || 'A').toUpperCase(),
+      lastActive: Date.now()
+    };
+    state.friends.unshift(newFriend);
+    localStorage.setItem('miruo_friends', JSON.stringify(state.friends));
+  }
+
+  showToast(`🎉 @${cleanFriend} arkadaşlık isteğini kabul etti!`);
+  renderFriendsTab();
+  if (typeof renderParticipantsList === 'function') renderParticipantsList();
+}
+window.handleIncomingFriendAccepted = handleIncomingFriendAccepted;
+
+function rejectFriendRequest(reqId) {
+  const incoming = getIncomingFriendRequests();
+  const req = incoming.find(r => r.id === reqId);
+  const updated = incoming.filter(r => r.id !== reqId);
+  localStorage.setItem('miruo_incoming_friend_requests', JSON.stringify(updated));
+
+  if (req && globalUsersChannel) {
+    try {
+      globalUsersChannel.send({
+        type: 'broadcast',
+        event: 'friend_declined',
+        payload: { toUsername: req.fromUsername, fromUsername: state.username, timestamp: Date.now() }
+      }).catch(() => {});
+    } catch (_) {}
+  }
+  showToast('Arkadaşlık isteği reddedildi.');
+  updateFriendRequestBadge();
+  renderIncomingRequests();
+}
+window.rejectFriendRequest = rejectFriendRequest;
+
+function handleIncomingFriendDeclined(payload) {
+  if (!payload || !payload.toUsername) return;
+  const myUsername = (state.username || '').toLowerCase().replace(/^@/, '');
+  if (payload.toUsername.toLowerCase().replace(/^@/, '') !== myUsername) return;
+
+  const cleanDecliner = (payload.fromUsername || '').replace(/^@/, '').trim();
+  const outgoing = getOutgoingFriendRequests();
+  const filtered = outgoing.filter(r => (r.toUsername || '').toLowerCase().replace(/^@/, '') !== cleanDecliner.toLowerCase());
+  localStorage.setItem('miruo_outgoing_friend_requests', JSON.stringify(filtered));
+  renderFriendsTab();
+}
+window.handleIncomingFriendDeclined = handleIncomingFriendDeclined;
+
+function updateFriendRequestBadge() {
+  const friendReqs = getIncomingFriendRequests();
+  const affReqs = typeof getIncomingAffinityRequests === 'function' ? getIncomingAffinityRequests() : [];
+  const roomInvs = typeof getIncomingRoomInvites === 'function' ? getIncomingRoomInvites() : [];
+  const totalCount = friendReqs.length + affReqs.length + roomInvs.length;
+
+  const navBtn = document.getElementById('mobileNavFriendsBtn');
+  if (navBtn) {
+    let dot = navBtn.querySelector('.friend-nav-badge-dot');
+    if (totalCount > 0) {
+      if (!dot) {
+        dot = document.createElement('span');
+        dot.className = 'friend-nav-badge-dot absolute top-1 right-2 w-2.5 h-2.5 rounded-full bg-rose-500 ring-2 ring-[#0B0D14] animate-pulse';
+        navBtn.classList.add('relative');
+        navBtn.appendChild(dot);
+      }
+    } else if (dot) {
+      dot.remove();
+    }
+  }
+}
+window.updateFriendRequestBadge = updateFriendRequestBadge;
+
 function renderIncomingRequests() {
   const container = document.getElementById('incomingRequestsContainer');
   if (!container) return;
 
+  const friendReqs = getIncomingFriendRequests();
   const affReqs = getIncomingAffinityRequests();
   const roomInvs = getIncomingRoomInvites();
 
-  if (affReqs.length === 0 && roomInvs.length === 0) {
+  if (friendReqs.length === 0 && affReqs.length === 0 && roomInvs.length === 0) {
     container.classList.add('hidden');
     container.innerHTML = '';
     return;
@@ -7960,6 +8504,55 @@ function renderIncomingRequests() {
 
   container.classList.remove('hidden');
   container.innerHTML = '';
+
+  // 1. Render Incoming Friend Requests (Eşzamanlı Arkadaşlık İstekleri)
+  friendReqs.forEach(req => {
+    const card = document.createElement('div');
+    card.className = 'p-3.5 rounded-2xl bg-gradient-to-r from-[#200D28]/95 via-[#160B24]/95 to-[#0E0E1C]/95 border border-pink-500/40 flex items-center justify-between gap-3 shadow-xl animate-in fade-in duration-200';
+    const cleanFrom = (req.fromUsername || 'kullanici').replace(/^@/, '');
+    const char = (cleanFrom.charAt(0) || 'A').toUpperCase();
+
+    card.innerHTML = `
+      <div class="flex items-center gap-2.5 truncate min-w-0 flex-1">
+        <div class="w-10 h-10 rounded-full ${req.fromAvatarBg || 'bg-gradient-to-tr from-rose-500 to-indigo-600'} flex items-center justify-center font-black text-white text-xs shrink-0 shadow-md border border-white/20">
+          ${req.fromAvatarUrl ? `<img src="${req.fromAvatarUrl}" class="w-full h-full rounded-full object-cover">` : char}
+        </div>
+        <div class="truncate">
+          <div class="flex items-center gap-1.5">
+            <span class="text-xs font-bold text-white truncate">@${escapeHtml(cleanFrom)}</span>
+            <span class="px-1.5 py-0.2 rounded-full bg-pink-500/25 text-pink-300 border border-pink-500/40 text-[9px] font-extrabold tracking-wide">Arkadaşlık İsteği</span>
+          </div>
+          <p class="text-[11px] text-gray-300 truncate mt-0.5">${escapeHtml(req.fromName || cleanFrom)} seninle arkadaş olmak istiyor</p>
+        </div>
+      </div>
+      <div class="flex items-center gap-1.5 shrink-0">
+        <button type="button" class="accept-friend-req-btn px-3 py-1.5 rounded-xl bg-gradient-to-r from-rose-600 via-pink-600 to-indigo-600 hover:opacity-95 active:scale-95 text-white font-bold text-xs shadow-md shadow-pink-600/30 transition-all cursor-pointer">
+          Kabul Et
+        </button>
+        <button type="button" class="reject-friend-req-btn px-2.5 py-1.5 rounded-xl bg-white/10 hover:bg-white/15 active:scale-95 text-gray-300 hover:text-white font-semibold text-xs border border-white/10 transition-all cursor-pointer">
+          Reddet
+        </button>
+      </div>
+    `;
+
+    const acceptBtn = card.querySelector('.accept-friend-req-btn');
+    if (acceptBtn) {
+      addInstantTap(acceptBtn, (e) => {
+        if (e && e.stopPropagation) e.stopPropagation();
+        acceptFriendRequest(req.id);
+      });
+    }
+
+    const rejectBtn = card.querySelector('.reject-friend-req-btn');
+    if (rejectBtn) {
+      addInstantTap(rejectBtn, (e) => {
+        if (e && e.stopPropagation) e.stopPropagation();
+        rejectFriendRequest(req.id);
+      });
+    }
+
+    container.appendChild(card);
+  });
 
   // Render Relationship Requests
   affReqs.forEach(req => {
@@ -8222,60 +8815,87 @@ async function submitAddFriendModal() {
 }
 window.submitAddFriendModal = submitAddFriendModal;
 
+// Reusable single friend card renderer
+function renderSingleFriendCard(container, fr, dict) {
+  const card = document.createElement('div');
+  card.className = 'p-3 sm:p-3.5 rounded-2xl bg-[#0C0E17] border border-white/10 hover:border-white/20 transition-all flex items-center justify-between gap-3 shadow-md';
+  const isOnline = fr.status === 'online' || fr.status === 'in_room';
+
+  let friendStatusLabel = dict.status_offline || 'Offline';
+  if (fr.currentRoom || fr.status === 'in_room') {
+    friendStatusLabel = dict.status_in_room || 'In room';
+  } else if (fr.status === 'idle') {
+    friendStatusLabel = dict.status_idle || 'Idle';
+  } else if (isOnline) {
+    friendStatusLabel = dict.status_online || 'Online';
+  }
+
+  const cleanName = (fr.name || '').replace(/[^\w\sçÇğĞıİöÖşŞüÜ-]/g, '').trim() || 'Kullanici';
+  const cleanUsername = (fr.username || fr.name || '').replace(/^@/, '').replace(/[^\w-]/g, '').trim() || 'kullanici';
+  const cleanAvatarChar = (fr.avatar || cleanName.charAt(0) || 'A').toUpperCase();
+
+  card.innerHTML = `
+    <div class="flex items-center gap-3 min-w-0 friend-card-profile-trigger cursor-pointer flex-1 hover:opacity-90 transition-opacity">
+      <div class="relative shrink-0">
+        ${fr.avatarUrl ? 
+          `<img src="${fr.avatarUrl}" class="w-10 h-10 rounded-full object-cover border border-white/20" alt="Avatar">` :
+          `<div class="w-10 h-10 rounded-full bg-gradient-to-tr from-rose-500 to-indigo-600 flex items-center justify-center font-bold text-white text-xs shadow-sm">${cleanAvatarChar}</div>`
+        }
+        <span class="absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full border-2 border-[#0C0E17] ${isOnline ? 'bg-emerald-400' : 'bg-gray-500'}"></span>
+      </div>
+      <div class="truncate">
+        <div class="flex items-center gap-2">
+          <span class="text-xs font-bold text-white truncate">@${cleanUsername}</span>
+        </div>
+        <span class="text-[10px] ${isOnline ? 'text-emerald-400' : 'text-gray-500'} block">
+          ${friendStatusLabel}
+        </span>
+      </div>
+    </div>
+    
+    <div class="flex items-center gap-1.5 shrink-0">
+      <button type="button" class="invite-friend-tab-btn px-3 py-1.5 rounded-xl bg-white/5 hover:bg-white/10 active:scale-95 border border-white/10 text-xs font-semibold text-gray-200 hover:text-white transition-all cursor-pointer flex items-center gap-1.5 shadow-sm" data-name="${cleanName}">
+        <svg class="w-3.5 h-3.5 text-rose-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+        <span>Çağır</span>
+      </button>
+      <button type="button" class="friend-card-options-btn w-8 h-8 rounded-xl bg-white/5 hover:bg-white/10 active:scale-90 border border-white/10 text-gray-300 hover:text-white transition-all cursor-pointer flex items-center justify-center font-black text-base leading-none pb-0.5 shadow-sm" title="Diğer Seçenekler">
+        ⋮
+      </button>
+    </div>
+  `;
+
+  const profileTrigger = card.querySelector('.friend-card-profile-trigger');
+  if (profileTrigger) {
+    addInstantTap(profileTrigger, () => {
+      openPublicUserProfile(cleanUsername);
+    });
+  }
+
+  const inviteBtn = card.querySelector('.invite-friend-tab-btn');
+  if (inviteBtn) {
+    addInstantTap(inviteBtn, (e) => {
+      e.stopPropagation();
+      inviteFriendToRoom(fr);
+    });
+  }
+
+  const optionsBtn = card.querySelector('.friend-card-options-btn');
+  if (optionsBtn) {
+    addInstantTap(optionsBtn, (e) => {
+      e.stopPropagation();
+      openFriendQuickOptions(fr);
+    });
+  }
+
+  container.appendChild(card);
+}
+
 async function addFriend(nameOrUsername) {
   const query = (nameOrUsername || '').trim();
   if (!query) return;
-
-  const cleanUsername = query.replace(/^@/, '').replace(/\s*\(Sen\)/gi, '').replace(/\s*\(Simüle\)/gi, '').replace(/\s*\(Partner\)/gi, '').trim();
-  const currentMyUsername = (state.username || '').replace(/^@/, '').trim();
-
-  if (cleanUsername.toLowerCase() === currentMyUsername.toLowerCase()) {
-    showToast('Kendini arkadaş olarak ekleyemezsin!');
-    return;
-  }
-
-  const already = state.friends.find(f => (f.username || f.name).toLowerCase().replace(/^@/, '') === cleanUsername.toLowerCase());
-  if (already) {
-    showToast(`@${cleanUsername} zaten arkadaş listenizde!`);
-    return;
-  }
-
-  // Check backend search for user
-  let friendName = cleanUsername;
-  let friendAvatar = null;
-  try {
-    const res = await fetch(`/api/users/search?q=${encodeURIComponent(cleanUsername)}`);
-    if (res.ok) {
-      const data = await res.json();
-      if (data.users && data.users.length > 0) {
-        const found = data.users.find(u => (u.username || '').toLowerCase() === cleanUsername.toLowerCase());
-        if (found) {
-          friendName = found.fullName || found.username;
-          friendAvatar = found.avatarUrl;
-        }
-      }
-    }
-  } catch (e) {}
-
-  const newFriend = {
-    id: 'f_' + Date.now(),
-    name: friendName,
-    username: cleanUsername,
-    avatarUrl: friendAvatar,
-    status: 'online',
-    statusText: 'Çevrimiçi',
-    avatar: cleanUsername.charAt(0).toUpperCase()
-  };
-
-  state.friends.unshift(newFriend);
-  localStorage.setItem('miruo_friends', JSON.stringify(state.friends));
-  renderFriendsList(dom.friendSearchInput ? dom.friendSearchInput.value : '');
-  renderFriendsTab(dom.tabFriendSearchInput ? dom.tabFriendSearchInput.value : '');
-  if (typeof renderParticipantsList === 'function') renderParticipantsList();
-  if (dom.addFriendInput) dom.addFriendInput.value = '';
-  if (dom.tabAddFriendInput) dom.tabAddFriendInput.value = '';
-  showToast(`@${cleanUsername} arkadaşlarına eklendi!`);
+  await sendFriendRequest(query);
 }
+window.addFriend = addFriend;
 
 function renderFriendsTab(filterText = '') {
   const container = document.getElementById('tabFriendsContainer');
@@ -8285,119 +8905,217 @@ function renderFriendsTab(filterText = '') {
 
   const dict = I18N[currentLang] || I18N.tr;
 
-  // Render incoming affinity requests and room invites
+  // Render incoming requests (friend requests, affinity, room invites)
   renderIncomingRequests();
+  updateFriendRequestBadge();
 
   const currentUsername = '@' + (state.username || 'kullanici').replace(/^@/, '');
   if (codeDisplay) codeDisplay.textContent = currentUsername;
   const myCodeModal = document.getElementById('myFriendCodeDisplay');
   if (myCodeModal) myCodeModal.textContent = currentUsername;
 
+  const myClean = (state.username || 'kullanici').toLowerCase().replace(/^@/, '');
   const query = (filterText || '').toLowerCase().trim().replace(/^@/, '');
-  let listToRender = query 
-    ? state.friends.filter(f => (f.name && f.name.toLowerCase().includes(query)) || (f.username && f.username.toLowerCase().includes(query)))
-    : [...state.friends];
 
-  // User requested: Active/online friends at top, sorted by last active
-  const isOnlineFn = f => f.status === 'online' || f.status === 'in_room';
-  listToRender.sort((a, b) => {
-    const aOn = isOnlineFn(a);
-    const bOn = isOnlineFn(b);
-    if (aOn && !bOn) return -1;
-    if (!aOn && bOn) return 1;
-    const timeA = a.lastActive || 0;
-    const timeB = b.lastActive || 0;
-    return timeB - timeA;
-  });
+  if (!query) {
+    // Standard Friends View
+    const isOnlineFn = f => f.status === 'online' || f.status === 'in_room';
+    let listToRender = [...state.friends];
+    listToRender.sort((a, b) => {
+      const aOn = isOnlineFn(a);
+      const bOn = isOnlineFn(b);
+      if (aOn && !bOn) return -1;
+      if (!aOn && bOn) return 1;
+      return (b.lastActive || 0) - (a.lastActive || 0);
+    });
 
-  const onlineFriends = state.friends.filter(isOnlineFn);
-  const onlineSuffix = dict.online_count_suffix || (currentLang === 'tr' ? 'Çevrimiçi' : 'Online');
-  if (onlineCountDisplay) onlineCountDisplay.textContent = `${onlineFriends.length} ${onlineSuffix}`;
+    const onlineFriends = state.friends.filter(isOnlineFn);
+    const onlineSuffix = dict.online_count_suffix || (currentLang === 'tr' ? 'Çevrimiçi' : 'Online');
+    if (onlineCountDisplay) onlineCountDisplay.textContent = `${onlineFriends.length} ${onlineSuffix}`;
 
-  if (listToRender.length === 0) {
-    container.innerHTML = `
-      <div class="p-8 text-center bg-[#0C0E17] border border-white/10 rounded-2xl">
-        <p class="text-xs text-gray-400">${query ? `"${escapeHtml(query)}" ile eşleşen kullanıcı bulunamadı.` : (dict.no_friends_empty || 'Henüz arkadaş eklemedin.')}</p>
-        <p class="text-[11px] text-gray-500 mt-1">${dict.no_friends_sub || 'Arkadaşının kullanıcı adını (@kullanici) yukarıdan girerek hemen ekleyebilirsin.'}</p>
-      </div>
-    `;
+    if (listToRender.length === 0) {
+      container.innerHTML = `
+        <div class="p-8 text-center bg-[#0C0E17] border border-white/10 rounded-2xl">
+          <p class="text-xs text-gray-400">${dict.no_friends_empty || 'Henüz arkadaş eklemedin.'}</p>
+          <p class="text-[11px] text-gray-500 mt-1">${dict.no_friends_sub || 'Arkadaşının kullanıcı adını (@kullanici) yukarıdan girerek hemen ekleyebilirsin.'}</p>
+        </div>
+      `;
+      return;
+    }
+
+    container.innerHTML = '';
+    listToRender.forEach(fr => {
+      renderSingleFriendCard(container, fr, dict);
+    });
     return;
   }
 
+  // Filtered / Search View (Global Search across Friends, Live Presence & Global Network)
   container.innerHTML = '';
-  listToRender.forEach(fr => {
-    const card = document.createElement('div');
-    card.className = 'p-3 sm:p-3.5 rounded-2xl bg-[#0C0E17] border border-white/10 hover:border-white/20 transition-all flex items-center justify-between gap-3 shadow-md';
-    const isOnline = fr.status === 'online' || fr.status === 'in_room';
 
-    let friendStatusLabel = dict.status_offline || 'Offline';
-    if (fr.currentRoom || fr.status === 'in_room') {
-      friendStatusLabel = dict.status_in_room || 'In room';
-    } else if (fr.status === 'idle') {
-      friendStatusLabel = dict.status_idle || 'Idle';
-    } else if (isOnline) {
-      friendStatusLabel = dict.status_online || 'Online';
+  const localMatches = state.friends.filter(f => 
+    (f.name && f.name.toLowerCase().includes(query)) || 
+    (f.username && f.username.toLowerCase().includes(query))
+  );
+
+  const outgoing = getOutgoingFriendRequests();
+  const isPendingReq = (u) => outgoing.some(r => (r.toUsername || '').toLowerCase() === u.toLowerCase());
+
+  // Search Global Users Cache & Presence
+  const globalCache = JSON.parse(localStorage.getItem('miruo_global_users_cache') || '{}');
+  const registeredUsers = JSON.parse(localStorage.getItem('miruo_registered_users') || '[]');
+  
+  const candidateUsersMap = new Map();
+  // Populate from presence map
+  window.miruoGlobalUsersMap.forEach((val, k) => candidateUsersMap.set(k, val));
+  // Populate from cache
+  Object.keys(globalCache).forEach(k => {
+    if (!candidateUsersMap.has(k)) candidateUsersMap.set(k, globalCache[k]);
+  });
+  // Populate from registered users
+  registeredUsers.forEach(ru => {
+    const k = (ru.username || '').toLowerCase().replace(/^@/, '');
+    if (k && !candidateUsersMap.has(k)) {
+      candidateUsersMap.set(k, {
+        username: k,
+        fullName: ru.fullName || ru.username,
+        avatarUrl: ru.avatarUrl || '',
+        avatarBg: ru.avatarBg || 'from-rose-500 to-indigo-600',
+        status: 'offline'
+      });
     }
+  });
 
-    const cleanName = (fr.name || '').replace(/[^\w\sçÇğĞıİöÖşŞüÜ-]/g, '').trim() || 'Kullanici';
-    const cleanUsername = (fr.username || fr.name || '').replace(/^@/, '').replace(/[^\w-]/g, '').trim() || 'kullanici';
-    const cleanAvatarChar = (fr.avatar || cleanName.charAt(0) || 'A').toUpperCase();
+  const discoveredMatches = [];
+  candidateUsersMap.forEach((u, uKey) => {
+    if (uKey === myClean) return; // skip self
+    if (localMatches.some(f => (f.username || f.name || '').toLowerCase().replace(/^@/, '') === uKey)) return; // already in local
+    if (uKey.includes(query) || (u.fullName && u.fullName.toLowerCase().includes(query))) {
+      discoveredMatches.push(u);
+    }
+  });
 
-    card.innerHTML = `
-      <div class="flex items-center gap-3 min-w-0 friend-card-profile-trigger cursor-pointer flex-1 hover:opacity-90 transition-opacity">
-        <div class="relative shrink-0">
-          ${fr.avatarUrl ? 
-            `<img src="${fr.avatarUrl}" class="w-10 h-10 rounded-full object-cover border border-white/20" alt="Avatar">` :
-            `<div class="w-10 h-10 rounded-full bg-gradient-to-tr from-rose-500 to-indigo-600 flex items-center justify-center font-bold text-white text-xs shadow-sm">${cleanAvatarChar}</div>`
+  // Render Local Friend Matches
+  if (localMatches.length > 0) {
+    const header = document.createElement('div');
+    header.className = 'text-[11px] font-bold text-gray-400 uppercase tracking-wider px-1 pt-1 pb-0.5';
+    header.textContent = `Arkadaşların (${localMatches.length})`;
+    container.appendChild(header);
+
+    localMatches.forEach(fr => {
+      renderSingleFriendCard(container, fr, dict);
+    });
+  }
+
+  // Render Discovered Users
+  if (discoveredMatches.length > 0) {
+    const header = document.createElement('div');
+    header.className = 'text-[11px] font-bold text-rose-400 uppercase tracking-wider px-1 pt-2 pb-0.5 flex items-center gap-1.5';
+    header.innerHTML = `
+      <svg class="w-3.5 h-3.5 text-rose-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
+      <span>Keşfedilen Kullanıcılar (${discoveredMatches.length})</span>
+    `;
+    container.appendChild(header);
+
+    discoveredMatches.forEach(u => {
+      const cleanU = (u.username || '').replace(/^@/, '');
+      const card = document.createElement('div');
+      card.className = 'p-3 rounded-2xl bg-[#0C0E17] border border-white/10 hover:border-white/20 transition-all flex items-center justify-between gap-3 shadow-md';
+      const isOnline = u.status === 'online' || u.status === 'in_room';
+      const pending = isPendingReq(cleanU);
+
+      card.innerHTML = `
+        <div class="flex items-center gap-3 min-w-0 flex-1">
+          <div class="relative shrink-0">
+            ${u.avatarUrl ?
+              `<img src="${u.avatarUrl}" class="w-10 h-10 rounded-full object-cover border border-white/20" alt="Avatar">` :
+              `<div class="w-10 h-10 rounded-full bg-gradient-to-tr ${u.avatarBg || 'from-rose-500 to-indigo-600'} flex items-center justify-center font-bold text-white text-xs shadow-sm">${(cleanU.charAt(0) || 'A').toUpperCase()}</div>`
+            }
+            <span class="absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full border-2 border-[#0C0E17] ${isOnline ? 'bg-emerald-400' : 'bg-gray-500'}"></span>
+          </div>
+          <div class="truncate">
+            <div class="flex items-center gap-1.5">
+              <span class="text-xs font-bold text-white truncate">@${cleanU}</span>
+              ${u.fullName && u.fullName !== cleanU ? `<span class="text-[10px] text-gray-400 truncate">(${escapeHtml(u.fullName)})</span>` : ''}
+            </div>
+            <span class="text-[10px] ${isOnline ? 'text-emerald-400 font-semibold' : 'text-gray-500'} block">
+              ${isOnline ? 'Çevrimiçi' : 'Çevrimdışı'}
+            </span>
+          </div>
+        </div>
+        <div class="shrink-0">
+          ${pending ?
+            `<button disabled type="button" class="px-3 py-1.5 rounded-xl bg-white/10 text-gray-400 font-semibold text-xs border border-white/10">İstek Gönderildi</button>` :
+            `<button type="button" class="send-req-card-btn px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-rose-600 via-pink-600 to-indigo-600 hover:opacity-95 active:scale-95 text-white font-bold text-xs shadow-md transition-all cursor-pointer flex items-center gap-1.5" data-username="${cleanU}">
+              <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="8.5" cy="7" r="4"/><line x1="20" y1="8" x2="20" y2="14"/><line x1="23" y1="11" x2="17" y2="11"/></svg>
+              <span>Arkadaş Ekle</span>
+            </button>`
           }
-          <span class="absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full border-2 border-[#0C0E17] ${isOnline ? 'bg-emerald-400' : 'bg-gray-500'}"></span>
+        </div>
+      `;
+
+      const btn = card.querySelector('.send-req-card-btn');
+      if (btn) {
+        addInstantTap(btn, (e) => {
+          if (e && e.stopPropagation) e.stopPropagation();
+          sendFriendRequest(cleanU);
+        });
+      }
+      container.appendChild(card);
+    });
+  }
+
+  // Always show Direct Actionable Card for exact query if not already in local friends and not self
+  const exactInFriends = localMatches.some(f => (f.username || f.name || '').toLowerCase().replace(/^@/, '') === query);
+  const exactInDiscovered = discoveredMatches.some(u => (u.username || '').toLowerCase().replace(/^@/, '') === query);
+
+  if (!exactInFriends && !exactInDiscovered && query !== myClean && query.length >= 2) {
+    const directCard = document.createElement('div');
+    directCard.className = 'p-3.5 rounded-2xl bg-gradient-to-r from-[#1E112A] via-[#140D24] to-[#0E101D] border border-rose-500/40 flex items-center justify-between gap-3 shadow-xl animate-in fade-in duration-200';
+    const pending = isPendingReq(query);
+
+    directCard.innerHTML = `
+      <div class="flex items-center gap-3 min-w-0 flex-1">
+        <div class="w-10 h-10 rounded-full bg-gradient-to-tr from-rose-500 via-pink-600 to-indigo-600 flex items-center justify-center font-black text-white text-xs shadow-md border border-white/20 shrink-0">
+          ${query.charAt(0).toUpperCase()}
         </div>
         <div class="truncate">
-          <div class="flex items-center gap-2">
-            <span class="text-xs font-bold text-white truncate">@${cleanUsername}</span>
+          <div class="flex items-center gap-1.5">
+            <span class="text-xs font-bold text-white truncate">@${escapeHtml(query)}</span>
+            <span class="px-1.5 py-0.2 rounded-full bg-rose-500/20 text-rose-300 border border-rose-500/30 text-[9px] font-extrabold">Miruo Kullanıcısı</span>
           </div>
-          <span class="text-[10px] ${isOnline ? 'text-emerald-400' : 'text-gray-500'} block">
-            ${friendStatusLabel}
-          </span>
+          <span class="text-[10px] text-gray-400 block mt-0.5">Bu kullanıcıya doğrudan arkadaşlık isteği gönder</span>
         </div>
       </div>
-      
-      <div class="flex items-center gap-1.5 shrink-0">
-        <button type="button" class="invite-friend-tab-btn px-3 py-1.5 rounded-xl bg-white/5 hover:bg-white/10 active:scale-95 border border-white/10 text-xs font-semibold text-gray-200 hover:text-white transition-all cursor-pointer flex items-center gap-1.5 shadow-sm" data-name="${cleanName}">
-          <svg class="w-3.5 h-3.5 text-rose-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg>
-          <span>Çağır</span>
-        </button>
-        <button type="button" class="friend-card-options-btn w-8 h-8 rounded-xl bg-white/5 hover:bg-white/10 active:scale-90 border border-white/10 text-gray-300 hover:text-white transition-all cursor-pointer flex items-center justify-center font-black text-base leading-none pb-0.5 shadow-sm" title="Diğer Seçenekler">
-          ⋮
-        </button>
+      <div class="shrink-0">
+        ${pending ?
+          `<button disabled type="button" class="px-3 py-1.5 rounded-xl bg-white/10 text-gray-400 font-semibold text-xs border border-white/10">İstek Gönderildi</button>` :
+          `<button type="button" class="direct-add-card-btn px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-rose-600 via-pink-600 to-indigo-600 hover:opacity-95 active:scale-95 text-white font-bold text-xs shadow-md shadow-rose-600/30 transition-all cursor-pointer flex items-center gap-1.5" data-username="${escapeHtml(query)}">
+            <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="8.5" cy="7" r="4"/><line x1="20" y1="8" x2="20" y2="14"/><line x1="23" y1="11" x2="17" y2="11"/></svg>
+            <span>Arkadaş Ekle</span>
+          </button>`
+        }
       </div>
     `;
 
-    const profileTrigger = card.querySelector('.friend-card-profile-trigger');
-    if (profileTrigger) {
-      addInstantTap(profileTrigger, () => {
-        openPublicUserProfile(cleanUsername);
+    const directBtn = directCard.querySelector('.direct-add-card-btn');
+    if (directBtn) {
+      addInstantTap(directBtn, (e) => {
+        if (e && e.stopPropagation) e.stopPropagation();
+        sendFriendRequest(query);
       });
     }
+    container.appendChild(directCard);
 
-    const inviteBtn = card.querySelector('.invite-friend-tab-btn');
-    if (inviteBtn) {
-      addInstantTap(inviteBtn, (e) => {
-        e.stopPropagation();
-        inviteFriendToRoom(fr);
-      });
-    }
-
-    const optionsBtn = card.querySelector('.friend-card-options-btn');
-    if (optionsBtn) {
-      addInstantTap(optionsBtn, (e) => {
-        e.stopPropagation();
-        openFriendQuickOptions(fr);
-      });
-    }
-
-    container.appendChild(card);
-  });
+    // Asynchronously check backend search to enrich cache
+    fetch(`/api/users/search?q=${encodeURIComponent(query)}`)
+      .then(r => r.json())
+      .then(d => {
+        if (d.users && d.users.length > 0) {
+          d.users.forEach(u => upsertGlobalUserCache(u));
+        }
+      }).catch(() => {});
+  }
 }
 
 

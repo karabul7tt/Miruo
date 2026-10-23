@@ -51,7 +51,7 @@ class ViewController: UIViewController, WKNavigationDelegate, WKUIDelegate, WKSc
     private func setupAudioSession() {
         do {
             let session = AVAudioSession.sharedInstance()
-            try session.setCategory(.playAndRecord, mode: .moviePlayback, options: [.mixWithOthers, .defaultToSpeaker, .allowBluetooth, .allowAirPlay])
+            try session.setCategory(.playAndRecord, mode: .videoChat, options: [.mixWithOthers, .defaultToSpeaker, .allowBluetooth, .allowAirPlay])
             try session.setActive(true)
         } catch {
             print("AVAudioSession configuration error: \(error)")
