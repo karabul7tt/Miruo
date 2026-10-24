@@ -2841,10 +2841,12 @@ function connectSignaling() {
 }
 
 function sendSignal(msg) {
-  const cleanRoom = (state.roomId || 'ODA-77').trim().toUpperCase().replace(/[^A-Z0-9_-]/g, '_');
+  const isGlobalFriendSignal = msg && (msg.type === 'friend-request' || msg.type === 'friend-accepted' || msg.type === 'friend-declined');
+  if (!isGlobalFriendSignal && (!state.isInRoom || !state.roomId)) return;
+  const cleanRoom = (state.roomId || '').trim().toUpperCase().replace(/[^A-Z0-9_-]/g, '_');
   const payload = {
     ...msg,
-    roomId: cleanRoom,
+    roomId: cleanRoom || 'GLOBAL',
     userId: state.userId,
     sentAt: msg.sentAt || Date.now()
   };
@@ -3374,6 +3376,15 @@ function setupDataChannelEvents(channel) {
       if (data.type === 'perm_change') handleRemotePermissionChange(data.mode || payload.mode, data.hostName || payload.hostName);
       if (data.type === 'request_dj') handleDjPermissionRequested(data.fromUser || payload.fromUser);
       if (data.type === 'grant_dj') handleDjPermissionGranted(data.toUser || payload.toUser);
+      if (data.type === 'friend_request') {
+        if (typeof handleIncomingFriendRequest === 'function') handleIncomingFriendRequest(payload);
+      }
+      if (data.type === 'friend_accepted') {
+        if (typeof handleIncomingFriendAccepted === 'function') handleIncomingFriendAccepted(payload);
+      }
+      if (data.type === 'friend_declined') {
+        if (typeof handleIncomingFriendDeclined === 'function') handleIncomingFriendDeclined(payload);
+      }
       if (data.type === 'chat') renderChatMessage(data.sender || payload.sender, data.text || payload.text, false, data.time || payload.time, data.imageUrl || payload.imageUrl, data.avatarUrl || payload.avatarUrl);
       if (data.type === 'media_status') updateRemoteParticipantStatus(data.userId || payload.userId, data.username || payload.username, data.isMicOn !== undefined ? data.isMicOn : payload.isMicOn, data.isCamOn !== undefined ? data.isCamOn : payload.isCamOn);
       if (data.type === 'platform_switch') {
@@ -3424,6 +3435,9 @@ function sendP2PData(type, payload = {}) {
   else if (type === 'privacy_change') sendSignal({ type: 'privacy-change', isPrivate: enrichedPayload.isPrivate });
   else if (type === 'request_dj') sendSignal({ type: 'request-dj', fromUser: enrichedPayload.fromUser });
   else if (type === 'grant_dj') sendSignal({ type: 'grant-dj', toUser: enrichedPayload.toUser });
+  else if (type === 'friend_request') sendSignal({ type: 'friend-request', payload: enrichedPayload });
+  else if (type === 'friend_accepted') sendSignal({ type: 'friend-accepted', payload: enrichedPayload });
+  else if (type === 'friend_declined') sendSignal({ type: 'friend-declined', payload: enrichedPayload });
   else if (type === 'chat') sendSignal({ type: 'chat-message', sender: enrichedPayload.sender, text: enrichedPayload.text, time: enrichedPayload.time, imageUrl: enrichedPayload.imageUrl, avatarUrl: enrichedPayload.avatarUrl });
   else if (type === 'media_status') sendSignal({ type: 'media-status', userId: enrichedPayload.userId, username: enrichedPayload.username, isMicOn: enrichedPayload.isMicOn, isCamOn: enrichedPayload.isCamOn });
   else if (type === 'platform_switch') sendSignal({ type: 'platform-switch', platform: enrichedPayload.platform });
@@ -3544,6 +3558,10 @@ window.onYouTubeIframeAPIReady = function() {
 };
 
 function loadYoutubeVideo(urlOrId) {
+  if (!state.isInRoom || (state.currentTab !== 'room' && !state.isMiniPlayer)) {
+    console.warn('[Miruo] Video playback suppressed: User is not inside an active room');
+    return;
+  }
   let videoId = extractYouTubeId(urlOrId);
   if (!videoId) {
     showToast('Geçerli bir YouTube linki girin!');
@@ -3719,6 +3737,10 @@ function loadTwitchStream(channelOrUrl, title) {
 }
 
 function loadDirectVideo(url, title) {
+  if (!state.isInRoom || (state.currentTab !== 'room' && !state.isMiniPlayer)) {
+    console.warn('[Miruo] Direct video playback suppressed: User is not inside an active room');
+    return;
+  }
   state.activeMode = 'direct';
   state.currentProvider = 'Web Video';
   state.currentVideoId = url;
@@ -3838,12 +3860,22 @@ function onYtStateChange(event) {
 
   if (event.data === YT.PlayerState.PLAYING) {
     if (!state.isPlaying) {
+      if (!canUserControlPlayback()) {
+        // Unauthorized user tried to play or iframe auto-resumed -> force back to room paused state!
+        sendYtCommand('pauseVideo');
+        return;
+      }
       state.isPlaying = true;
       updatePlayPauseUI(true);
       sendP2PData('sync', { action: 'play', time: state.ytPlayer ? state.ytPlayer.getCurrentTime() : state.currentTime, sentAt: Date.now() });
     }
   } else if (event.data === YT.PlayerState.PAUSED) {
     if (state.isPlaying) {
+      if (!canUserControlPlayback()) {
+        // Unauthorized user tried to pause -> force back to room playing state!
+        sendYtCommand('playVideo');
+        return;
+      }
       state.isPlaying = false;
       updatePlayPauseUI(false);
       sendP2PData('sync', { action: 'pause', time: state.ytPlayer ? state.ytPlayer.getCurrentTime() : state.currentTime, sentAt: Date.now() });
@@ -3874,7 +3906,7 @@ function sendYtCommand(func, args = []) {
 }
 
 function handleRemoteSync(payload) {
-  if (!payload) return;
+  if (!state.isInRoom || !payload) return;
 
   // Deduplicate identical events received both via WebRTC dataChannel and Signaling
   const syncKey = `${payload.action}_${payload.sentAt || ''}_${Math.round((payload.time || 0) * 10)}`;
@@ -3961,20 +3993,21 @@ function handleRemoteSync(payload) {
 
   if (payload.action === 'play') {
     const targetTime = (typeof payload.time === 'number' ? payload.time : state.currentTime) + transit;
-    if (state.activeMode === 'youtube') {
-      if (Math.abs(state.currentTime - targetTime) > 0.3) {
-        sendYtCommand('seekTo', [targetTime, true]);
-        state.currentTime = targetTime;
-      }
-      sendYtCommand('playVideo');
-    } else if (dom.nativeVideoPlayer) {
-      if (Math.abs(dom.nativeVideoPlayer.currentTime - targetTime) > 0.3) {
-        dom.nativeVideoPlayer.currentTime = targetTime;
-      }
-      dom.nativeVideoPlayer.play();
-    }
+    state.currentTime = targetTime;
     state.isPlaying = true;
     updatePlayPauseUI(true);
+    if (state.activeMode === 'youtube') {
+      if (Math.abs(state.currentTime - targetTime) > 0.4) {
+        sendYtCommand('seekTo', [targetTime, true]);
+      }
+      sendYtCommand('playVideo');
+      setTimeout(() => { if (state.isPlaying) sendYtCommand('playVideo'); }, 120);
+    } else if (dom.nativeVideoPlayer) {
+      if (Math.abs(dom.nativeVideoPlayer.currentTime - targetTime) > 0.4) {
+        dom.nativeVideoPlayer.currentTime = targetTime;
+      }
+      dom.nativeVideoPlayer.play().catch(() => {});
+    }
     showToast('Oynatılıyor');
   }
 
@@ -3984,11 +4017,11 @@ function handleRemoteSync(payload) {
     updatePlayPauseUI(false);
     sendYtCommand('pauseVideo');
     if (state.activeMode === 'youtube') {
-      if (typeof payload.time === 'number' && Math.abs(state.currentTime - targetTime) > 0.35) {
+      if (typeof payload.time === 'number' && Math.abs(state.currentTime - targetTime) > 0.25) {
         sendYtCommand('seekTo', [targetTime, true]);
         state.currentTime = targetTime;
       }
-      // Triple re-assert pause to eliminate YouTube Iframe auto-resume on seek/buffer
+      // Quadruple re-assert pause to eliminate YouTube Iframe auto-resume on seek/buffer
       setTimeout(() => { if (!state.isPlaying) sendYtCommand('pauseVideo'); }, 50);
       setTimeout(() => { if (!state.isPlaying) sendYtCommand('pauseVideo'); }, 150);
       setTimeout(() => { if (!state.isPlaying) sendYtCommand('pauseVideo'); }, 350);
@@ -4001,13 +4034,24 @@ function handleRemoteSync(payload) {
   }
 
   if (payload.action === 'seek') {
-    const targetTime = payload.time || 0;
+    const targetTime = typeof payload.time === 'number' ? payload.time : 0;
+    state.currentTime = targetTime;
+    if (typeof payload.isPlaying === 'boolean') {
+      state.isPlaying = payload.isPlaying;
+      updatePlayPauseUI(state.isPlaying);
+    }
     if (state.activeMode === 'youtube') {
       sendYtCommand('seekTo', [targetTime, true]);
+      if (state.isPlaying) {
+        setTimeout(() => { if (state.isPlaying) sendYtCommand('playVideo'); }, 80);
+      } else {
+        setTimeout(() => { if (!state.isPlaying) sendYtCommand('pauseVideo'); }, 80);
+      }
     } else if (dom.nativeVideoPlayer) {
       dom.nativeVideoPlayer.currentTime = targetTime;
+      if (state.isPlaying) dom.nativeVideoPlayer.play().catch(() => {});
+      else dom.nativeVideoPlayer.pause();
     }
-    state.currentTime = targetTime;
     if (dom.seekSlider && state.duration > 0) {
       dom.seekSlider.value = (targetTime / state.duration) * 100;
     }
@@ -4015,34 +4059,68 @@ function handleRemoteSync(payload) {
   }
 
   if (payload.action === 'heartbeat') {
-    // Only process heartbeat if it came from host or video owner
+    // Only process heartbeat if non-host peer receives it
     if (!state.isHost) {
-      if (typeof payload.rate === 'number' && Math.abs((state.playbackRate || 1.0) - payload.rate) > 0.05) {
-        setPlayerPlaybackRate(payload.rate, false);
+      if (!payload.isPlaying) {
+        // Authoritative state is PAUSED: force peer to stay paused!
+        if (state.isPlaying) {
+          state.isPlaying = false;
+          updatePlayPauseUI(false);
+          sendYtCommand('pauseVideo');
+          if (dom.nativeVideoPlayer) dom.nativeVideoPlayer.pause();
+        }
+        if (typeof payload.time === 'number' && Math.abs(state.currentTime - payload.time) > 0.5) {
+          state.currentTime = payload.time;
+          if (state.activeMode === 'youtube') sendYtCommand('seekTo', [payload.time, true]);
+          else if (dom.nativeVideoPlayer) dom.nativeVideoPlayer.currentTime = payload.time;
+        }
+        return;
       }
-      if (payload.isPlaying) {
-        const targetTime = (payload.time || 0) + transit;
-        const drift = Math.abs(state.currentTime - targetTime);
-        // Only seek if drift exceeds 1.5 seconds to prevent continuous buffering / stutter loops
-        if (drift > 1.5) {
-          if (state.activeMode === 'youtube') {
-            sendYtCommand('seekTo', [targetTime, true]);
-          } else if (dom.nativeVideoPlayer) {
-            dom.nativeVideoPlayer.currentTime = targetTime;
-          }
+
+      // Authoritative state is PLAYING
+      const targetTime = (payload.time || 0) + transit;
+      const drift = targetTime - state.currentTime; // positive: peer behind; negative: peer ahead
+      const absDrift = Math.abs(drift);
+
+      // If peer was paused but host is playing, resume playback
+      if (!state.isPlaying) {
+        state.isPlaying = true;
+        updatePlayPauseUI(true);
+        if (state.activeMode === 'youtube') {
+          sendYtCommand('seekTo', [targetTime, true]);
+          sendYtCommand('playVideo');
+        } else if (dom.nativeVideoPlayer) {
+          dom.nativeVideoPlayer.currentTime = targetTime;
+          dom.nativeVideoPlayer.play().catch(() => {});
+        }
+        state.currentTime = targetTime;
+        return;
+      }
+
+      // Smooth rate sync for small drifts (< 3.0 seconds) - Zero buffer spinner, zero stutter!
+      const baseRate = typeof payload.rate === 'number' ? payload.rate : 1.0;
+      if (absDrift > 3.0) {
+        // Large drift (> 3.0s): Hard seek to catch up, throttled by at least 4s
+        const now = Date.now();
+        if (!state.lastHardSeekAt || (now - state.lastHardSeekAt) > 4000) {
+          state.lastHardSeekAt = now;
+          if (state.activeMode === 'youtube') sendYtCommand('seekTo', [targetTime, true]);
+          else if (dom.nativeVideoPlayer) dom.nativeVideoPlayer.currentTime = targetTime;
           state.currentTime = targetTime;
+          setPlayerPlaybackRate(baseRate, false);
         }
-        if (!state.isPlaying) {
-          if (state.activeMode === 'youtube') sendYtCommand('playVideo');
-          else if (dom.nativeVideoPlayer) dom.nativeVideoPlayer.play();
-          state.isPlaying = true;
-          updatePlayPauseUI(true);
+      } else if (absDrift > 0.35) {
+        // Micro drift (0.35s - 3.0s): gently nudge playback rate so it catches up seamlessly without pausing
+        if (drift > 0) {
+          setPlayerPlaybackRate(baseRate * 1.05, false);
+        } else {
+          setPlayerPlaybackRate(baseRate * 0.95, false);
         }
-      } else if (!payload.isPlaying && state.isPlaying) {
-        if (state.activeMode === 'youtube') sendYtCommand('pauseVideo');
-        else if (dom.nativeVideoPlayer) dom.nativeVideoPlayer.pause();
-        state.isPlaying = false;
-        updatePlayPauseUI(false);
+      } else {
+        // Drift is negligible (< 0.35s): maintain normal playback rate
+        if (Math.abs((state.playbackRate || 1.0) - baseRate) > 0.02) {
+          setPlayerPlaybackRate(baseRate, false);
+        }
       }
     }
   }
@@ -4148,11 +4226,15 @@ function togglePlayPause() {
       time: state.currentTime,
       sentAt: Date.now()
     });
+    if (!state.isPlaying) {
+      setTimeout(() => { if (!state.isPlaying) sendYtCommand('pauseVideo'); }, 80);
+      setTimeout(() => { if (!state.isPlaying) sendYtCommand('pauseVideo'); }, 250);
+    }
     return;
   }
   if (state.activeMode === 'direct' && dom.nativeVideoPlayer) {
     if (dom.nativeVideoPlayer.paused) {
-      dom.nativeVideoPlayer.play();
+      dom.nativeVideoPlayer.play().catch(() => {});
       state.isPlaying = true;
       sendP2PData('sync', { action: 'play', time: dom.nativeVideoPlayer.currentTime, sentAt: Date.now() });
     } else {
@@ -4203,12 +4285,18 @@ window.addEventListener('message', (event) => {
       // Check if user scrubbed inside YouTube iframe progress bar directly
       if (typeof prevTime === 'number' && Math.abs(data.info.currentTime - prevTime) > 1.8) {
         if (!state.isRemoteAction && !state.isUserDraggingSeek && (Date.now() - (state.lastSyncSentAt || 0) > 800)) {
-          state.lastSyncSentAt = Date.now();
-          sendP2PData('sync', {
-            action: 'seek',
-            time: data.info.currentTime,
-            sentAt: Date.now()
-          });
+          if (canUserControlPlayback()) {
+            state.lastSyncSentAt = Date.now();
+            sendP2PData('sync', {
+              action: 'seek',
+              time: data.info.currentTime,
+              isPlaying: state.isPlaying,
+              sentAt: Date.now()
+            });
+          } else {
+            // Unauthorized scrub: revert player back to synchronized room time
+            sendYtCommand('seekTo', [state.currentTime, true]);
+          }
         }
       }
     }
@@ -4222,6 +4310,12 @@ window.addEventListener('message', (event) => {
       }
       const isNowPlaying = data.info.playerState === 1;
       if (isNowPlaying !== state.isPlaying && !state.isRemoteAction) {
+        if (!canUserControlPlayback()) {
+          // Unauthorized peer state divergence: lock back to room playback state!
+          if (state.isPlaying) sendYtCommand('playVideo');
+          else sendYtCommand('pauseVideo');
+          return;
+        }
         state.isPlaying = isNowPlaying;
         updatePlayPauseUI(isNowPlaying);
         state.lastSyncSentAt = Date.now();
@@ -6804,10 +6898,32 @@ function switchToExplore() {
   document.body.classList.remove('in-room-mode');
   document.documentElement.classList.remove('in-room-mode');
   if (!state.isMiniPlayer) {
+    state.isInRoom = false;
     document.body.classList.remove('has-mini-player');
     if (dom.roomWorkspaceSection) {
       dom.roomWorkspaceSection.classList.add('hidden');
       dom.roomWorkspaceSection.classList.remove('flex', 'block');
+    }
+    // Prevent any video or audio from playing on explore screen
+    sendYtCommand('pauseVideo');
+    const ytFrame = document.getElementById('miruoYtIframe');
+    if (ytFrame) {
+      try { ytFrame.src = 'about:blank'; } catch (_) {}
+      ytFrame.remove();
+    }
+    if (dom.ytPlayerContainer) dom.ytPlayerContainer.innerHTML = '';
+    if (dom.nativeVideoPlayer) {
+      try {
+        dom.nativeVideoPlayer.pause();
+        dom.nativeVideoPlayer.src = '';
+      } catch (_) {}
+      dom.nativeVideoPlayer.classList.add('hidden');
+    }
+    state.isPlaying = false;
+    state.currentVideoId = null;
+    if (syncHeartbeatInterval) {
+      clearInterval(syncHeartbeatInterval);
+      syncHeartbeatInterval = null;
     }
   }
   if (typeof stopProfileStarCanvas === 'function') stopProfileStarCanvas();
@@ -6902,6 +7018,7 @@ function switchToProviderPicker() {
 }
 
 function switchToMyRoom() {
+  state.currentTab = 'room';
   // Add in-room-mode class for full-height responsive layout
   document.body.classList.add('in-room-mode');
   document.documentElement.classList.add('in-room-mode');
@@ -8308,7 +8425,10 @@ function initGlobalUsersChannel() {
         if (payload) ackGlobalEvent('friend_declined', payload.requestId || payload.id, payload.fromUsername, payload.toUsername);
       })
       .on('broadcast', { event: 'role_update' }, ({ payload }) => {
-        if (payload && payload.roomId === (state.roomId || 'ODA-77')) {
+        if (!payload) return;
+        const myRoom = (state.roomId || '').trim().toUpperCase().replace(/[^A-Z0-9_-]/g, '_');
+        const targetRoom = (payload.roomId || '').trim().toUpperCase().replace(/[^A-Z0-9_-]/g, '_');
+        if (myRoom && targetRoom && myRoom === targetRoom) {
           handleRemoteRoleUpdate(payload.targetUserId, payload.newRole, payload.targetUsername);
         }
       })
@@ -8333,6 +8453,7 @@ function initGlobalUsersChannel() {
       })
       .on('broadcast', { event: 'room_signal' }, ({ payload }) => {
         if (!payload || payload.userId === state.userId) return;
+        if (!state.isInRoom || !state.roomId) return;
         const myRoom = (state.roomId || '').trim().toUpperCase().replace(/[^A-Z0-9_-]/g, '_');
         const targetRoom = (payload.roomId || '').trim().toUpperCase().replace(/[^A-Z0-9_-]/g, '_');
         if (myRoom && targetRoom && myRoom === targetRoom) {
@@ -8660,8 +8781,9 @@ async function sendFriendRequest(targetUsername) {
   // Broadcast over global users channel (outbox: çevrimdışıysa online olunca iletilir)
   queueGlobalEvent('friend_request', cleanTarget, reqPayload);
 
-  // Also broadcast via signaling server if connected
+  // Also broadcast via signaling server and active P2P channel
   sendSignal({ type: 'friend-request', payload: reqPayload });
+  sendP2PData('friend_request', reqPayload);
 
   showToast(`@${cleanTarget} kullanıcısına arkadaşlık isteği gönderildi!`);
   const searchInput = document.getElementById('tabFriendSearchInput');
@@ -8671,11 +8793,12 @@ window.sendFriendRequest = sendFriendRequest;
 
 function handleIncomingFriendRequest(req) {
   if (!req || !req.toUsername) return;
-  const myUsername = (state.username || '').toLowerCase().replace(/^@/, '');
-  if (req.toUsername.toLowerCase().replace(/^@/, '') !== myUsername) return;
+  const myUsername = (state.username || '').toLowerCase().replace(/^@/, '').trim();
+  const targetUsername = (req.toUsername || '').toLowerCase().replace(/^@/, '').trim();
+  if (targetUsername !== myUsername) return;
 
-  const cleanFrom = (req.fromUsername || '').toLowerCase().replace(/^@/, '');
-  if (state.friends.some(f => (f.username || f.name || '').toLowerCase().replace(/^@/, '') === cleanFrom)) return;
+  const cleanFrom = (req.fromUsername || '').toLowerCase().replace(/^@/, '').trim();
+  if (state.friends.some(f => (f.username || f.name || '').toLowerCase().replace(/^@/, '').trim() === cleanFrom)) return;
 
   const incoming = getIncomingFriendRequests();
   if (incoming.some(r => r.id === req.id || (r.fromUsername || '').toLowerCase() === cleanFrom)) {
@@ -8735,6 +8858,7 @@ function acceptFriendRequest(reqId) {
 
   queueGlobalEvent('friend_accepted', req.fromUsername, acceptPayload);
   sendSignal({ type: 'friend-accepted', payload: acceptPayload });
+  sendP2PData('friend_accepted', acceptPayload);
 
   showToast(`@${cleanFrom} ile artık arkadaşsınız!`);
   updateFriendRequestBadge();
@@ -11397,8 +11521,10 @@ function handleRemoteRoleUpdate(targetUserId, newRole, targetUsername) {
   };
   const roleName = roleLabels[newRole] || newRole;
 
+  const myClean = (state.username || '').toLowerCase().replace(/^@/, '').trim();
+  const targetClean = (targetUsername || '').toLowerCase().replace(/^@/, '').trim();
   const isMe = (targetUserId && String(targetUserId) === String(state.userId)) ||
-               (targetUsername && state.username && targetUsername.toLowerCase().replace(/^@/, '') === state.username.toLowerCase().replace(/^@/, ''));
+               (targetClean && myClean && targetClean === myClean);
 
   if (isMe) {
     state.userRole = newRole;
@@ -12126,7 +12252,8 @@ function loadUserSession() {
   }
   state.userId = user.id || state.userId;
   state.username = ((user && user.username) || customUsername || (user && user.name) || 'kullanici').replace(/^@/, '');
-  state.roomId = (roomFromUrl || user.defaultRoom || 'ODA-77').toUpperCase();
+  state.roomId = (roomFromUrl || '').toUpperCase();
+  state.isInRoom = !!roomFromUrl;
   state.avatarUrl = (user && user.avatarUrl) || backupAvatar || '';
   state.avatarBg = (user && user.avatarBg) || '';
 
@@ -15608,7 +15735,7 @@ function initEvents() {
       dom.seekSlider.value = (target / state.duration) * 100;
     }
     if (!state.isRemoteAction) {
-      sendP2PData('sync', { action: 'seek', time: target, sentAt: Date.now() });
+      sendP2PData('sync', { action: 'seek', time: target, isPlaying: state.isPlaying, sentAt: Date.now() });
     }
   }
   window.seekRelative = seekRelative;
@@ -17653,7 +17780,12 @@ function validateInstagramUsername(username) {
   if (stageAdvanceNextBtn) {
     addInstantTap(stageAdvanceNextBtn, (e) => {
       if (e && e.stopPropagation) e.stopPropagation();
-      handleNextTrack();
+      if (!canUserControlPlayback()) {
+        showToast('Videoyu ileri sarma yetkisi sadece Oda Sahibi ve Yöneticilere aittir.');
+        return;
+      }
+      if (typeof seekRelative === 'function') seekRelative(10);
+      showToast('10 sn ileri sarıldı');
     });
   }
 
@@ -17678,7 +17810,7 @@ function validateInstagramUsername(username) {
       } else if (state.activeMode === 'direct' && dom.nativeVideoPlayer) {
         dom.nativeVideoPlayer.currentTime = targetTime;
       }
-      sendP2PData('sync', { action: 'seek', time: targetTime, sentAt: Date.now() });
+      sendP2PData('sync', { action: 'seek', time: targetTime, isPlaying: state.isPlaying, sentAt: Date.now() });
     }
   };
 
