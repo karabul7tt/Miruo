@@ -4015,31 +4015,35 @@ function handleRemoteSync(payload) {
   }
 
   if (payload.action === 'heartbeat') {
-    if (typeof payload.rate === 'number' && Math.abs((state.playbackRate || 1.0) - payload.rate) > 0.05) {
-      setPlayerPlaybackRate(payload.rate, false);
-    }
-    if (payload.isPlaying) {
-      const targetTime = (payload.time || 0) + transit;
-      const drift = Math.abs(state.currentTime - targetTime);
-      if (drift > 0.4) {
-        if (state.activeMode === 'youtube') {
-          sendYtCommand('seekTo', [targetTime, true]);
-        } else if (dom.nativeVideoPlayer) {
-          dom.nativeVideoPlayer.currentTime = targetTime;
+    // Only process heartbeat if it came from host or video owner
+    if (!state.isHost) {
+      if (typeof payload.rate === 'number' && Math.abs((state.playbackRate || 1.0) - payload.rate) > 0.05) {
+        setPlayerPlaybackRate(payload.rate, false);
+      }
+      if (payload.isPlaying) {
+        const targetTime = (payload.time || 0) + transit;
+        const drift = Math.abs(state.currentTime - targetTime);
+        // Only seek if drift exceeds 1.5 seconds to prevent continuous buffering / stutter loops
+        if (drift > 1.5) {
+          if (state.activeMode === 'youtube') {
+            sendYtCommand('seekTo', [targetTime, true]);
+          } else if (dom.nativeVideoPlayer) {
+            dom.nativeVideoPlayer.currentTime = targetTime;
+          }
+          state.currentTime = targetTime;
         }
-        state.currentTime = targetTime;
+        if (!state.isPlaying) {
+          if (state.activeMode === 'youtube') sendYtCommand('playVideo');
+          else if (dom.nativeVideoPlayer) dom.nativeVideoPlayer.play();
+          state.isPlaying = true;
+          updatePlayPauseUI(true);
+        }
+      } else if (!payload.isPlaying && state.isPlaying) {
+        if (state.activeMode === 'youtube') sendYtCommand('pauseVideo');
+        else if (dom.nativeVideoPlayer) dom.nativeVideoPlayer.pause();
+        state.isPlaying = false;
+        updatePlayPauseUI(false);
       }
-      if (!state.isPlaying) {
-        if (state.activeMode === 'youtube') sendYtCommand('playVideo');
-        else if (dom.nativeVideoPlayer) dom.nativeVideoPlayer.play();
-        state.isPlaying = true;
-        updatePlayPauseUI(true);
-      }
-    } else if (!payload.isPlaying && state.isPlaying) {
-      if (state.activeMode === 'youtube') sendYtCommand('pauseVideo');
-      else if (dom.nativeVideoPlayer) dom.nativeVideoPlayer.pause();
-      state.isPlaying = false;
-      updatePlayPauseUI(false);
     }
   }
 }
@@ -8303,6 +8307,11 @@ function initGlobalUsersChannel() {
         handleIncomingFriendDeclined(payload);
         if (payload) ackGlobalEvent('friend_declined', payload.requestId || payload.id, payload.fromUsername, payload.toUsername);
       })
+      .on('broadcast', { event: 'role_update' }, ({ payload }) => {
+        if (payload && payload.roomId === (state.roomId || 'ODA-77')) {
+          handleRemoteRoleUpdate(payload.targetUserId, payload.newRole, payload.targetUsername);
+        }
+      })
       .on('broadcast', { event: 'affinity_request' }, ({ payload }) => {
         handleIncomingAffinityRequest(payload);
         if (payload) ackGlobalEvent('affinity_request', payload.id, payload.fromUsername, payload.toUsername);
@@ -11326,18 +11335,34 @@ function setParticipantRole(userId, username, newRole) {
   if (state.participants[userId]) {
     state.participants[userId].role = newRole;
   }
+  Object.keys(state.participants).forEach(pid => {
+    if (state.participants[pid].userId === userId || state.participants[pid].username === username) {
+      state.participants[pid].role = newRole;
+    }
+  });
 
-  sendP2PData('role_update', {
+  // Dual-rail broadcast: Send via WebRTC DataChannel, Room Signal rail and Global Users rail
+  const rolePayload = {
     targetUserId: userId,
     targetUsername: username,
-    newRole: newRole
-  });
+    newRole: newRole,
+    roomId: state.roomId || 'ODA-77',
+    sentAt: Date.now()
+  };
+  sendP2PData('role_update', rolePayload);
   sendSignal({
     type: 'role-update',
-    targetUserId: userId,
-    targetUsername: username,
-    newRole: newRole
+    ...rolePayload
   });
+  if (globalUsersChannel) {
+    try {
+      globalUsersChannel.send({
+        type: 'broadcast',
+        event: 'role_update',
+        payload: rolePayload
+      }).catch(() => {});
+    } catch (_) {}
+  }
 
   renderParticipantsList();
   showToast(`${username} artık ${roleName} yetkisine sahip.`);
@@ -11372,13 +11397,39 @@ function handleRemoteRoleUpdate(targetUserId, newRole, targetUsername) {
   };
   const roleName = roleLabels[newRole] || newRole;
 
-  if (targetUserId === state.userId) {
+  const isMe = (targetUserId && String(targetUserId) === String(state.userId)) ||
+               (targetUsername && state.username && targetUsername.toLowerCase().replace(/^@/, '') === state.username.toLowerCase().replace(/^@/, ''));
+
+  if (isMe) {
     state.userRole = newRole;
     state.hasDjPermission = (newRole === 'owner' || newRole === 'admin' || newRole === 'video_control' || newRole === 'dj');
     updatePermissionUI();
     showToast(`Yetkiniz güncellendi: ${roleName}`);
-  } else if (state.participants[targetUserId]) {
-    state.participants[targetUserId].role = newRole;
+    // Update presence tracking with new role so room presence retains it
+    if (roomSupabaseChannel) {
+      try {
+        const savedUserObj = JSON.parse(localStorage.getItem('miruo_user') || '{}');
+        roomSupabaseChannel.track({
+          userId: state.userId,
+          username: state.username,
+          avatar: state.avatarUrl || savedUserObj.avatarUrl || '',
+          avatarColor: state.avatarBg || savedUserObj.avatarBg || 'from-rose-500 to-indigo-600',
+          isMicOn: !!state.isMicOn,
+          isCamOn: !!state.isCamOn,
+          isHost: !!state.isHost,
+          role: newRole
+        }).catch(() => {});
+      } catch (_) {}
+    }
+  } else {
+    if (state.participants[targetUserId]) {
+      state.participants[targetUserId].role = newRole;
+    }
+    Object.keys(state.participants).forEach(pid => {
+      if (state.participants[pid].userId === targetUserId || state.participants[pid].username === targetUsername) {
+        state.participants[pid].role = newRole;
+      }
+    });
   }
   renderParticipantsList();
   renderChatMessage('Sistem', `${targetUsername || 'Bir kullanıcı'} artık ${roleName} yetkisine sahip.`, false, null);
