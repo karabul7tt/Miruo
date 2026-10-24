@@ -340,6 +340,19 @@ ipcMain.handle('desktop-oauth-login', async (event, { provider, authUrl }) => {
       } catch (_) {}
     };
 
+    authWin.webContents.session.webRequest.onBeforeRequest(
+      { urls: ['*://*/*'] },
+      (details, callback) => {
+        const u = details.url || '';
+        if (u.includes('access_token=') || u.includes('code=')) {
+          setTimeout(() => {
+            finish({ success: true, url: u, canceled: false, error: null });
+          }, 100);
+        }
+        callback({});
+      }
+    );
+
     authWin.webContents.on('will-redirect', (e, targetUrl) => {
       if (targetUrl && (targetUrl.includes('access_token=') || targetUrl.includes('code='))) {
         finish({ success: true, url: targetUrl, canceled: false, error: null });

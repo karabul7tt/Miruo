@@ -116,6 +116,28 @@ function extractUserProfile(user) {
   };
 }
 
+// Safe base64url decode helper for extracting user info from Supabase JWT tokens
+function decodeJwtPayload(token) {
+  if (!token || typeof token !== 'string') return null;
+  try {
+    const parts = token.split('.');
+    if (parts.length < 2) return null;
+    let b64 = parts[1].replace(/-/g, '+').replace(/_/g, '/');
+    while (b64.length % 4) b64 += '=';
+    const jsonStr = decodeURIComponent(atob(b64).split('').map(c => {
+      return '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2);
+    }).join(''));
+    return JSON.parse(jsonStr);
+  } catch (_) {
+    try {
+      const parts = token.split('.');
+      return JSON.parse(atob(parts[1].replace(/-/g, '+').replace(/_/g, '/')));
+    } catch (e) {
+      return null;
+    }
+  }
+}
+
 async function authenticateFromUrl(url) {
   const parsed = extractAuthFromUrl(url);
   if (!parsed) return null;
@@ -148,7 +170,7 @@ async function authenticateFromUrl(url) {
     } catch (_) {}
   }
 
-  // Fallback: If session not built yet but we have accessToken, verify user directly
+  // Fallback 1: If session not built yet but we have accessToken, verify user directly
   if (!session && parsed.accessToken && supabaseClient && supabaseClient.auth) {
     try {
       const { data: uData } = await supabaseClient.auth.getUser(parsed.accessToken);
@@ -156,6 +178,27 @@ async function authenticateFromUrl(url) {
         session = { user: uData.user, access_token: parsed.accessToken };
       }
     } catch (_) {}
+  }
+
+  // Fallback 2: Decode user details directly from JWT access token payload
+  if (!session && parsed.accessToken) {
+    const jwt = decodeJwtPayload(parsed.accessToken);
+    if (jwt && (jwt.sub || jwt.user_id || jwt.id)) {
+      const fallbackUser = {
+        id: jwt.sub || jwt.user_id || jwt.id,
+        email: jwt.email || '',
+        app_metadata: jwt.app_metadata || {},
+        user_metadata: jwt.user_metadata || {
+          full_name: jwt.name || jwt.full_name || '',
+          name: jwt.name || '',
+          avatar_url: jwt.avatar_url || jwt.picture || ''
+        },
+        identities: [
+          { provider: jwt.app_metadata?.provider || 'google', identity_data: jwt.user_metadata || {} }
+        ]
+      };
+      session = { user: fallbackUser, access_token: parsed.accessToken };
+    }
   }
 
   return session;
