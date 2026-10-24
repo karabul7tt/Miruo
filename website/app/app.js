@@ -3266,7 +3266,15 @@ function handleRtcOffer(offer) {
     });
   }
 
-  state.pc.setRemoteDescription(new RTCSessionDescription(offer)).then(() => {
+  // Offer collision (glare): impolite peer ignores the incoming offer, polite peer rolls back its own
+  const isImpolite = !!state.isHost || (state.userId && state.peerId && String(state.userId) < String(state.peerId));
+  let prepare = Promise.resolve();
+  if (state.pc.signalingState !== 'stable') {
+    if (isImpolite) return;
+    prepare = state.pc.setLocalDescription({ type: 'rollback' }).catch(() => {});
+  }
+
+  prepare.then(() => state.pc.setRemoteDescription(new RTCSessionDescription(offer))).then(() => {
     flushQueuedIceCandidates();
     return state.pc.createAnswer();
   }).then(answer => {
@@ -3867,7 +3875,8 @@ function handleRemoteSync(payload) {
   // 2. Full synchronization state payload
   if (payload.action === 'full_sync') {
     if (payload.videoId && payload.videoId !== state.currentVideoId) {
-      loadYoutubeVideo(payload.videoId);
+      if (typeof window.loadRemoteContentBridge === 'function') window.loadRemoteContentBridge(payload.videoId, payload.title);
+      else loadYoutubeVideo(payload.videoId);
     }
     const targetTime = (typeof payload.time === 'number' ? payload.time : state.currentTime) + (payload.isPlaying ? transit : 0);
     if (Math.abs(state.currentTime - targetTime) > 0.4) {
@@ -4498,9 +4507,39 @@ function displayPhotoOnStage(dataUrl, title = 'Fotoğraf', isLocal = true) {
   state.currentPhotoStageData = { dataUrl, title };
 
   if (isLocal) {
-    sendP2PData('photo_share', { dataUrl, title, sender: state.username });
+    shrinkDataUrlForShare(dataUrl).then(small => {
+      state.currentPhotoStageData = { dataUrl: small, title };
+      sendP2PData('photo_share', { dataUrl: small, title, sender: state.username });
+    });
     showToast('Fotoğraf odada paylaşıldı.');
   }
+}
+
+// Downscale photos so they fit realtime/data-channel message limits (~180KB)
+function shrinkDataUrlForShare(dataUrl, maxChars = 180000) {
+  return new Promise(resolve => {
+    if (!dataUrl || dataUrl.length <= maxChars) return resolve(dataUrl);
+    const img = new Image();
+    img.onerror = () => resolve(dataUrl);
+    img.onload = () => {
+      let dim = 1280;
+      let quality = 0.8;
+      let out = dataUrl;
+      for (let i = 0; i < 8; i++) {
+        const scale = Math.min(1, dim / Math.max(img.width, img.height));
+        const canvas = document.createElement('canvas');
+        canvas.width = Math.max(1, Math.round(img.width * scale));
+        canvas.height = Math.max(1, Math.round(img.height * scale));
+        canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+        out = canvas.toDataURL('image/jpeg', quality);
+        if (out.length <= maxChars) break;
+        dim = Math.round(dim * 0.75);
+        quality = Math.max(0.5, quality - 0.07);
+      }
+      resolve(out);
+    };
+    img.src = dataUrl;
+  });
 }
 
 function closePhotoStage(isLocal = true) {
@@ -4616,11 +4655,12 @@ async function startScreenSharing() {
 
     // Add track to WebRTC peer
     if (state.pc) {
+      state.screenSenders = [];
       stream.getTracks().forEach(track => {
-        state.pc.addTrack(track, stream);
+        try { state.screenSenders.push(state.pc.addTrack(track, stream)); } catch (_) {}
       });
-      // Renegotiate
-      initiateWebRTC(true);
+      // Renegotiate on the existing connection (keeps voice/camera alive)
+      await renegotiateWebRTC();
     }
 
     // Keep background audio active so iOS doesn't suspend capture when switching apps
@@ -4654,6 +4694,19 @@ function stopScreenSharing() {
   if (state.screenStream) {
     state.screenStream.getTracks().forEach(t => t.stop());
     state.screenStream = null;
+  }
+  if (state.pc && state.screenSenders && state.screenSenders.length) {
+    state.screenSenders.forEach(s => {
+      try { state.pc.removeTrack(s); } catch (_) {}
+    });
+    state.screenSenders = [];
+    renegotiateWebRTC();
+  }
+  if (dom.nativeVideoPlayer && state.activeMode === 'screenshare') {
+    try { dom.nativeVideoPlayer.srcObject = null; } catch (_) {}
+    dom.nativeVideoPlayer.classList.add('hidden');
+    if (dom.emptyStatePlaceholder) dom.emptyStatePlaceholder.classList.remove('hidden');
+    state.activeMode = null;
   }
   state.isScreenSharing = false;
   dom.startScreenShareBtn.classList.remove('hidden');
@@ -6073,6 +6126,21 @@ async function toggleMicTest() {
   }
 }
 
+function describeMediaError(e, kind) {
+  const what = kind === 'camera' ? 'Kamera' : 'Mikrofon';
+  const name = (e && e.name) || '';
+  if (name === 'NotAllowedError' || name === 'SecurityError' || name === 'PermissionDeniedError') {
+    return what + ' izni verilmedi. Cihaz/tarayıcı ayarlarından ' + what.toLowerCase() + ' iznini açın.';
+  }
+  if (name === 'NotFoundError' || name === 'OverconstrainedError' || name === 'DevicesNotFoundError') {
+    return what + ' cihazı bulunamadı.';
+  }
+  if (name === 'NotReadableError' || name === 'TrackStartError' || name === 'AbortError') {
+    return what + ' başka bir uygulama tarafından kullanılıyor olabilir.';
+  }
+  return what + ' başlatılamadı: ' + ((e && e.message) || 'bilinmeyen hata');
+}
+
 async function toggleMic() {
   // 1-Tap Toggle: Tap to open, tap again to close
   state.isMicOn = !state.isMicOn;
@@ -6114,7 +6182,7 @@ async function toggleMic() {
     } catch (e) {
       console.warn('Microphone hardware error:', e);
       state.isMicOn = false;
-      showToast('Mikrofona erişilemedi: ' + (e.message || 'İzin verilmedi'));
+      showToast(describeMediaError(e, 'mic'));
     }
   } else {
     if (state.localStream) {
@@ -6329,20 +6397,15 @@ async function toggleCam() {
     }
   } catch (e) {
     console.warn('Kamera donanımı bulunamadı veya izin verilmedi:', e);
-    state.isCamOn = true;
-    if (dom.selfPipCard) {
-      dom.selfPipCard.classList.remove('hidden', 'pip-hidden-fullscreen');
-    }
-    if (dom.selfVideoPlaceholder) {
-      dom.selfVideoPlaceholder.classList.remove('hidden');
-    }
-    clampPipCardsToStage();
-    updateCamButtonUI(true);
+    // Karşıdakilere "kamera açık" yalanı söyleme: durumu geri al
+    state.isCamOn = false;
+    if (dom.selfPipCard) dom.selfPipCard.classList.add('hidden');
+    updateCamButtonUI(false);
+    updateAVToolbarUI();
     broadcastMyMediaStatus();
     renderParticipantsList();
     renderVideoGrid();
-    const dictCam2 = I18N[currentLang] || I18N.tr;
-    showToast(dictCam2.toast_cam_preview_opened || 'Canlı Kamera Önizleme Açıldı (Sürüklenebilir)');
+    showToast(describeMediaError(e, 'camera'));
   }
 }
 
@@ -7888,31 +7951,15 @@ function sendRoomInvite(friend) {
   const myUsername = (state.username || 'kullanici').replace(/^@/, '');
   const roomId = state.roomId || 'ODA-77';
 
-  let invites = [];
-  try {
-    invites = JSON.parse(localStorage.getItem('miruo_room_invites') || '[]');
-  } catch (e) { invites = []; }
-
   const newInvite = {
-    id: 'room_inv_' + Date.now(),
+    id: 'room_inv_' + Date.now() + '_' + Math.random().toString(36).substring(2, 6),
     fromUsername: myUsername,
     toUsername: cleanTarget,
     roomId: roomId,
     createdAt: Date.now()
   };
-  invites.unshift(newInvite);
-  localStorage.setItem('miruo_room_invites', JSON.stringify(invites));
-
-  if (typeof signalingSocket !== 'undefined' && signalingSocket && signalingSocket.readyState === 1) {
-    try {
-      signalingSocket.send(JSON.stringify({
-        type: 'room_invite',
-        roomId: roomId,
-        from: myUsername,
-        to: cleanTarget
-      }));
-    } catch (e) {}
-  }
+  // Davet KARŞI tarafa gerçek zamanlı gider (gönderenin kendi listesine yazılmaz). 30 dk geçerli.
+  queueGlobalEvent('room_invite', cleanTarget, newInvite, 30 * 60000);
   return newInvite;
 }
 window.sendRoomInvite = sendRoomInvite;
@@ -7958,23 +8005,11 @@ function getIncomingAffinityRequests() {
     if (raw) {
       list = JSON.parse(raw);
     }
-    const alreadySeeded = localStorage.getItem('miruo_aff_seeded');
-    if (list.length === 0 && !alreadySeeded) {
-      // Seed initial mock request from @selin for Partner so user can test accept/reject immediately
-      const defaultReq = {
-        id: 'aff_req_selin_init',
-        slotKey: 'partner_1',
-        category: 'partner',
-        categoryTitle: 'Partner',
-        fromUsername: 'selin',
-        toUsername: (state.username || 'mehmet_vip').replace(/^@/, ''),
-        friendName: '@selin',
-        status: 'pending',
-        createdAt: Date.now()
-      };
-      list = [defaultReq];
+    // Eski sürümlerden kalan SAHTE (örnek) istekleri temizle
+    const cleaned = list.filter(r => r && r.id !== 'aff_req_selin_init');
+    if (cleaned.length !== list.length) {
+      list = cleaned;
       localStorage.setItem('miruo_affinity_requests', JSON.stringify(list));
-      localStorage.setItem('miruo_aff_seeded', '1');
     }
   } catch (e) {
     list = [];
@@ -7989,19 +8024,12 @@ function getIncomingRoomInvites() {
     if (raw) {
       list = JSON.parse(raw);
     }
-    const alreadySeeded = localStorage.getItem('miruo_room_seeded');
-    if (list.length === 0 && !alreadySeeded) {
-      // Seed a sample room invite from @can so user can test and see the room invite card!
-      const defaultInv = {
-        id: 'room_inv_can_init',
-        fromUsername: 'can',
-        toUsername: (state.username || 'mehmet_vip').replace(/^@/, ''),
-        roomId: 'ODA-77',
-        createdAt: Date.now()
-      };
-      list = [defaultInv];
+    // Eski sürümlerden kalan SAHTE (örnek) davetleri ve bayat davetleri temizle
+    const cutoff = Date.now() - 30 * 60000;
+    const cleaned = list.filter(i => i && i.id !== 'room_inv_can_init' && (i.createdAt || 0) > cutoff);
+    if (cleaned.length !== list.length) {
+      list = cleaned;
       localStorage.setItem('miruo_room_invites', JSON.stringify(list));
-      localStorage.setItem('miruo_room_seeded', '1');
     }
   } catch (e) {
     list = [];
@@ -8021,6 +8049,15 @@ function acceptAffinityRequest(reqId) {
   req.status = 'accepted';
   localStorage.setItem('miruo_affinity_requests', JSON.stringify(requests.filter(r => r.id !== reqId)));
 
+  queueGlobalEvent('affinity_accepted', req.fromUsername, {
+    id: req.id,
+    fromUsername: cleanUserKey(state.username),
+    toUsername: req.fromUsername,
+    slotKey: req.slotKey,
+    category: req.category,
+    categoryTitle: req.categoryTitle,
+    fromAvatarUrl: state.avatarUrl || ''
+  });
   const cleanFrom = req.fromUsername.replace(/^@/, '').toLowerCase();
   const currentTree = getUserAffinityTree();
   
@@ -8071,6 +8108,14 @@ function rejectAffinityRequest(reqId) {
   } catch (e) { requests = []; }
 
   const req = requests.find(r => r.id === reqId);
+  if (req) {
+    queueGlobalEvent('affinity_declined', req.fromUsername, {
+      id: req.id,
+      fromUsername: cleanUserKey(state.username),
+      toUsername: req.fromUsername,
+      categoryTitle: req.categoryTitle
+    });
+  }
   if (req && req.slotKey) {
     const currentTree = getUserAffinityTree();
     if (currentTree[req.slotKey] && currentTree[req.slotKey].isPending) {
@@ -8144,7 +8189,9 @@ function sendAffinityRequest(slotKey, friend) {
   };
 
   requests.unshift(req);
-  localStorage.setItem('miruo_affinity_requests', JSON.stringify(requests));
+  // Gönderen kendi "gelen" listesinde görmemeli: yerel gelen listeye yazma, karşı tarafa ilet
+  requests = requests.filter(r => r.id !== req.id);
+  queueGlobalEvent('affinity_request', targetUsername, req);
 
   // Store outgoing request so picker shows "İstek Gönderildi", but do NOT display on graph until accepted
   let outgoing = [];
@@ -8203,12 +8250,34 @@ function initGlobalUsersChannel() {
       })
       .on('broadcast', { event: 'friend_request' }, ({ payload }) => {
         handleIncomingFriendRequest(payload);
+        if (payload) ackGlobalEvent('friend_request', payload.id, payload.fromUsername, payload.toUsername);
       })
       .on('broadcast', { event: 'friend_accepted' }, ({ payload }) => {
         handleIncomingFriendAccepted(payload);
+        if (payload) ackGlobalEvent('friend_accepted', payload.requestId || payload.id, payload.fromUsername, payload.toUsername);
       })
       .on('broadcast', { event: 'friend_declined' }, ({ payload }) => {
         handleIncomingFriendDeclined(payload);
+        if (payload) ackGlobalEvent('friend_declined', payload.requestId || payload.id, payload.fromUsername, payload.toUsername);
+      })
+      .on('broadcast', { event: 'affinity_request' }, ({ payload }) => {
+        handleIncomingAffinityRequest(payload);
+        if (payload) ackGlobalEvent('affinity_request', payload.id, payload.fromUsername, payload.toUsername);
+      })
+      .on('broadcast', { event: 'affinity_accepted' }, ({ payload }) => {
+        handleIncomingAffinityAccepted(payload);
+        if (payload) ackGlobalEvent('affinity_accepted', payload.id, payload.fromUsername, payload.toUsername);
+      })
+      .on('broadcast', { event: 'affinity_declined' }, ({ payload }) => {
+        handleIncomingAffinityDeclined(payload);
+        if (payload) ackGlobalEvent('affinity_declined', payload.id, payload.fromUsername, payload.toUsername);
+      })
+      .on('broadcast', { event: 'room_invite' }, ({ payload }) => {
+        handleIncomingRoomInvite(payload);
+        if (payload) ackGlobalEvent('room_invite', payload.id, payload.fromUsername, payload.toUsername);
+      })
+      .on('broadcast', { event: 'outbox_ack' }, ({ payload }) => {
+        handleOutboxAck(payload);
       })
       .on('broadcast', { event: 'room_signal' }, ({ payload }) => {
         if (!payload || payload.userId === state.userId) return;
@@ -8222,6 +8291,9 @@ function initGlobalUsersChannel() {
         if (status === 'SUBSCRIBED') {
           console.log('[Miruo Global Users] Channel connected & active');
           announceMyPresence();
+          setTimeout(() => {
+            try { flushOutboxForAll(globalUsersChannel.presenceState()); } catch (_) {}
+          }, 1200);
         }
       });
   } catch (e) {
@@ -8313,6 +8385,7 @@ function handleGlobalPresenceJoin(key, newPresences) {
   const cleanU = key.toLowerCase().replace(/^@/, '');
   const u = (newPresences && newPresences[0]) ? newPresences[0] : null;
   if (u) upsertGlobalUserCache(u);
+  if (cleanU !== cleanUserKey(state.username)) setTimeout(() => flushOutboxFor(cleanU), 900);
   const friend = state.friends.find(f => (f.username || f.name || '').toLowerCase().replace(/^@/, '') === cleanU);
   if (friend) {
     friend.status = (u && u.status) ? u.status : 'online';
@@ -8356,6 +8429,135 @@ function getOutgoingFriendRequests() {
   }
 }
 
+// ------------------------------------------------------------------
+// GÜVENİLİR TESLİMAT (OUTBOX): karşı taraf çevrimdışıysa istek/kabul/davet
+// kaybolmaz; karşı taraf çevrimiçi olunca otomatik yeniden iletilir, ACK ile silinir.
+// ------------------------------------------------------------------
+function cleanUserKey(u) {
+  return String(u || '').toLowerCase().replace(/^@/, '').trim();
+}
+
+function getOutbox() {
+  try {
+    const l = JSON.parse(localStorage.getItem('miruo_outbox_v1') || '[]');
+    const now = Date.now();
+    return Array.isArray(l) ? l.filter(e => e && (now - (e.ts || 0)) < (e.ttl || 7 * 86400000)) : [];
+  } catch (_) { return []; }
+}
+
+function saveOutbox(list) {
+  try { localStorage.setItem('miruo_outbox_v1', JSON.stringify(list.slice(-200))); } catch (_) {}
+}
+
+function deliverGlobalEvent(event, payload) {
+  if (!globalUsersChannel) return false;
+  try {
+    globalUsersChannel.send({ type: 'broadcast', event, payload }).catch(() => {});
+    return true;
+  } catch (_) { return false; }
+}
+
+function queueGlobalEvent(event, toUsername, payload, ttlMs) {
+  const to = cleanUserKey(toUsername);
+  const id = payload && (payload.id || payload.requestId);
+  const key = event + ':' + id;
+  const box = getOutbox().filter(e => e.key !== key);
+  box.push({ key, event, to, payload, ts: Date.now(), ttl: ttlMs || 7 * 86400000 });
+  saveOutbox(box);
+  deliverGlobalEvent(event, payload);
+}
+
+function flushOutboxFor(username) {
+  const to = cleanUserKey(username);
+  if (!to) return;
+  getOutbox().filter(e => e.to === to).forEach(e => deliverGlobalEvent(e.event, e.payload));
+}
+
+function flushOutboxForAll(presenceState) {
+  if (!presenceState) return;
+  const online = new Set(Object.keys(presenceState).map(cleanUserKey));
+  getOutbox().forEach(e => { if (online.has(e.to)) deliverGlobalEvent(e.event, e.payload); });
+}
+
+function ackGlobalEvent(event, id, fromUser, toUser) {
+  if (!id) return;
+  if (cleanUserKey(toUser) !== cleanUserKey(state.username)) return;
+  deliverGlobalEvent('outbox_ack', { toUsername: cleanUserKey(fromUser), key: event + ':' + id });
+}
+
+function handleOutboxAck(payload) {
+  if (!payload || cleanUserKey(payload.toUsername) !== cleanUserKey(state.username)) return;
+  saveOutbox(getOutbox().filter(e => e.key !== payload.key));
+}
+
+// ---- Yakınlık (ilişki) istekleri: gerçek zamanlı ----
+function handleIncomingAffinityRequest(req) {
+  if (!req || !req.id) return;
+  if (cleanUserKey(req.toUsername) !== cleanUserKey(state.username)) return;
+  let list = [];
+  try { list = JSON.parse(localStorage.getItem('miruo_affinity_requests') || '[]'); } catch (_) { list = []; }
+  if (list.some(r => r.id === req.id)) return;
+  list.unshift({ ...req, status: 'pending' });
+  localStorage.setItem('miruo_affinity_requests', JSON.stringify(list));
+  showToast(`@${cleanUserKey(req.fromUsername)} seninle ${req.categoryTitle || 'Partner'} olmak istiyor!`);
+  updateFriendRequestBadge();
+  renderIncomingRequests();
+  if (typeof renderFriendsTab === 'function') renderFriendsTab();
+}
+
+function handleIncomingAffinityAccepted(p) {
+  if (!p || cleanUserKey(p.toUsername) !== cleanUserKey(state.username)) return;
+  let outgoing = [];
+  try { outgoing = JSON.parse(localStorage.getItem('miruo_outgoing_affinity_requests') || '[]'); } catch (_) { outgoing = []; }
+  const out = outgoing.find(o => o.id === p.id);
+  if (!out) return; // zaten işlendi
+  const who = cleanUserKey(p.fromUsername);
+  const tree = getUserAffinityTree();
+  tree[out.slotKey] = {
+    username: who,
+    name: '@' + who,
+    avatarUrl: p.fromAvatarUrl || '',
+    category: out.category,
+    isPending: false,
+    boundAt: Date.now()
+  };
+  saveUserAffinityTree(tree);
+  localStorage.setItem('miruo_outgoing_affinity_requests', JSON.stringify(outgoing.filter(o => o.id !== p.id)));
+  try {
+    const mutuals = JSON.parse(localStorage.getItem('miruo_mutual_affinities') || '{}');
+    mutuals[who] = { category: out.category, categoryTitle: p.categoryTitle || 'Partner', partnerOf: cleanUserKey(state.username), acceptedAt: Date.now() };
+    localStorage.setItem('miruo_mutual_affinities', JSON.stringify(mutuals));
+  } catch (_) {}
+  showToast(`🎉 @${who} ${p.categoryTitle || 'Partner'} isteğini kabul etti!`);
+  renderAffinityTree();
+  if (typeof renderFriendsTab === 'function') renderFriendsTab();
+}
+
+function handleIncomingAffinityDeclined(p) {
+  if (!p || cleanUserKey(p.toUsername) !== cleanUserKey(state.username)) return;
+  let outgoing = [];
+  try { outgoing = JSON.parse(localStorage.getItem('miruo_outgoing_affinity_requests') || '[]'); } catch (_) { outgoing = []; }
+  if (!outgoing.some(o => o.id === p.id)) return;
+  localStorage.setItem('miruo_outgoing_affinity_requests', JSON.stringify(outgoing.filter(o => o.id !== p.id)));
+  showToast(`@${cleanUserKey(p.fromUsername)} ${p.categoryTitle || 'ilişki'} isteğini reddetti.`);
+  renderAffinityTree();
+}
+
+// ---- Oda davetleri: gerçek zamanlı ----
+function handleIncomingRoomInvite(inv) {
+  if (!inv || !inv.id) return;
+  if (cleanUserKey(inv.toUsername) !== cleanUserKey(state.username)) return;
+  if (Date.now() - (inv.createdAt || 0) > 30 * 60000) return; // bayat davet
+  let list = [];
+  try { list = JSON.parse(localStorage.getItem('miruo_room_invites') || '[]'); } catch (_) { list = []; }
+  if (list.some(i => i.id === inv.id)) return;
+  list.unshift(inv);
+  localStorage.setItem('miruo_room_invites', JSON.stringify(list));
+  showToast(`@${cleanUserKey(inv.fromUsername)} seni odaya çağırdı!`);
+  updateFriendRequestBadge();
+  renderIncomingRequests();
+}
+
 async function sendFriendRequest(targetUsername) {
   const cleanTarget = String(targetUsername || '').toLowerCase().replace(/^@/, '').trim();
   const myClean = (state.username || 'user').toLowerCase().replace(/^@/, '').trim();
@@ -8374,8 +8576,12 @@ async function sendFriendRequest(targetUsername) {
   }
 
   const outgoing = getOutgoingFriendRequests();
-  if (outgoing.some(r => (r.toUsername || '').toLowerCase() === cleanTarget)) {
-    showToast(`@${cleanTarget} kullanıcısına zaten istek gönderildi.`);
+  const existingReq = outgoing.find(r => (r.toUsername || '').toLowerCase() === cleanTarget);
+  if (existingReq) {
+    // Tekrar dokunuş = yeniden ilet (karşı taraf çevrimdışıydıysa kaybolmasın)
+    queueGlobalEvent('friend_request', cleanTarget, existingReq);
+    sendSignal({ type: 'friend-request', payload: existingReq });
+    showToast(`@${cleanTarget} kullanıcısına istek tekrar iletildi.`);
     return;
   }
 
@@ -8399,16 +8605,8 @@ async function sendFriendRequest(targetUsername) {
   outgoing.unshift(reqPayload);
   localStorage.setItem('miruo_outgoing_friend_requests', JSON.stringify(outgoing));
 
-  // Broadcast over global users channel
-  if (globalUsersChannel) {
-    try {
-      globalUsersChannel.send({
-        type: 'broadcast',
-        event: 'friend_request',
-        payload: reqPayload
-      }).catch(err => console.warn('[FriendRequest Send Error]:', err));
-    } catch (_) {}
-  }
+  // Broadcast over global users channel (outbox: çevrimdışıysa online olunca iletilir)
+  queueGlobalEvent('friend_request', cleanTarget, reqPayload);
 
   // Also broadcast via signaling server if connected
   sendSignal({ type: 'friend-request', payload: reqPayload });
@@ -8483,15 +8681,7 @@ function acceptFriendRequest(reqId) {
     timestamp: Date.now()
   };
 
-  if (globalUsersChannel) {
-    try {
-      globalUsersChannel.send({
-        type: 'broadcast',
-        event: 'friend_accepted',
-        payload: acceptPayload
-      }).catch(() => {});
-    } catch (_) {}
-  }
+  queueGlobalEvent('friend_accepted', req.fromUsername, acceptPayload);
   sendSignal({ type: 'friend-accepted', payload: acceptPayload });
 
   showToast(`@${cleanFrom} ile artık arkadaşsınız!`);
@@ -8508,10 +8698,11 @@ function handleIncomingFriendAccepted(payload) {
   if (payload.toUsername.toLowerCase().replace(/^@/, '') !== myUsername) return;
 
   const cleanFriend = (payload.fromUsername || '').replace(/^@/, '').trim();
+  const alreadyFriend = state.friends.some(f => (f.username || f.name || '').toLowerCase().replace(/^@/, '') === cleanFriend.toLowerCase());
   const outgoing = getOutgoingFriendRequests();
   const filtered = outgoing.filter(r => (r.toUsername || '').toLowerCase().replace(/^@/, '') !== cleanFriend.toLowerCase());
   localStorage.setItem('miruo_outgoing_friend_requests', JSON.stringify(filtered));
-
+  if (alreadyFriend) return; // tekrar teslimatta sessiz kal
   if (!state.friends.some(f => (f.username || f.name || '').toLowerCase().replace(/^@/, '') === cleanFriend.toLowerCase())) {
     const newFriend = {
       id: 'f_' + Date.now(),
@@ -8540,14 +8731,10 @@ function rejectFriendRequest(reqId) {
   const updated = incoming.filter(r => r.id !== reqId);
   localStorage.setItem('miruo_incoming_friend_requests', JSON.stringify(updated));
 
-  if (req && globalUsersChannel) {
-    try {
-      globalUsersChannel.send({
-        type: 'broadcast',
-        event: 'friend_declined',
-        payload: { toUsername: req.fromUsername, fromUsername: state.username, timestamp: Date.now() }
-      }).catch(() => {});
-    } catch (_) {}
+  if (req) {
+    queueGlobalEvent('friend_declined', req.fromUsername, {
+      id: req.id, requestId: req.id, toUsername: req.fromUsername, fromUsername: state.username, timestamp: Date.now()
+    });
   }
   showToast('Arkadaşlık isteği reddedildi.');
   updateFriendRequestBadge();
@@ -15193,6 +15380,33 @@ function initEvents() {
       showToast(`${user || 'Partner'} yeni bir video başlattı: ${title}`);
       renderChatMessage('SİSTEM', `${user || 'Partner'} yeni video başlattı: ${title}`, false);
     }
+    loadRemoteContent(videoId, title);
+  }
+
+  window.loadRemoteContentBridge = loadRemoteContent;
+  // Loads whatever the partner started (YouTube / direct stream / web / twitch) so every mode stays in sync
+  function loadRemoteContent(videoId, title) {
+    if (!videoId || videoId === state.currentVideoId) return;
+    try {
+      const v = String(videoId);
+      const isUrl = /^(https?:)?\/\//i.test(v) || v.includes('/') || v.includes('.');
+      if (v.startsWith('twitch:') || /twitch\.tv/i.test(v)) {
+        if (typeof loadTwitchStream === 'function') loadTwitchStream(v.replace(/^twitch:/, ''), title);
+      } else if (!isUrl) {
+        loadYoutubeVideo(v);
+      } else {
+        const ytId = (typeof extractYtId === 'function') ? extractYtId(v) : ((v.match(/(?:youtu\.be\/|youtube\.com\/(?:embed\/|v\/|watch\?v=|shorts\/))([\w-]{11})/) || [])[1] || null);
+        if (ytId) {
+          loadYoutubeVideo(ytId);
+        } else if (/\.(mp4|webm|m3u8|mov|mkv)(\?.*)?$/i.test(v) || v.includes('.m3u8') || v.includes('.mp4') || v.includes('/hls/') || v.includes('/stream/') || v.includes('manifest') || v.includes('googlevideo.com')) {
+          loadDirectVideo(v, title);
+        } else {
+          loadWebStream(v, title, 'Web');
+        }
+      }
+    } catch (err) {
+      console.warn('loadRemoteContent failed:', err);
+    }
   }
 
   function addToRoomQueue(item) {
@@ -17689,7 +17903,7 @@ function validateInstagramUsername(username) {
   function triggerResyncWithHost() {
     if (state.isHost) {
       showToast('Oda sahibi sizsiniz. Senkronizasyon yenilendi.');
-      if (state.activeMode === 'youtube' && state.currentVideoId) {
+      if (state.currentVideoId && ['youtube', 'direct', 'web'].includes(state.activeMode)) {
         sendP2PData('sync', {
           action: 'full_sync',
           videoId: state.currentVideoId,
