@@ -1972,6 +1972,8 @@ const dom = {
   partnerPipCard: document.getElementById('partnerPipCard'),
   partnerVideo: document.getElementById('partnerVideo'),
   partnerVideoPlaceholder: document.getElementById('partnerVideoPlaceholder'),
+  partnerPipName: document.getElementById('partnerPipName'),
+  partnerPipAvatarInitial: document.getElementById('partnerPipAvatarInitial'),
   partnerAudioMeter: document.getElementById('partnerAudioMeter'),
   partnerVoiceIndicator: document.getElementById('partnerVoiceIndicator'),
   closePartnerPipBtn: document.getElementById('closePartnerPipBtn'),
@@ -2268,6 +2270,12 @@ const dom = {
   termsModal: document.getElementById('termsModal'),
   openTermsBtn: document.getElementById('openTermsBtn'),
   closeTermsBtn: document.getElementById('closeTermsBtn'),
+
+  // Blocked Users Modal
+  openBlockedUsersModalBtn: document.getElementById('openBlockedUsersModalBtn'),
+  closeBlockedUsersModalBtn: document.getElementById('closeBlockedUsersModalBtn'),
+  blockedUsersModal: document.getElementById('blockedUsersModal'),
+  blockedUsersCountBadge: document.getElementById('blockedUsersCountBadge'),
 
   // Explore Lobby, Provider Picker & Workspace Switching
   viewMyRoomBtn: document.getElementById('viewMyRoomBtn'),
@@ -3157,6 +3165,7 @@ function setupWebRTC() {
         if (dom.partnerPipCard) {
           dom.partnerPipCard.classList.remove('hidden', 'pip-hidden-fullscreen');
         }
+        if (typeof updatePartnerPipIdentity === 'function') updatePartnerPipIdentity();
         clampPipCardsToStage();
       }
 
@@ -3168,7 +3177,13 @@ function setupWebRTC() {
           remoteAudio.id = 'remoteVoiceAudio';
           remoteAudio.autoplay = true;
           remoteAudio.playsInline = true;
-          remoteAudio.className = 'hidden';
+          remoteAudio.style.position = 'fixed';
+          remoteAudio.style.top = '-9999px';
+          remoteAudio.style.left = '-9999px';
+          remoteAudio.style.width = '1px';
+          remoteAudio.style.height = '1px';
+          remoteAudio.style.opacity = '0.001';
+          remoteAudio.style.pointerEvents = 'none';
           document.body.appendChild(remoteAudio);
         }
         remoteAudio.srcObject = stream;
@@ -3460,13 +3475,25 @@ function setupAudioDucking(remoteAudioStream) {
     }
     if (!state.audioCtx) {
       const AudioCtx = window.AudioContext || window.webkitAudioContext;
-      state.audioCtx = new AudioCtx();
+      if (AudioCtx) state.audioCtx = new AudioCtx();
     }
-    if (state.audioCtx.state === 'suspended') {
-      state.audioCtx.resume();
+    if (state.audioCtx && state.audioCtx.state === 'suspended') {
+      state.audioCtx.resume().catch(() => {});
     }
 
-    const source = state.audioCtx.createMediaStreamSource(remoteAudioStream);
+    if (!state.audioCtx || !remoteAudioStream) return;
+
+    // Clone audio track for analysis so WebKit/Safari does not hijack or mute the <audio> tag
+    let streamForAnalyzer = remoteAudioStream;
+    try {
+      const aTracks = remoteAudioStream.getAudioTracks ? remoteAudioStream.getAudioTracks() : [];
+      if (aTracks.length > 0 && typeof aTracks[0].clone === 'function') {
+        const clonedTrack = aTracks[0].clone();
+        streamForAnalyzer = new MediaStream([clonedTrack]);
+      }
+    } catch (_) {}
+
+    const source = state.audioCtx.createMediaStreamSource(streamForAnalyzer);
     const analyser = state.audioCtx.createAnalyser();
     analyser.fftSize = 128;
     source.connect(analyser);
@@ -4008,7 +4035,6 @@ function handleRemoteSync(payload) {
       }
       dom.nativeVideoPlayer.play().catch(() => {});
     }
-    showToast('Oynatılıyor');
   }
 
   if (payload.action === 'pause') {
@@ -4030,7 +4056,6 @@ function handleRemoteSync(payload) {
       dom.nativeVideoPlayer.pause();
       if (typeof payload.time === 'number') dom.nativeVideoPlayer.currentTime = targetTime;
     }
-    showToast('Durduruldu');
   }
 
   if (payload.action === 'seek') {
@@ -4055,7 +4080,6 @@ function handleRemoteSync(payload) {
     if (dom.seekSlider && state.duration > 0) {
       dom.seekSlider.value = (targetTime / state.duration) * 100;
     }
-    showToast('Sarıldı');
   }
 
   if (payload.action === 'heartbeat') {
@@ -6048,10 +6072,12 @@ function makeDraggable(el) {
 }
 
 function showToast(msg) {
+  if (!dom.syncToast || !dom.syncToastMsg) return;
   dom.syncToastMsg.textContent = msg;
   dom.syncToast.style.opacity = '1';
-  setTimeout(() => {
-    dom.syncToast.style.opacity = '0';
+  if (state.toastTimeout) clearTimeout(state.toastTimeout);
+  state.toastTimeout = setTimeout(() => {
+    if (dom.syncToast) dom.syncToast.style.opacity = '0';
   }, 2500);
 }
 
@@ -6292,28 +6318,49 @@ async function toggleMic() {
         state.localStream = await navigator.mediaDevices.getUserMedia(getAudioConstraints());
       } else if (state.localStream) {
         const audioTracks = state.localStream.getAudioTracks();
-        if (audioTracks.length > 0) {
+        if (audioTracks.length > 0 && audioTracks.some(t => t.readyState === 'live')) {
           audioTracks.forEach(t => { t.enabled = true; });
         } else if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
           const micStream = await navigator.mediaDevices.getUserMedia(getAudioConstraints());
           const newTrack = micStream.getAudioTracks()[0];
-          if (newTrack) state.localStream.addTrack(newTrack);
+          if (newTrack) {
+            audioTracks.forEach(t => { try { state.localStream.removeTrack(t); } catch (_) {} });
+            state.localStream.addTrack(newTrack);
+          }
         }
       }
 
       if (dom.selfVideo && state.localStream) dom.selfVideo.srcObject = state.localStream;
 
       if (state.pc && state.localStream) {
-        const audioTrack = state.localStream.getAudioTracks()[0];
+        const audioTrack = state.localStream.getAudioTracks().find(t => t.readyState === 'live') || state.localStream.getAudioTracks()[0];
         if (audioTrack) {
           audioTrack.enabled = true;
           const senders = state.pc.getSenders ? state.pc.getSenders() : [];
-          const audioSender = senders.find(s => s.track && s.track.kind === 'audio');
-          if (audioSender) {
-            audioSender.replaceTrack(audioTrack);
+          let audioSender = senders.find(s => s.track && s.track.kind === 'audio');
+
+          if (!audioSender && state.pc.getTransceivers) {
+            const transceivers = state.pc.getTransceivers();
+            const audioTransceiver = transceivers.find(t => 
+              (t.sender && t.sender.track && t.sender.track.kind === 'audio') ||
+              (t.receiver && t.receiver.track && t.receiver.track.kind === 'audio') ||
+              (t.sender && !t.sender.track)
+            );
+            if (audioTransceiver && audioTransceiver.sender) {
+              audioSender = audioTransceiver.sender;
+              if (audioTransceiver.direction === 'recvonly') {
+                audioTransceiver.direction = 'sendrecv';
+              }
+            }
+          }
+
+          if (audioSender && typeof audioSender.replaceTrack === 'function') {
+            await audioSender.replaceTrack(audioTrack);
           } else {
             state.pc.addTrack(audioTrack, state.localStream);
-            await renegotiateWebRTC();
+            if (typeof renegotiateWebRTC === 'function') {
+              await renegotiateWebRTC();
+            }
           }
         }
       } else if (!state.pc && state.peerId) {
@@ -6327,7 +6374,19 @@ async function toggleMic() {
     }
   } else {
     if (state.localStream) {
-      state.localStream.getAudioTracks().forEach(t => { t.enabled = false; });
+      state.localStream.getAudioTracks().forEach(t => { 
+        t.enabled = false;
+        try { t.stop(); } catch (_) {}
+      });
+    }
+    if (state.pc) {
+      try {
+        const senders = state.pc.getSenders ? state.pc.getSenders() : [];
+        const audioSender = senders.find(s => s.track && s.track.kind === 'audio');
+        if (audioSender && typeof audioSender.replaceTrack === 'function') {
+          audioSender.replaceTrack(null).catch(() => {});
+        }
+      } catch (_) {}
     }
     showToast('Mikrofon Kapatıldı');
   }
@@ -7861,6 +7920,25 @@ window.blockUser = blockUser;
 window.unblockUser = unblockUser;
 window.renderBlockedUsersList = renderBlockedUsersList;
 
+function openBlockedUsersModal() {
+  const modal = document.getElementById('blockedUsersModal');
+  if (modal) {
+    modal.classList.remove('hidden');
+    modal.classList.add('flex');
+    renderBlockedUsersList();
+  }
+}
+window.openBlockedUsersModal = openBlockedUsersModal;
+
+function closeBlockedUsersModal() {
+  const modal = document.getElementById('blockedUsersModal');
+  if (modal) {
+    modal.classList.add('hidden');
+    modal.classList.remove('flex');
+  }
+}
+window.closeBlockedUsersModal = closeBlockedUsersModal;
+
 function updatePermissionUI() {
   const dict = I18N[currentLang] || I18N.tr;
   if (dom.roomHostName) {
@@ -8112,6 +8190,10 @@ function copyToClipboard(text) {
 function sendRoomInvite(friend) {
   if (!friend) return;
   const cleanTarget = (friend.cleanUsername || friend.username || friend.name || '').replace(/^@/, '').trim();
+  if (isUserBlocked(cleanTarget)) {
+    showToast('Bu kullanıcı engellenmiş.');
+    return null;
+  }
   const myUsername = (state.username || 'kullanici').replace(/^@/, '');
   const roomId = state.roomId || 'ODA-77';
 
@@ -8667,6 +8749,7 @@ function handleOutboxAck(payload) {
 function handleIncomingAffinityRequest(req) {
   if (!req || !req.id) return;
   if (cleanUserKey(req.toUsername) !== cleanUserKey(state.username)) return;
+  if (isUserBlocked(req.fromUsername)) return;
   let list = [];
   try { list = JSON.parse(localStorage.getItem('miruo_affinity_requests') || '[]'); } catch (_) { list = []; }
   if (list.some(r => r.id === req.id)) return;
@@ -8720,6 +8803,7 @@ function handleIncomingAffinityDeclined(p) {
 function handleIncomingRoomInvite(inv) {
   if (!inv || !inv.id) return;
   if (cleanUserKey(inv.toUsername) !== cleanUserKey(state.username)) return;
+  if (isUserBlocked(inv.fromUsername)) return;
   if (Date.now() - (inv.createdAt || 0) > 30 * 60000) return; // bayat davet
   let list = [];
   try { list = JSON.parse(localStorage.getItem('miruo_room_invites') || '[]'); } catch (_) { list = []; }
@@ -8798,6 +8882,7 @@ function handleIncomingFriendRequest(req) {
   if (targetUsername !== myUsername) return;
 
   const cleanFrom = (req.fromUsername || '').toLowerCase().replace(/^@/, '').trim();
+  if (isUserBlocked(cleanFrom)) return;
   if (state.friends.some(f => (f.username || f.name || '').toLowerCase().replace(/^@/, '').trim() === cleanFrom)) return;
 
   const incoming = getIncomingFriendRequests();
@@ -9386,7 +9471,7 @@ function renderFriendsTab(filterText = '') {
   if (!query) {
     // Standard Friends View
     const isOnlineFn = f => f.status === 'online' || f.status === 'in_room';
-    let listToRender = [...state.friends];
+    let listToRender = state.friends.filter(f => !isUserBlocked(f.username || f.name));
     listToRender.sort((a, b) => {
       const aOn = isOnlineFn(a);
       const bOn = isOnlineFn(b);
@@ -9395,7 +9480,7 @@ function renderFriendsTab(filterText = '') {
       return (b.lastActive || 0) - (a.lastActive || 0);
     });
 
-    const onlineFriends = state.friends.filter(isOnlineFn);
+    const onlineFriends = listToRender.filter(isOnlineFn);
     const onlineSuffix = dict.online_count_suffix || (currentLang === 'tr' ? 'Çevrimiçi' : 'Online');
     if (onlineCountDisplay) onlineCountDisplay.textContent = `${onlineFriends.length} ${onlineSuffix}`;
 
@@ -9420,8 +9505,9 @@ function renderFriendsTab(filterText = '') {
   container.innerHTML = '';
 
   const localMatches = state.friends.filter(f => 
-    (f.name && f.name.toLowerCase().includes(query)) || 
-    (f.username && f.username.toLowerCase().includes(query))
+    !isUserBlocked(f.username || f.name) &&
+    ((f.name && f.name.toLowerCase().includes(query)) || 
+    (f.username && f.username.toLowerCase().includes(query)))
   );
 
   const outgoing = getOutgoingFriendRequests();
@@ -11322,18 +11408,36 @@ function toggleParticipantsPanel(forceOpen) {
   }
 }
 
+function updatePartnerPipIdentity(name) {
+  let finalName = name;
+  if (!finalName && state.peerId && state.participants[state.peerId]) {
+    finalName = state.participants[state.peerId].username;
+  }
+  if (!finalName) {
+    const other = Object.values(state.participants).find(p => p.userId !== state.userId);
+    if (other) finalName = other.username;
+  }
+  if (!finalName || finalName === 'Partner') finalName = 'Katılımcı';
+
+  if (dom.partnerPipName) dom.partnerPipName.textContent = finalName;
+  if (dom.partnerPipAvatarInitial) dom.partnerPipAvatarInitial.textContent = finalName.charAt(0).toUpperCase();
+}
+window.updatePartnerPipIdentity = updatePartnerPipIdentity;
+
 function updateRemoteParticipantStatus(userId, username, isMicOn, isCamOn) {
   if (!userId) return;
   const existing = state.participants[userId] || {};
+  const finalUName = username || existing.username || 'Katılımcı';
   state.participants[userId] = {
     ...existing,
     userId,
-    username: username || existing.username || 'Partner',
+    username: finalUName,
     isMicOn: typeof isMicOn === 'boolean' ? isMicOn : !!existing.isMicOn,
     isCamOn: typeof isCamOn === 'boolean' ? isCamOn : !!existing.isCamOn,
     role: existing.role || (existing.isHost ? 'owner' : 'member'),
     lastSeen: Date.now()
   };
+  updatePartnerPipIdentity(finalUName);
   if (dom.partnerPipCard) {
     if (isCamOn) {
       dom.partnerPipCard.classList.remove('hidden', 'pip-hidden-fullscreen');
@@ -19908,6 +20012,42 @@ function generateUniqueRoomCode(isPrivate = false) {
     }
   }, 12000);
 
+function extractRoomIdFromInput(rawInput) {
+  if (!rawInput || typeof rawInput !== 'string') return null;
+  const input = rawInput.trim();
+  if (!input) return null;
+
+  // 1. URL pattern: check for /oda/CODE or ?room=CODE or ?r=CODE
+  try {
+    if (input.includes('/oda/') || input.includes('?room=') || input.includes('&room=') || input.includes('?r=') || input.includes('&r=')) {
+      const odaMatch = input.match(/\/oda\/([a-zA-Z0-9_\-\.]+)/i);
+      if (odaMatch && odaMatch[1]) return decodeURIComponent(odaMatch[1]).trim();
+
+      const queryMatch = input.match(/[?&](?:room|r|oda)=([a-zA-Z0-9_\-\.]+)/i);
+      if (queryMatch && queryMatch[1]) return decodeURIComponent(queryMatch[1]).trim();
+    }
+  } catch (_) {}
+
+  // 2. Direct code starting with '#' (e.g. #ODA-47, #1234, #sinema)
+  if (input.startsWith('#')) {
+    const code = input.substring(1).trim();
+    if (code.length >= 2) return code.toUpperCase();
+  }
+
+  // 3. Direct Room Code formats:
+  // e.g. "ODA-123", "KODA-47", "ROOM-99", or pure digits "12345" or "123"
+  const upper = input.toUpperCase();
+  if (/^(?:ODA|KODA|ROOM)[-_][A-Z0-9]{2,16}$/i.test(upper)) {
+    return upper;
+  }
+  if (/^\d{3,10}$/.test(input)) {
+    return 'ODA-' + input;
+  }
+
+  return null;
+}
+window.extractRoomIdFromInput = extractRoomIdFromInput;
+
   // Unified Explore Search & Quick Room Join (Oda adı, oda kodu veya arkadaş ara)
   if (dom.raveLobbySearchInput) {
     const handleLobbySearchOrJoin = () => {
@@ -19917,12 +20057,10 @@ function generateUniqueRoomCode(isPrivate = false) {
         return;
       }
 
-      // Check if user entered an explicit room code (e.g. starts with # or format like ODA-XXX or digits)
-      const cleanCode = q.replace(/^#/, '').trim().toUpperCase();
-      const isRoomCode = (q.startsWith('#') || cleanCode.startsWith('ODA-') || /^\d{3,8}$/.test(cleanCode) || /^[A-Z0-9]{3,12}$/i.test(cleanCode));
-
-      if (isRoomCode && (q.startsWith('#') || cleanCode.startsWith('ODA-') || /^\d{3,8}$/.test(cleanCode))) {
-        const finalRoomId = cleanCode.startsWith('ODA-') ? cleanCode : ('ODA-' + cleanCode);
+      // Check if user entered an explicit room link, code or number
+      const extractedRoomId = extractRoomIdFromInput(q);
+      if (extractedRoomId) {
+        const finalRoomId = extractedRoomId;
         state.roomId = finalRoomId;
         state.isHost = false;
         if (dom.activeRoomTitle) dom.activeRoomTitle.textContent = finalRoomId;
@@ -19967,6 +20105,14 @@ function generateUniqueRoomCode(isPrivate = false) {
     if (dom.raveLobbySearchActionBtn) {
       dom.raveLobbySearchActionBtn.addEventListener('click', handleLobbySearchOrJoin);
     }
+  }
+
+  // Blocked Users Modal Triggers
+  if (dom.openBlockedUsersModalBtn) {
+    dom.openBlockedUsersModalBtn.addEventListener('click', openBlockedUsersModal);
+  }
+  if (dom.closeBlockedUsersModalBtn) {
+    dom.closeBlockedUsersModalBtn.addEventListener('click', closeBlockedUsersModal);
   }
 
   // Initial user session and explore feed bootstrap

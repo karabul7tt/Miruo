@@ -106,7 +106,7 @@
       <!-- Unified Single Search Bar (Oda Adı, Oda Kodu veya Arkadaş) -->
       <div class="relative flex items-center max-w-2xl w-full mx-auto">
         <svg class="w-4 h-4 text-gray-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
-        <input type="text" id="raveLobbySearchInput" placeholder="Oda adı, oda kodu veya arkadaş ara..." data-i18n-placeholder="search_rooms_ph" class="w-full bg-[#0C0E17] border border-white/10 rounded-2xl pl-10 pr-4 py-3 text-xs sm:text-sm text-white placeholder-gray-500 focus:outline-none focus:border-rose-500/80 transition-all font-medium shadow-lg">
+        <input type="text" id="raveLobbySearchInput" placeholder="Oda linki, oda kodu (#ODA-77), numara veya arkadaş ara..." data-i18n-placeholder="search_rooms_ph" class="w-full bg-[#0C0E17] border border-white/10 rounded-2xl pl-10 pr-4 py-3 text-xs sm:text-sm text-white placeholder-gray-500 focus:outline-none focus:border-rose-500/80 transition-all font-medium shadow-lg">
       </div>
 
       <!-- Section Title (Canlı & Açık Odalar) -->
@@ -723,17 +723,17 @@
         </div>
 
         <!-- Dedicated Remote Voice Audio Sink (Full Duplex VoIP / WebRTC) -->
-        <audio id="remoteVoiceAudio" autoplay playsinline class="hidden"></audio>
+        <audio id="remoteVoiceAudio" autoplay playsinline style="position:fixed;top:-9999px;left:-9999px;width:1px;height:1px;opacity:0.001;pointer-events:none;"></audio>
 
-        <!-- Floating Draggable Partner Webcam PIP (Circular Floating Bubble) -->
+        <!-- Floating Draggable Remote Participant Webcam PIP (Circular Floating Bubble) -->
         <div id="partnerPipCard" class="absolute w-28 h-28 sm:w-36 sm:h-36 rounded-full aspect-square bg-[#0E111A]/95 border-2 border-indigo-500/60 hover:border-indigo-400 shadow-2xl overflow-visible cursor-grab active:cursor-grabbing select-none z-[9999] backdrop-blur-md hidden transition-shadow duration-200" style="touch-action: none; top: 16px; left: 16px;">
           <div class="w-full h-full rounded-full overflow-hidden relative pointer-events-none">
             <video id="partnerVideo" class="w-full h-full object-cover mirror pointer-events-none" playsinline autoplay></video>
             <div id="partnerVideoPlaceholder" class="absolute inset-0 flex flex-col items-center justify-center bg-gradient-to-br from-[#1A1325] via-[#0E111A] to-[#121626] text-center p-2 pointer-events-none">
               <div class="w-12 h-12 rounded-full bg-gradient-to-tr from-indigo-500 to-purple-600 border border-white/20 shadow-md flex items-center justify-center text-white font-bold text-sm mb-1">
-                <span id="partnerPipAvatarInitial">P</span>
+                <span id="partnerPipAvatarInitial">K</span>
               </div>
-              <span id="partnerPipName" class="text-[10px] text-gray-200 font-bold truncate max-w-[80px]">Partner</span>
+              <span id="partnerPipName" class="text-[10px] text-gray-200 font-bold truncate max-w-[80px]">Katılımcı</span>
             </div>
           </div>
           <!-- Close / Hide Partner PIP Button (Never clipped) -->
@@ -2654,29 +2654,25 @@
           </div>
         </div>
 
-        <!-- 7.5. ENGELLENEN KULLANICILAR (BLOCKED USERS) -->
-        <div id="settingsSectionBlocked" class="p-4 rounded-2xl bg-white/5 border border-white/10 space-y-3">
-          <div class="flex items-center justify-between">
-            <div class="flex items-center gap-2.5">
-              <div class="w-8 h-8 rounded-xl bg-red-500/15 flex items-center justify-center text-red-400 border border-red-500/20">
-                <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <circle cx="12" cy="12" r="10"/>
-                  <line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/>
-                </svg>
-              </div>
-              <div>
-                <span class="text-xs font-bold text-white block">Engellenen Kullanıcılar</span>
-                <span class="text-[10px] text-gray-400">Engellediğiniz kişileri yönetin</span>
-              </div>
+        <!-- 7.5. ENGELLENEN KULLANICILAR (BLOCKED USERS ROW) -->
+        <button type="button" id="openBlockedUsersModalBtn" class="w-full p-4 rounded-2xl bg-white/5 hover:bg-white/10 border border-white/10 flex items-center justify-between text-left transition-all cursor-pointer group">
+          <div class="flex items-center gap-2.5">
+            <div class="w-8 h-8 rounded-xl bg-red-500/15 flex items-center justify-center text-red-400 border border-red-500/20">
+              <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="12" cy="12" r="10"/>
+                <line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/>
+              </svg>
             </div>
+            <div>
+              <span class="text-xs font-bold text-white block">Engellenen Kullanıcılar</span>
+              <span class="text-[10px] text-gray-400">Engellediğiniz kişileri görüntüleyin ve yönetin</span>
+            </div>
+          </div>
+          <div class="flex items-center gap-2">
             <span id="blockedUsersCountBadge" class="text-[10px] px-2.5 py-0.5 rounded-full font-bold bg-white/10 text-gray-300 border border-white/10">0</span>
+            <svg class="w-4 h-4 text-gray-400 group-hover:text-white transition-colors" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>
           </div>
-
-          <!-- Engellenenler Listesi -->
-          <div id="blockedUsersListContainer" class="space-y-2 pt-1 max-h-56 overflow-y-auto pr-1">
-            <!-- Dinamik doldurulur via renderBlockedUsersList() -->
-          </div>
-        </div>
+        </button>
 
         <!-- 8. HUKUKİ & BİLGİ -->
         <div id="settingsSectionLegal" class="p-3.5 rounded-2xl bg-white/5 border border-white/10 space-y-1">
@@ -2798,6 +2794,34 @@
   <div id="settingsModal" class="hidden">
     <button id="closeSettingsBtn" class="hidden"></button>
     <button id="openPlatformAccountsFromSettingsBtn" class="hidden"></button>
+  </div>
+
+  <!-- Dedicated Blocked Users Modal -->
+  <div id="blockedUsersModal" class="fixed inset-0 bg-black/85 backdrop-blur-md z-[99999] hidden items-center justify-center p-4">
+    <div class="bg-[#0E111A] border border-white/15 rounded-3xl p-5 sm:p-6 max-w-md w-full shadow-2xl relative flex flex-col max-h-[85vh]">
+      <div class="flex items-center justify-between pb-3.5 border-b border-white/10 shrink-0">
+        <div class="flex items-center gap-2.5">
+          <div class="w-9 h-9 rounded-xl bg-red-500/15 border border-red-500/25 flex items-center justify-center text-red-400">
+            <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="12" cy="12" r="10"/>
+              <line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/>
+            </svg>
+          </div>
+          <div>
+            <h3 class="text-sm font-bold text-white">Engellenen Kullanıcılar</h3>
+            <span class="text-[10px] text-gray-400">Engellediğiniz kişileri yönetin</span>
+          </div>
+        </div>
+        <button type="button" id="closeBlockedUsersModalBtn" class="w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 active:scale-95 text-gray-300 hover:text-white flex items-center justify-center transition-all cursor-pointer">
+          <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>
+
+      <!-- Engellenenler Listesi -->
+      <div id="blockedUsersListContainer" class="flex-1 overflow-y-auto space-y-2.5 pt-4 pr-1 min-h-[140px]">
+        <!-- Dinamik doldurulur via renderBlockedUsersList() -->
+      </div>
+    </div>
   </div>
 
   <!-- Delete Account Confirmation Modal -->
