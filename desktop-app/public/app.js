@@ -3622,6 +3622,7 @@ window.renderStagePipCards = renderStagePipCards;
 
 // Lay out all visible camera bubbles side by side in one row on the stage (unless the user dragged one manually)
 function arrangePipsRow() {
+  return;
   const stage = dom.stageContainer || document.getElementById('stageContainer');
   if (!stage) return;
   const cards = [];
