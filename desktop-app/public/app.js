@@ -4394,6 +4394,8 @@ function setupDataChannelEvents(channel) {
 function sendP2PData(type, payload = {}) {
   const enrichedPayload = {
     ...payload,
+    clientId: state.clientId,
+    userId: state.userId,
     fromUser: payload.fromUser || state.username,
     userRole: payload.userRole || state.userRole || (state.isHost ? 'owner' : 'member'),
     isHost: !!state.isHost,
@@ -4841,7 +4843,7 @@ function loadTwitchStream(channelOrUrl, title) {
 }
 window.loadTwitchStream = loadTwitchStream;
 
-function loadDirectVideo(url, title) {
+function loadDirectVideo(url, title, startPlaying = true, startTime = 0) {
   if (!state.isInRoom || (state.currentTab !== 'room' && !state.isMiniPlayer)) {
     console.warn('[Miruo] Direct video playback suppressed: User is not inside an active room');
     return;
@@ -4864,11 +4866,28 @@ function loadDirectVideo(url, title) {
   dom.nativeVideoPlayer.setAttribute('playsinline', 'true');
   dom.nativeVideoPlayer.setAttribute('webkit-playsinline', 'true');
 
+  state.isPlaying = !!startPlaying;
+  updatePlayPauseUI(state.isPlaying);
+  if (typeof startTime === 'number' && startTime > 0) {
+    state.currentTime = startTime;
+  }
+
+  const applySrcAndState = () => {
+    if (typeof startTime === 'number' && startTime > 0) {
+      try { dom.nativeVideoPlayer.currentTime = startTime; } catch (_) {}
+    }
+    if (startPlaying) {
+      dom.nativeVideoPlayer.play().catch(e => console.log('Autoplay deferred:', e));
+    } else {
+      dom.nativeVideoPlayer.pause();
+    }
+  };
+
   if (url && (url.includes('.m3u8') || url.includes('/hls/'))) {
     if (dom.nativeVideoPlayer.canPlayType('application/vnd.apple.mpegurl')) {
       // Native Apple HLS (iOS Safari & WKWebView)
       dom.nativeVideoPlayer.src = url;
-      dom.nativeVideoPlayer.play().catch(e => console.log('Autoplay deferred:', e));
+      applySrcAndState();
     } else if (window.Hls && window.Hls.isSupported()) {
       // Desktop HLS.js
       if (window.activeHlsInstance) {
@@ -4878,18 +4897,20 @@ function loadDirectVideo(url, title) {
       hls.loadSource(url);
       hls.attachMedia(dom.nativeVideoPlayer);
       hls.on(window.Hls.Events.MANIFEST_PARSED, () => {
-        dom.nativeVideoPlayer.play().catch(e => console.log('Autoplay deferred:', e));
+        applySrcAndState();
       });
       window.activeHlsInstance = hls;
     } else {
       dom.nativeVideoPlayer.src = url;
-      dom.nativeVideoPlayer.play().catch(e => console.log('Autoplay deferred:', e));
+      applySrcAndState();
     }
   } else {
     dom.nativeVideoPlayer.src = url;
-    dom.nativeVideoPlayer.play().catch(e => console.log('Autoplay deferred:', e));
+    applySrcAndState();
   }
-  showToast('Video başlatıldı!');
+  startPlaybackTracking();
+  startSyncHeartbeat();
+  showToast(startPlaying ? 'Video başlatıldı!' : 'Video yüklendi (Durduruldu)');
 }
 
 function normalizeEmbedUrl(url) {
@@ -5024,7 +5045,7 @@ function sendYtCommand(func, args = []) {
   if (dom.nativeVideoPlayer) {
     try {
       if (func === 'pauseVideo') dom.nativeVideoPlayer.pause();
-      else if (func === 'playVideo') dom.nativeVideoPlayer.play();
+      else if (func === 'playVideo' && state.activeMode === 'direct') dom.nativeVideoPlayer.play().catch(() => {});
     } catch (_) {}
   }
 }
@@ -5077,7 +5098,7 @@ function handleRemoteSync(payload) {
     const shouldPlay = typeof payload.isPlaying === 'boolean' ? payload.isPlaying : false;
     const targetTime = typeof payload.time === 'number' ? payload.time : state.currentTime;
     if (payload.videoId && payload.videoId !== state.currentVideoId) {
-      if (typeof window.loadRemoteContentBridge === 'function') window.loadRemoteContentBridge(payload.videoId, payload.title);
+      if (typeof window.loadRemoteContentBridge === 'function') window.loadRemoteContentBridge(payload.videoId, payload.title, shouldPlay, targetTime);
       else loadYoutubeVideo(payload.videoId, shouldPlay, targetTime);
     }
     state.currentTime = targetTime;
@@ -5107,15 +5128,22 @@ function handleRemoteSync(payload) {
 
   const isPlaybackCommand = (payload.action === 'play' || payload.action === 'pause' || payload.action === 'seek' || payload.action === 'load_yt');
   if (isPlaybackCommand) {
-    // Authoritative role validation using receiver's local room truth
+    if (payload.clientId && payload.clientId === state.clientId) return;
+
+    const cleanUser = (u) => String(u || '').toLowerCase().replace(/^@/, '').trim();
     const sender = payload.fromUser || payload.user;
-    const isFromHost = sender && (sender === state.hostName || sender === state.host);
+    const isFromHost = !!sender && (
+      cleanUser(sender) === cleanUser(state.hostName) ||
+      cleanUser(sender) === cleanUser(state.host) ||
+      (payload.isHost === true) ||
+      (payload.userId && state.participants && Object.values(state.participants).some(p => (p.isHost || p.role === 'owner') && p.userId === payload.userId))
+    );
     let participant = null;
     if (state.participants) {
       if (sender && state.participants[sender]) {
         participant = state.participants[sender];
       } else {
-        participant = Object.values(state.participants).find(p => p.userId === sender || p.username === sender || (payload.userId && p.userId === payload.userId));
+        participant = Object.values(state.participants).find(p => cleanUser(p.userId) === cleanUser(sender) || cleanUser(p.username) === cleanUser(sender) || (payload.userId && cleanUser(p.userId) === cleanUser(payload.userId)));
       }
     }
     const role = (participant && participant.role) || (isFromHost ? 'owner' : (payload.userRole || 'member'));
@@ -5127,7 +5155,7 @@ function handleRemoteSync(payload) {
       isAuthorized = true;
     } else if (isFromHost || role === 'owner' || role === 'admin' || role === 'dj' || role === 'video_control') {
       isAuthorized = true;
-    } else if (sender === state.username && canUserControlPlayback()) {
+    } else if (cleanUser(sender) === cleanUser(state.username) && canUserControlPlayback()) {
       isAuthorized = true;
     }
 
@@ -5168,7 +5196,6 @@ function handleRemoteSync(payload) {
 
   if (payload.action === 'play') {
     const targetTime = (typeof payload.time === 'number' ? payload.time : state.currentTime) + transit;
-    // Compare against the REAL player position (state.currentTime was overwritten before the check, so the seek never fired)
     const livePos = (typeof getLivePlayerTime === 'function') ? getLivePlayerTime() : state.currentTime;
     state.currentTime = targetTime;
     state.isPlaying = true;
@@ -5185,6 +5212,9 @@ function handleRemoteSync(payload) {
       }
       dom.nativeVideoPlayer.play().catch(() => {});
     }
+    document.querySelectorAll('video:not(.peer-cam-video):not(#localVideo):not(#partnerVideo):not([data-webrtc-stream])').forEach(v => {
+      try { v.play().catch(() => {}); } catch (_) {}
+    });
   }
 
   if (payload.action === 'pause') {
@@ -5198,14 +5228,31 @@ function handleRemoteSync(payload) {
     state.currentTime = targetTime;
     if (dom.nativeVideoPlayer) {
       dom.nativeVideoPlayer.pause();
-      if (typeof payload.time === 'number') dom.nativeVideoPlayer.currentTime = targetTime;
+      if (typeof payload.time === 'number') {
+        try { dom.nativeVideoPlayer.currentTime = targetTime; } catch (_) {}
+      }
     }
-    // Re-assert pause across intervals to ensure iframe strictly remains paused
-    setTimeout(() => { if (!state.isPlaying) sendYtCommand('pauseVideo'); }, 60);
-    setTimeout(() => { if (!state.isPlaying) sendYtCommand('pauseVideo'); }, 180);
-    setTimeout(() => { if (!state.isPlaying) sendYtCommand('pauseVideo'); }, 400);
-    setTimeout(() => { if (!state.isPlaying) sendYtCommand('pauseVideo'); }, 800);
-    setTimeout(() => { if (!state.isPlaying) sendYtCommand('pauseVideo'); }, 1500);
+    document.querySelectorAll('video:not(.peer-cam-video):not(#localVideo):not(#partnerVideo):not([data-webrtc-stream])').forEach(v => {
+      try { v.pause(); } catch (_) {}
+    });
+    // Universal re-assertion across all players to kill rogue autoplays
+    const enforceRemotePause = () => {
+      if (!state.isPlaying) {
+        sendYtCommand('pauseVideo');
+        if (dom.nativeVideoPlayer) {
+          try { dom.nativeVideoPlayer.pause(); } catch (_) {}
+        }
+        document.querySelectorAll('video:not(.peer-cam-video):not(#localVideo):not(#partnerVideo):not([data-webrtc-stream])').forEach(v => {
+          try { v.pause(); } catch (_) {}
+        });
+      }
+    };
+    setTimeout(enforceRemotePause, 50);
+    setTimeout(enforceRemotePause, 150);
+    setTimeout(enforceRemotePause, 350);
+    setTimeout(enforceRemotePause, 700);
+    setTimeout(enforceRemotePause, 1200);
+    setTimeout(enforceRemotePause, 2000);
   }
 
   if (payload.action === 'seek') {
@@ -5233,21 +5280,32 @@ function handleRemoteSync(payload) {
   }
 
   if (payload.action === 'heartbeat') {
-    // Only process heartbeat if non-host peer receives it, and only from someone allowed to control playback
-    const hbAuthorized = payload.isHost === true || payload.canControl === true || state.controlMode === 'everyone';
+    const cleanUser = (u) => String(u || '').toLowerCase().replace(/^@/, '').trim();
+    const sender = payload.fromUser || payload.user;
+    const isFromHost = !!sender && (
+      cleanUser(sender) === cleanUser(state.hostName) ||
+      cleanUser(sender) === cleanUser(state.host) ||
+      (payload.isHost === true)
+    );
+    const hbAuthorized = payload.isHost === true || payload.canControl === true || isFromHost || state.controlMode === 'everyone' || payload.userRole === 'owner' || payload.userRole === 'admin' || payload.userRole === 'dj' || payload.userRole === 'video_control';
     if (!state.isHost && hbAuthorized) {
       if (!payload.isPlaying) {
-        // Authoritative state is PAUSED: force peer to stay paused!
-        if (state.isPlaying) {
-          state.isPlaying = false;
-          updatePlayPauseUI(false);
-          sendYtCommand('pauseVideo');
-          if (dom.nativeVideoPlayer) dom.nativeVideoPlayer.pause();
+        // Authoritative state is PAUSED: force peer to stay strictly paused!
+        state.isPlaying = false;
+        updatePlayPauseUI(false);
+        sendYtCommand('pauseVideo');
+        if (dom.nativeVideoPlayer) {
+          try { dom.nativeVideoPlayer.pause(); } catch (_) {}
         }
-        if (typeof payload.time === 'number' && Math.abs(state.currentTime - payload.time) > 0.3) {
+        document.querySelectorAll('video:not(.peer-cam-video):not(#localVideo):not(#partnerVideo):not([data-webrtc-stream])').forEach(v => {
+          try { v.pause(); } catch (_) {}
+        });
+        if (typeof payload.time === 'number' && Math.abs(state.currentTime - payload.time) > 0.4) {
           state.currentTime = payload.time;
           if (state.activeMode === 'youtube') sendYtCommand('seekTo', [payload.time, true]);
-          else if (dom.nativeVideoPlayer) dom.nativeVideoPlayer.currentTime = payload.time;
+          else if (dom.nativeVideoPlayer) {
+            try { dom.nativeVideoPlayer.currentTime = payload.time; } catch (_) {}
+          }
         }
         return;
       }
@@ -5358,13 +5416,13 @@ let syncHeartbeatInterval = null;
 function startSyncHeartbeat() {
   if (syncHeartbeatInterval) clearInterval(syncHeartbeatInterval);
   syncHeartbeatInterval = setInterval(() => {
-    if (state.isInRoom && state.isPlaying && (state.isHost || state.hasDjPermission || state.controlMode === 'everyone') && (state.activeMode === 'youtube' || state.activeMode === 'direct')) {
+    if (state.isInRoom && (state.isHost || state.hasDjPermission || state.controlMode === 'everyone') && (state.activeMode === 'youtube' || state.activeMode === 'direct')) {
       const liveTime = getLivePlayerTime();
       state.currentTime = liveTime;
       sendP2PData('sync', {
         action: 'heartbeat',
         time: liveTime,
-        isPlaying: state.isPlaying,
+        isPlaying: !!state.isPlaying,
         rate: state.playbackRate || 1.0,
         sentAt: Date.now()
       });
@@ -5446,33 +5504,58 @@ function togglePlayPause() {
     showToast('Oynatma ve durdurma yetkisi sadece Oda Sahibi ve Yöneticilere aittir.');
     return;
   }
+  const nextPlayingState = !state.isPlaying;
+  state.isPlaying = nextPlayingState;
+  updatePlayPauseUI(state.isPlaying);
+
+  const curTime = (typeof getLivePlayerTime === 'function') ? getLivePlayerTime() : (state.currentTime || 0);
+  state.currentTime = curTime;
+
+  // 1. YouTube Player
   if (state.activeMode === 'youtube') {
-    state.isPlaying = !state.isPlaying;
-    sendYtCommand(state.isPlaying ? 'playVideo' : 'pauseVideo');
-    updatePlayPauseUI(state.isPlaying);
-    sendP2PData('sync', {
-      action: state.isPlaying ? 'play' : 'pause',
-      time: state.currentTime,
-      sentAt: Date.now()
-    });
-    if (!state.isPlaying) {
-      setTimeout(() => { if (!state.isPlaying) sendYtCommand('pauseVideo'); }, 80);
-      setTimeout(() => { if (!state.isPlaying) sendYtCommand('pauseVideo'); }, 250);
+    if (state.isPlaying) {
+      sendYtCommand('playVideo');
+      setTimeout(() => { if (state.isPlaying) sendYtCommand('playVideo'); }, 120);
+    } else {
+      sendYtCommand('pauseVideo');
+      setTimeout(() => { if (!state.isPlaying) sendYtCommand('pauseVideo'); }, 60);
+      setTimeout(() => { if (!state.isPlaying) sendYtCommand('pauseVideo'); }, 200);
+      setTimeout(() => { if (!state.isPlaying) sendYtCommand('pauseVideo'); }, 500);
+      setTimeout(() => { if (!state.isPlaying) sendYtCommand('pauseVideo'); }, 1000);
     }
-    return;
   }
-  if (state.activeMode === 'direct' && dom.nativeVideoPlayer) {
-    if (dom.nativeVideoPlayer.paused) {
+
+  // 2. Native Video Player / Direct
+  if (dom.nativeVideoPlayer) {
+    if (state.isPlaying) {
       dom.nativeVideoPlayer.play().catch(() => {});
-      state.isPlaying = true;
-      sendP2PData('sync', { action: 'play', time: dom.nativeVideoPlayer.currentTime, sentAt: Date.now() });
     } else {
       dom.nativeVideoPlayer.pause();
-      state.isPlaying = false;
-      sendP2PData('sync', { action: 'pause', time: dom.nativeVideoPlayer.currentTime, sentAt: Date.now() });
+      setTimeout(() => { if (!state.isPlaying && dom.nativeVideoPlayer) dom.nativeVideoPlayer.pause(); }, 60);
+      setTimeout(() => { if (!state.isPlaying && dom.nativeVideoPlayer) dom.nativeVideoPlayer.pause(); }, 250);
+      setTimeout(() => { if (!state.isPlaying && dom.nativeVideoPlayer) dom.nativeVideoPlayer.pause(); }, 600);
     }
-    updatePlayPauseUI(state.isPlaying);
   }
+
+  // 3. Stage Content HTML5 Videos
+  if (!state.isPlaying) {
+    document.querySelectorAll('video:not(.peer-cam-video):not(#localVideo):not(#partnerVideo):not([data-webrtc-stream])').forEach(v => {
+      try { v.pause(); } catch (_) {}
+    });
+  } else {
+    document.querySelectorAll('video:not(.peer-cam-video):not(#localVideo):not(#partnerVideo):not([data-webrtc-stream])').forEach(v => {
+      try { v.play().catch(() => {}); } catch (_) {}
+    });
+  }
+
+  // 4. Send authoritative playback sync broadcast across all peers
+  sendP2PData('sync', {
+    action: state.isPlaying ? 'play' : 'pause',
+    time: curTime,
+    isPlaying: state.isPlaying,
+    activeMode: state.activeMode,
+    sentAt: Date.now()
+  });
 }
 
 // YouTube postMessage Bridge: Two-Way Frame-Accurate Zero-Latency Play State & Scrubber Sync
@@ -10202,6 +10285,15 @@ function initGlobalUsersChannel() {
         const targetRoom = (payload.roomId || '').trim().toUpperCase().replace(/[^A-Z0-9_-]/g, '_');
         if (myRoom && targetRoom && myRoom === targetRoom) {
           handleSignalMessage(payload);
+        }
+      })
+      .on('broadcast', { event: 'room_playback_sync' }, ({ payload }) => {
+        if (!payload || (payload.clientId ? payload.clientId === state.clientId : payload.userId === state.userId)) return;
+        if (!state.isInRoom || !state.roomId) return;
+        const myRoom = (state.roomId || '').trim().toUpperCase().replace(/[^A-Z0-9_-]/g, '_');
+        const targetRoom = (payload.roomId || '').trim().toUpperCase().replace(/[^A-Z0-9_-]/g, '_');
+        if (myRoom && targetRoom && myRoom === targetRoom) {
+          handleRemoteSync(payload);
         }
       })
       .subscribe((status) => {
@@ -17611,7 +17703,7 @@ function initEvents() {
 
   window.loadRemoteContentBridge = loadRemoteContent;
   // Loads whatever the partner started (YouTube / direct stream / web / twitch) so every mode stays in sync
-  function loadRemoteContent(videoId, title) {
+  function loadRemoteContent(videoId, title, startPlaying = true, startTime = 0) {
     if (!videoId || videoId === state.currentVideoId) return;
     try {
       const v = String(videoId);
@@ -17621,13 +17713,13 @@ function initEvents() {
       } else if (v.startsWith('twitch:') || /twitch\.tv/i.test(v)) {
         if (typeof loadTwitchStream === 'function') loadTwitchStream(v.replace(/^twitch:/, ''), title);
       } else if (!isUrl) {
-        loadYoutubeVideo(v);
+        loadYoutubeVideo(v, startPlaying, startTime);
       } else {
         const ytId = (typeof extractYtId === 'function') ? extractYtId(v) : ((v.match(/(?:youtu\.be\/|youtube\.com\/(?:embed\/|v\/|watch\?v=|shorts\/))([\w-]{11})/) || [])[1] || null);
         if (ytId) {
-          loadYoutubeVideo(ytId);
+          loadYoutubeVideo(ytId, startPlaying, startTime);
         } else if (/\.(mp4|webm|m3u8|mov|mkv)(\?.*)?$/i.test(v) || v.includes('.m3u8') || v.includes('.mp4') || v.includes('/hls/') || v.includes('/stream/') || v.includes('manifest') || v.includes('googlevideo.com')) {
-          loadDirectVideo(v, title);
+          loadDirectVideo(v, title, startPlaying, startTime);
         } else {
           loadWebStream(v, title, 'Web');
         }
@@ -19579,6 +19671,13 @@ function validateInstagramUsername(username) {
 
   document.addEventListener('keydown', (e) => {
     if (['input', 'textarea'].includes((document.activeElement?.tagName || '').toLowerCase())) return;
+    if (document.activeElement?.isContentEditable) return;
+    if (e.key === ' ' || e.code === 'Space') {
+      if (state.isInRoom && (state.activeMode === 'youtube' || state.activeMode === 'direct')) {
+        e.preventDefault();
+        togglePlayPause();
+      }
+    }
     if (e.key === 'f' || e.key === 'F') {
       e.preventDefault();
       toggleFullscreen();
@@ -20053,13 +20152,15 @@ function validateInstagramUsername(username) {
 
     dom.nativeVideoPlayer.addEventListener('play', () => {
       if (state.activeMode === 'direct') {
-        if (!state.isRemoteAction && !canUserControlPlayback()) {
-          dom.nativeVideoPlayer.pause();
-          return;
+        if (!state.isRemoteAction && (!state.isPlaying || !canUserControlPlayback())) {
+          if (!state.isPlaying) {
+            dom.nativeVideoPlayer.pause();
+            return;
+          }
         }
         state.isPlaying = true;
         updatePlayPauseUI(true);
-        if (!state.isRemoteAction) {
+        if (!state.isRemoteAction && canUserControlPlayback()) {
           sendP2PData('sync', { action: 'play', time: dom.nativeVideoPlayer.currentTime, sentAt: Date.now() });
         }
       }
@@ -20067,13 +20168,13 @@ function validateInstagramUsername(username) {
 
     dom.nativeVideoPlayer.addEventListener('pause', () => {
       if (state.activeMode === 'direct') {
-        if (!state.isRemoteAction && !canUserControlPlayback()) {
+        if (!state.isRemoteAction && state.isPlaying && !canUserControlPlayback()) {
           dom.nativeVideoPlayer.play().catch(() => {});
           return;
         }
         state.isPlaying = false;
         updatePlayPauseUI(false);
-        if (!state.isRemoteAction) {
+        if (!state.isRemoteAction && canUserControlPlayback()) {
           sendP2PData('sync', { action: 'pause', time: dom.nativeVideoPlayer.currentTime, sentAt: Date.now() });
         }
       }
@@ -20522,13 +20623,14 @@ function validateInstagramUsername(username) {
       }
     });
 
+    const isScreen = (selectedPlatform || '').toLowerCase().includes('ekran');
     if (dom.submitCreateRoomBtn) {
-      dom.submitCreateRoomBtn.textContent = isSleep ? 'Uykuyu Başlat & Katıl' : 'Odayı Başlat & Katıl';
+      dom.submitCreateRoomBtn.textContent = isSleep ? 'Uykuyu Başlat & Katıl' : (isScreen ? 'Ekran Paylaşımını Başlat' : 'Odayı Başlat & Katıl');
     }
 
     if (dom.newRoomTitleInput) {
-      dom.newRoomTitleInput.value = isSleep ? 'Birlikte Uyku Odası' : '';
-      dom.newRoomTitleInput.placeholder = isSleep ? 'Birlikte Uyku Odası' : `Örn: ${selectedPlatform} Partisi veya Gece Sohbeti`;
+      dom.newRoomTitleInput.value = isSleep ? 'Birlikte Uyku Odası' : (isScreen ? 'Canlı Ekran Yayını' : '');
+      dom.newRoomTitleInput.placeholder = isSleep ? 'Birlikte Uyku Odası' : (isScreen ? 'Canlı Ekran Yayını veya Çalışma Odası' : `Örn: ${selectedPlatform} Partisi veya Gece Sohbeti`);
     }
 
     if (dom.createRoomModal) {
@@ -21310,6 +21412,14 @@ function validateInstagramUsername(username) {
       document.querySelectorAll('.platform-choice').forEach(c => c.className = 'platform-choice p-2 rounded-xl border border-white/10 bg-white/5 hover:bg-white/10 flex flex-col items-center text-center gap-1 cursor-pointer transition-all');
       choice.className = 'platform-choice active p-2 rounded-xl border-2 border-rose-500 bg-rose-500/15 flex flex-col items-center text-center gap-1 cursor-pointer transition-all';
       selectedPlatform = choice.dataset.category || 'YouTube';
+      const isSleep = (selectedPlatform || '').toLowerCase().includes('uyku') || (selectedPlatform || '').toLowerCase().includes('sleep');
+      const isScreen = (selectedPlatform || '').toLowerCase().includes('ekran');
+      if (dom.submitCreateRoomBtn) {
+        dom.submitCreateRoomBtn.textContent = isSleep ? 'Uykuyu Başlat & Katıl' : (isScreen ? 'Ekran Paylaşımını Başlat' : 'Odayı Başlat & Katıl');
+      }
+      if (dom.newRoomTitleInput && !dom.newRoomTitleInput.value.trim()) {
+        dom.newRoomTitleInput.placeholder = isSleep ? 'Birlikte Uyku Odası' : (isScreen ? 'Canlı Ekran Yayını veya Çalışma Odası' : `Örn: ${selectedPlatform} Partisi veya Gece Sohbeti`);
+      }
     });
   });
 
@@ -21416,6 +21526,7 @@ function generateUniqueRoomCode(isPrivate = false) {
     dom.submitCreateRoomBtn.addEventListener('click', () => {
       let defaultTitle = `${selectedPlatform} Partisi`;
       if (selectedPlatform === 'Uyku Modu') defaultTitle = 'Birlikte Uyku Odası';
+      if ((selectedPlatform || '').toLowerCase().includes('ekran')) defaultTitle = 'Canlı Ekran Yayını';
       const title = (dom.newRoomTitleInput && dom.newRoomTitleInput.value.trim()) || defaultTitle;
       const fallbackId = generateUniqueRoomCode(newRoomIsPrivate);
 
