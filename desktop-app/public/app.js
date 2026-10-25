@@ -3675,8 +3675,11 @@ function getOrCreatePeerConnection(peerId, isInitiator) {
   state.peers[peerId] = peerEntry;
 
   // Pre-allocate audio & video transceivers
+  // NOTE: only the initiator pre-allocates. Transceivers made with addTransceiver on the
+  // answering side are NOT matched to the remote offer's m-lines, which left the answerer's
+  // mic/camera on orphan transceivers that never reached the other side.
   try {
-    if (typeof pc.addTransceiver === 'function') {
+    if (isInitiator && typeof pc.addTransceiver === 'function') {
       pc.addTransceiver('audio', { direction: 'sendrecv' });
       pc.addTransceiver('video', { direction: 'sendrecv' });
     }
@@ -3908,6 +3911,20 @@ async function handleRtcOffer(offer, fromUserId) {
   try {
     await pc.setRemoteDescription(new RTCSessionDescription(offer));
     flushPeerQueuedIceCandidates(peerId);
+    // Make every negotiated m-line sendrecv and attach our live local tracks so the answer
+    // carries our mic/camera (remote-created transceivers default to recvonly).
+    try {
+      pc.getTransceivers().forEach(tr => {
+        if (tr.stopped || tr.currentDirection === 'stopped' || !tr.mid) return;
+        const kind = (tr.receiver && tr.receiver.track && tr.receiver.track.kind) || null;
+        if (!kind) return;
+        if (tr.direction !== 'sendrecv') tr.direction = 'sendrecv';
+        if (state.localStream && tr.sender && !tr.sender.track) {
+          const lt = state.localStream.getTracks().find(t => t.kind === kind && t.readyState === 'live');
+          if (lt) tr.sender.replaceTrack(lt).catch(() => {});
+        }
+      });
+    } catch (_) {}
     const answer = await pc.createAnswer();
     await pc.setLocalDescription(answer);
     sendSignal({ type: 'answer', targetUserId: peerId, answer: pc.localDescription });
@@ -4805,11 +4822,13 @@ function handleRemoteSync(payload) {
 
   if (payload.action === 'play') {
     const targetTime = (typeof payload.time === 'number' ? payload.time : state.currentTime) + transit;
+    // Compare against the REAL player position (state.currentTime was overwritten before the check, so the seek never fired)
+    const livePos = (typeof getLivePlayerTime === 'function') ? getLivePlayerTime() : state.currentTime;
     state.currentTime = targetTime;
     state.isPlaying = true;
     updatePlayPauseUI(true);
     if (state.activeMode === 'youtube') {
-      if (Math.abs(state.currentTime - targetTime) > 0.4) {
+      if (Math.abs(livePos - targetTime) > 0.3) {
         sendYtCommand('seekTo', [targetTime, true]);
       }
       sendYtCommand('playVideo');
@@ -7242,6 +7261,7 @@ async function toggleMic() {
         }
       }
       audioTrack.enabled = true;
+      let micNeedsReneg = false;
 
       if (dom.selfVideo && state.localStream) dom.selfVideo.srcObject = state.localStream;
 
@@ -7256,7 +7276,7 @@ async function toggleMic() {
                 (t.sender && t.sender.track && t.sender.track.kind === 'audio')
               );
               if (audioTransceiver) {
-                if (audioTransceiver.direction !== 'sendrecv') audioTransceiver.direction = 'sendrecv';
+                if (audioTransceiver.direction !== 'sendrecv') { audioTransceiver.direction = 'sendrecv'; micNeedsReneg = true; }
                 if (audioTransceiver.sender && typeof audioTransceiver.sender.replaceTrack === 'function') {
                   await audioTransceiver.sender.replaceTrack(audioTrack);
                 }
@@ -7277,7 +7297,7 @@ async function toggleMic() {
           (t.sender && t.sender.track && t.sender.track.kind === 'audio')
         );
         if (audioTransceiver) {
-          if (audioTransceiver.direction !== 'sendrecv') audioTransceiver.direction = 'sendrecv';
+          if (audioTransceiver.direction !== 'sendrecv') { audioTransceiver.direction = 'sendrecv'; micNeedsReneg = true; }
           if (audioTransceiver.sender && typeof audioTransceiver.sender.replaceTrack === 'function') {
             await audioTransceiver.sender.replaceTrack(audioTrack);
           }
@@ -7285,6 +7305,7 @@ async function toggleMic() {
           state.pc.addTrack(audioTrack, state.localStream);
         }
       }
+      if (micNeedsReneg && typeof renegotiateWebRTC === 'function') { try { await renegotiateWebRTC(); } catch (_) {} }
       showToast('Mikrofon Açık (Canlı)');
     } catch (e) {
       console.warn('Microphone hardware error:', e);
@@ -7392,7 +7413,6 @@ async function toggleCam() {
               (t.sender && t.sender.track && t.sender.track.kind === 'video')
             );
             if (vt) {
-              if (vt.direction === 'sendrecv') vt.direction = 'recvonly';
               if (vt.sender && typeof vt.sender.replaceTrack === 'function') {
                 vt.sender.replaceTrack(null).catch(() => {});
               }
@@ -7409,7 +7429,6 @@ async function toggleCam() {
           (t.sender && t.sender.track && t.sender.track.kind === 'video')
         );
         if (vt) {
-          if (vt.direction === 'sendrecv') vt.direction = 'recvonly';
           if (vt.sender && typeof vt.sender.replaceTrack === 'function') {
             vt.sender.replaceTrack(null).catch(() => {});
           }
