@@ -397,48 +397,149 @@ function syncUserProfileToSupabase(user) {
   }
 }
 
+function resolveCustomizedUserProfile({ id, email, rawName, rawUsername, rawAvatar, rawAvatarBg, provider, isApple, isGoogle, meta = {} }) {
+  const cleanId = String(id || '').trim();
+  const cleanEmail = String(email || '').toLowerCase().trim();
+
+  // 1. Gather all potential saved profiles for this account
+  let saved = null;
+  if (cleanId) {
+    try { saved = JSON.parse(localStorage.getItem(`miruo_saved_profile_${cleanId}`)); } catch (_) {}
+  }
+  if (!saved && cleanEmail) {
+    try { saved = JSON.parse(localStorage.getItem(`miruo_saved_profile_${cleanEmail}`)); } catch (_) {}
+  }
+  if (!saved) {
+    const regList = JSON.parse(localStorage.getItem('miruo_registered_users') || '[]');
+    saved = regList.find(u => 
+      (cleanId && u.id && String(u.id).trim() === cleanId) ||
+      (cleanEmail && u.email && String(u.email).toLowerCase().trim() === cleanEmail)
+    ) || null;
+  }
+  if (!saved) {
+    const byEmail = JSON.parse(localStorage.getItem('miruo_profiles_by_email') || '{}');
+    if (cleanEmail && byEmail[cleanEmail]) saved = byEmail[cleanEmail];
+  }
+  if (!saved) {
+    const cur = JSON.parse(localStorage.getItem('miruo_user') || 'null');
+    if (cur && ((cleanId && cur.id === cleanId) || (cleanEmail && cur.email && cur.email.toLowerCase() === cleanEmail) || cur.hasCustomProfile)) {
+      saved = cur;
+    }
+  }
+
+  // 2. Resolve Username: NEVER wipe user's customized username!
+  const customUsername = 
+    (cleanId && localStorage.getItem(`miruo_custom_username_${cleanId}`)) ||
+    (cleanEmail && localStorage.getItem(`miruo_custom_username_${cleanEmail}`)) ||
+    (saved && (saved.customUsername || (saved.username && !saved.username.startsWith('user_') ? saved.username : ''))) ||
+    meta.custom_username ||
+    meta.username ||
+    localStorage.getItem('miruo_custom_username') ||
+    '';
+
+  const fallbackUsername = (rawUsername || (cleanEmail ? cleanEmail.split('@')[0] : 'kullanici'))
+    .replace(/[^a-zA-Z0-9_]/g, '_')
+    .toLowerCase()
+    .slice(0, 16);
+
+  const finalUsername = (customUsername || fallbackUsername || 'kullanici').replace(/^@/, '').trim();
+
+  // 3. Resolve Full Name: NEVER wipe user's customized full name!
+  const customFullName =
+    (cleanId && localStorage.getItem(`miruo_custom_fullname_${cleanId}`)) ||
+    (cleanEmail && localStorage.getItem(`miruo_custom_fullname_${cleanEmail}`)) ||
+    (saved && (saved.customFullName || (saved.fullName && !saved.fullName.startsWith('@') ? saved.fullName : (saved.name && !saved.name.startsWith('@') && saved.name !== 'Misafir' ? saved.name : '')))) ||
+    meta.custom_full_name ||
+    localStorage.getItem('miruo_custom_fullname') ||
+    '';
+
+  const fallbackFullName = rawName || (cleanEmail ? cleanEmail.split('@')[0] : 'Miruo Kullanıcısı');
+  const finalFullName = (customFullName && !customFullName.startsWith('@')) ? customFullName.trim() : (fallbackFullName || finalUsername);
+
+  // 4. Resolve Avatar: NEVER wipe user's customized avatar photo!
+  const customAvatar =
+    window.pendingAvatarUrl ||
+    (cleanId && localStorage.getItem(`miruo_custom_avatar_${cleanId}`)) ||
+    (cleanEmail && localStorage.getItem(`miruo_custom_avatar_${cleanEmail}`)) ||
+    (saved && (saved.customAvatarUrl || (saved.avatarUrl && !saved.avatarUrl.includes('googleusercontent.com') ? saved.avatarUrl : ''))) ||
+    meta.custom_avatar_url ||
+    localStorage.getItem('miruo_custom_avatar') ||
+    (saved && saved.avatarUrl) ||
+    '';
+
+  const finalAvatarUrl = customAvatar || rawAvatar || '';
+  const finalAvatarBg = window.pendingAvatarBg || (saved && saved.avatarBg) || rawAvatarBg || (isApple ? 'linear-gradient(135deg, #ec4899, #8b5cf6)' : 'from-rose-500 to-indigo-600');
+
+  const resolved = {
+    id: cleanId,
+    name: finalFullName,
+    fullName: finalFullName,
+    username: finalUsername,
+    email: cleanEmail || (saved && saved.email) || '',
+    avatarChar: (finalFullName || finalUsername || 'M').charAt(0).toUpperCase(),
+    avatarUrl: finalAvatarUrl,
+    avatarBg: finalAvatarBg,
+    isApple: !!isApple,
+    isGoogle: !!isGoogle,
+    provider: provider || (isApple ? 'apple' : (isGoogle ? 'google' : 'email')),
+    isGuest: false,
+    hasCustomProfile: !!(customUsername || customFullName || customAvatar),
+    customUsername: finalUsername,
+    customFullName: finalFullName,
+    customAvatarUrl: finalAvatarUrl,
+    defaultRoom: (saved && saved.defaultRoom) || 'ODA-77'
+  };
+
+  localStorage.setItem('miruo_user', JSON.stringify(resolved));
+  localStorage.setItem('miruo_custom_username', finalUsername);
+  localStorage.setItem('miruo_custom_fullname', finalFullName);
+  if (finalAvatarUrl) localStorage.setItem('miruo_custom_avatar', finalAvatarUrl);
+
+  if (cleanId) {
+    localStorage.setItem(`miruo_saved_profile_${cleanId}`, JSON.stringify(resolved));
+    localStorage.setItem(`miruo_custom_username_${cleanId}`, finalUsername);
+    localStorage.setItem(`miruo_custom_fullname_${cleanId}`, finalFullName);
+    if (finalAvatarUrl) localStorage.setItem(`miruo_custom_avatar_${cleanId}`, finalAvatarUrl);
+  }
+  if (cleanEmail) {
+    localStorage.setItem(`miruo_saved_profile_${cleanEmail}`, JSON.stringify(resolved));
+    localStorage.setItem(`miruo_custom_username_${cleanEmail}`, finalUsername);
+    localStorage.setItem(`miruo_custom_fullname_${cleanEmail}`, finalFullName);
+    if (finalAvatarUrl) localStorage.setItem(`miruo_custom_avatar_${cleanEmail}`, finalAvatarUrl);
+  }
+
+  persistUserToLocalRegistry(resolved);
+  return resolved;
+}
+window.resolveCustomizedUserProfile = resolveCustomizedUserProfile;
+
 function applySupabaseSessionUser(sbUser) {
   if (!sbUser) return;
-  const existingLocal = JSON.parse(localStorage.getItem('miruo_user') || '{}');
-  const regUsers = JSON.parse(localStorage.getItem('miruo_registered_users') || '[]');
-  const byEmail = JSON.parse(localStorage.getItem('miruo_profiles_by_email') || '{}');
-  const cleanSbEmail = (sbUser.email || '').toLowerCase();
-  const emailProfile = (cleanSbEmail && byEmail[cleanSbEmail]) || {};
-  const localReg = regUsers.find(u => 
-    (u.id && u.id === sbUser.id) || 
-    (u.email && cleanSbEmail && u.email.toLowerCase() === cleanSbEmail)
-  ) || {};
-
   const meta = sbUser.user_metadata || {};
-  const fullName = (existingLocal.fullName && !existingLocal.fullName.startsWith('@') ? existingLocal.fullName : '') ||
-                   (emailProfile.fullName && !emailProfile.fullName.startsWith('@') ? emailProfile.fullName : '') ||
-                   (localReg.fullName && !localReg.fullName.startsWith('@') ? localReg.fullName : '') ||
-                   (meta.full_name && !meta.full_name.startsWith('@') ? meta.full_name : '') ||
-                   (meta.name && !meta.name.startsWith('@') ? meta.name : '') ||
-                   existingLocal.fullName || emailProfile.fullName || localReg.fullName || sbUser.email?.split('@')[0] || 'Kullanıcı';
-  const rawUsername = emailProfile.username || localReg.username || existingLocal.username || meta.username || sbUser.email?.split('@')[0] || 'kullanici';
-  const cleanUsername = rawUsername.replace(/^@/, '').trim();
-  const avatarUrl = window.pendingAvatarUrl || existingLocal.avatarUrl || emailProfile.avatarUrl || localReg.avatarUrl || meta.avatar_url || meta.picture || '';
-  const avatarBg = window.pendingAvatarBg || existingLocal.avatarBg || emailProfile.avatarBg || localReg.avatarBg || meta.avatar_bg || 'from-rose-500 to-[#A64D79]';
+  const googleIdentity = sbUser.identities?.find(i => i.provider === 'google');
+  const isGoogle = (sbUser.app_metadata?.provider === 'google') || !!googleIdentity;
+  const appleIdentity = sbUser.identities?.find(i => i.provider === 'apple');
+  const isApple = (sbUser.app_metadata?.provider === 'apple') || !!appleIdentity || Boolean(meta.iss && meta.iss.includes('apple'));
 
-  const user = {
+  const profile = extractUserProfile(sbUser);
+  const user = resolveCustomizedUserProfile({
     id: sbUser.id,
-    name: fullName,
-    fullName: fullName,
-    username: cleanUsername,
-    email: sbUser.email || existingLocal.email || emailProfile.email || localReg.email || '',
-    avatarUrl: avatarUrl,
-    avatarChar: (fullName || cleanUsername || 'M').charAt(0).toUpperCase(),
-    avatarBg: avatarBg,
-    defaultRoom: existingLocal.defaultRoom || localReg.defaultRoom || 'ODA-77'
-  };
-  localStorage.setItem('miruo_user', JSON.stringify(user));
-  localStorage.setItem('miruo_custom_username', cleanUsername);
-  persistUserToLocalRegistry(user);
+    email: sbUser.email || profile.email,
+    rawName: profile.name || meta.full_name || meta.name,
+    rawUsername: profile.usernameBase || meta.username,
+    rawAvatar: profile.avatar || meta.avatar_url || meta.picture,
+    rawAvatarBg: meta.avatar_bg || '',
+    provider: isApple ? 'apple' : (isGoogle ? 'google' : (sbUser.app_metadata?.provider || 'email')),
+    isApple,
+    isGoogle,
+    meta
+  });
+
   state.userId = user.id;
   state.username = user.username;
   state.avatarUrl = user.avatarUrl;
   state.avatarBg = user.avatarBg;
+
   if (typeof updateUserUI === 'function') {
     updateUserUI(user);
   }
@@ -452,6 +553,7 @@ function applySupabaseSessionUser(sbUser) {
   if (typeof showToast === 'function') {
     showToast(`Hoş geldin, ${user.fullName || user.username || 'Kullanıcı'}!`);
   }
+  syncUserProfileToSupabase(user);
 }
 
 initSupabase();
@@ -499,9 +601,21 @@ window.handleNativeImagePicked = function(base64Data, target) {
     const savedUser = JSON.parse(localStorage.getItem('miruo_user') || '{}');
     savedUser.avatarUrl = base64Data;
     savedUser.avatarBg = '';
+    savedUser.hasCustomProfile = true;
+    savedUser.customAvatarUrl = base64Data;
     state.avatarUrl = base64Data;
     state.avatarBg = '';
     localStorage.setItem('miruo_user', JSON.stringify(savedUser));
+    localStorage.setItem('miruo_custom_avatar', base64Data);
+    if (savedUser.id) {
+      localStorage.setItem(`miruo_custom_avatar_${savedUser.id}`, base64Data);
+      localStorage.setItem(`miruo_saved_profile_${savedUser.id}`, JSON.stringify(savedUser));
+    }
+    if (savedUser.email) {
+      const cleanE = savedUser.email.toLowerCase().trim();
+      localStorage.setItem(`miruo_custom_avatar_${cleanE}`, base64Data);
+      localStorage.setItem(`miruo_saved_profile_${cleanE}`, JSON.stringify(savedUser));
+    }
     persistUserToLocalRegistry(savedUser);
 
     try {
@@ -7519,6 +7633,7 @@ function removeMyPublicRoom(id) {
 // Global Public Rooms Discovery via Supabase Realtime Channels (Cross-Device Worldwide)
 let globalRealtimeRooms = [];
 let globalRoomsChannel = null;
+let globalRoomsSubscribed = false;
 
 function initGlobalPublicRoomsSync() {
   if (!supabaseClient || globalRoomsChannel) return;
@@ -7551,9 +7666,28 @@ function initGlobalPublicRoomsSync() {
           removeGlobalRealtimeRoom(payload.id);
         }
       })
+      .on('broadcast', { event: 'request_public_rooms' }, () => {
+        // Any device opening Explore broadcasts this; if we have an active public room, broadcast back immediately!
+        if (state.isInRoom && state.roomId && !state.isPrivateRoom) {
+          syncCurrentRoomToGlobalPresence();
+        }
+      })
       .subscribe((status) => {
         if (status === 'SUBSCRIBED') {
-          syncCurrentRoomToGlobalPresence();
+          globalRoomsSubscribed = true;
+          if (state.isInRoom && state.roomId && !state.isPrivateRoom) {
+            syncCurrentRoomToGlobalPresence();
+          }
+          // Request all active rooms worldwide upon subscribing
+          try {
+            globalRoomsChannel.send({
+              type: 'broadcast',
+              event: 'request_public_rooms',
+              payload: { from: state.userId || 'guest', ts: Date.now() }
+            }).catch(() => {});
+          } catch (_) {}
+        } else if (status === 'CLOSED' || status === 'CHANNEL_ERROR') {
+          globalRoomsSubscribed = false;
         }
       });
   } catch (e) {
@@ -7564,6 +7698,13 @@ function initGlobalPublicRoomsSync() {
 function parseGlobalRoomsFromPresence(presenceState) {
   if (!presenceState) return;
   const roomMap = new Map();
+  // Preserve previously announced broadcast rooms that are still fresh
+  (globalRealtimeRooms || []).forEach(r => {
+    if (r && r.id && (Date.now() - (r.ts || 0) < 180000)) {
+      roomMap.set(r.id, r);
+    }
+  });
+
   Object.keys(presenceState).forEach(key => {
     const presences = presenceState[key] || [];
     presences.forEach(p => {
@@ -7622,16 +7763,22 @@ function removeGlobalRealtimeRoom(roomId) {
 }
 
 function syncCurrentRoomToGlobalPresence() {
-  if (!globalRoomsChannel || !state.roomId || !state.isInRoom) return;
+  if (!state.roomId || !state.isInRoom) return;
+  if (!globalRoomsChannel) {
+    initGlobalPublicRoomsSync();
+  }
   if (state.isPrivateRoom) {
     try {
-      globalRoomsChannel.send({
-        type: 'broadcast',
-        event: 'room_closed',
-        payload: { id: state.roomId }
-      }).catch(() => {});
-      globalRoomsChannel.untrack().catch(() => {});
+      if (globalRoomsChannel) {
+        globalRoomsChannel.send({
+          type: 'broadcast',
+          event: 'room_closed',
+          payload: { id: state.roomId }
+        }).catch(() => {});
+        globalRoomsChannel.untrack().catch(() => {});
+      }
     } catch (_) {}
+    removeGlobalRealtimeRoom(state.roomId);
     return;
   }
   const payload = {
@@ -7646,23 +7793,42 @@ function syncCurrentRoomToGlobalPresence() {
     isPublic: true,
     updatedAt: Date.now()
   };
-  try {
-    globalRoomsChannel.track(payload).catch(e => console.warn('[Presence] track error:', e));
-    globalRoomsChannel.send({
-      type: 'broadcast',
-      event: 'room_announced',
-      payload
-    }).catch(() => {});
-  } catch (e) {
-    console.warn('[Presence] sync error:', e);
+  upsertGlobalRealtimeRoom(payload);
+  if (globalRoomsChannel) {
+    try {
+      globalRoomsChannel.track(payload).catch(e => console.warn('[Presence] track error:', e));
+      globalRoomsChannel.send({
+        type: 'broadcast',
+        event: 'room_announced',
+        payload
+      }).catch(() => {});
+    } catch (e) {
+      console.warn('[Presence] sync error:', e);
+    }
   }
+}
+
+// Global 8-second Heartbeat: keeps host room continuously alive and visible across all networks
+if (!window._publicRoomHeartbeatInterval) {
+  window._publicRoomHeartbeatInterval = setInterval(() => {
+    if (state.isInRoom && state.roomId && !state.isPrivateRoom) {
+      syncCurrentRoomToGlobalPresence();
+    }
+  }, 8000);
 }
 
 function mergeAllPublicRooms(serverRooms = []) {
   const roomMap = new Map();
-  // 1. Add global realtime presence rooms first (live from all devices worldwide!)
+  const now = Date.now();
+  // 1. Add global realtime presence rooms (prune rooms stale > 3 minutes)
   (globalRealtimeRooms || []).forEach(r => {
-    if (r && r.id) roomMap.set(r.id, r);
+    if (r && r.id) {
+      if (state.isInRoom && r.id === state.roomId) {
+        roomMap.set(r.id, r);
+      } else if (!r.ts || (now - r.ts) < 180000) {
+        roomMap.set(r.id, r);
+      }
+    }
   });
   // 2. Add local device room ONLY IF CURRENTLY IN AN ACTIVE PUBLIC ROOM!
   if (state.isInRoom && state.roomId && !state.isPrivateRoom) {
@@ -7675,7 +7841,8 @@ function mergeAllPublicRooms(serverRooms = []) {
       videoId: state.currentVideoId || '',
       thumb: state.currentVideoThumb || (state.currentVideoId ? `https://img.youtube.com/vi/${state.currentVideoId}/mqdefault.jpg` : ''),
       viewers: Math.max(1, (state.remotePeers ? Object.keys(state.remotePeers).length + 1 : 1)),
-      avatars: [{ initial: (state.username || 'U').charAt(0).toUpperCase(), bg: 'from-purple-500 to-indigo-600' }]
+      avatars: [{ initial: (state.username || 'U').charAt(0).toUpperCase(), bg: 'from-purple-500 to-indigo-600' }],
+      ts: Date.now()
     };
     roomMap.set(state.roomId, myCurrentRoom);
   }
@@ -7683,23 +7850,45 @@ function mergeAllPublicRooms(serverRooms = []) {
   (serverRooms || []).forEach(r => {
     if (r && r.id && !roomMap.has(r.id)) roomMap.set(r.id, r);
   });
-  // Sadece gerçek canlı odalar döner, eski/sahte statik odalar ASLA dönmez
   return Array.from(roomMap.values());
 }
 
 function loadPublicRooms() {
-  fetch('/api/public-rooms')
-    .then(res => res.json())
-    .then(data => {
-      if (data && data.rooms && data.rooms.length > 0) {
-        renderRoomList(mergeAllPublicRooms(data.rooms));
-      } else {
-        renderRoomList(mergeAllPublicRooms([]));
-      }
-    })
-    .catch(err => {
-      renderRoomList(mergeAllPublicRooms([]));
-    });
+  // 1. Request all active online room hosts worldwide to announce themselves
+  if (globalRoomsChannel) {
+    try {
+      globalRoomsChannel.send({
+        type: 'broadcast',
+        event: 'request_public_rooms',
+        payload: { requester: state.userId || 'guest', ts: Date.now() }
+      }).catch(() => {});
+    } catch (_) {}
+  } else {
+    initGlobalPublicRoomsSync();
+  }
+
+  // 2. Clean stale rooms (> 3 mins)
+  const now = Date.now();
+  globalRealtimeRooms = (globalRealtimeRooms || []).filter(r => {
+    if (!r || !r.id) return false;
+    if (state.isInRoom && r.id === state.roomId) return true;
+    return !r.ts || (now - r.ts) < 180000;
+  });
+
+  // 3. Render immediately from realtime rooms + local room
+  renderRoomList(mergeAllPublicRooms([]));
+
+  // 4. Fallback attempt for web server if available
+  try {
+    fetch('/api/public-rooms')
+      .then(res => res.json())
+      .then(data => {
+        if (data && data.rooms && data.rooms.length > 0) {
+          renderRoomList(mergeAllPublicRooms(data.rooms));
+        }
+      })
+      .catch(() => {});
+  } catch (_) {}
 }
 
 function updateRoomPrivacyUI(isPrivate) {
@@ -13558,45 +13747,34 @@ function initEvents() {
 
       const user = session.user;
       const profile = extractUserProfile(user);
-      const displayName = profile.name || user.email?.split('@')[0] || 'Miruo Kullanıcısı';
-      const safeUsername = profile.usernameBase || ('user_' + Math.random().toString(36).substring(2, 6));
-      const avatarChar = displayName.charAt(0).toUpperCase() || 'M';
-
-      if (profile.name) {
-        const parts = profile.name.trim().split(/\s+/);
-        if (dom.authFirstNameInput) dom.authFirstNameInput.value = parts[0] || '';
-        if (dom.authLastNameInput) dom.authLastNameInput.value = parts.slice(1).join(' ') || '';
-        if (dom.authNameInput) dom.authNameInput.value = profile.name;
-        if (dom.editProfileNameInput) dom.editProfileNameInput.value = profile.name;
-      }
-      if (user.email && dom.authContactInput) {
-        dom.authContactInput.value = user.email;
-      }
-
       const isApple = (user.app_metadata?.provider === 'apple') ||
                       (user.identities && user.identities.some(i => i.provider === 'apple')) ||
                       Boolean(user.user_metadata?.iss && user.user_metadata.iss.includes('apple'));
 
-      const verifiedUser = {
+      const verifiedUser = resolveCustomizedUserProfile({
         id: user.id,
-        name: displayName,
-        fullName: displayName,
-        username: safeUsername,
-        email: user.email || '',
-        avatarChar: avatarChar,
-        avatarUrl: profile.avatar || null,
-        avatarBg: isApple ? 'linear-gradient(135deg, #ec4899, #8b5cf6)' : 'from-rose-500 to-indigo-600',
-        isApple: isApple,
-        isGoogle: !isApple,
+        email: user.email || profile.email,
+        rawName: profile.name || user.user_metadata?.full_name || user.user_metadata?.name,
+        rawUsername: profile.usernameBase || user.user_metadata?.username,
+        rawAvatar: profile.avatar || user.user_metadata?.avatar_url || user.user_metadata?.picture,
+        rawAvatarBg: user.user_metadata?.avatar_bg || '',
         provider: isApple ? 'apple' : 'google',
-        isGuest: false
-      };
+        isApple,
+        isGoogle: !isApple,
+        meta: user.user_metadata || {}
+      });
 
-      localStorage.setItem('miruo_user', JSON.stringify(verifiedUser));
-      localStorage.setItem(`miruo_saved_profile_${verifiedUser.id}`, JSON.stringify(verifiedUser));
-      if (verifiedUser.email) {
-        localStorage.setItem(`miruo_saved_profile_${verifiedUser.email}`, JSON.stringify(verifiedUser));
+      if (verifiedUser.fullName) {
+        const parts = verifiedUser.fullName.trim().split(/\s+/);
+        if (dom.authFirstNameInput) dom.authFirstNameInput.value = parts[0] || '';
+        if (dom.authLastNameInput) dom.authLastNameInput.value = parts.slice(1).join(' ') || '';
+        if (dom.authNameInput) dom.authNameInput.value = verifiedUser.fullName;
+        if (dom.editProfileNameInput) dom.editProfileNameInput.value = verifiedUser.fullName;
       }
+      if (verifiedUser.email && dom.authContactInput) {
+        dom.authContactInput.value = verifiedUser.email;
+      }
+
       state.userId = verifiedUser.id;
       state.username = verifiedUser.username;
       state.avatarUrl = verifiedUser.avatarUrl || '';
@@ -15047,23 +15225,22 @@ function initEvents() {
         const finalAvatarUrl = emailProf.avatarUrl || (localMatch && localMatch.avatarUrl) || userData.avatarUrl || prevSavedUser.avatarUrl || '';
         const finalAvatarBg = emailProf.avatarBg || (localMatch && localMatch.avatarBg) || userData.avatarBg || prevSavedUser.avatarBg || 'from-rose-500 to-[#A64D79]';
 
-        const user = {
+        const user = resolveCustomizedUserProfile({
           id: userData.id || (localMatch && localMatch.id) || emailProf.id || ('user_' + Math.random().toString(36).substring(2, 8)),
-          name: finalFullName,
-          fullName: finalFullName,
-          username: finalUsername,
           email: resolvedEmail || userData.email || '',
-          password: passwordVal,
-          avatarUrl: finalAvatarUrl,
-          avatarBg: finalAvatarBg,
-          avatarChar: (finalFullName || finalUsername).charAt(0).toUpperCase()
-        };
-
+          rawName: finalFullName,
+          rawUsername: finalUsername,
+          rawAvatar: finalAvatarUrl,
+          rawAvatarBg: finalAvatarBg,
+          provider: userData.provider || (userData.isApple ? 'apple' : 'email'),
+          isApple: !!userData.isApple,
+          isGoogle: false
+        });
+        if (passwordVal) user.password = passwordVal;
         localStorage.setItem('miruo_user', JSON.stringify(user));
-        localStorage.setItem('miruo_custom_username', finalUsername);
-        persistUserToLocalRegistry(user);
+
         state.userId = user.id;
-        state.username = finalUsername;
+        state.username = user.username;
         state.avatarUrl = user.avatarUrl;
         state.avatarBg = user.avatarBg;
         syncUserProfileToSupabase(user);
@@ -16937,6 +17114,11 @@ function validateInstagramUsername(username) {
         state.avatarUrl = '';
       }
 
+      savedUser.hasCustomProfile = true;
+      savedUser.customUsername = cleanUsername;
+      savedUser.customFullName = resolvedFullName;
+      if (savedUser.avatarUrl) savedUser.customAvatarUrl = savedUser.avatarUrl;
+
       localStorage.setItem('miruo_user', JSON.stringify(savedUser));
       localStorage.setItem('miruo_custom_username', cleanUsername);
       localStorage.setItem('miruo_custom_fullname', resolvedFullName);
@@ -16948,10 +17130,17 @@ function validateInstagramUsername(username) {
         localStorage.setItem(`miruo_saved_profile_${savedUser.appleUserId}`, JSON.stringify(savedUser));
       }
       if (savedUser.email) {
-        localStorage.setItem(`miruo_saved_profile_${savedUser.email}`, JSON.stringify(savedUser));
+        const cleanE = savedUser.email.toLowerCase().trim();
+        localStorage.setItem(`miruo_saved_profile_${cleanE}`, JSON.stringify(savedUser));
+        localStorage.setItem(`miruo_custom_username_${cleanE}`, cleanUsername);
+        localStorage.setItem(`miruo_custom_fullname_${cleanE}`, resolvedFullName);
+        if (savedUser.avatarUrl) localStorage.setItem(`miruo_custom_avatar_${cleanE}`, savedUser.avatarUrl);
       }
       if (savedUser.id) {
         localStorage.setItem(`miruo_saved_profile_${savedUser.id}`, JSON.stringify(savedUser));
+        localStorage.setItem(`miruo_custom_username_${savedUser.id}`, cleanUsername);
+        localStorage.setItem(`miruo_custom_fullname_${savedUser.id}`, resolvedFullName);
+        if (savedUser.avatarUrl) localStorage.setItem(`miruo_custom_avatar_${savedUser.id}`, savedUser.avatarUrl);
       }
       persistUserToLocalRegistry(savedUser, currentActiveUsername);
       if (window.miruoDesktop && typeof window.miruoDesktop.saveDesktopProfile === 'function') {
@@ -20074,9 +20263,12 @@ window.extractRoomIdFromInput = extractRoomIdFromInput;
 
       // Live filter public rooms list
       const lower = q.toLowerCase();
-      const filtered = MOCK_PUBLIC_ROOMS.filter(r => 
+      const allActive = mergeAllPublicRooms([]);
+      const filtered = allActive.filter(r => 
         (r.name && r.name.toLowerCase().includes(lower)) ||
         (r.topic && r.topic.toLowerCase().includes(lower)) ||
+        (r.category && r.category.toLowerCase().includes(lower)) ||
+        (r.mediaTitle && r.mediaTitle.toLowerCase().includes(lower)) ||
         (r.host && r.host.toLowerCase().includes(lower)) ||
         (r.id && r.id.toLowerCase().includes(lower))
       );
@@ -20088,9 +20280,12 @@ window.extractRoomIdFromInput = extractRoomIdFromInput;
       if (!q) {
         loadPublicRooms();
       } else {
-        const filtered = MOCK_PUBLIC_ROOMS.filter(r => 
+        const allActive = mergeAllPublicRooms([]);
+        const filtered = allActive.filter(r => 
           (r.name && r.name.toLowerCase().includes(q)) ||
           (r.topic && r.topic.toLowerCase().includes(q)) ||
+          (r.category && r.category.toLowerCase().includes(q)) ||
+          (r.mediaTitle && r.mediaTitle.toLowerCase().includes(q)) ||
           (r.host && r.host.toLowerCase().includes(q)) ||
           (r.id && r.id.toLowerCase().includes(q))
         );
