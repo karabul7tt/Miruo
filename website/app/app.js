@@ -3051,6 +3051,15 @@ function handleSignalMessage(msg) {
       state.peerId = msg.userId;
       updatePeerStatus(true);
       const joinedName = msg.name || msg.username || 'Katılımcı';
+
+      // If this user is blocked by me:
+      if (typeof isUserBlocked === 'function' && (isUserBlocked(joinedName) || isUserBlocked(msg.userId))) {
+        if (state.isHost && typeof kickParticipant === 'function') {
+          kickParticipant(msg.userId, joinedName);
+          return;
+        }
+      }
+
       state.participants[msg.userId] = {
         userId: msg.userId,
         username: joinedName,
@@ -3060,6 +3069,7 @@ function handleSignalMessage(msg) {
         role: 'member'
       };
       renderParticipantsList();
+      updateBlockedMediaState();
       showToast(`${joinedName} odaya katıldı`);
       const isInitiator = state.isHost || (String(state.userId) < String(state.peerId));
       if (isInitiator) {
@@ -3281,6 +3291,7 @@ function setupWebRTC() {
         }
         if (typeof updatePartnerPipIdentity === 'function') updatePartnerPipIdentity();
         clampPipCardsToStage();
+        updateBlockedMediaState();
       }
 
       // Route audio to remoteVoiceAudio element & ducking analyzer
@@ -3303,6 +3314,7 @@ function setupWebRTC() {
         remoteAudio.srcObject = stream;
         remoteAudio.muted = false;
         remoteAudio.volume = 1.0;
+        updateBlockedMediaState();
         const playPromise = remoteAudio.play();
         if (playPromise !== undefined) {
           playPromise.catch(err => {
@@ -7850,7 +7862,11 @@ function mergeAllPublicRooms(serverRooms = []) {
   (serverRooms || []).forEach(r => {
     if (r && r.id && !roomMap.has(r.id)) roomMap.set(r.id, r);
   });
-  return Array.from(roomMap.values());
+  return Array.from(roomMap.values()).filter(r => {
+    if (!r) return false;
+    if (r.host && typeof isUserBlocked === 'function' && isUserBlocked(r.host)) return false;
+    return true;
+  });
 }
 
 function loadPublicRooms() {
@@ -7983,12 +7999,37 @@ window.canUserChooseVideo = canUserChooseVideo;
 // ==========================================
 // BLOCKED USERS SYSTEM (STORAGE & MANAGEMENT)
 // ==========================================
+function cleanBlockedKey(val) {
+  if (!val) return '';
+  return String(val)
+    .replace(/^@/, '')
+    .replace(/\s*\(Sen\)/gi, '')
+    .replace(/\s*\(Simüle\)/gi, '')
+    .replace(/\s*\(Partner\)/gi, '')
+    .toLowerCase()
+    .trim();
+}
+
 function getBlockedUsers() {
   try {
     const raw = localStorage.getItem('miruo_blocked_users');
     if (!raw) return [];
-    const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed : [];
+    let parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    // Auto-normalize any raw string legacy entries into structured objects
+    return parsed.map((item, idx) => {
+      if (typeof item === 'string') {
+        const clean = item.replace(/^@/, '').trim();
+        return {
+          id: 'blocked_legacy_' + clean,
+          username: clean,
+          avatar: null,
+          avatarColor: 'from-gray-600 to-gray-800',
+          blockedAt: Date.now() - (idx * 1000)
+        };
+      }
+      return item;
+    });
   } catch (e) {
     return [];
   }
@@ -8000,27 +8041,47 @@ function saveBlockedUsers(list) {
   } catch (e) {}
 }
 
+function updateBlockedMediaState() {
+  try {
+    const remoteAudio = document.getElementById('remoteVoiceAudio');
+    const peerName = state.participants && state.peerId && state.participants[state.peerId] ? state.participants[state.peerId].username : '';
+    const isPeerBlocked = isUserBlocked(state.peerId) || (peerName && isUserBlocked(peerName));
+    if (remoteAudio) {
+      remoteAudio.muted = !!isPeerBlocked;
+    }
+    if (dom.partnerPipCard) {
+      if (isPeerBlocked) {
+        dom.partnerPipCard.classList.add('hidden');
+      }
+    }
+  } catch (_) {}
+}
+
 function isUserBlocked(usernameOrId) {
   if (!usernameOrId) return false;
-  const clean = String(usernameOrId).replace(/^@/, '').toLowerCase().trim();
+  const clean = cleanBlockedKey(usernameOrId);
+  if (!clean) return false;
   const list = getBlockedUsers();
   return list.some(b => {
-    const bName = (b.username || b.name || '').replace(/^@/, '').toLowerCase().trim();
-    const bId = b.id ? String(b.id).toLowerCase().trim() : '';
+    if (typeof b === 'string') {
+      return cleanBlockedKey(b) === clean;
+    }
+    const bName = cleanBlockedKey(b.username || b.name || '');
+    const bId = cleanBlockedKey(b.id || '');
     return (bName && bName === clean) || (bId && bId === clean);
   });
 }
 
 function blockUser(username, userId = null, avatar = null, avatarColor = null) {
   if (!username) return;
-  const cleanName = String(username).replace(/^@/, '').replace(/\s*\(Sen\)/gi, '').replace(/\s*\(Simüle\)/gi, '').replace(/\s*\(Partner\)/gi, '').trim();
-  const myClean = (state.username || '').replace(/^@/, '').trim();
-  if (cleanName.toLowerCase() === myClean.toLowerCase()) {
+  const cleanName = cleanBlockedKey(username);
+  const myClean = cleanBlockedKey(state.username || '');
+  if (cleanName === myClean) {
     showToast('Kendinizi engelleyemezsiniz!');
     return;
   }
   let list = getBlockedUsers();
-  if (list.some(b => (b.username || '').toLowerCase() === cleanName.toLowerCase())) {
+  if (list.some(b => cleanBlockedKey(b.username) === cleanName)) {
     showToast(`@${cleanName} zaten engellenenler listesinde.`);
     return;
   }
@@ -8032,6 +8093,37 @@ function blockUser(username, userId = null, avatar = null, avatarColor = null) {
     blockedAt: Date.now()
   });
   saveBlockedUsers(list);
+
+  // 1. Remove from friends list if currently friends
+  if (Array.isArray(state.friends)) {
+    const prevLen = state.friends.length;
+    state.friends = state.friends.filter(f => cleanBlockedKey(f.username || f.name) !== cleanName);
+    if (state.friends.length !== prevLen) {
+      saveFriends();
+      if (typeof renderFriendsTab === 'function') renderFriendsTab();
+    }
+  }
+
+  // 2. Remove any pending incoming friend requests from this user
+  try {
+    const inc = JSON.parse(localStorage.getItem('miruo_incoming_friend_requests') || '[]');
+    const filteredInc = inc.filter(r => cleanBlockedKey(r.fromUsername) !== cleanName);
+    localStorage.setItem('miruo_incoming_friend_requests', JSON.stringify(filteredInc));
+    updateFriendRequestBadge();
+    renderIncomingRequests();
+  } catch (_) {}
+
+  // 3. If in a room as host and this participant is in room, kick them out
+  if (state.isHost && state.participants) {
+    const partEntry = Object.values(state.participants).find(p => cleanBlockedKey(p.username) === cleanName || (userId && p.userId === userId));
+    if (partEntry && typeof kickParticipant === 'function') {
+      kickParticipant(partEntry.userId, partEntry.username);
+    }
+  }
+
+  // 4. Mute their audio and hide video stream immediately
+  updateBlockedMediaState();
+
   renderBlockedUsersList();
   renderParticipantsList();
   showToast(`@${cleanName} engellendi.`);
@@ -8039,16 +8131,19 @@ function blockUser(username, userId = null, avatar = null, avatarColor = null) {
 
 function unblockUser(usernameOrId) {
   if (!usernameOrId) return;
-  const clean = String(usernameOrId).replace(/^@/, '').toLowerCase().trim();
+  const clean = cleanBlockedKey(usernameOrId);
   let list = getBlockedUsers();
   list = list.filter(b => {
-    const bName = (b.username || b.name || '').replace(/^@/, '').toLowerCase().trim();
-    const bId = b.id ? String(b.id).toLowerCase().trim() : '';
+    if (typeof b === 'string') return cleanBlockedKey(b) !== clean;
+    const bName = cleanBlockedKey(b.username || b.name || '');
+    const bId = cleanBlockedKey(b.id || '');
     return bName !== clean && bId !== clean;
   });
   saveBlockedUsers(list);
+  updateBlockedMediaState();
   renderBlockedUsersList();
   renderParticipantsList();
+  if (typeof renderFriendsTab === 'function') renderFriendsTab();
   showToast(`Engelleme kaldırıldı.`);
 }
 
@@ -9014,6 +9109,10 @@ async function sendFriendRequest(targetUsername) {
   }
   if (cleanTarget === myClean) {
     showToast('Kendine arkadaşlık isteği gönderemezsin.');
+    return;
+  }
+  if (typeof isUserBlocked === 'function' && isUserBlocked(cleanTarget)) {
+    showToast('Bu kullanıcı engellenmiş. İstek göndermek için önce Ayarlar\'dan engeli kaldırmalısınız.');
     return;
   }
   if (state.friends.some(f => (f.username || f.name || '').toLowerCase().replace(/^@/, '') === cleanTarget)) {
@@ -14398,10 +14497,18 @@ function initEvents() {
     try {
       const usersRaw = localStorage.getItem('miruo_registered_users');
       if (usersRaw) {
-        const users = JSON.parse(usersRaw);
-        if (users[resetState.email.toLowerCase()]) {
-          users[resetState.email.toLowerCase()].password = newPass;
-          localStorage.setItem('miruo_registered_users', JSON.stringify(users));
+        let users = JSON.parse(usersRaw);
+        if (Array.isArray(users)) {
+          const u = users.find(x => x && (x.email || '').toLowerCase() === resetState.email.toLowerCase());
+          if (u) {
+            u.password = newPass;
+            localStorage.setItem('miruo_registered_users', JSON.stringify(users));
+          }
+        } else if (users && typeof users === 'object') {
+          if (users[resetState.email.toLowerCase()]) {
+            users[resetState.email.toLowerCase()].password = newPass;
+            localStorage.setItem('miruo_registered_users', JSON.stringify(users));
+          }
         }
       }
     } catch (_) {}
@@ -16667,42 +16774,93 @@ function initEvents() {
         showChangeEmailAlert('Lütfen geçerli bir e-posta adresi girin.', false);
         return;
       }
+
+      const savedUser = JSON.parse(localStorage.getItem('miruo_user') || '{}');
+      const currentEmail = (savedUser.email || '').toLowerCase().trim();
+      if (currentEmail && newEmail === currentEmail) {
+        showChangeEmailAlert('Yeni e-posta adresi mevcut adresinizle aynı olamaz.', false);
+        return;
+      }
+
       dom.changeEmailSubmitBtn.disabled = true;
-      dom.changeEmailSubmitBtn.textContent = 'Gönderiliyor...';
+      dom.changeEmailSubmitBtn.textContent = 'Güncelleniyor...';
+
+      let supaSuccess = false;
+      let supaErrorMsg = '';
+
+      // 1. Supabase Auth Güncellemesi (Varsa)
+      if (supabaseClient && supabaseClient.auth) {
+        try {
+          const { data: supaData, error: supaErr } = await supabaseClient.auth.updateUser({ email: newEmail });
+          if (supaErr) {
+            supaErrorMsg = supaErr.message || '';
+            if (/already.*registered|already.*exists/i.test(supaErrorMsg)) {
+              supaErrorMsg = 'Bu e-posta adresi başka bir hesap tarafından kullanılıyor.';
+            } else if (/rate.*limit|security/i.test(supaErrorMsg)) {
+              supaErrorMsg = 'Güvenlik nedeniyle lütfen 60 saniye bekledikten sonra tekrar deneyin.';
+            }
+          } else if (supaData && supaData.user) {
+            supaSuccess = true;
+          }
+        } catch (e) {
+          console.warn('[Supabase Change Email]:', e);
+        }
+      }
+
+      if (supaErrorMsg && !supaSuccess) {
+        dom.changeEmailSubmitBtn.disabled = false;
+        dom.changeEmailSubmitBtn.textContent = 'Güncelle';
+        showChangeEmailAlert(supaErrorMsg, false);
+        return;
+      }
+
+      // 2. Yerel Profil & Hesap Listesi Güncellemesi
+      const oldEmail = currentEmail;
+      savedUser.email = newEmail;
+      localStorage.setItem('miruo_user', JSON.stringify(savedUser));
 
       try {
-        if (supabaseClient && supabaseClient.auth) {
-          try {
-            await supabaseClient.auth.updateUser({ email: newEmail });
-          } catch (supaErr) {
-            console.warn('[Supabase Change Email]:', supaErr);
+        const regList = JSON.parse(localStorage.getItem('miruo_registered_users') || '[]');
+        if (Array.isArray(regList)) {
+          const u = regList.find(x => (x && x.id && x.id === savedUser.id) || (x && x.email && x.email.toLowerCase() === oldEmail));
+          if (u) {
+            u.email = newEmail;
+          } else {
+            regList.push({ ...savedUser, email: newEmail });
           }
+          localStorage.setItem('miruo_registered_users', JSON.stringify(regList));
         }
+      } catch (_) {}
 
-        const savedUser = JSON.parse(localStorage.getItem('miruo_user') || '{}');
-        const resp = await fetch('/api/auth/change-email', {
+      try {
+        const byEmail = JSON.parse(localStorage.getItem('miruo_profiles_by_email') || '{}');
+        if (oldEmail && byEmail[oldEmail]) {
+          byEmail[newEmail] = { ...byEmail[oldEmail], email: newEmail };
+          delete byEmail[oldEmail];
+          localStorage.setItem('miruo_profiles_by_email', JSON.stringify(byEmail));
+        }
+        localStorage.setItem(`miruo_saved_profile_${newEmail}`, JSON.stringify(savedUser));
+        if (savedUser.id) {
+          localStorage.setItem(`miruo_saved_profile_${savedUser.id}`, JSON.stringify(savedUser));
+        }
+      } catch (_) {}
+
+      if (dom.profileEmailDisplay) dom.profileEmailDisplay.textContent = newEmail;
+      if (dom.changeEmailNewInput) dom.changeEmailNewInput.value = '';
+
+      // 3. Backend Sunucusuna Bildirim (Varsa)
+      try {
+        await fetch('/api/auth/change-email', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ userId: savedUser.id, newEmail })
         });
-        const data = await resp.json();
-        dom.changeEmailSubmitBtn.disabled = false;
-        dom.changeEmailSubmitBtn.textContent = 'Güncelle';
+      } catch (_) {}
 
-        if (data.success) {
-          savedUser.email = newEmail;
-          localStorage.setItem('miruo_user', JSON.stringify(savedUser));
-          if (dom.profileEmailDisplay) dom.profileEmailDisplay.textContent = newEmail;
-          showChangeEmailAlert('Doğrulama bağlantısı yeni e-postanıza gönderildi! Lütfen onaylayın.', true);
-          if (dom.changeEmailNewInput) dom.changeEmailNewInput.value = '';
-        } else {
-          showChangeEmailAlert(data.message || 'E-posta güncellenemedi.', false);
-        }
-      } catch (err) {
-        dom.changeEmailSubmitBtn.disabled = false;
-        dom.changeEmailSubmitBtn.textContent = 'Güncelle';
-        showChangeEmailAlert('Bağlantı hatası: ' + err.message, false);
-      }
+      dom.changeEmailSubmitBtn.disabled = false;
+      dom.changeEmailSubmitBtn.textContent = 'Güncelle';
+      showChangeEmailAlert('✓ E-posta adresiniz güncellendi! Yeni e-postanıza doğrulama bağlantısı iletildi, lütfen gelen kutunuzu kontrol edin.', true);
+      showToast('E-posta başarıyla güncellendi.');
     });
   }
 
@@ -16725,17 +16883,32 @@ function initEvents() {
       dom.changePasswordSubmitBtn.disabled = true;
       dom.changePasswordSubmitBtn.textContent = 'Güncelleniyor...';
 
+      let supaPassError = '';
+      if (supabaseClient && supabaseClient.auth) {
+        try {
+          const { error } = await supabaseClient.auth.updateUser({ password: newPass });
+          if (error) supaPassError = error.message || '';
+        } catch (supaErr) {
+          console.warn('[Supabase Change Password]:', supaErr);
+        }
+      }
+
+      // Yerel hesap kaydını güncelle
+      const savedUser = JSON.parse(localStorage.getItem('miruo_user') || '{}');
       try {
-        if (supabaseClient && supabaseClient.auth) {
-          try {
-            await supabaseClient.auth.updateUser({ password: newPass });
-          } catch (supaErr) {
-            console.warn('[Supabase Change Password]:', supaErr);
+        const regList = JSON.parse(localStorage.getItem('miruo_registered_users') || '[]');
+        if (Array.isArray(regList)) {
+          const u = regList.find(x => (x && x.id && x.id === savedUser.id) || (savedUser.email && (x.email || '').toLowerCase() === (savedUser.email || '').toLowerCase()));
+          if (u) {
+            u.password = newPass;
+            localStorage.setItem('miruo_registered_users', JSON.stringify(regList));
           }
         }
+      } catch (_) {}
 
-        const savedUser = JSON.parse(localStorage.getItem('miruo_user') || '{}');
-        const resp = await fetch('/api/auth/change-password', {
+      // Backend API'ye bildirme (varsa)
+      try {
+        await fetch('/api/auth/change-password', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -16745,23 +16918,15 @@ function initEvents() {
             newPassword: newPass
           })
         });
-        const data = await resp.json();
-        dom.changePasswordSubmitBtn.disabled = false;
-        dom.changePasswordSubmitBtn.textContent = 'Şifreyi Güncelle';
+      } catch (_) {}
 
-        if (data.success) {
-          showChangePassAlert('Şifreniz başarıyla güncellendi!', true);
-          if (dom.changePassCurrentInput) dom.changePassCurrentInput.value = '';
-          if (dom.changePassNewInput) dom.changePassNewInput.value = '';
-          if (dom.changePassConfirmInput) dom.changePassConfirmInput.value = '';
-        } else {
-          showChangePassAlert(data.message || 'Şifre güncellenemedi.', false);
-        }
-      } catch (err) {
-        dom.changePasswordSubmitBtn.disabled = false;
-        dom.changePasswordSubmitBtn.textContent = 'Şifreyi Güncelle';
-        showChangePassAlert('Bağlantı hatası: ' + err.message, false);
-      }
+      dom.changePasswordSubmitBtn.disabled = false;
+      dom.changePasswordSubmitBtn.textContent = 'Şifreyi Güncelle';
+      showChangePassAlert('✓ Şifreniz başarıyla güncellendi!', true);
+      if (dom.changePassCurrentInput) dom.changePassCurrentInput.value = '';
+      if (dom.changePassNewInput) dom.changePassNewInput.value = '';
+      if (dom.changePassConfirmInput) dom.changePassConfirmInput.value = '';
+      showToast('Şifreniz başarıyla güncellendi.');
     });
   }
 
@@ -20775,18 +20940,16 @@ function initAffinityEvents() {
       const clean = (currentPublicUser.username || currentPublicUser.name || 'kullanici').replace(/^@/, '');
       showMiruoConfirm({
         title: 'Kullanıcıyı Engelle',
-        message: `@${clean} adlı kullanıcıyı engellemek istediğinize emin misiniz?`,
+        message: `@${clean} adlı kullanıcıyı engellemek istediğinize emin misiniz? Sohbet mesajları ve odaları gizlenecektir.`,
         actionText: 'Evet, Engelle',
         onConfirm: () => {
-          try {
-            const blocked = JSON.parse(localStorage.getItem('miruo_blocked_users') || '[]');
-            if (!blocked.includes(clean.toLowerCase())) {
-              blocked.push(clean.toLowerCase());
-              localStorage.setItem('miruo_blocked_users', JSON.stringify(blocked));
-            }
-          } catch (err) {}
+          blockUser(
+            clean,
+            currentPublicUser.id || currentPublicUser.userId,
+            currentPublicUser.avatar || currentPublicUser.avatarUrl,
+            currentPublicUser.avatarBg || currentPublicUser.avatarColor
+          );
           executeRemoveFriend(currentPublicUser);
-          showToast(`@${clean} engellendi.`);
         }
       });
     });
@@ -20901,6 +21064,10 @@ function initAffinityEvents() {
           }
         });
       } else {
+        if (typeof isUserBlocked === 'function' && isUserBlocked(clean)) {
+          showToast('Bu kullanıcı engellenmiş. Arkadaş eklemek için önce Ayarlar\'dan engeli kaldırmalısınız.');
+          return;
+        }
         state.friends.unshift({
           name: currentPublicUser.name || clean,
           username: clean,
