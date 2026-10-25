@@ -4,8 +4,8 @@ const fs = require('fs');
 const http = require('http');
 const { spawn, execFileSync } = require('child_process');
 
-// Hardware acceleration tuning & video rendering fix for Apple Silicon & Windows (fixes black video canvas inside iframes)
-app.commandLine.appendSwitch('disable-accelerated-video-decode');
+// Audio & Video switches for WebRTC, microphone and hardware rendering
+app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required');
 app.commandLine.appendSwitch('disable-features', 'CalculateNativeWinOcclusion');
 
 let mainWindow = null;
