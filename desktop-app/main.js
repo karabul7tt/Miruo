@@ -870,12 +870,12 @@ function createWindow(port) {
     });
   }
 
-  // YouTube Embed & Web Referrer Bypass (Fixes Error 152/150/101)
+  // YouTube & Twitch Embed & Web Referrer Bypass (Fixes Error 152/150/101 & Twitch Parent/Embed Restrictions)
   session.defaultSession.webRequest.onBeforeSendHeaders(
-    { urls: ['*://*.youtube.com/*', '*://*.youtube-nocookie.com/*'] },
+    { urls: ['*://*.youtube.com/*', '*://*.youtube-nocookie.com/*', '*://*.twitch.tv/*', '*://player.twitch.tv/*'] },
     (details, callback) => {
       const url = details.url || '';
-      if (url.includes('/embed/') || url.includes('/v/')) {
+      if (url.includes('/embed/') || url.includes('/v/') || url.includes('twitch.tv')) {
         details.requestHeaders['Referer'] = 'https://miruo.com.tr/';
         details.requestHeaders['Origin'] = 'https://miruo.com.tr';
       }

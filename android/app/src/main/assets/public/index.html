@@ -327,12 +327,12 @@
           <span class="text-[#9146FF] text-xs sm:text-sm font-bold tracking-tight lowercase">Twitch</span>
         </button>
 
-        <!-- LIVE -->
-        <button class="provider-card p-4 rounded-2xl bg-[#0C0E17]/90 hover:bg-[#141824] border border-white/10 hover:border-red-500/50 flex flex-col items-center justify-center gap-2 min-h-[105px] transition-all cursor-pointer group active:scale-95 shadow-lg overflow-hidden select-none" data-provider="live">
-          <div class="w-10 h-10 rounded-xl bg-red-600/15 border border-red-500/30 flex items-center justify-center text-red-500 group-hover:scale-110 transition-transform">
-            <svg class="w-5 h-5 fill-current" viewBox="0 0 24 24"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+        <!-- Kick -->
+        <button class="provider-card p-4 rounded-2xl bg-[#0C0E17]/90 hover:bg-[#141824] border border-white/10 hover:border-emerald-500/50 flex flex-col items-center justify-center gap-2 min-h-[105px] transition-all cursor-pointer group active:scale-95 shadow-lg overflow-hidden select-none" data-provider="kick">
+          <div class="w-10 h-10 rounded-xl bg-emerald-950/60 border border-emerald-500/40 flex items-center justify-center text-[#53FC18] group-hover:scale-110 transition-transform font-black">
+            <span class="text-sm font-black text-[#53FC18]">KICK</span>
           </div>
-          <span class="text-white text-xs sm:text-sm font-extrabold tracking-tight">Canlı Yayın</span>
+          <span class="text-[#53FC18] text-xs sm:text-sm font-bold tracking-tight">Kick</span>
         </button>
 
         <!-- Playlist -->
@@ -723,7 +723,7 @@
         </div>
 
         <!-- Dedicated Remote Voice Audio Sink (Full Duplex VoIP / WebRTC) -->
-        <audio id="remoteVoiceAudio" autoplay playsinline style="position:fixed;top:-9999px;left:-9999px;width:1px;height:1px;opacity:0.001;pointer-events:none;"></audio>
+        <audio id="remoteVoiceAudio" autoplay playsinline style="position:absolute;top:0;left:0;width:1px;height:1px;opacity:0.01;pointer-events:none;z-index:-1;"></audio>
 
         <!-- Floating Draggable Remote Participant Webcam PIP (Circular Floating Bubble) -->
         <div id="partnerPipCard" class="absolute w-28 h-28 sm:w-36 sm:h-36 rounded-full aspect-square bg-[#0E111A]/95 border-2 border-indigo-500/60 hover:border-indigo-400 shadow-2xl overflow-visible cursor-grab active:cursor-grabbing select-none z-[9999] backdrop-blur-md hidden transition-shadow duration-200" style="touch-action: none; top: 16px; left: 16px;">
@@ -1221,6 +1221,16 @@
           <div class="platform-choice p-2 rounded-xl border border-white/10 bg-white/5 hover:bg-white/10 flex flex-col items-center text-center gap-1 cursor-pointer transition-all" data-category="Prime Video">
             <svg class="w-5 h-5 text-blue-400 fill-current" viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 14.5v-9l6 4.5-6 4.5z"/></svg>
             <span class="text-[11px] font-bold text-white block">Prime</span>
+          </div>
+
+          <div class="platform-choice p-2 rounded-xl border border-white/10 bg-white/5 hover:bg-white/10 flex flex-col items-center text-center gap-1 cursor-pointer transition-all" data-category="Twitch">
+            <svg class="w-5 h-5 text-[#9146FF] fill-current" viewBox="0 0 24 24"><path d="M2.149 0l-1.612 4.119v16.8h5.631v3.081h3.074l3.077-3.081h4.61l6.535-6.538v-14.381h-21.315zm18.236 13.355l-3.585 3.587h-5.634l-3.074 3.081v-3.081h-4.099v-14.862h16.392v11.275zm-9.219-6.398h2.049v6.143h-2.049v-6.143zm6.144 0h2.049v6.143h-2.049v-6.143z"/></svg>
+            <span class="text-[11px] font-bold text-white block">Twitch</span>
+          </div>
+
+          <div class="platform-choice p-2 rounded-xl border border-white/10 bg-white/5 hover:bg-white/10 flex flex-col items-center text-center gap-1 cursor-pointer transition-all" data-category="Kick">
+            <div class="w-5 h-5 flex items-center justify-center font-black text-[10px] text-[#53FC18]">KICK</div>
+            <span class="text-[11px] font-bold text-white block">Kick</span>
           </div>
 
           <div class="platform-choice p-2 rounded-xl border border-white/10 bg-white/5 hover:bg-white/10 flex flex-col items-center text-center gap-1 cursor-pointer transition-all" data-category="Spotify">

@@ -1581,7 +1581,8 @@ function validateInstagramUsername(username) {
       type: 'init', 
       userId, 
       peers: Array.from(room.clients.keys()).filter(p => p !== userId),
-      roomMeta: room.meta
+      roomMeta: room.meta,
+      isHost: room.meta.hostUserId === userId
     })}\n\n`);
     broadcastToRoom(roomId, userId, { type: 'peer-joined', userId, name: userName });
 

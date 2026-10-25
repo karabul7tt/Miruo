@@ -3331,6 +3331,7 @@ function setupWebRTC() {
     // Robust track/stream recovery for iOS Safari/WebKit & Desktop
     const stream = (event.streams && event.streams[0]) ? event.streams[0] : new MediaStream([event.track]);
     if (stream) {
+      state.remoteStream = stream;
       const hasVideo = stream.getVideoTracks().length > 0;
       const isScreenTrack = event.track.label.toLowerCase().includes('screen') || 
                            event.track.label.toLowerCase().includes('display') ||
@@ -3360,17 +3361,27 @@ function setupWebRTC() {
           dom.partnerVideo.onloadedmetadata = hidePlaceholder;
           dom.partnerVideo.onplaying = hidePlaceholder;
           dom.partnerVideo.oncanplay = hidePlaceholder;
-          hidePlaceholder();
-          setTimeout(hidePlaceholder, 100);
-          setTimeout(hidePlaceholder, 300);
-          setTimeout(hidePlaceholder, 800);
         }
-        if (dom.partnerVideoPlaceholder) {
-          dom.partnerVideoPlaceholder.classList.add('hidden');
-          dom.partnerVideoPlaceholder.style.display = 'none';
-        }
-        if (dom.partnerPipCard) {
-          dom.partnerPipCard.classList.remove('hidden', 'pip-hidden-fullscreen');
+
+        // Only show PIP bubble if remote participant has ACTUALLY turned their camera ON
+        const isRemoteCamActive = Object.values(state.participants || {}).some(p => p.userId !== state.userId && p.isCamOn) || !!state.isPartnerCamOn;
+        if (isRemoteCamActive) {
+          if (dom.partnerVideoPlaceholder) {
+            dom.partnerVideoPlaceholder.classList.add('hidden');
+            dom.partnerVideoPlaceholder.style.display = 'none';
+          }
+          if (dom.partnerPipCard) {
+            dom.partnerPipCard.classList.remove('hidden', 'pip-hidden-fullscreen');
+          }
+        } else {
+          // Keep floating card hidden to prevent black bubble when partner's camera is off
+          if (dom.partnerPipCard) {
+            dom.partnerPipCard.classList.add('hidden');
+          }
+          if (dom.partnerVideoPlaceholder) {
+            dom.partnerVideoPlaceholder.classList.remove('hidden');
+            dom.partnerVideoPlaceholder.style.removeProperty('display');
+          }
         }
         if (typeof updatePartnerPipIdentity === 'function') updatePartnerPipIdentity();
         clampPipCardsToStage();
@@ -3385,13 +3396,14 @@ function setupWebRTC() {
           remoteAudio.id = 'remoteVoiceAudio';
           remoteAudio.autoplay = true;
           remoteAudio.playsInline = true;
-          remoteAudio.style.position = 'fixed';
-          remoteAudio.style.top = '-9999px';
-          remoteAudio.style.left = '-9999px';
+          remoteAudio.style.position = 'absolute';
+          remoteAudio.style.top = '0';
+          remoteAudio.style.left = '0';
           remoteAudio.style.width = '1px';
           remoteAudio.style.height = '1px';
-          remoteAudio.style.opacity = '0.001';
+          remoteAudio.style.opacity = '0.01';
           remoteAudio.style.pointerEvents = 'none';
+          remoteAudio.style.zIndex = '-1';
           document.body.appendChild(remoteAudio);
         }
         remoteAudio.srcObject = stream;
@@ -3403,6 +3415,8 @@ function setupWebRTC() {
           playPromise.catch(err => {
             console.log('[WebRTC Audio] Play waiting for user interaction:', err);
             const resumeAudio = () => {
+              remoteAudio.muted = false;
+              remoteAudio.volume = 1.0;
               remoteAudio.play().catch(() => {});
               window.removeEventListener('click', resumeAudio);
               window.removeEventListener('touchstart', resumeAudio);
@@ -3945,6 +3959,9 @@ function fallbackToDirectYtEmbed(videoId) {
 function extractTwitchChannel(urlOrChannel) {
   if (!urlOrChannel) return '';
   let str = String(urlOrChannel).trim();
+  if (str.startsWith('twitch:')) {
+    str = str.replace(/^twitch:/, '');
+  }
   if (str.includes('twitch.tv/')) {
     str = str.split('twitch.tv/')[1].split('/')[0].split('?')[0];
   }
@@ -3953,6 +3970,7 @@ function extractTwitchChannel(urlOrChannel) {
   if (!clean || forbidden.includes(clean.toLowerCase())) return '';
   return clean;
 }
+window.extractTwitchChannel = extractTwitchChannel;
 
 function extractKickChannel(val) {
   if (!val) return '';
@@ -4020,7 +4038,7 @@ function loadTwitchStream(channelOrUrl, title) {
 
   state.activeMode = 'twitch';
   state.currentProvider = 'Twitch';
-  state.currentVideoId = channel;
+  state.currentVideoId = `twitch:${channel}`;
   state.currentVideoTitle = title || `${channel} - Twitch`;
   state.isPlaying = true;
   if (typeof updatePlayPauseUI === 'function') updatePlayPauseUI(true);
@@ -4039,7 +4057,9 @@ function loadTwitchStream(channelOrUrl, title) {
   if (dom.webPlayerFrame) {
     dom.webPlayerFrame.classList.remove('hidden');
     const hostnames = new Set(['localhost', '127.0.0.1', 'miruo.app', 'miruo.com.tr']);
-    if (window.location.hostname) hostnames.add(window.location.hostname);
+    if (window.location.hostname && !hostnames.has(window.location.hostname)) {
+      hostnames.add(window.location.hostname);
+    }
     const parentParams = Array.from(hostnames).map(h => `parent=${encodeURIComponent(h)}`).join('&');
     dom.webPlayerFrame.src = `https://player.twitch.tv/?channel=${encodeURIComponent(channel)}&${parentParams}&autoplay=true&muted=false`;
   }
@@ -4055,6 +4075,7 @@ function loadTwitchStream(channelOrUrl, title) {
 
   showToast(`Twitch: ${channel} yayını açıldı!`);
 }
+window.loadTwitchStream = loadTwitchStream;
 
 function loadDirectVideo(url, title) {
   if (!state.isInRoom || (state.currentTab !== 'room' && !state.isMiniPlayer)) {
@@ -4261,7 +4282,8 @@ function handleRemoteSync(payload) {
     state.isRemoteAction = false;
   }, 850);
 
-  const transit = payload.sentAt ? Math.max(0, (Date.now() - payload.sentAt) / 1000) : 0;
+  // Eliminate phantom device-clock drift (Transit over WebRTC/Signaling is ~10-40ms, adding Date.now() skew was causing 2-8s false drift!)
+  const transit = 0;
 
   // 1. Peer or resuming client requested full synchronization
   if (payload.action === 'request_sync') {
@@ -4292,7 +4314,7 @@ function handleRemoteSync(payload) {
       if (typeof window.loadRemoteContentBridge === 'function') window.loadRemoteContentBridge(payload.videoId, payload.title);
       else loadYoutubeVideo(payload.videoId);
     }
-    const targetTime = (typeof payload.time === 'number' ? payload.time : state.currentTime) + (payload.isPlaying ? transit : 0);
+    const targetTime = typeof payload.time === 'number' ? payload.time : state.currentTime;
     if (Math.abs(state.currentTime - targetTime) > 0.4) {
       if (state.activeMode === 'youtube') {
         sendYtCommand('seekTo', [targetTime, true]);
@@ -4319,10 +4341,25 @@ function handleRemoteSync(payload) {
 
   const isPlaybackCommand = (payload.action === 'play' || payload.action === 'pause' || payload.action === 'seek' || payload.action === 'load_yt');
   if (isPlaybackCommand) {
-    const isAuthorized = payload.canControl || payload.isHost || payload.userRole === 'owner' || payload.userRole === 'admin' || payload.userRole === 'dj' || payload.userRole === 'video_control' || state.controlMode === 'everyone';
+    // Authoritative role validation using receiver's local room truth
+    const sender = payload.fromUser || payload.user;
+    const isFromHost = sender && (sender === state.hostName || sender === state.host);
+    const participant = sender && state.participants ? state.participants[sender] : null;
+    const role = (participant && participant.role) || (isFromHost ? 'owner' : (payload.userRole || 'member'));
+
+    let isAuthorized = false;
+    if (state.controlMode === 'everyone') {
+      isAuthorized = true;
+    } else if (isFromHost || role === 'owner' || role === 'admin' || role === 'dj' || role === 'video_control') {
+      isAuthorized = true;
+    } else if (sender === state.username && canUserControlPlayback()) {
+      isAuthorized = true;
+    }
+
     if (!isAuthorized) {
       console.warn('[Miruo] Unauthorized remote playback action rejected:', payload.action, payload.fromUser);
-      if (typeof canUserControlPlayback === 'function' && canUserControlPlayback() && state.currentVideoId) {
+      // Immediately force authoritative state back to keep unauthorized peer in sync
+      if (state.isHost || canUserControlPlayback()) {
         setTimeout(() => {
           sendP2PData('sync', {
             action: 'full_sync',
@@ -4332,7 +4369,7 @@ function handleRemoteSync(payload) {
             rate: state.playbackRate || 1.0,
             sentAt: Date.now()
           });
-        }, 150);
+        }, 100);
       }
       return;
     }
@@ -4438,7 +4475,7 @@ function handleRemoteSync(payload) {
       }
 
       // Authoritative state is PLAYING
-      const targetTime = (payload.time || 0) + transit;
+      const targetTime = typeof payload.time === 'number' ? payload.time : (state.currentTime || 0);
       const drift = targetTime - state.currentTime; // positive: peer behind; negative: peer ahead
       const absDrift = Math.abs(drift);
 
@@ -4457,27 +4494,27 @@ function handleRemoteSync(payload) {
         return;
       }
 
-      // Smooth rate sync for small drifts (< 3.0 seconds) - Zero buffer spinner, zero stutter!
+      // Smooth rate sync for small drifts (< 3.5 seconds) - Zero buffer spinner, zero stutter!
       const baseRate = typeof payload.rate === 'number' ? payload.rate : 1.0;
-      if (absDrift > 3.0) {
-        // Large drift (> 3.0s): Hard seek to catch up, throttled by at least 4s
+      if (absDrift > 3.5) {
+        // Large drift (> 3.5s): Hard seek to catch up, throttled by at least 5s to allow YouTube buffer
         const now = Date.now();
-        if (!state.lastHardSeekAt || (now - state.lastHardSeekAt) > 4000) {
+        if (!state.lastHardSeekAt || (now - state.lastHardSeekAt) > 5000) {
           state.lastHardSeekAt = now;
           if (state.activeMode === 'youtube') sendYtCommand('seekTo', [targetTime, true]);
           else if (dom.nativeVideoPlayer) dom.nativeVideoPlayer.currentTime = targetTime;
           state.currentTime = targetTime;
           setPlayerPlaybackRate(baseRate, false);
         }
-      } else if (absDrift > 0.35) {
-        // Micro drift (0.35s - 3.0s): gently nudge playback rate so it catches up seamlessly without pausing
+      } else if (absDrift > 0.4) {
+        // Micro drift (0.4s - 3.5s): gently nudge playback rate so it catches up seamlessly without pausing or buffering
         if (drift > 0) {
-          setPlayerPlaybackRate(baseRate * 1.05, false);
+          setPlayerPlaybackRate(baseRate * 1.04, false);
         } else {
-          setPlayerPlaybackRate(baseRate * 0.95, false);
+          setPlayerPlaybackRate(baseRate * 0.96, false);
         }
       } else {
-        // Drift is negligible (< 0.35s): maintain normal playback rate
+        // Drift is negligible (< 0.4s): maintain normal playback rate
         if (Math.abs((state.playbackRate || 1.0) - baseRate) > 0.02) {
           setPlayerPlaybackRate(baseRate, false);
         }
@@ -12103,14 +12140,31 @@ function updateRemoteParticipantStatus(userId, username, isMicOn, isCamOn) {
     lastSeen: Date.now()
   };
   updatePartnerPipIdentity(finalUName);
+  state.isPartnerCamOn = !!isCamOn;
   if (dom.partnerPipCard) {
     if (isCamOn) {
+      if (dom.partnerVideo) {
+        if (state.remoteStream && dom.partnerVideo.srcObject !== state.remoteStream) {
+          dom.partnerVideo.srcObject = state.remoteStream;
+        }
+        dom.partnerVideo.playsInline = true;
+        dom.partnerVideo.autoplay = true;
+        dom.partnerVideo.muted = true;
+        const p = dom.partnerVideo.play();
+        if (p && p.catch) p.catch(() => {});
+      }
+      if (dom.partnerVideoPlaceholder) {
+        dom.partnerVideoPlaceholder.classList.add('hidden');
+        dom.partnerVideoPlaceholder.style.display = 'none';
+      }
       dom.partnerPipCard.classList.remove('hidden', 'pip-hidden-fullscreen');
       clampPipCardsToStage();
     } else {
+      // Partner camera is OFF: strictly hide the PIP bubble so it never appears as a black circle
       dom.partnerPipCard.classList.add('hidden');
-      if (dom.partnerVideo) {
-        try { dom.partnerVideo.srcObject = null; } catch (_) {}
+      if (dom.partnerVideoPlaceholder) {
+        dom.partnerVideoPlaceholder.classList.remove('hidden');
+        dom.partnerVideoPlaceholder.style.removeProperty('display');
       }
     }
   }
@@ -16084,6 +16138,16 @@ function initEvents() {
       return;
     }
     if (state.isInRoom && state.roomId) {
+      if (providerKey === 'kick') {
+        const chan = extractKickChannel(targetUrl) || 'elraenn';
+        loadKickStream(chan, 'Kick Yayını');
+        return;
+      }
+      if (providerKey === 'twitch') {
+        const chan = extractTwitchChannel(targetUrl) || 'elraenn';
+        loadTwitchStream(chan, 'Twitch Yayını');
+        return;
+      }
       loadWebStream(targetUrl, config.title, config.title);
       return;
     }
@@ -18848,15 +18912,29 @@ function validateInstagramUsername(username) {
 
     dom.nativeVideoPlayer.addEventListener('play', () => {
       if (state.activeMode === 'direct') {
+        if (!state.isRemoteAction && !canUserControlPlayback()) {
+          dom.nativeVideoPlayer.pause();
+          return;
+        }
         state.isPlaying = true;
         updatePlayPauseUI(true);
+        if (!state.isRemoteAction) {
+          sendP2PData('sync', { action: 'play', time: dom.nativeVideoPlayer.currentTime, sentAt: Date.now() });
+        }
       }
     });
 
     dom.nativeVideoPlayer.addEventListener('pause', () => {
       if (state.activeMode === 'direct') {
+        if (!state.isRemoteAction && !canUserControlPlayback()) {
+          dom.nativeVideoPlayer.play().catch(() => {});
+          return;
+        }
         state.isPlaying = false;
         updatePlayPauseUI(false);
+        if (!state.isRemoteAction) {
+          sendP2PData('sync', { action: 'pause', time: dom.nativeVideoPlayer.currentTime, sentAt: Date.now() });
+        }
       }
     });
 
@@ -19838,16 +19916,15 @@ function validateInstagramUsername(username) {
     });
   }
 
-  // Stage Video / Platform Chooser Modal
+  // Stage Video / Platform Chooser Modal (Unified Hub for YouTube, Twitch, Kick, Netflix, Prime, etc.)
   const openVideoChooser = () => {
     if (state.roomId && dom.roomWorkspaceSection && !dom.roomWorkspaceSection.classList.contains('hidden') && !canUserChooseVideo()) {
       showToast('Odaya video seçme yetkisi sadece Oda Sahibi, Yöneticiler ve Video Açabilenlerdedir.');
       return;
     }
-    // "vıdeo seç dıyınce direk o artı tusunda oldugu gıbı atsın mesela ılk vıdeo yt seçtyisem yt ekranına atsın gerı üstte geri tusu olsun ona basınca seçım ekranına atsın sen bu şekilde video falan önerme"
     if (dom.roomEpisodesModal) dom.roomEpisodesModal.classList.add('hidden');
-    const lastProvider = state.currentProvider?.toLowerCase() || 'youtube';
-    launchPlatform(lastProvider);
+    if (dom.raveYoutubeModal) dom.raveYoutubeModal.classList.add('hidden');
+    if (dom.roomPlatformChooserModal) dom.roomPlatformChooserModal.classList.remove('hidden');
   };
   window.openVideoChooser = openVideoChooser;
 
@@ -21704,10 +21781,21 @@ const unlockAudioSystem = () => {
       state.audioCtx.resume();
     }
     const remoteAudio = document.getElementById('remoteVoiceAudio');
-    if (remoteAudio && remoteAudio.srcObject) {
-      remoteAudio.muted = false;
-      remoteAudio.volume = 1.0;
-      remoteAudio.play().catch(() => {});
+    if (remoteAudio) {
+      if (!remoteAudio.srcObject) {
+        // Prime audio element with silent wave so iOS WKWebView & Safari unlock WebRTC voice output ahead of time
+        try {
+          remoteAudio.src = 'data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQAAAAA=';
+          remoteAudio.play().then(() => {
+            remoteAudio.pause();
+            remoteAudio.removeAttribute('src');
+          }).catch(() => {});
+        } catch (_) {}
+      } else {
+        remoteAudio.muted = false;
+        remoteAudio.volume = 1.0;
+        remoteAudio.play().catch(() => {});
+      }
     }
   } catch (_) {}
 };
