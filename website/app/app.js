@@ -3496,7 +3496,7 @@ function renderStagePipCards() {
   state.dismissedPips = state.dismissedPips || {};
 
   const activeCamMembers = Object.values(state.participants || {}).filter(p => 
-    p.userId !== state.userId && (p.isCamOn || (p.stream && p.stream.getVideoTracks && p.stream.getVideoTracks().some(t => t.readyState === 'live')))
+    p.userId !== state.userId && !!p.isCamOn
   );
 
   if (activeCamMembers.length === 0) {
@@ -3504,6 +3504,7 @@ function renderStagePipCards() {
       dom.partnerPipCard.classList.add('hidden');
     }
     document.querySelectorAll('.remote-extra-pip').forEach(el => el.remove());
+    try { arrangePipsRow(); } catch (_) {}
     return;
   }
 
@@ -3602,16 +3603,48 @@ function renderStagePipCards() {
       };
       vid.onloadedmetadata = checkF;
       vid.onplaying = checkF;
-      setTimeout(checkF, 400);
-      setTimeout(checkF, 1000);
+      vid.onloadeddata = checkF;
+      let nChk = 0;
+      const chkTimer = setInterval(() => {
+        checkF();
+        if (vid.paused && vid.srcObject) vid.play().catch(() => {});
+        if (++nChk > 40 || !document.body.contains(vid)) clearInterval(chkTimer);
+      }, 500);
     }
     delete existingExtraCards[m.userId];
   });
 
   // Clean up any extra PIP cards for members no longer present or with camera turned off
   Object.values(existingExtraCards).forEach(el => el.remove());
+  try { arrangePipsRow(); } catch (_) {}
 }
 window.renderStagePipCards = renderStagePipCards;
+
+// Lay out all visible camera bubbles side by side in one row on the stage (unless the user dragged one manually)
+function arrangePipsRow() {
+  const stage = dom.stageContainer || document.getElementById('stageContainer');
+  if (!stage) return;
+  const cards = [];
+  if (dom.selfPipCard) cards.push(dom.selfPipCard);
+  if (dom.partnerPipCard) cards.push(dom.partnerPipCard);
+  document.querySelectorAll('.remote-extra-pip').forEach(el => cards.push(el));
+  const visible = cards.filter(c => c && !c.classList.contains('hidden'));
+  let x = 12;
+  const stageW = stage.clientWidth || 600;
+  let y = 12;
+  visible.forEach(c => {
+    const w = c.offsetWidth || 112;
+    const h = c.offsetHeight || 112;
+    if (c.classList.contains('pip-custom-pos')) return; // user moved it, keep their position
+    if (x + w > stageW - 8 && x > 12) { x = 12; y += h + 10; }
+    c.style.setProperty('right', 'auto', 'important');
+    c.style.setProperty('bottom', 'auto', 'important');
+    c.style.setProperty('left', x + 'px', 'important');
+    c.style.setProperty('top', y + 'px', 'important');
+    x += w + 10;
+  });
+}
+window.arrangePipsRow = arrangePipsRow;
 
 function playPeerAudio(peerId, stream) {
   if (!peerId || !stream) return;
@@ -7584,8 +7617,15 @@ async function toggleCam() {
 
         dom.selfVideo.onloadedmetadata = handleVideoCheck;
         dom.selfVideo.onplaying = handleVideoCheck;
-        setTimeout(handleVideoCheck, 350);
-        setTimeout(handleVideoCheck, 1000);
+        dom.selfVideo.onloadeddata = handleVideoCheck;
+        dom.selfVideo.onresize = handleVideoCheck;
+        if (window._selfVideoPoll) clearInterval(window._selfVideoPoll);
+        let selfPollN = 0;
+        window._selfVideoPoll = setInterval(() => {
+          handleVideoCheck();
+          if (dom.selfVideo && dom.selfVideo.paused && dom.selfVideo.srcObject) dom.selfVideo.play().catch(() => {});
+          if (++selfPollN > 40 || !state.isCamOn) clearInterval(window._selfVideoPoll);
+        }, 500);
       }
 
       if (dom.selfPipCard) {
@@ -7594,6 +7634,7 @@ async function toggleCam() {
       clampPipCardsToStage();
 
       updateCamButtonUI(true);
+      try { arrangePipsRow(); } catch (_) {}
 
       if (state.peers && Object.keys(state.peers).length > 0) {
         for (const pid of Object.keys(state.peers)) {
@@ -7885,8 +7926,13 @@ function renderVideoGrid() {
       };
       v.onloadedmetadata = checkFrames;
       v.onplaying = checkFrames;
-      setTimeout(checkFrames, 300);
-      setTimeout(checkFrames, 750);
+      v.onloadeddata = checkFrames;
+      let nFr = 0;
+      const frTimer = setInterval(() => {
+        checkFrames();
+        if (v.paused && v.srcObject) v.play().catch(() => {});
+        if (++nFr > 40 || !document.body.contains(v)) clearInterval(frTimer);
+      }, 500);
     } else {
       const pulseRing = m.isMicOn ? 'ring-1.5 ring-emerald-400 ring-offset-1 ring-offset-black animate-pulse' : '';
       const avHtml = m.avatar
@@ -12837,6 +12883,7 @@ window.updatePartnerPipIdentity = updatePartnerPipIdentity;
 function updateRemoteParticipantStatus(userId, username, isMicOn, isCamOn, avatar, avatarColor) {
   if (!userId) return;
   const existing = state.participants[userId] || {};
+  const prevSnapshot = existing.userId ? [existing.isMicOn, existing.isCamOn, existing.username, existing.avatar].join('|') : null;
   const finalUName = username || existing.username || 'Katılımcı';
   const finalAvatar = avatar || existing.avatar || '';
   const finalColor = avatarColor || existing.avatarColor || 'from-indigo-500 to-purple-600';
@@ -12853,6 +12900,19 @@ function updateRemoteParticipantStatus(userId, username, isMicOn, isCamOn, avata
   };
   state.isPartnerCamOn = Object.values(state.participants).some(p => p.userId !== state.userId && p.isCamOn);
 
+  // If we hear from someone we have no connection with (missed join/presence), connect to them now
+  try {
+    if (state.isInRoom && String(userId) !== String(state.userId) && (!state.peers || !state.peers[userId]) &&
+        typeof getOrCreatePeerConnection === 'function') {
+      getOrCreatePeerConnection(userId, String(state.userId) < String(userId));
+      if (!state.peerId) state.peerId = userId;
+      if (typeof updatePeerStatus === 'function') updatePeerStatus(true);
+    }
+  } catch (_) {}
+
+  const nowP = state.participants[userId];
+  const newSnapshot = [nowP.isMicOn, nowP.isCamOn, nowP.username, nowP.avatar].join('|');
+  if (prevSnapshot === newSnapshot) return; // nothing changed (periodic re-announce): avoid re-rendering/flicker
   if (typeof renderStagePipCards === 'function') {
     renderStagePipCards();
   }
@@ -12860,6 +12920,13 @@ function updateRemoteParticipantStatus(userId, username, isMicOn, isCamOn, avata
     renderVideoGrid();
   }
   renderParticipantsList();
+}
+
+// Periodic re-announce so every client eventually sees everyone (lost join/presence events)
+if (!window._mediaAnnounceTimer) {
+  window._mediaAnnounceTimer = setInterval(() => {
+    try { if (state.isInRoom && state.roomId) broadcastMyMediaStatus(); } catch (_) {}
+  }, 5000);
 }
 
 function broadcastMyMediaStatus() {
