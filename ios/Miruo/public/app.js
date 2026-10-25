@@ -1987,21 +1987,27 @@ const rtcConfig = {
     { urls: 'stun:stun1.l.google.com:19302' },
     { urls: 'stun:stun2.l.google.com:19302' },
     { urls: 'stun:stun.cloudflare.com:3478' },
-    { urls: 'stun:openrelay.metered.ca:80' },
-    {
-      urls: [
-        'turn:openrelay.metered.ca:80',
-        'turn:openrelay.metered.ca:443',
-        'turn:openrelay.metered.ca:443?transport=tcp',
-        'turns:openrelay.metered.ca:443?transport=tcp'
-      ],
-      username: 'openrelayproject',
-      credential: 'openrelayproject'
-    }
+    { urls: 'stun:global.stun.twilio.com:3478' }
   ],
-  iceCandidatePoolSize: 10,
+  iceCandidatePoolSize: 4,
   bundlePolicy: 'max-bundle'
 };
+// NOTE: openrelay.metered.ca is dead (DNS now points to 192.0.2.1), so it was removed.
+// Real TURN relay is required for cross-NAT/cellular calls. Configure it in config.js via
+//   window.MIRUO_TURN_SERVERS = [{ urls: ['turn:host:3478','turns:host:443?transport=tcp'], username: '..', credential: '..' }];
+// or window.MIRUO_TURN_API = 'https://<app>.metered.live/api/v1/turn/credentials?apiKey=...'
+(function setupTurnServers() {
+  try {
+    if (Array.isArray(window.MIRUO_TURN_SERVERS)) {
+      window.MIRUO_TURN_SERVERS.forEach(sv => rtcConfig.iceServers.push(sv));
+    }
+    if (window.MIRUO_TURN_API) {
+      fetch(window.MIRUO_TURN_API).then(r => r.json()).then(list => {
+        if (Array.isArray(list)) list.forEach(sv => rtcConfig.iceServers.push(sv));
+      }).catch(() => {});
+    }
+  } catch (_) {}
+})();
 
 // DOM References
 const dom = {
@@ -3202,6 +3208,12 @@ function handleSignalMessage(msg) {
       handleRtcOffer(msg.offer, msg.userId);
       break;
 
+    case 'rtc-need-offer':
+      if (msg.userId && state.peers && state.peers[msg.userId] && state.peers[msg.userId].isInitiator) {
+        restartPeerOffer(msg.userId);
+      }
+      break;
+
     case 'answer':
       handleRtcAnswer(msg.answer, msg.userId);
       break;
@@ -3757,10 +3769,37 @@ function getOrCreatePeerConnection(peerId, isInitiator) {
     setupDataChannelEvents(event.channel);
   };
 
+  // Connection watchdog: offers/answers can be lost if the other side is not yet subscribed.
+  // Re-send / restart the offer (initiator) or ask the initiator to re-offer (answerer) until connected.
+  peerEntry.isInitiator = !!isInitiator;
+  peerEntry.stuckTicks = 0;
+  peerEntry.watchdog = setInterval(async () => {
+    try {
+      if (!state.peers || state.peers[peerId] !== peerEntry || pc.signalingState === 'closed') {
+        clearInterval(peerEntry.watchdog);
+        return;
+      }
+      const cs = pc.connectionState;
+      const ics = pc.iceConnectionState;
+      if (cs === 'connected' || ics === 'connected' || ics === 'completed') {
+        peerEntry.stuckTicks = 0;
+        return;
+      }
+      peerEntry.stuckTicks++;
+      if (peerEntry.stuckTicks < 2) return;
+      if (peerEntry.isInitiator) {
+        await restartPeerOffer(peerId);
+      } else {
+        sendSignal({ type: 'rtc-need-offer', targetUserId: peerId, sentAt: Date.now() });
+      }
+    } catch (_) {}
+  }, 4000);
+
   pc.onconnectionstatechange = () => {
     const cs = pc.connectionState;
     console.log(`[WebRTC Peer ${peerId}] State:`, cs);
     if (cs === 'connected') {
+      try { broadcastMyMediaStatus(); } catch (_) {}
       if (typeof renderVideoGrid === 'function') renderVideoGrid();
       if (!state.peerId || state.peerId === peerId) {
         showRoomConnectionStatus(false);
@@ -3827,6 +3866,26 @@ function initiateWebRTC(isInitiator) {
   state.pc = peer.pc;
   state.dataChannel = peer.dataChannel;
 }
+
+async function restartPeerOffer(peerId) {
+  const peer = state.peers && state.peers[peerId];
+  if (!peer || !peer.pc || peer.pc.signalingState === 'closed') return;
+  const pc = peer.pc;
+  try {
+    if (pc.signalingState === 'have-local-offer' && pc.localDescription) {
+      // Offer probably lost: send it again
+      sendSignal({ type: 'offer', targetUserId: peerId, offer: pc.localDescription, sentAt: Date.now() });
+      return;
+    }
+    if (pc.signalingState !== 'stable') return;
+    const offer = await pc.createOffer({ iceRestart: true });
+    await pc.setLocalDescription(offer);
+    sendSignal({ type: 'offer', targetUserId: peerId, offer: pc.localDescription, sentAt: Date.now() });
+  } catch (err) {
+    console.warn('restartPeerOffer error:', err);
+  }
+}
+window.restartPeerOffer = restartPeerOffer;
 
 async function renegotiatePeerWebRTC(peerId) {
   const peer = state.peers && state.peers[peerId];
@@ -3999,6 +4058,7 @@ function handleRtcCandidate(candidate, fromUserId) {
 function closePeerConnection(peerId) {
   if (!peerId) return;
   if (state.peers && state.peers[peerId]) {
+    try { clearInterval(state.peers[peerId].watchdog); } catch (_) {}
     try { state.peers[peerId].pc.close(); } catch (_) {}
     delete state.peers[peerId];
   }
@@ -4779,6 +4839,11 @@ function handleRemoteSync(payload) {
     let isAuthorized = false;
     if (state.controlMode === 'everyone') {
       isAuthorized = true;
+    } else if (payload.canControl === false && payload.isHost !== true) {
+      // Sender itself says it has no control rights: never trust its self-reported role
+      isAuthorized = false;
+    } else if (payload.isHost === true || payload.canControl === true) {
+      isAuthorized = true;
     } else if (isFromHost || role === 'owner' || role === 'admin' || role === 'dj' || role === 'video_control') {
       isAuthorized = true;
     } else if (sender === state.username && canUserControlPlayback()) {
@@ -4887,8 +4952,9 @@ function handleRemoteSync(payload) {
   }
 
   if (payload.action === 'heartbeat') {
-    // Only process heartbeat if non-host peer receives it
-    if (!state.isHost) {
+    // Only process heartbeat if non-host peer receives it, and only from someone allowed to control playback
+    const hbAuthorized = payload.isHost === true || payload.canControl === true || state.controlMode === 'everyone';
+    if (!state.isHost && hbAuthorized) {
       if (!payload.isPlaying) {
         // Authoritative state is PAUSED: force peer to stay paused!
         if (state.isPlaying) {
@@ -4906,7 +4972,14 @@ function handleRemoteSync(payload) {
       }
 
       // Authoritative state is PLAYING
-      const targetTime = typeof payload.time === 'number' ? payload.time : (state.currentTime || 0);
+      // Compensate variable delivery delay: min(recv - sent) ~ clock skew + base latency; anything above it is extra delay
+      let hbExtra = 0;
+      if (typeof payload.sentAt === 'number') {
+        const rawDelay = Date.now() - payload.sentAt;
+        state.minSyncDelay = (typeof state.minSyncDelay === 'number') ? Math.min(state.minSyncDelay, rawDelay) : rawDelay;
+        hbExtra = Math.max(0, Math.min(15000, rawDelay - state.minSyncDelay)) / 1000;
+      }
+      const targetTime = (typeof payload.time === 'number' ? payload.time : (state.currentTime || 0)) + hbExtra;
       const localTime = typeof getLivePlayerTime === 'function' ? getLivePlayerTime() : (state.currentTime || 0);
       const drift = targetTime - localTime; // positive: viewer behind host; negative: viewer ahead
       const absDrift = Math.abs(drift);
@@ -5184,7 +5257,9 @@ window.addEventListener('message', (event) => {
         }
       }
       const isNowPlaying = data.info.playerState === 1;
-      if (isNowPlaying !== state.isPlaying && !state.isRemoteAction) {
+      // Buffering(3)/unstarted(-1)/cued(5) are NOT pauses; treating them as pause stopped the whole room
+      const isRealPlayPause = data.info.playerState === 1 || data.info.playerState === 2;
+      if (isRealPlayPause && isNowPlaying !== state.isPlaying && !state.isRemoteAction) {
         if (!canUserControlPlayback()) {
           // Unauthorized peer state divergence: lock back to room playback state!
           if (state.isPlaying) sendYtCommand('playVideo');
@@ -21633,6 +21708,9 @@ window.extractRoomIdFromInput = extractRoomIdFromInput;
         const finalRoomId = extractedRoomId;
         state.roomId = finalRoomId;
         state.isHost = false;
+        state.userRole = 'member';
+        state.hasDjPermission = false;
+        state.controlMode = 'host_only';
         if (dom.activeRoomTitle) dom.activeRoomTitle.textContent = finalRoomId;
         if (dom.currentRoomDisplay) dom.currentRoomDisplay.textContent = finalRoomId;
         switchToMyRoom();
