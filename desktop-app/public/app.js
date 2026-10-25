@@ -1986,18 +1986,14 @@ const rtcConfig = {
     { urls: 'stun:stun.l.google.com:19302' },
     { urls: 'stun:stun1.l.google.com:19302' },
     { urls: 'stun:stun2.l.google.com:19302' },
+    { urls: 'stun:stun3.l.google.com:19302' },
+    { urls: 'stun:stun4.l.google.com:19302' },
     { urls: 'stun:stun.cloudflare.com:3478' },
-    {
-      urls: [
-        'turn:openrelay.metered.ca:80',
-        'turn:openrelay.metered.ca:443',
-        'turn:openrelay.metered.ca:443?transport=tcp'
-      ],
-      username: 'openrelayproject',
-      credential: 'openrelayproject'
-    }
+    { urls: 'stun:stun.services.mozilla.com:3478' },
+    { urls: 'stun:stun.sipgate.net:3478' }
   ],
-  iceCandidatePoolSize: 10
+  iceCandidatePoolSize: 10,
+  bundlePolicy: 'max-bundle'
 };
 
 // DOM References
@@ -3024,7 +3020,8 @@ function handleSignalMessage(msg) {
   if (msg.userId && msg.userId === state.userId) return;
 
   // Deduplicate signals received across Dual-Rail (Room Channel + Global Channel)
-  const sigKey = `${msg.type}_${msg.userId || ''}_${msg.sentAt || ''}_${msg.action || ''}_${(msg.text || '').substring(0, 20)}_${msg.videoId || ''}`;
+  const candStr = msg.candidate ? (typeof msg.candidate === 'string' ? msg.candidate : (msg.candidate.candidate || JSON.stringify(msg.candidate))) : '';
+  const sigKey = `${msg.type}_${msg.userId || ''}_${msg.sentAt || ''}_${msg.action || ''}_${(msg.text || '').substring(0, 20)}_${msg.videoId || ''}_${candStr.substring(0, 35)}`;
   if (processedSignalKeys.has(sigKey)) return;
   processedSignalKeys.add(sigKey);
   if (processedSignalKeys.size > 250) {
@@ -3039,8 +3036,13 @@ function handleSignalMessage(msg) {
       if (msg.peers && msg.peers.length > 0) {
         state.peerId = msg.peers[0];
         updatePeerStatus(true);
-        // Start WebRTC Call as initiator
-        initiateWebRTC(true);
+        // Start WebRTC Call as initiator ONLY if we are host or lexicographically smaller
+        const shouldInitiate = state.isHost || (String(state.userId) < String(state.peerId));
+        if (shouldInitiate) {
+          initiateWebRTC(true);
+        } else {
+          setupWebRTC();
+        }
       } else {
         updatePeerStatus(false);
       }
@@ -3091,12 +3093,20 @@ function handleSignalMessage(msg) {
         try {
           const vTrack = state.localStream.getVideoTracks().find(t => t.readyState === 'live');
           if (vTrack) {
-            const senders = state.pc.getSenders ? state.pc.getSenders() : [];
-            const exists = senders.some(s => s.track && s.track.kind === 'video');
-            if (!exists) {
+            const transceivers = state.pc.getTransceivers ? state.pc.getTransceivers() : [];
+            const vt = transceivers.find(t => 
+              (t.receiver && t.receiver.track && t.receiver.track.kind === 'video') ||
+              (t.sender && t.sender.track && t.sender.track.kind === 'video')
+            );
+            if (vt) {
+              if (vt.direction !== 'sendrecv') vt.direction = 'sendrecv';
+              if (vt.sender && typeof vt.sender.replaceTrack === 'function') {
+                vt.sender.replaceTrack(vTrack).catch(() => {});
+              }
+            } else {
               state.pc.addTrack(vTrack, state.localStream);
-              peerRenegotiate = true;
             }
+            peerRenegotiate = true;
           }
         } catch (_) {}
       }
@@ -3104,12 +3114,20 @@ function handleSignalMessage(msg) {
         try {
           const aTrack = state.localStream.getAudioTracks().find(t => t.readyState === 'live');
           if (aTrack) {
-            const senders = state.pc.getSenders ? state.pc.getSenders() : [];
-            const exists = senders.some(s => s.track && s.track.kind === 'audio');
-            if (!exists) {
+            const transceivers = state.pc.getTransceivers ? state.pc.getTransceivers() : [];
+            const at = transceivers.find(t => 
+              (t.receiver && t.receiver.track && t.receiver.track.kind === 'audio') ||
+              (t.sender && t.sender.track && t.sender.track.kind === 'audio')
+            );
+            if (at) {
+              if (at.direction !== 'sendrecv') at.direction = 'sendrecv';
+              if (at.sender && typeof at.sender.replaceTrack === 'function') {
+                at.sender.replaceTrack(aTrack).catch(() => {});
+              }
+            } else {
               state.pc.addTrack(aTrack, state.localStream);
-              peerRenegotiate = true;
             }
+            peerRenegotiate = true;
           }
         } catch (_) {}
       }
@@ -3303,6 +3321,118 @@ function updatePeerStatus(connected) {
 // ==========================================
 // 2. WebRTC PEER CONNECTION (AV & Data)
 // ==========================================
+function attachRemoteAudioStream() {
+  let remoteAudio = document.getElementById('remoteVoiceAudio');
+  if (!remoteAudio) {
+    remoteAudio = document.createElement('audio');
+    remoteAudio.id = 'remoteVoiceAudio';
+    remoteAudio.autoplay = true;
+    remoteAudio.playsInline = true;
+    remoteAudio.style.position = 'absolute';
+    remoteAudio.style.top = '0';
+    remoteAudio.style.left = '0';
+    remoteAudio.style.width = '1px';
+    remoteAudio.style.height = '1px';
+    remoteAudio.style.opacity = '0.01';
+    remoteAudio.style.pointerEvents = 'none';
+    remoteAudio.style.zIndex = '-1';
+    document.body.appendChild(remoteAudio);
+  }
+
+  let audioTrack = null;
+  if (state.pc && state.pc.getReceivers) {
+    const receivers = state.pc.getReceivers();
+    const ar = receivers.find(r => r.track && r.track.kind === 'audio');
+    if (ar && ar.track) audioTrack = ar.track;
+  }
+  if (!audioTrack && state.remoteStream) {
+    audioTrack = state.remoteStream.getAudioTracks().find(t => t.readyState === 'live') || state.remoteStream.getAudioTracks()[0];
+  }
+
+  if (audioTrack) {
+    if (!remoteAudio.srcObject || !remoteAudio.srcObject.getAudioTracks().includes(audioTrack)) {
+      remoteAudio.srcObject = new MediaStream([audioTrack]);
+    }
+    remoteAudio.muted = false;
+    remoteAudio.volume = 1.0;
+    const playPromise = remoteAudio.play();
+    if (playPromise !== undefined) {
+      playPromise.catch(err => {
+        console.log('[WebRTC Audio] Remote audio play waiting for user interaction:', err);
+        const resumeAudio = () => {
+          remoteAudio.muted = false;
+          remoteAudio.volume = 1.0;
+          remoteAudio.play().catch(() => {});
+          window.removeEventListener('click', resumeAudio);
+          window.removeEventListener('touchstart', resumeAudio);
+        };
+        window.addEventListener('click', resumeAudio, { once: true });
+        window.addEventListener('touchstart', resumeAudio, { once: true });
+      });
+    }
+    if (typeof setupAudioDucking === 'function' && remoteAudio.srcObject) {
+      setupAudioDucking(remoteAudio.srcObject);
+    }
+  }
+}
+window.attachRemoteAudioStream = attachRemoteAudioStream;
+
+function attachRemoteStreamToPartnerVideo() {
+  if (!dom.partnerVideo) return;
+
+  let remoteTrack = null;
+  if (state.pc && state.pc.getReceivers) {
+    const receivers = state.pc.getReceivers();
+    const vr = receivers.find(r => r.track && r.track.kind === 'video');
+    if (vr && vr.track) remoteTrack = vr.track;
+  }
+  if (!remoteTrack && state.remoteStream) {
+    remoteTrack = state.remoteStream.getVideoTracks().find(t => t.readyState === 'live') || state.remoteStream.getVideoTracks()[0];
+  }
+
+  if (remoteTrack) {
+    if (!state.remoteStream || !state.remoteStream.getVideoTracks().includes(remoteTrack)) {
+      state.remoteStream = new MediaStream([remoteTrack]);
+    }
+    if (dom.partnerVideo.srcObject !== state.remoteStream) {
+      dom.partnerVideo.srcObject = state.remoteStream;
+    }
+    dom.partnerVideo.playsInline = true;
+    dom.partnerVideo.autoplay = true;
+    dom.partnerVideo.muted = true;
+    const p = dom.partnerVideo.play();
+    if (p && p.catch) p.catch(() => {});
+  }
+
+  const checkPartnerVideo = () => {
+    if (!dom.partnerVideo) return;
+    const hasActiveFrames = dom.partnerVideo.videoWidth > 0 && dom.partnerVideo.readyState >= 2;
+    if (hasActiveFrames) {
+      if (dom.partnerVideoPlaceholder) {
+        dom.partnerVideoPlaceholder.classList.add('hidden');
+        dom.partnerVideoPlaceholder.style.display = 'none';
+      }
+      if (dom.partnerVideo.paused) dom.partnerVideo.play().catch(() => {});
+    } else {
+      if (dom.partnerVideoPlaceholder) {
+        dom.partnerVideoPlaceholder.classList.remove('hidden');
+        dom.partnerVideoPlaceholder.style.removeProperty('display');
+      }
+    }
+  };
+
+  dom.partnerVideo.onloadedmetadata = checkPartnerVideo;
+  dom.partnerVideo.onloadeddata = checkPartnerVideo;
+  dom.partnerVideo.oncanplay = checkPartnerVideo;
+  dom.partnerVideo.onplaying = checkPartnerVideo;
+  dom.partnerVideo.ontimeupdate = checkPartnerVideo;
+
+  if (window._partnerVideoPollInterval) clearInterval(window._partnerVideoPollInterval);
+  window._partnerVideoPollInterval = setInterval(checkPartnerVideo, 400);
+  checkPartnerVideo();
+}
+window.attachRemoteStreamToPartnerVideo = attachRemoteStreamToPartnerVideo;
+
 function setupWebRTC() {
   if (state.pc) {
     try { state.pc.close(); } catch (e) {}
@@ -3326,61 +3456,8 @@ function setupWebRTC() {
     }
   };
 
-function attachRemoteStreamToPartnerVideo() {
-  if (!dom.partnerVideo) return;
-
-  let remoteTrack = null;
-  if (state.pc && state.pc.getReceivers) {
-    const receivers = state.pc.getReceivers();
-    const vr = receivers.find(r => r.track && r.track.kind === 'video' && r.track.readyState === 'live');
-    if (vr && vr.track) remoteTrack = vr.track;
-  }
-  if (!remoteTrack && state.remoteStream) {
-    remoteTrack = state.remoteStream.getVideoTracks().find(t => t.readyState === 'live');
-  }
-
-  if (remoteTrack) {
-    if (!state.remoteStream || !state.remoteStream.getVideoTracks().includes(remoteTrack)) {
-      state.remoteStream = new MediaStream([remoteTrack]);
-    }
-    if (dom.partnerVideo.srcObject !== state.remoteStream) {
-      dom.partnerVideo.srcObject = state.remoteStream;
-    }
-    dom.partnerVideo.playsInline = true;
-    dom.partnerVideo.autoplay = true;
-    dom.partnerVideo.muted = true;
-    const p = dom.partnerVideo.play();
-    if (p && p.catch) p.catch(() => {});
-
-    // Only hide placeholder when actual video frames are decoding (width > 0)
-    const checkPartnerVideo = () => {
-      if (dom.partnerVideo && dom.partnerVideo.videoWidth > 0 && dom.partnerVideo.readyState >= 2) {
-        if (dom.partnerVideoPlaceholder) {
-          dom.partnerVideoPlaceholder.classList.add('hidden');
-          dom.partnerVideoPlaceholder.style.display = 'none';
-        }
-      } else {
-        if (dom.partnerVideoPlaceholder) {
-          dom.partnerVideoPlaceholder.classList.remove('hidden');
-          dom.partnerVideoPlaceholder.style.removeProperty('display');
-        }
-      }
-    };
-    dom.partnerVideo.onloadedmetadata = checkPartnerVideo;
-    dom.partnerVideo.onplaying = checkPartnerVideo;
-    dom.partnerVideo.ontimeupdate = checkPartnerVideo;
-    remoteTrack.onunmute = checkPartnerVideo;
-    remoteTrack.onmute = checkPartnerVideo;
-    checkPartnerVideo();
-    setTimeout(checkPartnerVideo, 350);
-    setTimeout(checkPartnerVideo, 1000);
-  }
-}
-window.attachRemoteStreamToPartnerVideo = attachRemoteStreamToPartnerVideo;
-
   // Remote Tracks (Webcam, Mic, Screen Share)
   state.pc.ontrack = (event) => {
-    // Robust track/stream recovery for iOS Safari/WebKit & Desktop
     const stream = (event.streams && event.streams[0]) ? event.streams[0] : new MediaStream([event.track]);
     if (stream) {
       state.remoteStream = stream;
@@ -3398,14 +3475,12 @@ window.attachRemoteStreamToPartnerVideo = attachRemoteStreamToPartnerVideo;
       } else if (hasVideo) {
         attachRemoteStreamToPartnerVideo();
 
-        // Only show PIP bubble if remote participant has ACTUALLY turned their camera ON
         const isRemoteCamActive = Object.values(state.participants || {}).some(p => p.userId !== state.userId && p.isCamOn) || !!state.isPartnerCamOn;
         if (isRemoteCamActive) {
           if (dom.partnerPipCard) {
             dom.partnerPipCard.classList.remove('hidden', 'pip-hidden-fullscreen');
           }
         } else {
-          // Keep floating card hidden to prevent black bubble when partner's camera is off
           if (dom.partnerPipCard) {
             dom.partnerPipCard.classList.add('hidden');
           }
@@ -3419,44 +3494,8 @@ window.attachRemoteStreamToPartnerVideo = attachRemoteStreamToPartnerVideo;
         updateBlockedMediaState();
       }
 
-      // Route audio to remoteVoiceAudio element & ducking analyzer
       if (event.track.kind === 'audio' || (stream.getAudioTracks && stream.getAudioTracks().length > 0)) {
-        let remoteAudio = document.getElementById('remoteVoiceAudio');
-        if (!remoteAudio) {
-          remoteAudio = document.createElement('audio');
-          remoteAudio.id = 'remoteVoiceAudio';
-          remoteAudio.autoplay = true;
-          remoteAudio.playsInline = true;
-          remoteAudio.style.position = 'absolute';
-          remoteAudio.style.top = '0';
-          remoteAudio.style.left = '0';
-          remoteAudio.style.width = '1px';
-          remoteAudio.style.height = '1px';
-          remoteAudio.style.opacity = '0.01';
-          remoteAudio.style.pointerEvents = 'none';
-          remoteAudio.style.zIndex = '-1';
-          document.body.appendChild(remoteAudio);
-        }
-        remoteAudio.srcObject = stream;
-        remoteAudio.muted = false;
-        remoteAudio.volume = 1.0;
-        updateBlockedMediaState();
-        const playPromise = remoteAudio.play();
-        if (playPromise !== undefined) {
-          playPromise.catch(err => {
-            console.log('[WebRTC Audio] Play waiting for user interaction:', err);
-            const resumeAudio = () => {
-              remoteAudio.muted = false;
-              remoteAudio.volume = 1.0;
-              remoteAudio.play().catch(() => {});
-              window.removeEventListener('click', resumeAudio);
-              window.removeEventListener('touchstart', resumeAudio);
-            };
-            window.addEventListener('click', resumeAudio, { once: true });
-            window.addEventListener('touchstart', resumeAudio, { once: true });
-          });
-        }
-        setupAudioDucking(stream);
+        attachRemoteAudioStream();
       }
     }
   };
@@ -3467,7 +3506,6 @@ window.attachRemoteStreamToPartnerVideo = attachRemoteStreamToPartnerVideo;
     setupDataChannelEvents(state.dataChannel);
   };
 
-  // WebRTC Connection State & Auto-Recovery
   state.pc.onconnectionstatechange = () => {
     const cs = state.pc.connectionState;
     console.log('[WebRTC] Bağlantı durumu:', cs);
@@ -3481,6 +3519,8 @@ window.attachRemoteStreamToPartnerVideo = attachRemoteStreamToPartnerVideo;
     } else if (cs === 'connected') {
       showRoomConnectionStatus(false);
       showToast('Oda ve yayın bağlantısı aktif');
+      attachRemoteStreamToPartnerVideo();
+      attachRemoteAudioStream();
     }
   };
 
@@ -3494,6 +3534,8 @@ window.attachRemoteStreamToPartnerVideo = attachRemoteStreamToPartnerVideo;
       }
     } else if (ics === 'connected' || ics === 'completed') {
       showRoomConnectionStatus(false);
+      attachRemoteStreamToPartnerVideo();
+      attachRemoteAudioStream();
     }
   };
 }
@@ -3505,22 +3547,22 @@ function initiateWebRTC(isInitiator) {
     state.dataChannel = state.pc.createDataChannel('couchSyncChannel');
     setupDataChannelEvents(state.dataChannel);
 
-    // Add local tracks if available
-    if (state.localStream) {
+    // Attach local tracks if available
+    if (state.localStream && state.pc) {
+      const transceivers = state.pc.getTransceivers ? state.pc.getTransceivers() : [];
       state.localStream.getTracks().forEach(track => {
-        try { state.pc.addTrack(track, state.localStream); } catch (_) {}
-      });
-    }
-    if (state.screenStream) {
-      state.screenStream.getTracks().forEach(track => {
-        try { state.pc.addTrack(track, state.screenStream); } catch (_) {}
-      });
-    }
-
-    if (state.pc.getSenders) {
-      state.pc.getSenders().forEach(s => {
-        if (s.track && s.track.kind === 'video' && typeof optimizeVideoSender === 'function') {
-          optimizeVideoSender(s);
+        if (track.readyState !== 'live') return;
+        const t = transceivers.find(tr => 
+          (tr.receiver && tr.receiver.track && tr.receiver.track.kind === track.kind) ||
+          (tr.sender && tr.sender.track && tr.sender.track.kind === track.kind)
+        );
+        if (t) {
+          if (t.direction !== 'sendrecv') t.direction = 'sendrecv';
+          if (t.sender && typeof t.sender.replaceTrack === 'function') {
+            t.sender.replaceTrack(track).catch(() => {});
+          }
+        } else {
+          try { state.pc.addTrack(track, state.localStream); } catch (_) {}
         }
       });
     }
@@ -3540,12 +3582,11 @@ async function renegotiateWebRTC() {
     return;
   }
   if (state.pc.signalingState !== 'stable') {
-    // If connection is in an ongoing handshake, queue renegotiation once stable
     setTimeout(() => {
       if (state.pc && state.pc.signalingState === 'stable') {
         renegotiateWebRTC();
       }
-    }, 350);
+    }, 300);
     return;
   }
   try {
@@ -3566,26 +3607,22 @@ async function handleRtcOffer(offer) {
     setupWebRTC();
   }
 
-  // Ensure local tracks are attached to senders before answering
-  if (state.localStream) {
+  // Ensure local tracks are attached to correct transceivers before answering
+  if (state.localStream && state.pc) {
+    const transceivers = state.pc.getTransceivers ? state.pc.getTransceivers() : [];
     state.localStream.getTracks().forEach(track => {
-      const senders = state.pc.getSenders ? state.pc.getSenders() : [];
-      let s = senders.find(sd => sd.track && sd.track.kind === track.kind);
-      if (s && typeof s.replaceTrack === 'function') {
-        s.replaceTrack(track).catch(() => {});
-      } else if (!s) {
+      if (track.readyState !== 'live') return;
+      const t = transceivers.find(tr => 
+        (tr.receiver && tr.receiver.track && tr.receiver.track.kind === track.kind) ||
+        (tr.sender && tr.sender.track && tr.sender.track.kind === track.kind)
+      );
+      if (t) {
+        if (t.direction !== 'sendrecv') t.direction = 'sendrecv';
+        if (t.sender && typeof t.sender.replaceTrack === 'function') {
+          t.sender.replaceTrack(track).catch(() => {});
+        }
+      } else {
         try { state.pc.addTrack(track, state.localStream); } catch (_) {}
-      }
-    });
-  }
-  if (state.screenStream) {
-    state.screenStream.getTracks().forEach(track => {
-      const senders = state.pc.getSenders ? state.pc.getSenders() : [];
-      let s = senders.find(sd => sd.track && sd.track.kind === track.kind);
-      if (s && typeof s.replaceTrack === 'function') {
-        s.replaceTrack(track).catch(() => {});
-      } else if (!s) {
-        try { state.pc.addTrack(track, state.screenStream); } catch (_) {}
       }
     });
   }
@@ -3596,15 +3633,10 @@ async function handleRtcOffer(offer) {
 
   if (isCollision) {
     if (!isPolite) {
-      // Impolite peer ignores incoming offer, but retries its own once stable so peer tracks aren't dropped
-      setTimeout(() => {
-        if (state.pc && state.pc.signalingState === 'stable') {
-          renegotiateWebRTC();
-        }
-      }, 450);
+      // Impolite peer (Host) ignores colliding offer; waits for polite peer to answer our existing offer
       return;
     }
-    // Polite peer rolls back its own offer to accept the impolite peer's incoming offer
+    // Polite peer (Guest) rolls back its local offer and accepts Host's offer
     try {
       await state.pc.setLocalDescription({ type: 'rollback' });
     } catch (_) {}
@@ -3617,19 +3649,8 @@ async function handleRtcOffer(offer) {
     await state.pc.setLocalDescription(answer);
     sendSignal({ type: 'answer', answer: state.pc.localDescription });
 
-    // Connect remote video stream to partner video element
-    if (typeof attachRemoteStreamToPartnerVideo === 'function') {
-      attachRemoteStreamToPartnerVideo();
-    }
-
-    // If polite peer rolled back, re-negotiate our tracks now that peer connection is stable
-    if (isCollision && isPolite) {
-      setTimeout(() => {
-        if (state.pc && state.pc.signalingState === 'stable') {
-          renegotiateWebRTC();
-        }
-      }, 300);
-    }
+    if (typeof attachRemoteStreamToPartnerVideo === 'function') attachRemoteStreamToPartnerVideo();
+    if (typeof attachRemoteAudioStream === 'function') attachRemoteAudioStream();
   } catch (err) {
     console.error('Handle offer error:', err);
   }
@@ -3640,9 +3661,8 @@ async function handleRtcAnswer(answer) {
     try {
       await state.pc.setRemoteDescription(new RTCSessionDescription(answer));
       flushQueuedIceCandidates();
-      if (typeof attachRemoteStreamToPartnerVideo === 'function') {
-        attachRemoteStreamToPartnerVideo();
-      }
+      if (typeof attachRemoteStreamToPartnerVideo === 'function') attachRemoteStreamToPartnerVideo();
+      if (typeof attachRemoteAudioStream === 'function') attachRemoteAudioStream();
     } catch (err) {
       console.error('Handle answer error:', err);
     }
@@ -4568,10 +4588,10 @@ function handleRemoteSync(payload) {
       }
 
       // Continuous, sub-second precision synchronization:
-      // If drift is significant (> 1.2s), hard seek to snap instantly
+      // If drift is noticeable (> 0.5s), snap instantly to target with hard seek
       const now = Date.now();
-      if (absDrift > 1.2) {
-        if (!state.lastHardSeekAt || (now - state.lastHardSeekAt) > 2500) {
+      if (absDrift > 0.5) {
+        if (!state.lastHardSeekAt || (now - state.lastHardSeekAt) > 1200) {
           state.lastHardSeekAt = now;
           if (state.activeMode === 'youtube') {
             sendYtCommand('seekTo', [targetTime, true]);
@@ -4583,8 +4603,8 @@ function handleRemoteSync(payload) {
           state.currentTime = targetTime;
           state.playbackRate = 1.0;
         }
-      } else if (absDrift > 0.25) {
-        // Micro drift (0.25s to 1.2s):
+      } else if (absDrift > 0.15) {
+        // Micro drift (0.15s to 0.5s):
         // If viewer is behind: speed up to 1.25x (supported natively by YouTube & HTML5 video)
         // If viewer is ahead: slow down to 0.75x (supported natively by YouTube & HTML5 video)
         const targetRate = drift > 0 ? 1.25 : 0.75;
@@ -4597,7 +4617,15 @@ function handleRemoteSync(payload) {
           state.playbackRate = targetRate;
         }
       } else {
-        // In tight sync (< 0.25s): maintain normal 1.0x rate
+        // In tight sync (< 0.15s): maintain normal 1.0x rate
+        if (state.playbackRate !== 1.0) {
+          if (state.activeMode === 'youtube') {
+            sendYtCommand('setPlaybackRate', [1.0]);
+          } else if (dom.nativeVideoPlayer) {
+            dom.nativeVideoPlayer.playbackRate = 1.0;
+          }
+          state.playbackRate = 1.0;
+        }
         if (state.playbackRate !== 1.0) {
           if (state.activeMode === 'youtube') {
             sendYtCommand('setPlaybackRate', [1.0]);
@@ -4613,6 +4641,12 @@ function handleRemoteSync(payload) {
 
 function getLivePlayerTime() {
   if (state.activeMode === 'youtube') {
+    if (state.ytPlayer && typeof state.ytPlayer.getCurrentTime === 'function') {
+      try {
+        const ct = state.ytPlayer.getCurrentTime();
+        if (typeof ct === 'number' && ct >= 0) return ct;
+      } catch (_) {}
+    }
     if (state.isPlaying && state.lastReportedYtAt) {
       const elapsed = (Date.now() - state.lastReportedYtAt) / 1000;
       return Math.min(state.duration || 999999, (state.lastReportedYtTime || 0) + elapsed);
@@ -6836,7 +6870,6 @@ function describeMediaError(e, kind) {
 }
 
 async function toggleMic() {
-  // 1-Tap Toggle: Tap to open, tap again to close
   state.isMicOn = !state.isMicOn;
 
   if (state.isMicOn) {
@@ -6861,26 +6894,16 @@ async function toggleMic() {
       if (dom.selfVideo && state.localStream) dom.selfVideo.srcObject = state.localStream;
 
       if (state.pc) {
-        const senders = state.pc.getSenders ? state.pc.getSenders() : [];
-        let audioSender = senders.find(s => s.track && s.track.kind === 'audio');
-
-        if (!audioSender && state.pc.getTransceivers) {
-          const transceivers = state.pc.getTransceivers();
-          const audioTransceiver = transceivers.find(t => 
-            (t.sender && t.sender.track && t.sender.track.kind === 'audio') ||
-            (t.receiver && t.receiver.track && t.receiver.track.kind === 'audio') ||
-            (t.sender && !t.sender.track)
-          );
-          if (audioTransceiver && audioTransceiver.sender) {
-            audioSender = audioTransceiver.sender;
-            if (audioTransceiver.direction === 'recvonly') {
-              audioTransceiver.direction = 'sendrecv';
-            }
+        const transceivers = state.pc.getTransceivers ? state.pc.getTransceivers() : [];
+        const audioTransceiver = transceivers.find(t => 
+          (t.receiver && t.receiver.track && t.receiver.track.kind === 'audio') ||
+          (t.sender && t.sender.track && t.sender.track.kind === 'audio')
+        );
+        if (audioTransceiver) {
+          if (audioTransceiver.direction !== 'sendrecv') audioTransceiver.direction = 'sendrecv';
+          if (audioTransceiver.sender && typeof audioTransceiver.sender.replaceTrack === 'function') {
+            await audioTransceiver.sender.replaceTrack(audioTrack);
           }
-        }
-
-        if (audioSender && typeof audioSender.replaceTrack === 'function') {
-          await audioSender.replaceTrack(audioTrack);
         } else {
           state.pc.addTrack(audioTrack, state.localStream);
         }
@@ -6905,10 +6928,16 @@ async function toggleMic() {
     }
     if (state.pc) {
       try {
-        const senders = state.pc.getSenders ? state.pc.getSenders() : [];
-        const audioSender = senders.find(s => s.track && s.track.kind === 'audio');
-        if (audioSender && typeof audioSender.replaceTrack === 'function') {
-          audioSender.replaceTrack(null).catch(() => {});
+        const transceivers = state.pc.getTransceivers ? state.pc.getTransceivers() : [];
+        const audioTransceiver = transceivers.find(t => 
+          (t.receiver && t.receiver.track && t.receiver.track.kind === 'audio') ||
+          (t.sender && t.sender.track && t.sender.track.kind === 'audio')
+        );
+        if (audioTransceiver) {
+          if (audioTransceiver.direction === 'sendrecv') audioTransceiver.direction = 'recvonly';
+          if (audioTransceiver.sender && typeof audioTransceiver.sender.replaceTrack === 'function') {
+            audioTransceiver.sender.replaceTrack(null).catch(() => {});
+          }
         }
         if (typeof renegotiateWebRTC === 'function') {
           renegotiateWebRTC();
@@ -6988,7 +7017,6 @@ async function getLiveCameraStream() {
 }
 
 async function toggleCam() {
-  // If camera is already ON, turn it OFF cleanly and release hardware LED
   if (state.isCamOn) {
     state.isCamOn = false;
     if (state.localStream) {
@@ -7000,10 +7028,16 @@ async function toggleCam() {
     }
     if (state.pc) {
       try {
-        const senders = state.pc.getSenders ? state.pc.getSenders() : [];
-        const videoSender = senders.find(s => (s.track && s.track.kind === 'video') || (s.track === null && (!s.kind || s.kind === 'video')));
-        if (videoSender && typeof videoSender.replaceTrack === 'function') {
-          videoSender.replaceTrack(null).catch(() => {});
+        const transceivers = state.pc.getTransceivers ? state.pc.getTransceivers() : [];
+        const vt = transceivers.find(t => 
+          (t.receiver && t.receiver.track && t.receiver.track.kind === 'video') ||
+          (t.sender && t.sender.track && t.sender.track.kind === 'video')
+        );
+        if (vt) {
+          if (vt.direction === 'sendrecv') vt.direction = 'recvonly';
+          if (vt.sender && typeof vt.sender.replaceTrack === 'function') {
+            vt.sender.replaceTrack(null).catch(() => {});
+          }
         }
         if (typeof renegotiateWebRTC === 'function') {
           renegotiateWebRTC();
@@ -7036,7 +7070,6 @@ async function toggleCam() {
   }
 
   try {
-    // Clean up any stale or ended video tracks
     if (state.localStream) {
       const deadTracks = state.localStream.getVideoTracks().filter(t => t.readyState === 'ended');
       deadTracks.forEach(t => {
@@ -7095,31 +7128,26 @@ async function toggleCam() {
 
       if (state.pc) {
         try {
-          const senders = state.pc.getSenders ? state.pc.getSenders() : [];
-          let videoSender = senders.find(s => (s.track && s.track.kind === 'video') || (s.track === null && (!s.kind || s.kind === 'video')));
-          if (!videoSender && state.pc.getTransceivers) {
-            const transceivers = state.pc.getTransceivers();
-            const vt = transceivers.find(t => 
-              (t.sender && t.sender.track && t.sender.track.kind === 'video') ||
-              (t.receiver && t.receiver.track && t.receiver.track.kind === 'video') ||
-              (t.sender && !t.sender.track)
-            );
-            if (vt && vt.sender) {
-              videoSender = vt.sender;
-              if (vt.direction === 'recvonly') vt.direction = 'sendrecv';
+          const transceivers = state.pc.getTransceivers ? state.pc.getTransceivers() : [];
+          const vt = transceivers.find(t => 
+            (t.receiver && t.receiver.track && t.receiver.track.kind === 'video') ||
+            (t.sender && t.sender.track && t.sender.track.kind === 'video')
+          );
+          if (vt) {
+            if (vt.direction !== 'sendrecv') vt.direction = 'sendrecv';
+            if (vt.sender && typeof vt.sender.replaceTrack === 'function') {
+              await vt.sender.replaceTrack(videoTrack);
             }
-          }
-          if (videoSender && typeof videoSender.replaceTrack === 'function') {
-            await videoSender.replaceTrack(videoTrack);
+            if (vt.sender) optimizeVideoSender(vt.sender);
           } else {
-            videoSender = state.pc.addTrack(videoTrack, state.localStream);
+            const sender = state.pc.addTrack(videoTrack, state.localStream);
+            if (sender) optimizeVideoSender(sender);
           }
           if (typeof renegotiateWebRTC === 'function') {
             await renegotiateWebRTC();
           } else {
             initiateWebRTC(true);
           }
-          if (videoSender) optimizeVideoSender(videoSender);
         } catch (err) {
           console.warn('WebRTC cam track error:', err);
         }
@@ -7137,7 +7165,6 @@ async function toggleCam() {
     }
   } catch (e) {
     console.warn('Kamera donanımı bulunamadı veya izin verilmedi:', e);
-    // Karşıdakilere "kamera açık" yalanı söyleme: durumu geri al
     state.isCamOn = false;
     if (dom.selfPipCard) dom.selfPipCard.classList.add('hidden');
     updateCamButtonUI(false);
@@ -12259,6 +12286,9 @@ function updateRemoteParticipantStatus(userId, username, isMicOn, isCamOn) {
         dom.partnerVideoPlaceholder.style.removeProperty('display');
       }
     }
+  }
+  if (isMicOn && typeof attachRemoteAudioStream === 'function') {
+    attachRemoteAudioStream();
   }
   renderParticipantsList();
 }
