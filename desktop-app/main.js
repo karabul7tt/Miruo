@@ -1,4 +1,4 @@
-const { app, BrowserWindow, shell, session, Menu, ipcMain, systemPreferences } = require('electron');
+const { app, BrowserWindow, shell, session, Menu, ipcMain, systemPreferences, desktopCapturer } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const http = require('http');
@@ -828,19 +828,47 @@ function createWindow(port) {
     }
   });
 
+  // Request native macOS media access for microphone & camera
+  if (process.platform === 'darwin' && systemPreferences) {
+    try {
+      if (typeof systemPreferences.askForMediaAccess === 'function') {
+        systemPreferences.askForMediaAccess('microphone').catch(() => {});
+        systemPreferences.askForMediaAccess('camera').catch(() => {});
+      }
+    } catch (e) {
+      console.warn('[Miruo Desktop] Media access request error:', e);
+    }
+  }
+
   // Automatically grant camera, mic, and screen permissions
   session.defaultSession.setPermissionCheckHandler((webContents, permission, requestingOrigin) => {
-    const allowed = ['media', 'camera', 'microphone', 'notifications', 'display-capture', 'fullscreen'];
+    const allowed = ['media', 'camera', 'microphone', 'notifications', 'display-capture', 'fullscreen', 'mediaKeySystem', 'screen'];
     return allowed.includes(permission);
   });
 
   session.defaultSession.setPermissionRequestHandler((webContents, permission, callback) => {
-    const allowed = ['media', 'camera', 'microphone', 'notifications', 'display-capture', 'fullscreen'];
+    const allowed = ['media', 'camera', 'microphone', 'notifications', 'display-capture', 'fullscreen', 'mediaKeySystem', 'screen'];
     if (allowed.includes(permission)) {
       return callback(true);
     }
     callback(false);
   });
+
+  // Native Electron Display Media (Screen Sharing) Handler
+  if (session.defaultSession.setDisplayMediaRequestHandler && desktopCapturer) {
+    session.defaultSession.setDisplayMediaRequestHandler((request, callback) => {
+      desktopCapturer.getSources({ types: ['screen', 'window'] }).then((sources) => {
+        if (sources && sources.length > 0) {
+          callback({ video: sources[0], audio: 'loopback' });
+        } else {
+          callback({});
+        }
+      }).catch((err) => {
+        console.warn('[Miruo Desktop] Display media capture error:', err);
+        callback({});
+      });
+    });
+  }
 
   // YouTube Embed & Web Referrer Bypass (Fixes Error 152/150/101)
   session.defaultSession.webRequest.onBeforeSendHeaders(
@@ -855,16 +883,18 @@ function createWindow(port) {
     }
   );
 
-  // Bypass X-Frame-Options & CSP frame-ancestors for all web streams, movie sites (HDFilmcehennemi, Vidmoly vb.) and embedded players
+  // Bypass X-Frame-Options & CSP frame-ancestors for all web streams, Kick, Twitch, and embedded players
   const stripFrameRestrictions = (details, callback) => {
     const responseHeaders = Object.assign({}, details.responseHeaders);
     delete responseHeaders['x-frame-options'];
     delete responseHeaders['X-Frame-Options'];
+    delete responseHeaders['frame-options'];
 
     ['content-security-policy', 'Content-Security-Policy'].forEach(cspKey => {
       if (responseHeaders[cspKey]) {
         responseHeaders[cspKey] = responseHeaders[cspKey].map(val =>
           val.replace(/frame-ancestors\s+[^;]+;?/gi, '')
+             .replace(/frame-src\s+[^;]+;?/gi, '')
         );
       }
     });

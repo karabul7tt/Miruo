@@ -3044,7 +3044,13 @@ function handleSignalMessage(msg) {
       } else {
         updatePeerStatus(false);
       }
+      broadcastMyMediaStatus();
+      sendSignal({ type: 'request-media-status' });
       renderParticipantsList();
+      break;
+
+    case 'request-media-status':
+      broadcastMyMediaStatus();
       break;
 
     case 'peer-joined':
@@ -3078,6 +3084,40 @@ function handleSignalMessage(msg) {
         setupWebRTC();
       }
       broadcastMyMediaStatus();
+
+      // If we already have camera or mic on, ensure tracks are attached and sent to the newcomer immediately
+      let peerRenegotiate = false;
+      if (state.isCamOn && state.localStream && state.pc) {
+        try {
+          const vTrack = state.localStream.getVideoTracks().find(t => t.readyState === 'live');
+          if (vTrack) {
+            const senders = state.pc.getSenders ? state.pc.getSenders() : [];
+            const exists = senders.some(s => s.track && s.track.kind === 'video');
+            if (!exists) {
+              state.pc.addTrack(vTrack, state.localStream);
+              peerRenegotiate = true;
+            }
+          }
+        } catch (_) {}
+      }
+      if (state.isMicOn && state.localStream && state.pc) {
+        try {
+          const aTrack = state.localStream.getAudioTracks().find(t => t.readyState === 'live');
+          if (aTrack) {
+            const senders = state.pc.getSenders ? state.pc.getSenders() : [];
+            const exists = senders.some(s => s.track && s.track.kind === 'audio');
+            if (!exists) {
+              state.pc.addTrack(aTrack, state.localStream);
+              peerRenegotiate = true;
+            }
+          }
+        } catch (_) {}
+      }
+      if (peerRenegotiate) {
+        setTimeout(() => {
+          if (typeof renegotiateWebRTC === 'function') renegotiateWebRTC();
+        }, 300);
+      }
       if (state.isHost) {
         sendSignal({
           type: 'room-roster',
@@ -3157,7 +3197,29 @@ function handleSignalMessage(msg) {
       break;
 
     case 'sleep-mode':
-      applySleepMode(msg.enabled, false);
+      if (msg.authorized || msg.isHost || (msg.from && (msg.from === state.host || msg.role === 'owner' || msg.role === 'admin' || msg.role === 'dj')) || state.controlMode === 'everyone') {
+        applySleepMode(msg.enabled, false);
+      }
+      break;
+
+    case 'friend-removed':
+    case 'friend_removed':
+      if (typeof handleRemoteFriendRemoved === 'function') {
+        handleRemoteFriendRemoved(msg.fromUsername, msg.toUsername);
+      }
+      break;
+
+    case 'affinity-unbound':
+    case 'affinity_unbound':
+      if (typeof handleRemoteAffinityUnbound === 'function') {
+        handleRemoteAffinityUnbound(msg.fromUsername, msg.toUsername);
+      }
+      break;
+
+    case 'room-invite':
+      if (msg.payload && typeof handleIncomingRoomInvite === 'function') {
+        handleIncomingRoomInvite(msg.payload);
+      }
       break;
 
     case 'perm-change':
@@ -3183,7 +3245,9 @@ function handleSignalMessage(msg) {
 
     case 'platform-switch':
       switchRoomPlatform(msg.platform);
-      showToast(`Partner platformu değiştirdi: ${msg.platform}`);
+      if (msg.user && msg.user !== state.username && (state.peerId || Object.keys(state.participants).length > 1)) {
+        showToast(`@${msg.user} platformu değiştirdi: ${msg.platform}`);
+      }
       break;
 
     case 'kick-user':
@@ -3247,10 +3311,11 @@ function setupWebRTC() {
   state.pc = new RTCPeerConnection(rtcConfig);
   state.iceCandidateQueue = [];
 
-  // Pre-allocate audio transceiver so RTP audio pipeline is warm & ready
+  // Pre-allocate audio & video transceivers so RTP pipelines are warm & ready
   try {
     if (typeof state.pc.addTransceiver === 'function') {
       state.pc.addTransceiver('audio', { direction: 'sendrecv' });
+      state.pc.addTransceiver('video', { direction: 'sendrecv' });
     }
   } catch (_) {}
 
@@ -3282,10 +3347,28 @@ function setupWebRTC() {
           dom.partnerVideo.srcObject = stream;
           dom.partnerVideo.playsInline = true;
           dom.partnerVideo.autoplay = true;
+          dom.partnerVideo.muted = true;
           const p = dom.partnerVideo.play();
           if (p && p.catch) p.catch(() => {});
+
+          const hidePlaceholder = () => {
+            if (dom.partnerVideoPlaceholder) {
+              dom.partnerVideoPlaceholder.classList.add('hidden');
+              dom.partnerVideoPlaceholder.style.display = 'none';
+            }
+          };
+          dom.partnerVideo.onloadedmetadata = hidePlaceholder;
+          dom.partnerVideo.onplaying = hidePlaceholder;
+          dom.partnerVideo.oncanplay = hidePlaceholder;
+          hidePlaceholder();
+          setTimeout(hidePlaceholder, 100);
+          setTimeout(hidePlaceholder, 300);
+          setTimeout(hidePlaceholder, 800);
         }
-        if (dom.partnerVideoPlaceholder) dom.partnerVideoPlaceholder.classList.add('hidden');
+        if (dom.partnerVideoPlaceholder) {
+          dom.partnerVideoPlaceholder.classList.add('hidden');
+          dom.partnerVideoPlaceholder.style.display = 'none';
+        }
         if (dom.partnerPipCard) {
           dom.partnerPipCard.classList.remove('hidden', 'pip-hidden-fullscreen');
         }
@@ -3513,7 +3596,12 @@ function setupDataChannelEvents(channel) {
       if (data.type === 'sync') handleRemoteSync(payload);
       if (data.type === 'touch') renderTouchEffect(data.x || payload.x, data.y || payload.y, false);
       if (data.type === 'reaction') spawnFloatingReaction(data.emoji || payload.emoji, false);
-      if (data.type === 'sleep') applySleepMode(data.enabled !== undefined ? data.enabled : payload.enabled, false);
+      if (data.type === 'sleep') {
+        const canRemoteSleep = payload.authorized || payload.isHost || payload.canControl || (payload.from && (payload.from === state.host || payload.userRole === 'owner' || payload.userRole === 'admin' || payload.userRole === 'dj')) || state.controlMode === 'everyone';
+        if (canRemoteSleep) {
+          applySleepMode(data.enabled !== undefined ? data.enabled : payload.enabled, false);
+        }
+      }
       if (data.type === 'perm_change') handleRemotePermissionChange(data.mode || payload.mode, data.hostName || payload.hostName);
       if (data.type === 'request_dj') handleDjPermissionRequested(data.fromUser || payload.fromUser);
       if (data.type === 'grant_dj') handleDjPermissionGranted(data.toUser || payload.toUser);
@@ -3526,11 +3614,23 @@ function setupDataChannelEvents(channel) {
       if (data.type === 'friend_declined') {
         if (typeof handleIncomingFriendDeclined === 'function') handleIncomingFriendDeclined(payload);
       }
+      if (data.type === 'friend_removed') {
+        if (typeof handleRemoteFriendRemoved === 'function') handleRemoteFriendRemoved(payload.fromUsername, payload.toUsername);
+      }
+      if (data.type === 'affinity_unbound') {
+        if (typeof handleRemoteAffinityUnbound === 'function') handleRemoteAffinityUnbound(payload.fromUsername, payload.toUsername);
+      }
+      if (data.type === 'room_invite') {
+        if (typeof handleIncomingRoomInvite === 'function') handleIncomingRoomInvite(payload);
+      }
       if (data.type === 'chat') renderChatMessage(data.sender || payload.sender, data.text || payload.text, false, data.time || payload.time, data.imageUrl || payload.imageUrl, data.avatarUrl || payload.avatarUrl);
       if (data.type === 'media_status') updateRemoteParticipantStatus(data.userId || payload.userId, data.username || payload.username, data.isMicOn !== undefined ? data.isMicOn : payload.isMicOn, data.isCamOn !== undefined ? data.isCamOn : payload.isCamOn);
       if (data.type === 'platform_switch') {
         switchRoomPlatform(data.platform || payload.platform);
-        showToast(`Partner platformu değiştirdi: ${data.platform || payload.platform}`);
+        const sender = payload.user || payload.fromUser || data.user;
+        if (sender && sender !== state.username && (state.peerId || Object.keys(state.participants).length > 1)) {
+          showToast(`@${sender} platformu değiştirdi: ${data.platform || payload.platform}`);
+        }
       }
       if (data.type === 'kick_user') handleRemoteUserKicked(data.targetUserId || payload.targetUserId, data.targetUsername || payload.targetUsername);
       if (data.type === 'role_update') handleRemoteRoleUpdate(data.targetUserId || payload.targetUserId, data.newRole || payload.newRole, data.targetUsername || payload.targetUsername);
@@ -3555,6 +3655,10 @@ function setupDataChannelEvents(channel) {
 function sendP2PData(type, payload = {}) {
   const enrichedPayload = {
     ...payload,
+    fromUser: payload.fromUser || state.username,
+    userRole: payload.userRole || state.userRole || (state.isHost ? 'owner' : 'member'),
+    isHost: !!state.isHost,
+    canControl: typeof canUserControlPlayback === 'function' ? canUserControlPlayback() : !!state.isHost,
     sentAt: payload.sentAt || Date.now()
   };
   const data = JSON.stringify({ type, payload: enrichedPayload, ...enrichedPayload });
@@ -3569,7 +3673,7 @@ function sendP2PData(type, payload = {}) {
   if (type === 'sync') sendSignal({ type: 'sync-event', payload: enrichedPayload });
   else if (type === 'touch') sendSignal({ type: 'touch-event', x: enrichedPayload.x, y: enrichedPayload.y });
   else if (type === 'reaction') sendSignal({ type: 'reaction-event', emoji: enrichedPayload.emoji });
-  else if (type === 'sleep') sendSignal({ type: 'sleep-mode', enabled: enrichedPayload.enabled });
+  else if (type === 'sleep') sendSignal({ type: 'sleep-mode', enabled: enrichedPayload.enabled, authorized: enrichedPayload.authorized, isHost: enrichedPayload.isHost, from: enrichedPayload.fromUser });
   else if (type === 'photo_share') sendSignal({ type: 'photo-share', dataUrl: enrichedPayload.dataUrl, title: enrichedPayload.title, sender: enrichedPayload.sender });
   else if (type === 'photo_close') sendSignal({ type: 'photo-close' });
   else if (type === 'perm_change') sendSignal({ type: 'perm-change', mode: enrichedPayload.mode, hostName: enrichedPayload.hostName });
@@ -3579,6 +3683,9 @@ function sendP2PData(type, payload = {}) {
   else if (type === 'friend_request') sendSignal({ type: 'friend-request', payload: enrichedPayload });
   else if (type === 'friend_accepted') sendSignal({ type: 'friend-accepted', payload: enrichedPayload });
   else if (type === 'friend_declined') sendSignal({ type: 'friend-declined', payload: enrichedPayload });
+  else if (type === 'friend_removed') sendSignal({ type: 'friend-removed', fromUsername: enrichedPayload.fromUsername, toUsername: enrichedPayload.toUsername });
+  else if (type === 'affinity_unbound') sendSignal({ type: 'affinity-unbound', fromUsername: enrichedPayload.fromUsername, toUsername: enrichedPayload.toUsername });
+  else if (type === 'room_invite') sendSignal({ type: 'room-invite', payload: enrichedPayload });
   else if (type === 'chat') sendSignal({ type: 'chat-message', sender: enrichedPayload.sender, text: enrichedPayload.text, time: enrichedPayload.time, imageUrl: enrichedPayload.imageUrl, avatarUrl: enrichedPayload.avatarUrl });
   else if (type === 'media_status') sendSignal({ type: 'media-status', userId: enrichedPayload.userId, username: enrichedPayload.username, isMicOn: enrichedPayload.isMicOn, isCamOn: enrichedPayload.isCamOn });
   else if (type === 'platform_switch') sendSignal({ type: 'platform-switch', platform: enrichedPayload.platform });
@@ -3847,6 +3954,63 @@ function extractTwitchChannel(urlOrChannel) {
   return clean;
 }
 
+function extractKickChannel(val) {
+  if (!val) return '';
+  let str = String(val).trim();
+  if (str.includes('kick.com/')) {
+    str = str.split('kick.com/')[1].split('/')[0].split('?')[0];
+  } else if (str.startsWith('kick:')) {
+    str = str.replace(/^kick:/, '');
+  }
+  const clean = str.replace(/[^a-zA-Z0-9_\-]/g, '');
+  const forbidden = ['video', 'categories', 'browse', 'following', 'auth', 'login', 'signup'];
+  if (!clean || forbidden.includes(clean.toLowerCase())) return '';
+  return clean;
+}
+window.extractKickChannel = extractKickChannel;
+
+function loadKickStream(channelOrUrl, title) {
+  let channel = extractKickChannel(channelOrUrl);
+  if (!channel) {
+    showToast('Lütfen geçerli bir Kick canlı yayını veya kanal seçin');
+    return;
+  }
+
+  state.activeMode = 'kick';
+  state.currentProvider = 'Kick';
+  state.currentVideoId = `kick:${channel}`;
+  state.currentVideoTitle = title || `${channel} - Kick`;
+  state.isPlaying = true;
+  if (typeof updatePlayPauseUI === 'function') updatePlayPauseUI(true);
+
+  if (dom.nowPlayingProviderBadge) dom.nowPlayingProviderBadge.textContent = 'Kick';
+  if (dom.nowPlayingTitle) dom.nowPlayingTitle.textContent = state.currentVideoTitle;
+  if (dom.raveOverlayTitle) dom.raveOverlayTitle.textContent = state.currentVideoTitle;
+  if (dom.stageSubtitleText) dom.stageSubtitleText.textContent = `${channel} (Kick)`;
+  if (typeof updateNowPlayingLikeState === 'function') updateNowPlayingLikeState();
+
+  dom.emptyStatePlaceholder.classList.add('hidden');
+  dom.ytPlayerContainer.classList.add('hidden');
+  dom.nativeVideoPlayer.classList.add('hidden');
+  if (typeof hideIframeFallback === 'function') hideIframeFallback();
+
+  if (dom.webPlayerFrame) {
+    dom.webPlayerFrame.classList.remove('hidden');
+    dom.webPlayerFrame.src = `https://player.kick.com/${encodeURIComponent(channel)}?autoplay=true&muted=false`;
+  }
+
+  if (dom.ravePlayerOverlay) {
+    dom.ravePlayerOverlay.classList.add('opacity-0', 'pointer-events-none');
+    dom.ravePlayerOverlay.classList.remove('opacity-90');
+  }
+
+  sendP2PData('video_changed', { user: state.username, title: state.currentVideoTitle, videoId: `kick:${channel}` });
+  sendSignal({ type: 'video-changed', user: state.username, title: state.currentVideoTitle, videoId: `kick:${channel}` });
+
+  showToast(`Kick: ${channel} yayını açıldı!`);
+}
+window.loadKickStream = loadKickStream;
+
 function loadTwitchStream(channelOrUrl, title) {
   let channel = extractTwitchChannel(channelOrUrl);
   if (!channel) {
@@ -3874,7 +4038,7 @@ function loadTwitchStream(channelOrUrl, title) {
 
   if (dom.webPlayerFrame) {
     dom.webPlayerFrame.classList.remove('hidden');
-    const hostnames = new Set(['localhost', '127.0.0.1']);
+    const hostnames = new Set(['localhost', '127.0.0.1', 'miruo.app', 'miruo.com.tr']);
     if (window.location.hostname) hostnames.add(window.location.hostname);
     const parentParams = Array.from(hostnames).map(h => `parent=${encodeURIComponent(h)}`).join('&');
     dom.webPlayerFrame.src = `https://player.twitch.tv/?channel=${encodeURIComponent(channel)}&${parentParams}&autoplay=true&muted=false`;
@@ -3885,6 +4049,9 @@ function loadTwitchStream(channelOrUrl, title) {
     dom.ravePlayerOverlay.classList.add('opacity-0', 'pointer-events-none');
     dom.ravePlayerOverlay.classList.remove('opacity-90');
   }
+
+  sendP2PData('video_changed', { user: state.username, title: state.currentVideoTitle, videoId: `twitch:${channel}` });
+  sendSignal({ type: 'video-changed', user: state.username, title: state.currentVideoTitle, videoId: `twitch:${channel}` });
 
   showToast(`Twitch: ${channel} yayını açıldı!`);
 }
@@ -3949,6 +4116,21 @@ function normalizeEmbedUrl(url) {
       return `https://drive.google.com/file/d/${match[1]}/preview`;
     }
   }
+  // 2. Kick channel auto-transform to official embed player
+  if (url.includes('kick.com/') || url.startsWith('kick:')) {
+    const ch = extractKickChannel(url);
+    if (ch) return `https://player.kick.com/${encodeURIComponent(ch)}?autoplay=true&muted=false`;
+  }
+  // 3. Twitch channel auto-transform to official embed player
+  if (url.includes('twitch.tv/') || url.startsWith('twitch:')) {
+    const ch = extractTwitchChannel(url);
+    if (ch) {
+      const hostnames = new Set(['localhost', '127.0.0.1', 'miruo.app', 'miruo.com.tr']);
+      if (window.location.hostname) hostnames.add(window.location.hostname);
+      const parentParams = Array.from(hostnames).map(h => `parent=${encodeURIComponent(h)}`).join('&');
+      return `https://player.twitch.tv/?channel=${encodeURIComponent(ch)}&${parentParams}&autoplay=true&muted=false`;
+    }
+  }
   return url;
 }
 
@@ -3998,6 +4180,10 @@ function loadWebStream(url, title, provider = 'Web') {
     dom.webPlayerFrame.src = finalUrl;
     dom.webPlayerFrame.onerror = () => showIframeFallback(finalUrl, provider);
   }
+
+  sendP2PData('video_changed', { user: state.username, title: state.currentVideoTitle, videoId: url });
+  sendSignal({ type: 'video-changed', user: state.username, title: state.currentVideoTitle, videoId: url });
+
   showToast(`${provider} içeriği odaya aktarıldı!`);
 }
 
@@ -4131,11 +4317,35 @@ function handleRemoteSync(payload) {
     return;
   }
 
+  const isPlaybackCommand = (payload.action === 'play' || payload.action === 'pause' || payload.action === 'seek' || payload.action === 'load_yt');
+  if (isPlaybackCommand) {
+    const isAuthorized = payload.canControl || payload.isHost || payload.userRole === 'owner' || payload.userRole === 'admin' || payload.userRole === 'dj' || payload.userRole === 'video_control' || state.controlMode === 'everyone';
+    if (!isAuthorized) {
+      console.warn('[Miruo] Unauthorized remote playback action rejected:', payload.action, payload.fromUser);
+      if (typeof canUserControlPlayback === 'function' && canUserControlPlayback() && state.currentVideoId) {
+        setTimeout(() => {
+          sendP2PData('sync', {
+            action: 'full_sync',
+            videoId: state.currentVideoId,
+            time: state.currentTime,
+            isPlaying: state.isPlaying,
+            rate: state.playbackRate || 1.0,
+            sentAt: Date.now()
+          });
+        }, 150);
+      }
+      return;
+    }
+  }
+
   if (payload.action === 'load_yt') {
     if (state.currentVideoId !== payload.videoId) {
       loadYoutubeVideo(payload.videoId);
     }
-    showToast('Partner videoyu başlattı');
+    const sender = payload.fromUser || payload.user;
+    if (sender && sender !== state.username && (state.peerId || Object.keys(state.participants).length > 1)) {
+      showToast(`@${sender} videoyu başlattı`);
+    }
   }
 
   if (payload.action === 'rate' || payload.action === 'speed') {
@@ -4924,10 +5134,18 @@ window.playVideoOnStage = playVideoOnStage;
 // Screen Sharing (Netflix / Dizi / Browser)
 async function startScreenSharing() {
   try {
-    const stream = await navigator.mediaDevices.getDisplayMedia({
-      video: { cursor: 'always', frameRate: 60 },
-      audio: true
-    });
+    let stream = null;
+    try {
+      stream = await navigator.mediaDevices.getDisplayMedia({
+        video: { cursor: 'always', frameRate: 60 },
+        audio: true
+      });
+    } catch (audioErr) {
+      console.warn('[ScreenShare] getDisplayMedia with audio failed, falling back to video only:', audioErr);
+      stream = await navigator.mediaDevices.getDisplayMedia({
+        video: { cursor: 'always', frameRate: 60 }
+      });
+    }
 
     state.screenStream = stream;
     state.isScreenSharing = true;
@@ -5004,6 +5222,8 @@ function stopScreenSharing() {
   dom.stopScreenShareBtn.classList.add('hidden');
   showToast('Ekran yayını sonlandırıldı.');
 }
+window.startScreenSharing = startScreenSharing;
+window.startScreenShare = startScreenSharing;
 
 // ==========================================
 // 4.5 MULTI-PLATFORM SWITCHER, FULLSCREEN & RAVE PiP
@@ -5873,22 +6093,25 @@ function releaseScreenWakeLock() {
 }
 
 function applySleepMode(enabled, isLocal = true) {
+  const canBroadcast = typeof canUserControlPlayback === 'function' ? canUserControlPlayback() : !!state.isHost;
   state.isSleepMode = !!enabled;
 
   if (enabled) {
-    // 1. Immediately pause and stop background video
-    if (typeof sendYtCommand === 'function') {
-      try { sendYtCommand('pauseVideo'); } catch (_) {}
-      try { sendYtCommand('stopVideo'); } catch (_) {}
+    // 1. Only pause and stop background video if authorized to control room
+    if (canBroadcast) {
+      if (typeof sendYtCommand === 'function') {
+        try { sendYtCommand('pauseVideo'); } catch (_) {}
+        try { sendYtCommand('stopVideo'); } catch (_) {}
+      }
+      if (state.ytPlayer && typeof state.ytPlayer.pauseVideo === 'function') {
+        try { state.ytPlayer.pauseVideo(); } catch (_) {}
+      }
+      if (dom.nativeVideoPlayer) {
+        try { dom.nativeVideoPlayer.pause(); } catch (_) {}
+      }
+      state.isPlaying = false;
+      if (typeof updatePlayPauseUI === 'function') updatePlayPauseUI(false);
     }
-    if (state.ytPlayer && typeof state.ytPlayer.pauseVideo === 'function') {
-      try { state.ytPlayer.pauseVideo(); } catch (_) {}
-    }
-    if (dom.nativeVideoPlayer) {
-      try { dom.nativeVideoPlayer.pause(); } catch (_) {}
-    }
-    state.isPlaying = false;
-    if (typeof updatePlayPauseUI === 'function') updatePlayPauseUI(false);
 
     // 2. Hide media video frames AND photo stage, reveal OLED Sleep Mode Stage
     if (dom.ytPlayerContainer) dom.ytPlayerContainer.classList.add('hidden');
@@ -5911,7 +6134,7 @@ function applySleepMode(enabled, isLocal = true) {
     }
 
     // 3. Update Now Playing details to Sleep Mode
-    if (dom.nowPlayingTitle) dom.nowPlayingTitle.textContent = 'Birlikte Uyku Modu';
+    if (dom.nowPlayingTitle) dom.nowPlayingTitle.textContent = canBroadcast ? 'Birlikte Uyku Modu' : 'Kişisel Uyku Modu';
     if (dom.nowPlayingPrefixText) dom.nowPlayingPrefixText.textContent = '';
     if (dom.nowPlayingSuffixText) dom.nowPlayingSuffixText.textContent = 'devrede';
     if (dom.nowPlayingProviderBadge) {
@@ -5948,8 +6171,13 @@ function applySleepMode(enabled, isLocal = true) {
     if (dom.ambientGlow) dom.ambientGlow.style.opacity = '0.05';
 
     if (isLocal) {
-      showToast('Uyku Modu açıldı');
-      sendP2PData('sleep', { enabled: true });
+      if (canBroadcast) {
+        showToast('Uyku Modu açıldı');
+        sendP2PData('sleep', { enabled: true, from: state.username, isHost: state.isHost, authorized: true });
+        sendSignal({ type: 'sleep-mode', enabled: true, from: state.username, isHost: state.isHost, authorized: true });
+      } else {
+        showToast('Kişisel Uyku Modu devrede (Sadece sizde)');
+      }
     }
   } else {
     // Disable sleep mode
@@ -6002,8 +6230,13 @@ function applySleepMode(enabled, isLocal = true) {
     if (dom.ambientGlow) dom.ambientGlow.style.opacity = '0.3';
 
     if (isLocal) {
-      showToast('Uyku modundan çıkıldı.');
-      sendP2PData('sleep', { enabled: false });
+      if (canBroadcast) {
+        showToast('Uyku modundan çıkıldı.');
+        sendP2PData('sleep', { enabled: false, from: state.username, isHost: state.isHost, authorized: true });
+        sendSignal({ type: 'sleep-mode', enabled: false, from: state.username, isHost: state.isHost, authorized: true });
+      } else {
+        showToast('Kişisel uyku modundan çıkıldı.');
+      }
     }
   }
 }
@@ -6277,6 +6510,32 @@ function getAudioConstraints() {
   return { audio: audioObj, video: false };
 }
 
+async function getAudioStreamSafe() {
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+    throw new Error('navigator.mediaDevices.getUserMedia not supported');
+  }
+  try {
+    const c = getAudioConstraints();
+    return await navigator.mediaDevices.getUserMedia(c);
+  } catch (err1) {
+    console.warn('[Miruo Audio] Primary audio constraints failed, trying fallback:', err1);
+    try { localStorage.removeItem('miruo_mic_device_id'); } catch (_) {}
+  }
+  try {
+    return await navigator.mediaDevices.getUserMedia({
+      audio: {
+        echoCancellation: true,
+        noiseSuppression: true,
+        autoGainControl: true
+      },
+      video: false
+    });
+  } catch (err2) {
+    console.warn('[Miruo Audio] Secondary audio constraints failed, trying basic audio: true:', err2);
+  }
+  return await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+}
+
 let micTestStream = null;
 let micTestAudioCtx = null;
 let micTestAnalyser = null;
@@ -6441,13 +6700,13 @@ async function toggleMic() {
   if (state.isMicOn) {
     try {
       if (!state.localStream && navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
-        state.localStream = await navigator.mediaDevices.getUserMedia(getAudioConstraints());
+        state.localStream = await getAudioStreamSafe();
       } else if (state.localStream) {
         const audioTracks = state.localStream.getAudioTracks();
         if (audioTracks.length > 0 && audioTracks.some(t => t.readyState === 'live')) {
           audioTracks.forEach(t => { t.enabled = true; });
         } else if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
-          const micStream = await navigator.mediaDevices.getUserMedia(getAudioConstraints());
+          const micStream = await getAudioStreamSafe();
           const newTrack = micStream.getAudioTracks()[0];
           if (newTrack) {
             audioTracks.forEach(t => { try { state.localStream.removeTrack(t); } catch (_) {} });
@@ -6602,9 +6861,12 @@ async function toggleCam() {
     if (state.pc) {
       try {
         const senders = state.pc.getSenders ? state.pc.getSenders() : [];
-        const videoSender = senders.find(s => s.track && s.track.kind === 'video');
-        if (videoSender) {
-          videoSender.replaceTrack(null);
+        const videoSender = senders.find(s => (s.track && s.track.kind === 'video') || (s.track === null && (!s.kind || s.kind === 'video')));
+        if (videoSender && typeof videoSender.replaceTrack === 'function') {
+          videoSender.replaceTrack(null).catch(() => {});
+        }
+        if (typeof renegotiateWebRTC === 'function') {
+          renegotiateWebRTC();
         }
       } catch (_) {}
     }
@@ -6694,16 +6956,28 @@ async function toggleCam() {
       if (state.pc) {
         try {
           const senders = state.pc.getSenders ? state.pc.getSenders() : [];
-          let videoSender = senders.find(s => s.track && s.track.kind === 'video');
-          if (videoSender) {
-            videoSender.replaceTrack(videoTrack);
+          let videoSender = senders.find(s => (s.track && s.track.kind === 'video') || (s.track === null && (!s.kind || s.kind === 'video')));
+          if (!videoSender && state.pc.getTransceivers) {
+            const transceivers = state.pc.getTransceivers();
+            const vt = transceivers.find(t => 
+              (t.sender && t.sender.track && t.sender.track.kind === 'video') ||
+              (t.receiver && t.receiver.track && t.receiver.track.kind === 'video') ||
+              (t.sender && !t.sender.track)
+            );
+            if (vt && vt.sender) {
+              videoSender = vt.sender;
+              if (vt.direction === 'recvonly') vt.direction = 'sendrecv';
+            }
+          }
+          if (videoSender && typeof videoSender.replaceTrack === 'function') {
+            await videoSender.replaceTrack(videoTrack);
           } else {
             videoSender = state.pc.addTrack(videoTrack, state.localStream);
-            if (typeof renegotiateWebRTC === 'function') {
-              renegotiateWebRTC();
-            } else {
-              initiateWebRTC(true);
-            }
+          }
+          if (typeof renegotiateWebRTC === 'function') {
+            await renegotiateWebRTC();
+          } else {
+            initiateWebRTC(true);
           }
           if (videoSender) optimizeVideoSender(videoSender);
         } catch (err) {
@@ -6995,42 +7269,11 @@ let botChatInterval = null;
 let activeRoomBots = [];
 
 function startBotsForActiveRoom() {
-  if (botChatInterval) clearInterval(botChatInterval);
-  
-  // Pick 4 to 7 random bots
-  const shuffled = [...SIMULATED_BOT_PROFILES].sort(() => 0.5 - Math.random());
-  const count = Math.floor(4 + Math.random() * 4);
-  activeRoomBots = shuffled.slice(0, count);
-
-  // Update badge count
-  const totalViewers = activeRoomBots.length + 1;
-  if (dom.roomMemberCountBadge) dom.roomMemberCountBadge.textContent = String(totalViewers);
-
-  // Bot join notifications in chat
-  setTimeout(() => {
-    activeRoomBots.slice(0, 2).forEach(bot => {
-      appendBotJoinMessage(bot.name, bot.color);
-    });
-  }, 800);
-
-  // Periodic bot chat messages (Every 5-8 seconds)
-  botChatInterval = setInterval(() => {
-    if (!dom.roomWorkspaceSection || dom.roomWorkspaceSection.classList.contains('hidden')) {
-      clearInterval(botChatInterval);
-      return;
-    }
-    const randomBot = activeRoomBots[Math.floor(Math.random() * activeRoomBots.length)];
-    const botMsgs = BOT_CHAT_MESSAGES_I18N[currentLang] || BOT_CHAT_MESSAGES_I18N.tr;
-    const randomMsg = botMsgs[Math.floor(Math.random() * botMsgs.length)];
-    appendBotChatMessage(randomBot, randomMsg);
-
-    // 40% chance to drop floating reaction
-    if (Math.random() > 0.55) {
-      const reactions = ['+1', 'harika', 'birlikteyiz'];
-      const em = reactions[Math.floor(Math.random() * reactions.length)];
-      spawnFloatingReaction(em, false);
-    }
-  }, 5500 + Math.random() * 3500);
+  if (botChatInterval) {
+    clearInterval(botChatInterval);
+    botChatInterval = null;
+  }
+  activeRoomBots = [];
 }
 
 function stopBotsForActiveRoom() {
@@ -7038,6 +7281,7 @@ function stopBotsForActiveRoom() {
     clearInterval(botChatInterval);
     botChatInterval = null;
   }
+  activeRoomBots = [];
 }
 
 function appendBotJoinMessage(botName, botColor) {
@@ -8490,6 +8734,8 @@ function sendRoomInvite(friend) {
   };
   // Davet KARŞI tarafa gerçek zamanlı gider (gönderenin kendi listesine yazılmaz). 30 dk geçerli.
   queueGlobalEvent('room_invite', cleanTarget, newInvite, 30 * 60000);
+  sendSignal({ type: 'room-invite', payload: newInvite });
+  sendP2PData('room_invite', newInvite);
   return newInvite;
 }
 window.sendRoomInvite = sendRoomInvite;
@@ -9083,6 +9329,53 @@ function handleIncomingAffinityDeclined(p) {
   renderAffinityTree();
 }
 
+function showRoomInviteModal(inv) {
+  if (!inv) return;
+  const modalId = 'miruoRoomInviteDialog';
+  let modal = document.getElementById(modalId);
+  if (!modal) {
+    modal = document.createElement('div');
+    modal.id = modalId;
+    modal.className = 'fixed inset-0 z-[99999] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4';
+    document.body.appendChild(modal);
+  }
+  const fromUser = cleanUserKey(inv.fromUsername || 'Arkadaşın');
+  const roomId = inv.roomId || 'ODA-77';
+
+  modal.innerHTML = `
+    <div class="bg-[#0F131F] border border-indigo-500/30 rounded-3xl p-6 max-w-sm w-full shadow-2xl text-center">
+      <div class="w-14 h-14 mx-auto rounded-2xl bg-gradient-to-tr from-indigo-500 to-purple-600 flex items-center justify-center text-white mb-4 shadow-lg">
+        <svg class="w-7 h-7" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 10l5 5-5 5"/><path d="M4 4v7a4 4 0 0 0 4 4h12"/></svg>
+      </div>
+      <h3 class="text-lg font-bold text-white mb-1">Oda Daveti</h3>
+      <p class="text-sm text-gray-300 mb-6"><span class="text-indigo-400 font-bold">@${fromUser}</span> seni odaya çağırıyor!<br><span class="text-xs text-gray-400 font-mono mt-1 inline-block">Oda Kodu: ${roomId}</span></p>
+      <div class="flex items-center gap-3">
+        <button id="declineRoomInviteBtn" type="button" class="flex-1 py-3 rounded-2xl bg-white/10 hover:bg-white/15 text-gray-300 font-bold text-xs transition-all cursor-pointer">Kapat</button>
+        <button id="acceptRoomInviteBtn" type="button" class="flex-1 py-3 rounded-2xl bg-gradient-to-r from-rose-500 to-indigo-600 hover:opacity-90 active:scale-95 text-white font-bold text-xs transition-all cursor-pointer shadow-lg">Odaya Katıl</button>
+      </div>
+    </div>
+  `;
+  modal.classList.remove('hidden');
+
+  const closeDialog = () => {
+    modal.classList.add('hidden');
+  };
+
+  const decBtn = modal.querySelector('#declineRoomInviteBtn');
+  if (decBtn) decBtn.onclick = () => {
+    closeDialog();
+    if (typeof rejectRoomInvite === 'function') rejectRoomInvite(inv.id);
+  };
+
+  const accBtn = modal.querySelector('#acceptRoomInviteBtn');
+  if (accBtn) accBtn.onclick = () => {
+    closeDialog();
+    if (typeof acceptRoomInvite === 'function') acceptRoomInvite(inv.id, roomId);
+    else if (typeof joinRoom === 'function') joinRoom(roomId);
+  };
+}
+window.showRoomInviteModal = showRoomInviteModal;
+
 // ---- Oda davetleri: gerçek zamanlı ----
 function handleIncomingRoomInvite(inv) {
   if (!inv || !inv.id) return;
@@ -9091,9 +9384,11 @@ function handleIncomingRoomInvite(inv) {
   if (Date.now() - (inv.createdAt || 0) > 30 * 60000) return; // bayat davet
   let list = [];
   try { list = JSON.parse(localStorage.getItem('miruo_room_invites') || '[]'); } catch (_) { list = []; }
-  if (list.some(i => i.id === inv.id)) return;
-  list.unshift(inv);
-  localStorage.setItem('miruo_room_invites', JSON.stringify(list));
+  if (!list.some(i => i.id === inv.id)) {
+    list.unshift(inv);
+    localStorage.setItem('miruo_room_invites', JSON.stringify(list));
+  }
+  showRoomInviteModal(inv);
   showToast(`@${cleanUserKey(inv.fromUsername)} seni odaya çağırdı!`);
   updateFriendRequestBadge();
   renderIncomingRequests();
@@ -9637,9 +9932,91 @@ function executeRemoveFriend(targetUser) {
   if (typeof closePublicProfileOptionsMenu === 'function') closePublicProfileOptionsMenu();
   if (typeof closePublicUserProfile === 'function') closePublicUserProfile();
 
+  // 5. Notify remote peer so connection is severed on both sides
+  sendP2PData('friend_removed', { fromUsername: state.username, toUsername: clean });
+  sendSignal({ type: 'friend-removed', fromUsername: state.username, toUsername: clean });
+  if (typeof queueGlobalEvent === 'function') {
+    queueGlobalEvent('friend_removed', clean, { fromUsername: state.username });
+  }
+
   showToast(`@${clean} arkadaş listenizden çıkarıldı.`);
 }
 window.executeRemoveFriend = executeRemoveFriend;
+
+function handleRemoteFriendRemoved(fromUser, toUser) {
+  if (!fromUser) return;
+  const cleanFrom = cleanUserKey(fromUser);
+  const cleanMyName = cleanUserKey(state.username);
+  if (toUser && cleanUserKey(toUser) !== cleanMyName && cleanUserKey(toUser) !== '*') return;
+
+  // 1. Remove from local friends list
+  if (Array.isArray(state.friends)) {
+    state.friends = state.friends.filter(f => {
+      const fU = cleanUserKey(f.username || f.cleanUsername || f.name);
+      return fU !== cleanFrom;
+    });
+    localStorage.setItem('miruo_friends', JSON.stringify(state.friends));
+  }
+
+  // 2. Remove from affinity tree
+  try {
+    const currentTree = getUserAffinityTree();
+    let slotChanged = false;
+    Object.entries(currentTree).forEach(([sKey, val]) => {
+      if (val) {
+        const vU = cleanUserKey(val.username || val.name);
+        if (vU === cleanFrom) {
+          delete currentTree[sKey];
+          slotChanged = true;
+        }
+      }
+    });
+    if (slotChanged) {
+      saveUserAffinityTree(currentTree);
+      if (typeof renderAffinityTree === 'function') {
+        renderAffinityTree('tabProfileAffinityContainer', 'tabProfileAffinityBranchesSvg', 'tabProfileAffinityNodesLayer', true);
+      }
+    }
+  } catch (_) {}
+
+  // 3. Re-render UI
+  if (typeof renderFriendsTab === 'function') {
+    const searchInput = document.getElementById('tabFriendSearchInput');
+    renderFriendsTab(searchInput ? searchInput.value : '');
+  }
+  if (typeof renderFriendsList === 'function') renderFriendsList();
+  if (typeof renderProfileTab === 'function') renderProfileTab();
+  showToast(`@${cleanFrom} ile arkadaşlık bağlantısı sonlandırıldı.`);
+}
+window.handleRemoteFriendRemoved = handleRemoteFriendRemoved;
+
+function handleRemoteAffinityUnbound(fromUser, toUser) {
+  if (!fromUser) return;
+  const cleanFrom = cleanUserKey(fromUser);
+  const cleanMyName = cleanUserKey(state.username);
+  if (toUser && cleanUserKey(toUser) !== cleanMyName && cleanUserKey(toUser) !== '*') return;
+
+  try {
+    const currentTree = getUserAffinityTree();
+    let slotChanged = false;
+    Object.entries(currentTree).forEach(([sKey, val]) => {
+      if (val) {
+        const vU = cleanUserKey(val.username || val.name);
+        if (vU === cleanFrom) {
+          delete currentTree[sKey];
+          slotChanged = true;
+        }
+      }
+    });
+    if (slotChanged) {
+      saveUserAffinityTree(currentTree);
+      if (typeof renderAffinityTree === 'function') {
+        renderAffinityTree('tabProfileAffinityContainer', 'tabProfileAffinityBranchesSvg', 'tabProfileAffinityNodesLayer', true);
+      }
+    }
+  } catch (_) {}
+}
+window.handleRemoteAffinityUnbound = handleRemoteAffinityUnbound;
 
 async function submitAddFriendModal() {
   const input = document.getElementById('addFriendModalInput');
@@ -15492,13 +15869,15 @@ function initEvents() {
 
     const isYt = providerKey === 'youtube';
     const isTwitch = providerKey === 'twitch';
+    const isKick = providerKey === 'kick';
 
     const canPlay = () => {
       let cur = '';
       try { cur = wv.getURL(); } catch (e) { return false; }
       if (!cur || !/^https?:/i.test(cur)) return false;
       if (isYt) return !!extractYtId(cur);
-      if (isTwitch) return !!extractTwitchChannel(cur);
+      if (isTwitch || cur.includes('twitch.tv')) return !!extractTwitchChannel(cur);
+      if (isKick || cur.includes('kick.com')) return !!extractKickChannel(cur);
       return true;
     };
 
@@ -15565,44 +15944,69 @@ function initEvents() {
 
     playBtn.addEventListener('click', () => {
       if (!canPlay()) {
-        showToast(isYt ? 'Önce izlemek istediğin videoyu aç' : (isTwitch ? 'Önce izlemek istediğin bir Twitch yayınına tıkla' : 'Önce bir sayfa aç'));
+        showToast(isYt ? 'Önce izlemek istediğin videoyu aç' : (isTwitch ? 'Önce izlemek istediğin bir Twitch yayınına tıkla' : (isKick ? 'Önce izlemek istediğin bir Kick yayınına tıkla' : 'Önce bir sayfa aç')));
         return;
       }
       let cur = '', t = '';
       try { cur = wv.getURL(); t = (wv.getTitle() || '').replace(/\s*-\s*YouTube$/i, ''); } catch (e) {}
       close();
-      if (isTwitch) {
+      if (isKick || cur.includes('kick.com')) {
+        const ch = extractKickChannel(cur);
+        loadKickStream(cur, t || `${ch} - Kick`);
+      } else if (isTwitch || cur.includes('twitch.tv')) {
         const ch = extractTwitchChannel(cur);
         loadTwitchStream(cur, t || `${ch} - Twitch`);
-      } else {
+      } else if (isYt || extractYtId(cur)) {
         selectAndPlayYoutubeVideo(cur, t || platformTitle, platformTitle);
+      } else {
+        loadWebStream(cur, t || platformTitle, platformTitle);
       }
     });
 
     queueBtn.addEventListener('click', () => {
       if (!canPlay()) {
-        showToast(isYt ? 'Önce sıraya eklemek istediğin videoyu aç' : (isTwitch ? 'Önce sıraya eklemek istediğin bir Twitch yayınına tıkla' : 'Önce bir sayfa aç'));
+        showToast(isYt ? 'Önce sıraya eklemek istediğin videoyu aç' : (isTwitch ? 'Önce sıraya eklemek istediğin bir Twitch yayınına tıkla' : (isKick ? 'Önce sıraya eklemek istediğin bir Kick yayınına tıkla' : 'Önce bir sayfa aç')));
         return;
       }
       let cur = '', t = '';
       try { cur = wv.getURL(); t = (wv.getTitle() || '').replace(/\s*-\s*YouTube$/i, ''); } catch (e) {}
       const cleanId = extractYtId(cur);
-      const cleanTwitch = isTwitch ? extractTwitchChannel(cur) : '';
+      const cleanTwitch = (isTwitch || cur.includes('twitch.tv')) ? extractTwitchChannel(cur) : '';
+      const cleanKick = (isKick || cur.includes('kick.com')) ? extractKickChannel(cur) : '';
 
       if (!state.roomId || !dom.roomWorkspaceSection || dom.roomWorkspaceSection.classList.contains('hidden')) {
         close();
-        if (isTwitch) loadTwitchStream(cur, t || `${cleanTwitch} - Twitch`);
+        if (cleanKick) loadKickStream(cur, t || `${cleanKick} - Kick`);
+        else if (cleanTwitch) loadTwitchStream(cur, t || `${cleanTwitch} - Twitch`);
         else selectAndPlayYoutubeVideo(cur, t || platformTitle, platformTitle);
         return;
       }
 
-      addToRoomQueue({
-        id: isTwitch ? `twitch:${cleanTwitch}` : (cleanId || cur),
-        title: t || (isTwitch ? `${cleanTwitch} - Twitch Yayını` : platformTitle),
-        thumb: cleanId ? `https://i.ytimg.com/vi/${cleanId}/hqdefault.jpg` : '',
-        channel: isTwitch ? cleanTwitch : (isYt ? 'YouTube' : platformTitle),
-        addedBy: state.username
-      });
+      if (cleanKick) {
+        addToRoomQueue({
+          id: `kick:${cleanKick}`,
+          title: t || `${cleanKick} - Kick Yayını`,
+          thumb: 'https://kick.com/favicon.ico',
+          channel: cleanKick,
+          addedBy: state.username
+        });
+      } else if (cleanTwitch) {
+        addToRoomQueue({
+          id: `twitch:${cleanTwitch}`,
+          title: t || `${cleanTwitch} - Twitch Yayını`,
+          thumb: 'https://static-cdn.jtvnw.net/jtv_user_pictures/' + cleanTwitch + '-profile_image-300x300.png',
+          channel: cleanTwitch,
+          addedBy: state.username
+        });
+      } else {
+        addToRoomQueue({
+          id: cleanId || cur,
+          title: t || platformTitle,
+          thumb: cleanId ? `https://i.ytimg.com/vi/${cleanId}/hqdefault.jpg` : '',
+          channel: isYt ? 'YouTube' : platformTitle,
+          addedBy: state.username
+        });
+      }
       showToast(`✓ "${t || platformTitle}" sıraya eklendi! Odanızdaki video kesintisiz devam ediyor.`);
       close();
     });
@@ -15698,7 +16102,15 @@ function initEvents() {
       }
     }
 
-    if (providerKey === 'drive' || providerKey === 'photos' || providerKey === 'web' || providerKey === 'kick' || providerKey === 'twitch') {
+    if (providerKey === 'kick') {
+      setTimeout(() => {
+        loadKickStream(targetUrl || 'elraenn', 'Kick Yayını');
+      }, 500);
+    } else if (providerKey === 'twitch') {
+      setTimeout(() => {
+        loadTwitchStream(targetUrl || 'elraenn', 'Twitch Yayını');
+      }, 500);
+    } else if (providerKey === 'drive' || providerKey === 'photos' || providerKey === 'web') {
       setTimeout(() => {
         loadWebStream(targetUrl, config.title, config.title);
       }, 500);
@@ -15999,7 +16411,9 @@ function initEvents() {
     try {
       const v = String(videoId);
       const isUrl = /^(https?:)?\/\//i.test(v) || v.includes('/') || v.includes('.');
-      if (v.startsWith('twitch:') || /twitch\.tv/i.test(v)) {
+      if (v.startsWith('kick:') || /kick\.com/i.test(v)) {
+        if (typeof loadKickStream === 'function') loadKickStream(v.replace(/^kick:/, ''), title);
+      } else if (v.startsWith('twitch:') || /twitch\.tv/i.test(v)) {
         if (typeof loadTwitchStream === 'function') loadTwitchStream(v.replace(/^twitch:/, ''), title);
       } else if (!isUrl) {
         loadYoutubeVideo(v);
@@ -16187,16 +16601,18 @@ function initEvents() {
           videoIdOrUrl.includes('manifest') ||
           videoIdOrUrl.includes('googlevideo.com')
         );
-        if (platformName.toLowerCase().includes('twitch') || videoIdOrUrl.includes('twitch.tv') || videoIdOrUrl.startsWith('twitch:')) {
+        if (platformName.toLowerCase().includes('kick') || videoIdOrUrl.includes('kick.com') || videoIdOrUrl.startsWith('kick:')) {
+          loadKickStream(videoIdOrUrl, title);
+        } else if (platformName.toLowerCase().includes('twitch') || videoIdOrUrl.includes('twitch.tv') || videoIdOrUrl.startsWith('twitch:')) {
           const ch = videoIdOrUrl.replace(/^twitch:/, '');
           loadTwitchStream(ch, title);
         } else if (isDirectStream) {
           loadDirectVideo(videoIdOrUrl, title);
+          sendP2PData('video_changed', { user: state.username, title: title || platformName, videoId: videoIdOrUrl });
+          sendSignal({ type: 'video-changed', user: state.username, title: title || platformName, videoId: videoIdOrUrl });
         } else {
           loadWebStream(videoIdOrUrl, title, platformName);
         }
-        sendP2PData('video_changed', { user: state.username, title: title || platformName, videoId: videoIdOrUrl });
-        sendSignal({ type: 'video-changed', user: state.username, title: title || platformName, videoId: videoIdOrUrl });
       };
 
       if (state.roomId && dom.roomWorkspaceSection && !dom.roomWorkspaceSection.classList.contains('hidden')) {
@@ -16224,7 +16640,14 @@ function initEvents() {
       if (typeof updateNowPlayingAccountBadge === 'function') updateNowPlayingAccountBadge(connectedAccount);
     }
     if (videoIdOrUrl) {
-      selectAndPlayYoutubeVideo(videoIdOrUrl, title || 'Video İçeriği', provider || 'YouTube');
+      let prov = provider;
+      if (!prov) {
+        if (videoIdOrUrl.includes('kick.com') || videoIdOrUrl.startsWith('kick:')) prov = 'Kick';
+        else if (videoIdOrUrl.includes('twitch.tv') || videoIdOrUrl.startsWith('twitch:')) prov = 'Twitch';
+        else if (extractYtId(videoIdOrUrl)) prov = 'YouTube';
+        else prov = 'Web';
+      }
+      selectAndPlayYoutubeVideo(videoIdOrUrl, title || 'Video İçeriği', prov);
     }
   };
 
@@ -17535,6 +17958,9 @@ function validateInstagramUsername(username) {
             const data = await res.json().catch(() => ({}));
             if (data.success !== false) success = true;
             else errorMsg = data.message || '';
+          } else {
+            const errData = await res.json().catch(() => ({}));
+            errorMsg = errData.message || '';
           }
         } catch (_) {}
 
@@ -17545,35 +17971,90 @@ function validateInstagramUsername(username) {
           } catch (_) {}
         }
 
-        // Always treat social account deletion as successful locally if backend acknowledged or was reached
+        // If backend was unreachable or in offline/client-only mode, verify credentials locally
+        if (!success && !errorMsg) {
+          const regList = JSON.parse(localStorage.getItem('miruo_registered_users') || '[]');
+          const localMatch = regList.find(u => u.id === currentUser.id || (currentUser.email && (u.email || '').toLowerCase() === (currentUser.email || '').toLowerCase()));
+          if (localMatch) {
+            if (!localMatch.password || localMatch.password === password) {
+              success = true;
+            } else {
+              errorMsg = 'Girdiğiniz şifre hatalı. Hesap silinemedi.';
+            }
+          } else if (isSocial || !currentUser.password || currentUser.password === password) {
+            success = true;
+          }
+        }
+
+        // Complete and permanent purging of the account and all associated data
         if (success || isSocial) {
           const appleSub = currentUser.appleUserId || '';
           const userEmail = (currentUser.email || '').toLowerCase();
           const userId = currentUser.id || '';
 
-          // Completely purge all account data from localStorage
-          localStorage.removeItem('miruo_user');
-          localStorage.removeItem('miruo_custom_username');
-          localStorage.removeItem('miruo_custom_fullname');
-          localStorage.removeItem('miruo_custom_avatar');
-          if (appleSub) {
-            localStorage.removeItem(`miruo_saved_profile_${appleSub}`);
-            localStorage.removeItem(`miruo_apple_name_${appleSub}`);
-            localStorage.removeItem(`miruo_apple_username_${appleSub}`);
-            localStorage.removeItem(`miruo_apple_avatar_${appleSub}`);
-            localStorage.removeItem(`miruo_apple_email_${appleSub}`);
-            localStorage.removeItem(`miruo_custom_fullname_${appleSub}`);
-            localStorage.removeItem(`miruo_custom_username_${appleSub}`);
+          // Gracefully leave room if currently participating
+          if (state.isInRoom || state.roomId) {
+            try { leaveRoom(); } catch (_) {}
           }
-          if (userEmail) {
-            localStorage.removeItem(`miruo_saved_profile_${userEmail}`);
-          }
-          if (userId) {
-            localStorage.removeItem(`miruo_saved_profile_${userId}`);
-          }
+
+          // 1. Purge core user and profile records
+          const userKeysToPurge = [
+            'miruo_user',
+            'miruo_custom_username',
+            'miruo_custom_fullname',
+            'miruo_custom_avatar',
+            'miruo_custom_email',
+            'miruo_avatar',
+            'miruo_avatar_bg',
+            'miruo_friends',
+            'miruo_user_affinity',
+            'miruo_mutual_affinities',
+            'miruo_affinity_requests',
+            'miruo_incoming_friend_requests',
+            'miruo_outgoing_friend_requests',
+            'miruo_outgoing_affinity_requests',
+            'miruo_platform_accounts',
+            'miruo_liked_videos',
+            'miruo_notifications',
+            'miruo_room_invites',
+            'miruo_shared_watch_time',
+            'miruo_my_public_rooms',
+            'miruo_blocked_users',
+            'miruo_outbox_v1',
+            'miruo_auth_token',
+            'miruo_remember_token',
+            'miruo_cached_profile',
+            'miruo_chat_history',
+            'miruo_room_history',
+            'miruo_last_room'
+          ];
+          userKeysToPurge.forEach(k => {
+            try { localStorage.removeItem(k); } catch (_) {}
+          });
+
+          // 2. Scan and remove any saved profile, apple auth, or id-specific keys
+          try {
+            const keysToRemove = [];
+            for (let i = 0; i < localStorage.length; i++) {
+              const k = localStorage.key(i);
+              if (k && (
+                k.startsWith('miruo_apple_') ||
+                k.startsWith('miruo_saved_profile_') ||
+                k.startsWith('miruo_custom_') ||
+                (userId && k.includes(userId)) ||
+                (appleSub && k.includes(appleSub)) ||
+                (userEmail && k.includes(userEmail))
+              )) {
+                keysToRemove.push(k);
+              }
+            }
+            keysToRemove.forEach(k => localStorage.removeItem(k));
+          } catch (_) {}
+
+          // 3. Remove user entry from registered users list and profiles-by-email
           try {
             const regList = JSON.parse(localStorage.getItem('miruo_registered_users') || '[]');
-            const filtered = regList.filter(u => u.id !== userId && (!userEmail || u.email !== userEmail) && (!appleSub || u.appleUserId !== appleSub));
+            const filtered = regList.filter(u => u.id !== userId && (!userEmail || (u.email || '').toLowerCase() !== userEmail) && (!appleSub || u.appleUserId !== appleSub));
             localStorage.setItem('miruo_registered_users', JSON.stringify(filtered));
           } catch (_) {}
           try {
@@ -17584,10 +18065,28 @@ function validateInstagramUsername(username) {
             }
           } catch (_) {}
 
+          // 4. Wipe Desktop Electron profile
+          if (window.miruoDesktop && typeof window.miruoDesktop.saveProfile === 'function') {
+            try { window.miruoDesktop.saveProfile({}); } catch (_) {}
+          }
+
+          // 5. Clear iOS platform sessions & cookies
+          if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.clearPlatformSession) {
+            ['youtube', 'netflix', 'prime', 'disney', 'twitch', 'kick'].forEach(p => {
+              try { window.webkit.messageHandlers.clearPlatformSession.postMessage({ provider: p }); } catch (_) {}
+            });
+          }
+
+          // 6. Reset runtime state & session storage
           sessionStorage.clear();
+          state.user = null;
+          state.username = '';
+          state.roomId = null;
+          state.isInRoom = false;
+
           deleteModal.classList.add('hidden');
           deleteModal.classList.remove('flex');
-          showToast('Hesabınız kalıcı olarak silindi.');
+          showToast('Hesabınız ve tüm verileriniz kalıcı olarak silindi.');
           setTimeout(() => {
             location.href = '/';
           }, 1000);
@@ -18674,7 +19173,22 @@ function validateInstagramUsername(username) {
   if (dom.webFallbackOpenNewTabBtn) {
     dom.webFallbackOpenNewTabBtn.addEventListener('click', () => {
       if (state.lastFallbackUrl) {
-        window.open(state.lastFallbackUrl, '_blank');
+        const isDesktopApp = !!(window.miruoDesktop && window.miruoDesktop.isDesktop);
+        if (isDesktopApp && typeof openDesktopPlatformBrowser === 'function') {
+          const prov = state.lastFallbackUrl.includes('netflix') ? 'netflix' : (state.lastFallbackUrl.includes('prime') ? 'prime' : (state.lastFallbackUrl.includes('disney') ? 'disney' : 'web'));
+          const title = (dom.webPlayerFallbackTitle && dom.webPlayerFallbackTitle.textContent) || 'Platform';
+          openDesktopPlatformBrowser(prov, state.lastFallbackUrl, title);
+        } else if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.openPlatform) {
+          const prov = state.lastFallbackUrl.includes('netflix') ? 'netflix' : (state.lastFallbackUrl.includes('prime') ? 'prime' : (state.lastFallbackUrl.includes('disney') ? 'disney' : 'web'));
+          window.webkit.messageHandlers.openPlatform.postMessage({
+            provider: prov,
+            url: state.lastFallbackUrl,
+            title: (dom.webPlayerFallbackTitle && dom.webPlayerFallbackTitle.textContent) || 'Platform',
+            lang: currentLang
+          });
+        } else {
+          window.open(state.lastFallbackUrl, '_blank');
+        }
       }
     });
   }
@@ -21023,6 +21537,13 @@ function initAffinityEvents() {
         saveUserAffinityTree(currentTree);
         closeAffinitySlotDetail();
         renderAffinityTree();
+
+        sendP2PData('affinity_unbound', { fromUsername: state.username, toUsername: cleanUser });
+        sendSignal({ type: 'affinity-unbound', fromUsername: state.username, toUsername: cleanUser });
+        if (typeof queueGlobalEvent === 'function') {
+          queueGlobalEvent('affinity_unbound', cleanUser, { fromUsername: state.username });
+        }
+
         showToast(isPending ? `${friendName} ile olan ilişki isteği iptal edildi.` : `${friendName} ile olan bağlantı kaldırıldı.`);
       }
     });
