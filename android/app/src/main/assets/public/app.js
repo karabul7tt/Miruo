@@ -18,10 +18,15 @@ if (MIRUO_API_BASE) {
   };
 }
 // Mac/Windows uygulaması ya da file:// üzerinde sunucu adresi yoksa "tek cihaz" modu.
-const MIRUO_STANDALONE = !MIRUO_API_BASE && (
-  window.location.protocol === 'file:' || !window.location.host ||
-  !!(window.miruoDesktop && window.miruoDesktop.isDesktop)
-);
+const isNativeApp = !!(window.miruoDesktop && window.miruoDesktop.isDesktop) ||
+                    !!(window.webkit && window.webkit.messageHandlers) ||
+                    !!(window.Capacitor) ||
+                    window.location.protocol === 'file:' ||
+                    !window.location.host ||
+                    window.location.hostname === '127.0.0.1' ||
+                    window.location.hostname === 'localhost';
+
+const MIRUO_STANDALONE = !MIRUO_API_BASE && isNativeApp;
 
 // Supabase Auth Integration
 const DEFAULT_SUPABASE_URL = 'https://qvmdzfhjfdoqjmqipvux.supabase.co';
@@ -1925,6 +1930,7 @@ function getMiruoRoomUrl(roomId) {
 // Global State
 const state = {
   roomId: '',
+  clientId: 'cl_' + Math.random().toString(36).substring(2, 9) + '_' + Date.now().toString(36),
   userId: 'user_' + Math.random().toString(36).substring(2, 8),
   username: 'Kullanıcı',
   peerId: null,
@@ -2793,7 +2799,7 @@ function connectSupabaseRoomSignaling() {
 
   try {
     const chName = `miruo_room_${cleanRoom}`;
-    const myPresenceKey = (state && state.userId) ? String(state.userId) : ('user_' + Math.random().toString(36).substring(2, 9));
+    const myPresenceKey = state.clientId || (state.clientId = 'cl_' + Math.random().toString(36).substring(2, 9) + '_' + Date.now().toString(36));
     roomSupabaseChannel = supabaseClient.channel(chName, {
       config: {
         presence: { key: myPresenceKey },
@@ -2804,14 +2810,14 @@ function connectSupabaseRoomSignaling() {
     const syncParticipantsFromPresence = (pState) => {
       if (!pState) return;
       const currentKeys = Object.keys(pState);
-      const peerKeys = currentKeys.filter(k => k !== String(state.userId));
+      const peerKeys = currentKeys.filter(k => k !== state.clientId);
       
       // Update peer status for WebRTC with multi-peer mesh connections
       if (peerKeys.length > 0) {
         if (!state.peers) state.peers = {};
         peerKeys.forEach(pk => {
           if (!state.peers[pk]) {
-            const isInitiator = String(state.userId) < String(pk);
+            const isInitiator = String(state.clientId) < String(pk);
             if (typeof getOrCreatePeerConnection === 'function') {
               getOrCreatePeerConnection(pk, isInitiator);
             }
@@ -2831,6 +2837,8 @@ function connectSupabaseRoomSignaling() {
           const existing = state.participants[pk] || {};
           state.participants[pk] = {
             ...existing,
+            peerId: pk,
+            clientId: info.clientId || pk,
             userId: info.userId || pk,
             username: info.username || existing.username || 'Misafir',
             avatar: info.avatar || existing.avatar || '',
@@ -2853,7 +2861,7 @@ function connectSupabaseRoomSignaling() {
 
       // Remove vanished peers from state.participants & state.peers
       Object.keys(state.participants).forEach(pid => {
-        if (!pid.startsWith('bot_') && pid !== String(state.userId) && !pState[pid]) {
+        if (!pid.startsWith('bot_') && pid !== state.clientId && !pState[pid]) {
           delete state.participants[pid];
           if (typeof closePeerConnection === 'function') closePeerConnection(pid);
         }
@@ -2866,7 +2874,7 @@ function connectSupabaseRoomSignaling() {
 
     roomSupabaseChannel
       .on('broadcast', { event: 'signal' }, ({ payload }) => {
-        if (!payload || payload.userId === state.userId) return;
+        if (!payload || payload.clientId === state.clientId) return;
         handleSignalMessage(payload);
       })
       .on('presence', { event: 'sync' }, () => {
@@ -2876,13 +2884,23 @@ function connectSupabaseRoomSignaling() {
       .on('presence', { event: 'join' }, ({ key, newPresences }) => {
         const pState = roomSupabaseChannel.presenceState();
         syncParticipantsFromPresence(pState);
-        if (key && key !== String(state.userId)) {
+        if (key && key !== state.clientId) {
           showToast('Katılımcı odaya katıldı');
           if (state.isHost) {
             sendSignal({
               type: 'room-roster',
               roster: state.participants
             });
+            if (state.currentVideoId) {
+              sendP2PData('sync', {
+                action: 'full_sync',
+                videoId: state.currentVideoId,
+                time: (typeof getLivePlayerTime === 'function' ? getLivePlayerTime() : state.currentTime),
+                isPlaying: state.isPlaying,
+                rate: state.playbackRate || 1.0,
+                sentAt: Date.now()
+              });
+            }
           }
         }
       })
@@ -2890,7 +2908,7 @@ function connectSupabaseRoomSignaling() {
         const pState = roomSupabaseChannel.presenceState();
         syncParticipantsFromPresence(pState);
         if (key && key === state.peerId) {
-          const remaining = Object.keys(pState).filter(k => k !== String(state.userId));
+          const remaining = Object.keys(pState).filter(k => k !== state.clientId);
           state.peerId = remaining.length > 0 ? remaining[0] : null;
           updatePeerStatus(!!state.peerId);
         }
@@ -2900,6 +2918,7 @@ function connectSupabaseRoomSignaling() {
         if (status === 'SUBSCRIBED') {
           const savedUserObj = JSON.parse(localStorage.getItem('miruo_user') || '{}');
           const myData = {
+            clientId: state.clientId,
             userId: state.userId,
             username: state.username,
             avatar: state.avatarUrl || savedUserObj.avatarUrl || '',
@@ -2911,7 +2930,10 @@ function connectSupabaseRoomSignaling() {
           };
           roomSupabaseChannel.track(myData).catch(() => {});
           if (!state.isHost) {
-            sendSignal({ type: 'peer-joined', userId: state.userId, username: state.username });
+            sendSignal({ type: 'peer-joined', clientId: state.clientId, userId: state.userId, username: state.username });
+            setTimeout(() => {
+              sendP2PData('sync', { action: 'request_sync', sentAt: Date.now() });
+            }, 300);
           }
         }
       });
@@ -2929,7 +2951,7 @@ function connectSignaling() {
   // Connect to Supabase Room Channel for instant cross-device broadcast & signaling
   connectSupabaseRoomSignaling();
 
-  if (MIRUO_STANDALONE || window.location.protocol === 'file:' || !window.location.host) {
+  if (MIRUO_STANDALONE || isNativeApp || window.location.protocol === 'file:' || !window.location.host || window.location.hostname === '127.0.0.1' || window.location.hostname === 'localhost') {
     console.log('[Miruo] Running with Supabase Realtime signaling');
     return;
   }
@@ -2988,14 +3010,16 @@ function sendSignal(msg) {
   const payload = {
     ...msg,
     roomId: cleanRoom || 'GLOBAL',
+    clientId: state.clientId,
     userId: state.userId,
+    username: state.username,
     sentAt: msg.sentAt || Date.now()
   };
 
   // 1. Local WebSocket if connected
-  if (ws && ws.readyState === WebSocket.OPEN) {
+  if (!MIRUO_STANDALONE && !isNativeApp && ws && ws.readyState === WebSocket.OPEN) {
     try { ws.send(JSON.stringify(payload)); } catch (_) {}
-  } else if (window.location.host && window.location.protocol !== 'file:' && MIRUO_API_BASE) {
+  } else if (!MIRUO_STANDALONE && !isNativeApp && window.location.host && window.location.protocol !== 'file:' && MIRUO_API_BASE) {
     fetch('/api/signal', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -3027,7 +3051,7 @@ function sendSignal(msg) {
 }
 
 function connectFallbackSSE() {
-  if (window._sseConnected) return;
+  if (MIRUO_STANDALONE || isNativeApp || window._sseConnected) return;
   window._sseConnected = true;
   const evtSource = new EventSource(`${MIRUO_API_BASE}/api/events?room=${encodeURIComponent(state.roomId)}&userId=${state.userId}`);
   evtSource.onmessage = (e) => {
@@ -3040,9 +3064,10 @@ function connectFallbackSSE() {
 
 function handleSignalMessage(msg) {
   if (!msg || !msg.type) return;
-  if (msg.userId && msg.userId === state.userId) return;
-  // If targeted to a specific peer, ignore if not intended for this user
-  if (msg.targetUserId && String(msg.targetUserId) !== String(state.userId)) return;
+  if (msg.clientId && msg.clientId === state.clientId) return;
+  // If targeted to a specific peer or client, ignore if not intended for this client
+  if (msg.targetClientId && String(msg.targetClientId) !== String(state.clientId)) return;
+  if (msg.targetUserId && String(msg.targetUserId) !== String(state.userId) && String(msg.targetUserId) !== String(state.clientId)) return;
 
   // Deduplicate signals received across Dual-Rail (Room Channel + Global Channel)
   const candStr = msg.candidate ? (typeof msg.candidate === 'string' ? msg.candidate : (msg.candidate.candidate || JSON.stringify(msg.candidate))) : '';
@@ -3443,6 +3468,14 @@ function attachRemoteStreamToPartnerVideo() {
     sourceStream = state.participants[targetPeerId].stream;
     remoteTrack = sourceStream.getVideoTracks().find(t => t.readyState === 'live') || sourceStream.getVideoTracks()[0];
   }
+  if (!remoteTrack && targetPeerId && state.peers && state.peers[targetPeerId] && state.peers[targetPeerId].pc && state.peers[targetPeerId].pc.getReceivers) {
+    const receivers = state.peers[targetPeerId].pc.getReceivers();
+    const vr = receivers.find(r => r.track && r.track.kind === 'video' && r.track.readyState === 'live');
+    if (vr && vr.track) {
+      remoteTrack = vr.track;
+      sourceStream = new MediaStream([remoteTrack]);
+    }
+  }
   if (!remoteTrack && state.pc && state.pc.getReceivers) {
     const receivers = state.pc.getReceivers();
     const vr = receivers.find(r => r.track && r.track.kind === 'video');
@@ -3513,7 +3546,8 @@ function renderStagePipCards() {
   state.dismissedPips = state.dismissedPips || {};
 
   const activeCamMembers = Object.values(state.participants || {}).filter(p => 
-    p.userId !== state.userId && p.isCamOn === true
+    (p.clientId ? p.clientId !== state.clientId : p.userId !== state.userId) && 
+    (p.isCamOn === true || (p.stream && p.stream.getVideoTracks().some(t => t.readyState === 'live' && !t.muted)))
   );
 
   if (activeCamMembers.length === 0) {
@@ -3803,14 +3837,35 @@ function getOrCreatePeerConnection(peerId, isInitiator) {
         dom.emptyStatePlaceholder.classList.add('hidden');
       }
     } else if (hasVideo) {
-      if (!state.peerId || state.peerId === peerId) {
-        state.peerId = peerId;
-        state.remoteStream = peerEntry.stream;
+      const activateCam = () => {
+        if (state.participants[peerId]) {
+          state.participants[peerId].isCamOn = true;
+          state.participants[peerId].stream = peerEntry.stream;
+          state.dismissedPips = state.dismissedPips || {};
+          state.dismissedPips[peerId] = false;
+        }
+        if (!state.peerId || state.peerId === peerId) {
+          state.peerId = peerId;
+          state.remoteStream = peerEntry.stream;
+        }
+        if (typeof renderStagePipCards === 'function') renderStagePipCards();
+        if (typeof renderVideoGrid === 'function') renderVideoGrid();
+        if (typeof clampPipCardsToStage === 'function') clampPipCardsToStage();
+        updateBlockedMediaState();
+      };
+
+      if (!track.muted && track.readyState === 'live') {
+        activateCam();
       }
-      if (typeof renderStagePipCards === 'function') renderStagePipCards();
-      if (typeof renderVideoGrid === 'function') renderVideoGrid();
-      if (typeof clampPipCardsToStage === 'function') clampPipCardsToStage();
-      updateBlockedMediaState();
+      track.onunmute = activateCam;
+      track.onmute = () => {
+        const anyLive = peerEntry.stream.getVideoTracks().some(t => t.readyState === 'live' && !t.muted);
+        if (state.participants[peerId]) {
+          state.participants[peerId].isCamOn = anyLive;
+        }
+        if (typeof renderStagePipCards === 'function') renderStagePipCards();
+        if (typeof renderVideoGrid === 'function') renderVideoGrid();
+      };
     }
 
     if (track.kind === 'audio' || peerEntry.stream.getAudioTracks().length > 0) {
@@ -4874,12 +4929,12 @@ function handleRemoteSync(payload) {
       }
       state.currentTime = targetTime;
     }
-    if (typeof payload.isPlaying === 'boolean' && payload.isPlaying !== state.isPlaying) {
+    if (typeof payload.isPlaying === 'boolean') {
       state.isPlaying = payload.isPlaying;
       if (state.activeMode === 'youtube') {
         sendYtCommand(payload.isPlaying ? 'playVideo' : 'pauseVideo');
       } else if (dom.nativeVideoPlayer) {
-        if (payload.isPlaying) dom.nativeVideoPlayer.play();
+        if (payload.isPlaying) dom.nativeVideoPlayer.play().catch(() => {});
         else dom.nativeVideoPlayer.pause();
       }
       updatePlayPauseUI(payload.isPlaying);
@@ -7958,7 +8013,8 @@ function renderVideoGrid() {
   // 2. Remote / Partner / Simulated Tiles (Up to 8+ participants)
   const otherMembers = [];
   Object.values(state.participants).forEach(p => {
-    if (p.userId !== state.userId) otherMembers.push(p);
+    const isSelf = p.clientId ? (p.clientId === state.clientId) : (p.userId === state.userId);
+    if (!isSelf) otherMembers.push(p);
   });
   if (state.peerId && state.peerId !== state.userId && !otherMembers.some(m => m.userId === state.peerId || (state.hostName && m.username === state.hostName))) {
     otherMembers.push({
@@ -7988,10 +8044,12 @@ function renderVideoGrid() {
     tile.className = 'relative w-20 h-20 sm:w-22 sm:h-22 rounded-xl overflow-hidden bg-black/70 border border-white/10 hover:border-indigo-400/80 shadow-md shrink-0 flex flex-col items-center justify-center cursor-pointer transition-all active:scale-95';
     tile.title = `${m.username} kamerasını ana ekrana getir`;
 
-    const peerStream = (state.peers && state.peers[m.userId] && state.peers[m.userId].stream) || m.stream || (m.userId === state.peerId ? state.remoteStream : null);
-    const hasLiveVideo = peerStream && peerStream.getVideoTracks && peerStream.getVideoTracks().some(t => t.readyState === 'live');
+    const peerStream = (m.clientId && state.peers && state.peers[m.clientId] && state.peers[m.clientId].stream) ||
+                       (state.peers && state.peers[m.userId] && state.peers[m.userId].stream) || 
+                       m.stream || (m.userId === state.peerId ? state.remoteStream : null);
+    const hasLiveVideo = peerStream && peerStream.getVideoTracks && peerStream.getVideoTracks().some(t => t.readyState === 'live' && !t.muted);
 
-    if (m.isCamOn && (peerStream || hasLiveVideo)) {
+    if ((m.isCamOn || hasLiveVideo) && peerStream) {
       const v = document.createElement('video');
       v.className = 'w-full h-full object-cover mirror pointer-events-none';
       v.autoplay = true;
@@ -8474,6 +8532,7 @@ function joinRoomByCode(rawCode) {
       state.userRole = 'member';
       state.hasDjPermission = false;
       state.roomId = d.room.id;
+      state.isInRoom = true;
       state.hostName = d.room.host;
       state.connectedAccount = d.room.connectedAccount || '';
       if (dom.activeRoomTitle) dom.activeRoomTitle.textContent = state.roomId;
@@ -9956,7 +10015,7 @@ function initGlobalUsersChannel() {
         handleOutboxAck(payload);
       })
       .on('broadcast', { event: 'room_signal' }, ({ payload }) => {
-        if (!payload || payload.userId === state.userId) return;
+        if (!payload || (payload.clientId ? payload.clientId === state.clientId : payload.userId === state.userId)) return;
         if (!state.isInRoom || !state.roomId) return;
         const myRoom = (state.roomId || '').trim().toUpperCase().replace(/[^A-Z0-9_-]/g, '_');
         const targetRoom = (payload.roomId || '').trim().toUpperCase().replace(/[^A-Z0-9_-]/g, '_');
@@ -13273,6 +13332,7 @@ function renderParticipantsList() {
   const selfAvatarBg = state.avatarBg || savedUserObj.avatarBg || 'from-rose-500 to-indigo-600';
 
   const selfMember = {
+    clientId: state.clientId,
     userId: state.userId,
     username: state.username || 'Sen',
     avatar: selfAvatar,
@@ -13288,7 +13348,8 @@ function renderParticipantsList() {
 
   // Add active partner or remote participants
   Object.values(state.participants).forEach(p => {
-    if (p.userId !== state.userId) {
+    const isSelf = p.clientId ? (p.clientId === state.clientId) : (p.userId === state.userId);
+    if (!isSelf) {
       if (!p.role) p.role = p.isHost ? 'owner' : 'member';
       allMembers.push(p);
     }
