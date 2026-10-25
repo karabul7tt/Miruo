@@ -1001,7 +1001,7 @@ const I18N = {
     public_room_label: 'Herkese Açık',
     public_room_desc: 'Miruo Keşfet akışında listelenir.',
     platform_select_label: 'İzleme / Dinleme Platformu',
-    screen_share_label: 'Ekran',
+    screen_share_label: 'Ekran Paylaş',
     submit_create_room_btn: 'Odayı Başlat & Katıl',
     yt_modal_title: 'YouTube',
     yt_modal_sub: 'Video seçin ve odadakilerle birlikte izleyin.',
@@ -3340,6 +3340,16 @@ function handleSignalMessage(msg) {
       if (msg.sender) showToast(`${msg.sender} bir fotoğraf paylaştı!`);
       break;
 
+    case 'screenshare-start':
+    case 'screenshare_start':
+      if (typeof handleRemoteScreenShareStarted === 'function') handleRemoteScreenShareStarted(msg.user);
+      break;
+
+    case 'screenshare-stop':
+    case 'screenshare_stop':
+      if (typeof handleRemoteScreenShareStopped === 'function') handleRemoteScreenShareStopped();
+      break;
+
     case 'photo-close':
       closePhotoStage(false);
       break;
@@ -3503,7 +3513,7 @@ function renderStagePipCards() {
   state.dismissedPips = state.dismissedPips || {};
 
   const activeCamMembers = Object.values(state.participants || {}).filter(p => 
-    p.userId !== state.userId && (!!p.isCamOn || (p.stream && p.stream.getVideoTracks().some(t => t.readyState === 'live')))
+    p.userId !== state.userId && p.isCamOn === true
   );
 
   if (activeCamMembers.length === 0) {
@@ -3774,11 +3784,6 @@ function getOrCreatePeerConnection(peerId, isInitiator) {
     }
     if (state.participants[peerId]) {
       state.participants[peerId].stream = peerEntry.stream;
-      if (track.kind === 'video') {
-        state.participants[peerId].isCamOn = true;
-        state.dismissedPips = state.dismissedPips || {};
-        state.dismissedPips[peerId] = false;
-      }
       if (track.kind === 'audio') {
         state.participants[peerId].isMicOn = true;
       }
@@ -4194,6 +4199,12 @@ function setupDataChannelEvents(channel) {
       if (data.type === 'privacy_change') {
         if (typeof handleRemotePrivacyChange === 'function') handleRemotePrivacyChange(data.isPrivate !== undefined ? data.isPrivate : payload.isPrivate);
       }
+      if (data.type === 'screenshare_start' || data.type === 'screenshare-start') {
+        if (typeof handleRemoteScreenShareStarted === 'function') handleRemoteScreenShareStarted(data.user || payload.user);
+      }
+      if (data.type === 'screenshare_stop' || data.type === 'screenshare-stop') {
+        if (typeof handleRemoteScreenShareStopped === 'function') handleRemoteScreenShareStopped();
+      }
     } catch (err) {}
   };
 }
@@ -4228,6 +4239,8 @@ function sendP2PData(type, payload = {}) {
   else if (type === 'sleep') sendSignal({ type: 'sleep-mode', enabled: enrichedPayload.enabled, authorized: enrichedPayload.authorized, isHost: enrichedPayload.isHost, from: enrichedPayload.fromUser });
   else if (type === 'photo_share') sendSignal({ type: 'photo-share', dataUrl: enrichedPayload.dataUrl, title: enrichedPayload.title, sender: enrichedPayload.sender });
   else if (type === 'photo_close') sendSignal({ type: 'photo-close' });
+  else if (type === 'screenshare_start') sendSignal({ type: 'screenshare-start', user: enrichedPayload.user || state.username });
+  else if (type === 'screenshare_stop') sendSignal({ type: 'screenshare-stop', user: enrichedPayload.user || state.username });
   else if (type === 'perm_change') sendSignal({ type: 'perm-change', mode: enrichedPayload.mode, hostName: enrichedPayload.hostName });
   else if (type === 'privacy_change') sendSignal({ type: 'privacy-change', isPrivate: enrichedPayload.isPrivate });
   else if (type === 'request_dj') sendSignal({ type: 'request-dj', fromUser: enrichedPayload.fromUser });
@@ -5352,19 +5365,18 @@ let _altYtAttempted = false;
 function showEmbedRestrictionFallback(videoId) {
   if (!videoId || !dom.ytPlayerContainer) return;
 
-  // Seamless fallback without showing dead-end telif blocker
+  // Try youtube-nocookie first if not yet attempted
   if (!_altYtAttempted) {
     _altYtAttempted = true;
-    console.log('[Miruo] Telif/gömme kısıtı aşılarak alternatif temiz oynatıcıya aktarılıyor:', videoId);
+    console.log('[Miruo] Telif/gömme kısıtı için youtube-nocookie deneniyor:', videoId);
     dom.ytPlayerContainer.innerHTML = `
       <iframe id="miruoYtIframe" 
-              src="https://yewtu.be/embed/${videoId}?autoplay=1" 
+              src="https://www.youtube-nocookie.com/embed/${videoId}?autoplay=1&playsinline=1&enablejsapi=1&controls=0&rel=0" 
               allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share; fullscreen" 
               allowfullscreen 
               class="w-full h-full border-0 select-none">
       </iframe>
     `;
-    showToast('Telif kısıtı otomatik aşıldı, alternatif akış açılıyor...');
     return;
   }
 
@@ -5373,50 +5385,27 @@ function showEmbedRestrictionFallback(videoId) {
 
   const fallbackDiv = document.createElement('div');
   fallbackDiv.id = 'miruoEmbedFallback';
-  fallbackDiv.className = 'absolute inset-0 z-30 flex flex-col items-center justify-center p-6 text-center bg-black/85 backdrop-blur-md transition-all duration-300';
+  fallbackDiv.className = 'absolute inset-0 z-30 flex flex-col items-center justify-center p-6 text-center bg-black/90 backdrop-blur-md transition-all duration-300';
   fallbackDiv.innerHTML = `
-    <div class="w-16 h-16 rounded-2xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-amber-400 mb-4 shadow-lg shadow-amber-500/10 animate-pulse">
-      <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/>
+    <div class="w-14 h-14 rounded-2xl bg-rose-500/15 border border-rose-500/30 flex items-center justify-center text-rose-400 mb-3 shadow-lg">
+      <svg class="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
       </svg>
     </div>
-    <h3 class="text-white text-base md:text-lg font-bold mb-2">Alternatif Akış Modu</h3>
-    <p class="text-zinc-300 text-xs md:text-sm max-w-sm mb-5 leading-relaxed">
-      Yayıncı bu videoyu standart oynatıcıda kısıtlamış olabilir. Web veya alternatif oynatıcı ile devam edebilirsiniz.
+    <h3 class="text-white text-sm md:text-base font-bold mb-1">YouTube Gömme Kısıtlaması</h3>
+    <p class="text-gray-300 text-xs max-w-sm mb-4 leading-relaxed">
+      Yayıncı bu içeriğin üçüncü taraf uygulamalarda oynatılmasını sınırlandırmış. Başka bir video seçebilir veya tarayıcıda izleyebilirsiniz.
     </p>
-    <div class="flex items-center gap-3">
-      <button id="btnOpenWebMode" class="px-4 py-2.5 rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white text-xs font-semibold shadow-lg shadow-purple-500/25 transition-all">
-        Alternatif Yayını Başlat
+    <div class="flex items-center gap-2">
+      <button type="button" onclick="if(typeof openVideoChooser==='function')openVideoChooser()" class="px-4 py-2 rounded-xl bg-gradient-to-r from-rose-500 to-indigo-600 text-white text-xs font-bold shadow-md cursor-pointer hover:opacity-90 active:scale-95 transition-all">
+        Başka Video Seç
       </button>
-      <button id="btnDismissFallback" class="px-4 py-2.5 rounded-xl bg-white/10 hover:bg-white/20 text-zinc-300 text-xs font-medium transition-all">
-        Kapat
+      <button type="button" onclick="window.open('https://www.youtube.com/watch?v=${videoId}', '_blank')" class="px-3.5 py-2 rounded-xl bg-white/10 hover:bg-white/15 text-white text-xs font-medium border border-white/10 cursor-pointer active:scale-95 transition-all">
+        YouTube'da Aç
       </button>
     </div>
   `;
-
   dom.ytPlayerContainer.appendChild(fallbackDiv);
-
-  const openBtn = fallbackDiv.querySelector('#btnOpenWebMode');
-  if (openBtn) {
-    openBtn.addEventListener('click', () => {
-      fallbackDiv.remove();
-      dom.ytPlayerContainer.innerHTML = `
-        <iframe id="miruoYtIframe" 
-                src="https://piped.video/embed/${videoId}?autoplay=1" 
-                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share; fullscreen" 
-                allowfullscreen 
-                class="w-full h-full border-0 select-none">
-        </iframe>
-      `;
-    });
-  }
-
-  const dismissBtn = fallbackDiv.querySelector('#btnDismissFallback');
-  if (dismissBtn) {
-    dismissBtn.addEventListener('click', () => {
-      fallbackDiv.remove();
-    });
-  }
 }
 
 // App Lifecycle Foreground Resume & Tab Switch Resynchronization
@@ -5797,6 +5786,11 @@ async function startScreenSharing() {
     state.isScreenSharing = true;
     state.activeMode = 'screenshare';
 
+    // Stop and pause any playing YouTube or background media
+    sendYtCommand('pauseVideo');
+    state.isPlaying = false;
+    updatePlayPauseUI(false);
+
     dom.nativeVideoPlayer.srcObject = stream;
     dom.nativeVideoPlayer.play().catch(() => {});
     dom.nativeVideoPlayer.classList.remove('hidden');
@@ -5805,18 +5799,36 @@ async function startScreenSharing() {
     const photoStage = document.getElementById('photoStageContainer');
     if (photoStage) photoStage.classList.add('hidden');
 
-    dom.startScreenShareBtn.classList.add('hidden');
-    dom.stopScreenShareBtn.classList.remove('hidden');
+    if (dom.startScreenShareBtn) dom.startScreenShareBtn.classList.add('hidden');
+    if (dom.stopScreenShareBtn) dom.stopScreenShareBtn.classList.remove('hidden');
 
-    // Add track to WebRTC peer
-    if (state.pc) {
-      state.screenSenders = [];
-      stream.getTracks().forEach(track => {
-        try { state.screenSenders.push(state.pc.addTrack(track, stream)); } catch (_) {}
+    // Add track to ALL active WebRTC peers in the mesh
+    state.screenSenders = [];
+    if (state.peers && Object.keys(state.peers).length > 0) {
+      Object.values(state.peers).forEach(peer => {
+        if (peer && peer.pc && peer.pc.signalingState !== 'closed') {
+          stream.getTracks().forEach(track => {
+            try {
+              const sender = peer.pc.addTrack(track, stream);
+              state.screenSenders.push({ pc: peer.pc, sender });
+            } catch (_) {}
+          });
+        }
       });
-      // Renegotiate on the existing connection (keeps voice/camera alive)
-      await renegotiateWebRTC();
     }
+    if (state.pc && state.pc.signalingState !== 'closed') {
+      stream.getTracks().forEach(track => {
+        try {
+          const sender = state.pc.addTrack(track, stream);
+          state.screenSenders.push({ pc: state.pc, sender });
+        } catch (_) {}
+      });
+    }
+    await renegotiateWebRTC();
+
+    // Broadcast screen share event to room
+    sendP2PData('screenshare_start', { user: state.username });
+    sendSignal({ type: 'screenshare-start', user: state.username });
 
     // Keep background audio active so iOS doesn't suspend capture when switching apps
     startScreenShareKeepAlive();
@@ -5850,9 +5862,11 @@ function stopScreenSharing() {
     state.screenStream.getTracks().forEach(t => t.stop());
     state.screenStream = null;
   }
-  if (state.pc && state.screenSenders && state.screenSenders.length) {
-    state.screenSenders.forEach(s => {
-      try { state.pc.removeTrack(s); } catch (_) {}
+  if (state.screenSenders && state.screenSenders.length) {
+    state.screenSenders.forEach(item => {
+      try {
+        if (item && item.pc && item.sender) item.pc.removeTrack(item.sender);
+      } catch (_) {}
     });
     state.screenSenders = [];
     renegotiateWebRTC();
@@ -5864,9 +5878,47 @@ function stopScreenSharing() {
     state.activeMode = null;
   }
   state.isScreenSharing = false;
-  dom.startScreenShareBtn.classList.remove('hidden');
-  dom.stopScreenShareBtn.classList.add('hidden');
+  if (dom.startScreenShareBtn) dom.startScreenShareBtn.classList.remove('hidden');
+  if (dom.stopScreenShareBtn) dom.stopScreenShareBtn.classList.add('hidden');
+  sendP2PData('screenshare_stop', { user: state.username });
+  sendSignal({ type: 'screenshare-stop', user: state.username });
   showToast('Ekran yayını sonlandırıldı.');
+}
+
+function handleRemoteScreenShareStarted(user) {
+  state.activeMode = 'screenshare';
+  sendYtCommand('pauseVideo');
+  state.isPlaying = false;
+  updatePlayPauseUI(false);
+
+  if (dom.ytPlayerContainer) dom.ytPlayerContainer.classList.add('hidden');
+  if (dom.emptyStatePlaceholder) dom.emptyStatePlaceholder.classList.add('hidden');
+  const photoStage = document.getElementById('photoStageContainer');
+  if (photoStage) photoStage.classList.add('hidden');
+
+  if (dom.remoteScreenPlayer) {
+    dom.remoteScreenPlayer.classList.remove('hidden');
+    const screenPeer = Object.values(state.peers || {}).find(p => p.stream && p.stream.getVideoTracks().length > 0) || (state.remoteStream ? { stream: state.remoteStream } : null);
+    if (screenPeer && screenPeer.stream) {
+      dom.remoteScreenPlayer.srcObject = screenPeer.stream;
+      dom.remoteScreenPlayer.play().catch(() => {});
+    }
+  }
+  showToast(`@${user || 'Oda Sahibi'} ekranını paylaşıyor`);
+}
+
+function handleRemoteScreenShareStopped() {
+  state.activeMode = null;
+  if (dom.remoteScreenPlayer) {
+    try { dom.remoteScreenPlayer.srcObject = null; } catch (_) {}
+    dom.remoteScreenPlayer.classList.add('hidden');
+  }
+  if (state.currentVideoId) {
+    if (dom.ytPlayerContainer) dom.ytPlayerContainer.classList.remove('hidden');
+  } else {
+    if (dom.emptyStatePlaceholder) dom.emptyStatePlaceholder.classList.remove('hidden');
+  }
+  showToast('Ekran yayını sona erdi');
 }
 window.startScreenSharing = startScreenSharing;
 window.startScreenShare = startScreenSharing;
@@ -7886,10 +7938,19 @@ function renderVideoGrid() {
   });
 
   const selfBadge = document.createElement('div');
-  selfBadge.className = 'absolute bottom-1 left-1 right-1 px-1.5 py-0.2 rounded-md bg-black/60 backdrop-blur-md border border-white/10 flex items-center justify-between text-[9px] text-white z-20 pointer-events-none';
+  selfBadge.className = 'absolute bottom-1 left-1 right-1 px-1.5 py-0.5 rounded-md bg-black/75 backdrop-blur-md border border-white/10 flex items-center justify-between text-[9px] text-white z-20 pointer-events-none';
+  const selfMicSvg = state.isMicOn
+    ? `<svg class="w-2.5 h-2.5 text-emerald-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 006 0V4a3 3 0 00-3-3z"/><path d="M19 10v2a7 7 0 01-14 0v-2M12 19v4m-4 0h8"/></svg>`
+    : `<svg class="w-2.5 h-2.5 text-red-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="1" y1="1" x2="23" y2="23"/><path d="M9 9v3a3 3 0 0 0 5.12 2.12M15 9.34V4a3 3 0 0 0-5.94-.6"/><path d="M17 16.95A7 7 0 015 12v-2m14 0v2a7 7 0 01-.11 1.23"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>`;
+  const selfCamDot = state.isCamOn
+    ? `<span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" title="Kamera Canlı"></span>`
+    : `<span class="w-1.5 h-1.5 rounded-full bg-gray-500" title="Kamera Kapalı"></span>`;
   selfBadge.innerHTML = `
-    <span class="truncate font-semibold">${state.username || dictGrid.you_badge || 'Sen'} (${dictGrid.you_badge || 'Sen'})</span>
-    <span class="${state.isMicOn ? 'text-emerald-400' : 'text-red-400'}">${state.isMicOn ? 'Açık' : 'Kapalı'}</span>
+    <span class="truncate font-semibold max-w-[50px]">${state.username || 'Sen'}</span>
+    <div class="flex items-center gap-1 shrink-0">
+      ${selfCamDot}
+      ${selfMicSvg}
+    </div>
   `;
   selfTile.appendChild(selfBadge);
   dom.roomVideoGrid.appendChild(selfTile);
@@ -7998,10 +8059,19 @@ function renderVideoGrid() {
     });
 
     const badge = document.createElement('div');
-    badge.className = 'absolute bottom-1 left-1 right-1 px-1.5 py-0.2 rounded-md bg-black/60 backdrop-blur-md border border-white/10 flex items-center justify-between text-[9px] text-white z-20 pointer-events-none';
+    badge.className = 'absolute bottom-1 left-1 right-1 px-1.5 py-0.5 rounded-md bg-black/75 backdrop-blur-md border border-white/10 flex items-center justify-between text-[9px] text-white z-20 pointer-events-none';
+    const peerMicSvg = m.isMicOn
+      ? `<svg class="w-2.5 h-2.5 text-emerald-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 006 0V4a3 3 0 00-3-3z"/><path d="M19 10v2a7 7 0 01-14 0v-2M12 19v4m-4 0h8"/></svg>`
+      : `<svg class="w-2.5 h-2.5 text-red-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="1" y1="1" x2="23" y2="23"/><path d="M9 9v3a3 3 0 0 0 5.12 2.12M15 9.34V4a3 3 0 0 0-5.94-.6"/><path d="M17 16.95A7 7 0 015 12v-2m14 0v2a7 7 0 01-.11 1.23"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>`;
+    const peerCamDot = m.isCamOn
+      ? `<span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" title="Kamera Canlı"></span>`
+      : `<span class="w-1.5 h-1.5 rounded-full bg-gray-500" title="Kamera Kapalı"></span>`;
     badge.innerHTML = `
-      <span class="truncate font-semibold">${m.username}</span>
-      <span class="${m.isMicOn ? 'text-emerald-400' : 'text-red-400'}">${m.isMicOn ? 'Açık' : 'Kapalı'}</span>
+      <span class="truncate font-semibold max-w-[50px]">${m.username}</span>
+      <div class="flex items-center gap-1 shrink-0">
+        ${peerCamDot}
+        ${peerMicSvg}
+      </div>
     `;
     tile.appendChild(badge);
     dom.roomVideoGrid.appendChild(tile);
@@ -8857,7 +8927,7 @@ function syncCurrentRoomToGlobalPresence() {
     category: state.roomCategory || (state.activeMode === 'youtube' ? 'YouTube' : 'Müzik & Sohbet'),
     host: state.isHost ? (state.username || 'Yönetici') : (state.hostName || 'Yönetici'),
     hostAvatar: myAvatar,
-    mediaTitle: state.currentVideoTitle || (state.activeMode === 'youtube' ? 'YouTube Yayını' : 'Canlı Yayın'),
+    mediaTitle: state.currentVideoTitle || (state.roomCategory === 'Galeri' ? 'Fotoğraf & Galeri' : state.roomCategory === 'Ekran Paylaş' ? 'Canlı Ekran Yayını' : state.roomCategory === 'Uyku Modu' ? 'Birlikte Uyku' : (state.activeMode === 'youtube' ? 'YouTube Yayını' : 'Canlı Sohbet Odası')),
     videoId: state.currentVideoId || '',
     thumb: state.currentVideoThumb || (state.currentVideoId ? `https://img.youtube.com/vi/${state.currentVideoId}/mqdefault.jpg` : ''),
     viewers: Math.max(1, (state.remotePeers ? Object.keys(state.remotePeers).length + 1 : 1)),
@@ -8912,7 +8982,7 @@ function mergeAllPublicRooms(serverRooms = []) {
       category: state.roomCategory || (state.activeMode === 'youtube' ? 'YouTube' : 'Müzik & Sohbet'),
       host: state.isHost ? (state.username || 'Yönetici') : (state.hostName || 'Yönetici'),
       hostAvatar: myAvatar,
-      mediaTitle: state.currentVideoTitle || (state.activeMode === 'youtube' ? 'YouTube Yayını' : 'Canlı Yayın'),
+      mediaTitle: state.currentVideoTitle || (state.roomCategory === 'Galeri' ? 'Fotoğraf & Galeri' : state.roomCategory === 'Ekran Paylaş' ? 'Canlı Ekran Yayını' : state.roomCategory === 'Uyku Modu' ? 'Birlikte Uyku' : (state.activeMode === 'youtube' ? 'YouTube Yayını' : 'Canlı Sohbet Odası')),
       videoId: state.currentVideoId || '',
       thumb: state.currentVideoThumb || (state.currentVideoId ? `https://img.youtube.com/vi/${state.currentVideoId}/mqdefault.jpg` : ''),
       viewers: Math.max(1, (state.remotePeers ? Object.keys(state.remotePeers).length + 1 : 1)),
@@ -21001,8 +21071,61 @@ function validateInstagramUsername(username) {
     });
   });
 
+  function updateStagePlaceholderForMode(platform) {
+    if (!dom.emptyStatePlaceholder) return;
+    const p = (platform || state.roomCategory || '').toLowerCase();
+    
+    if (p.includes('galeri') || p.includes('foto') || p.includes('photo')) {
+      dom.emptyStatePlaceholder.innerHTML = `
+        <div class="w-14 h-14 rounded-2xl bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center text-indigo-400 mb-3 shadow-xl">
+          <svg class="w-7 h-7" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+        </div>
+        <h3 class="text-sm font-bold text-gray-200">Fotoğraf & Galeri Odası</h3>
+        <p class="text-[11px] text-gray-400 mt-1 max-w-xs mb-3">Fotoğraf seçerek odadakilerle birlikte slayt veya albüm inceleyin.</p>
+        <button type="button" onclick="if(typeof triggerRoomGalleryPicker==='function')triggerRoomGalleryPicker()" class="pointer-events-auto px-4 py-2 rounded-xl bg-gradient-to-r from-indigo-500 to-purple-600 hover:opacity-90 active:scale-95 text-white text-xs font-semibold shadow-lg shadow-indigo-500/25 transition-all">
+          Fotoğraf Seç & Paylaş
+        </button>
+      `;
+    } else if (p.includes('ekran') || p.includes('screen')) {
+      dom.emptyStatePlaceholder.innerHTML = `
+        <div class="w-14 h-14 rounded-2xl bg-rose-500/10 border border-rose-500/20 flex items-center justify-center text-rose-400 mb-3 shadow-xl">
+          <svg class="w-7 h-7" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+        </div>
+        <h3 class="text-sm font-bold text-gray-200">Ekran Paylaşım Odası</h3>
+        <p class="text-[11px] text-gray-400 mt-1 max-w-xs mb-3">Ekranınızı veya bir tarayıcı sekmesini odadaki herkesle canlı izleyin.</p>
+        <button type="button" onclick="if(typeof startScreenSharing==='function')startScreenSharing()" class="pointer-events-auto px-4 py-2 rounded-xl bg-gradient-to-r from-rose-500 to-indigo-600 hover:opacity-90 active:scale-95 text-white text-xs font-semibold shadow-lg shadow-rose-500/25 transition-all">
+          Ekranı Paylaş
+        </button>
+      `;
+    } else if (p.includes('uyku') || p.includes('sleep')) {
+      dom.emptyStatePlaceholder.innerHTML = `
+        <div class="w-14 h-14 rounded-2xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-400 mb-3 shadow-xl">
+          <svg class="w-7 h-7" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+        </div>
+        <h3 class="text-sm font-bold text-gray-200">Birlikte Uyku Odası</h3>
+        <p class="text-[11px] text-gray-400 mt-1 max-w-xs">Loş ışık ve sakin sesle birlikte dinlenin.</p>
+      `;
+    } else {
+      dom.emptyStatePlaceholder.innerHTML = `
+        <div class="w-14 h-14 rounded-2xl bg-white/5 border border-white/10 flex items-center justify-center text-rose-400 mb-3 shadow-xl">
+          <svg class="w-7 h-7" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><path d="M8 21h8m-4-4v4"/><polygon points="10 8 16 11 10 14 10 8" fill="currentColor"/></svg>
+        </div>
+        <h3 class="text-sm font-bold text-gray-200" data-i18n="video_placeholder_title">Video Yükleniyor veya Seçilmedi</h3>
+        <p class="text-[11px] text-gray-400 mt-1 max-w-xs mb-3" data-i18n="video_placeholder_desc">"Video Seç" butonuna basarak dilediğiniz videoyu veya içeriği başlatın.</p>
+        <button type="button" onclick="if(typeof openVideoChooser==='function')openVideoChooser()" class="pointer-events-auto px-4 py-2 rounded-xl bg-gradient-to-r from-rose-500 to-indigo-600 hover:opacity-90 active:scale-95 text-white text-xs font-semibold shadow-lg shadow-rose-500/25 transition-all">
+          Video veya İçerik Seç
+        </button>
+      `;
+    }
+  }
+  window.updateStagePlaceholderForMode = updateStagePlaceholderForMode;
+
   function applyPlatformToActiveRoom(platform) {
     const p = (platform || '').toLowerCase();
+    state.roomCategory = platform || 'Genel';
+    updateStagePlaceholderForMode(platform);
+    if (dom.emptyStatePlaceholder) dom.emptyStatePlaceholder.classList.remove('hidden');
+
     const accounts = typeof getConnectedAccounts === 'function' ? getConnectedAccounts() : {};
     const matched = Object.keys(accounts).find(k => p.includes(k));
     if (matched && accounts[matched]?.connected && accounts[matched]?.account) {
@@ -21060,6 +21183,9 @@ function generateUniqueRoomCode(isPrivate = false) {
       state.controlMode = 'host_only';
       state.hasDjPermission = true;
       state.isPrivateRoom = !!newRoomIsPrivate;
+      state.isInRoom = true;
+      state.roomName = title;
+      state.roomCategory = selectedPlatform;
       updateRoomPrivacyUI(newRoomIsPrivate);
 
       closeCreateRoomModal();
@@ -21078,21 +21204,29 @@ function generateUniqueRoomCode(isPrivate = false) {
       .then(res => res.json())
       .then(data => {
         state.roomId = (data && data.room && data.room.id) || fallbackId;
+        state.isInRoom = true;
+        state.roomName = title;
+        state.roomCategory = selectedPlatform;
         if (dom.activeRoomTitle) dom.activeRoomTitle.textContent = state.roomId;
         if (dom.currentRoomDisplay) dom.currentRoomDisplay.textContent = state.roomId;
         switchToMyRoom();
         connectSignaling();
         applyPlatformToActiveRoom(selectedPlatform);
+        if (typeof syncCurrentRoomToGlobalPresence === 'function') syncCurrentRoomToGlobalPresence();
         showToast(`${title} odası oluşturuldu!`);
       })
       .catch(err => {
         console.error(err);
         state.roomId = fallbackId;
+        state.isInRoom = true;
+        state.roomName = title;
+        state.roomCategory = selectedPlatform;
         if (dom.activeRoomTitle) dom.activeRoomTitle.textContent = state.roomId;
         if (dom.currentRoomDisplay) dom.currentRoomDisplay.textContent = state.roomId;
         switchToMyRoom();
         connectSignaling();
         applyPlatformToActiveRoom(selectedPlatform);
+        if (typeof syncCurrentRoomToGlobalPresence === 'function') syncCurrentRoomToGlobalPresence();
         showToast(`${title} odası oluşturuldu!`);
       });
     });
