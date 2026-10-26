@@ -51,10 +51,27 @@ class ViewController: UIViewController, WKNavigationDelegate, WKUIDelegate, WKSc
     private func setupAudioSession() {
         do {
             let session = AVAudioSession.sharedInstance()
-            try session.setCategory(.playAndRecord, mode: .videoChat, options: [.defaultToSpeaker, .allowBluetooth, .allowBluetoothA2DP])
+            try session.setCategory(.playAndRecord, mode: .videoChat, options: [.defaultToSpeaker, .allowBluetooth, .allowBluetoothA2DP, .mixWithOthers])
             try session.setActive(true, options: .notifyOthersOnDeactivation)
+            NotificationCenter.default.removeObserver(self, name: AVAudioSession.interruptionNotification, object: session)
+            NotificationCenter.default.addObserver(self, selector: #selector(handleAudioInterruption(_:)), name: AVAudioSession.interruptionNotification, object: session)
         } catch {
             print("AVAudioSession configuration error: \(error)")
+        }
+    }
+    
+    @objc private func handleAudioInterruption(_ notification: Notification) {
+        guard let userInfo = notification.userInfo,
+              let typeValue = userInfo[AVAudioSessionInterruptionTypeKey] as? UInt,
+              let type = AVAudioSession.InterruptionType(rawValue: typeValue) else { return }
+        if type == .ended {
+            do {
+                let session = AVAudioSession.sharedInstance()
+                try session.setCategory(.playAndRecord, mode: .videoChat, options: [.defaultToSpeaker, .allowBluetooth, .allowBluetoothA2DP, .mixWithOthers])
+                try session.setActive(true)
+            } catch {
+                print("AVAudioSession resume error: \(error)")
+            }
         }
     }
     

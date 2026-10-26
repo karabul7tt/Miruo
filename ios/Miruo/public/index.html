@@ -728,7 +728,7 @@
         <!-- Floating Draggable Remote Participant Webcam PIP (Circular Floating Bubble) -->
         <div id="partnerPipCard" class="absolute w-28 h-28 sm:w-36 sm:h-36 rounded-full aspect-square bg-[#0E111A]/95 border-2 border-indigo-500/60 hover:border-indigo-400 shadow-2xl overflow-visible cursor-grab active:cursor-grabbing select-none z-[9999] backdrop-blur-md hidden transition-shadow duration-200" style="touch-action: none; top: 16px; left: 16px;">
           <div class="w-full h-full rounded-full overflow-hidden relative pointer-events-none">
-            <video id="partnerVideo" class="w-full h-full object-cover mirror pointer-events-none" playsinline autoplay muted></video>
+            <video id="partnerVideo" class="w-full h-full object-cover mirror pointer-events-none" playsinline webkit-playsinline autoplay muted></video>
             <div id="partnerVideoPlaceholder" class="absolute inset-0 flex flex-col items-center justify-center bg-gradient-to-br from-[#1A1325] via-[#0E111A] to-[#121626] text-center p-2 pointer-events-none">
               <div class="w-12 h-12 rounded-full bg-gradient-to-tr from-indigo-500 to-purple-600 border border-white/20 shadow-md flex items-center justify-center text-white font-bold text-sm mb-1">
                 <span id="partnerPipAvatarInitial">K</span>
@@ -745,7 +745,7 @@
         <!-- Floating Draggable Self Webcam PIP (Circular Facecam Bubble with Direct Touch) -->
         <div id="selfPipCard" class="absolute w-28 h-28 sm:w-36 sm:h-36 rounded-full aspect-square bg-[#0E111A]/95 border-2 border-rose-500/80 hover:border-rose-400 shadow-2xl overflow-visible cursor-grab active:cursor-grabbing select-none z-[9999] backdrop-blur-md hidden transition-shadow duration-200" style="touch-action: none; top: 16px; right: 16px;">
           <div class="w-full h-full rounded-full overflow-hidden relative pointer-events-none">
-            <video id="selfVideo" class="w-full h-full object-cover mirror pointer-events-none" playsinline autoplay muted></video>
+            <video id="selfVideo" class="w-full h-full object-cover mirror pointer-events-none" playsinline webkit-playsinline autoplay muted></video>
             
             <!-- Modern Live Facecam Avatar Feed -->
             <div id="selfVideoPlaceholder" class="absolute inset-0 flex flex-col items-center justify-center bg-gradient-to-br from-[#201026] via-[#0E111A] to-[#151226] text-center p-2 pointer-events-none">
