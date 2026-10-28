@@ -4775,16 +4775,20 @@ window.onYouTubeIframeAPIReady = function() {
 // Autoplay Unblock Assistant: Ensures videos never stay on a dark/black screen when browser blocks unmuted playback
 function showAutoplayUnblockPrompt() {
   if (document.getElementById('miruoAutoplayUnblockBtn')) return;
-  const container = dom.ytPlayerContainer || dom.stageContainer;
+  const container = dom.stageContainer || dom.ytPlayerContainer;
   if (!container) return;
   const promptEl = document.createElement('div');
   promptEl.id = 'miruoAutoplayUnblockBtn';
-  promptEl.className = 'absolute inset-0 z-20 flex flex-col items-center justify-center p-4 bg-black/45 backdrop-blur-[2px] transition-all duration-300 pointer-events-none select-none';
+  promptEl.className = 'absolute inset-0 flex flex-col items-center justify-center p-4 bg-black/60 backdrop-blur-sm transition-all duration-300 pointer-events-auto select-none';
+  promptEl.style.setProperty('z-index', '35', 'important');
   promptEl.innerHTML = `
-    <button type="button" class="pointer-events-auto px-5 py-3 rounded-2xl bg-gradient-to-r from-rose-600 via-pink-600 to-indigo-600 hover:from-rose-500 hover:to-indigo-500 text-white font-bold text-xs sm:text-sm shadow-2xl flex items-center gap-2.5 active:scale-95 transition-all cursor-pointer border border-white/20">
-      <svg class="w-5 h-5 fill-current text-white shrink-0" viewBox="0 0 24 24"><polygon points="5 3 19 12 5 21 5 3"/></svg>
-      <span>Videoyu Başlat / Sesi Aç</span>
-    </button>
+    <div class="flex flex-col items-center gap-2.5 max-w-xs text-center">
+      <button type="button" id="miruoUnblockActionBtn" class="px-6 py-3.5 rounded-2xl bg-gradient-to-r from-rose-600 via-pink-600 to-indigo-600 hover:scale-105 active:scale-95 text-white font-bold text-sm sm:text-base shadow-2xl flex items-center gap-3 cursor-pointer border border-white/25 transition-all">
+        <svg class="w-6 h-6 fill-current text-white shrink-0 ml-0.5" viewBox="0 0 24 24"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+        <span>Videoyu Başlat</span>
+      </button>
+      <span class="text-[11px] text-gray-300 font-medium drop-shadow">Tarayıcı güvenliği için oynatmayı başlatmak üzere dokunun</span>
+    </div>
   `;
   const unblockAct = (e) => {
     if (e && e.stopPropagation) e.stopPropagation();
@@ -4799,7 +4803,7 @@ function showAutoplayUnblockPrompt() {
     updatePlayPauseUI(true);
     promptEl.remove();
   };
-  promptEl.querySelector('button').addEventListener('click', unblockAct);
+  promptEl.addEventListener('click', unblockAct);
   container.appendChild(promptEl);
 }
 window.showAutoplayUnblockPrompt = showAutoplayUnblockPrompt;
@@ -4861,7 +4865,7 @@ function loadYoutubeVideo(urlOrId, startPlaying = true, startTime = 0) {
     dom.ytPlayerContainer.innerHTML = '';
   }
 
-  // Direct responsive embed iframe that plays 100% reliably in WKWebView & Electron Desktop
+  // Direct responsive embed iframe that plays 100% reliably in WKWebView & Desktop browsers
   _altYtAttempted = false;
   const isLocalOrigin = !window.location.origin || window.location.origin.includes('127.0.0.1') || window.location.origin.includes('localhost') || window.location.protocol === 'file:';
   const effectiveOrigin = isLocalOrigin ? '' : `&origin=${encodeURIComponent(window.location.origin)}`;
@@ -4878,7 +4882,7 @@ function loadYoutubeVideo(urlOrId, startPlaying = true, startTime = 0) {
 
   dom.ytPlayerContainer.innerHTML = `
     <iframe id="miruoYtIframe" 
-            src="https://www.youtube.com/embed/${videoId}?autoplay=${autoPlayParam}&playsinline=1&enablejsapi=1&widgetid=1&controls=1&rel=0&modestbranding=1${startParam}${ccParam}" 
+            src="https://www.youtube.com/embed/${videoId}?autoplay=${autoPlayParam}&playsinline=1&enablejsapi=1&controls=1&rel=0&modestbranding=1${startParam}${ccParam}${effectiveOrigin}" 
             allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share; fullscreen" 
             allowfullscreen 
             class="w-full h-full border-0">
@@ -4895,24 +4899,42 @@ function loadYoutubeVideo(urlOrId, startPlaying = true, startTime = 0) {
   const ytFrame = document.getElementById('miruoYtIframe');
   if (ytFrame) {
     ytFrame.addEventListener('load', () => {
+      try {
+        if (ytFrame.contentWindow) {
+          ytFrame.contentWindow.postMessage(JSON.stringify({ event: 'listening' }), '*');
+        }
+      } catch (_) {}
+
       if (window.YT && window.YT.Player) {
         try {
+          if (state.ytPlayer && typeof state.ytPlayer.destroy === 'function') {
+            try { state.ytPlayer.destroy(); } catch (_) {}
+          }
           state.ytPlayer = new YT.Player('miruoYtIframe', {
             events: {
-              onStateChange: onYtStateChange
+              onReady: (event) => {
+                state.ytReady = true;
+                if (startPlaying) {
+                  try { event.target.playVideo(); } catch (_) {}
+                }
+              },
+              onStateChange: onYtStateChange,
+              onError: (event) => {
+                const code = event && event.data;
+                if (code === 150 || code === 101 || code === 152 || code === 153 || code === 154) {
+                  showEmbedRestrictionFallback(videoId);
+                }
+              }
             }
           });
         } catch (_) {}
       }
 
       setTimeout(() => {
-        if (ytFrame.contentWindow) {
-          ytFrame.contentWindow.postMessage(JSON.stringify({ event: 'listening' }), '*');
-        }
         if (startPlaying) {
           sendYtCommand('playVideo');
-          setTimeout(() => { if (state.isPlaying) sendYtCommand('playVideo'); }, 200);
-          setTimeout(() => { if (state.isPlaying) sendYtCommand('playVideo'); }, 600);
+          setTimeout(() => { if (state.isPlaying) sendYtCommand('playVideo'); }, 300);
+          setTimeout(() => { if (state.isPlaying) sendYtCommand('playVideo'); }, 800);
 
           // Autoplay Block Guard: If browser prevented unmuted playback, switch to muted playback and show unblock button
           setTimeout(() => {
@@ -4928,9 +4950,6 @@ function loadYoutubeVideo(urlOrId, startPlaying = true, startTime = 0) {
           if (typeof startTime === 'number' && startTime > 0) {
             sendYtCommand('seekTo', [startTime, true]);
           }
-          setTimeout(() => { if (!state.isPlaying) sendYtCommand('pauseVideo'); }, 120);
-          setTimeout(() => { if (!state.isPlaying) sendYtCommand('pauseVideo'); }, 350);
-          setTimeout(() => { if (!state.isPlaying) sendYtCommand('pauseVideo'); }, 700);
         }
         try {
           const prefQuality = localStorage.getItem('miruo_preferred_quality') || 'auto';
@@ -4946,7 +4965,7 @@ function loadYoutubeVideo(urlOrId, startPlaying = true, startTime = 0) {
             window.setCaptionLanguage(savedCap);
           }
         } catch (_) {}
-      }, 500);
+      }, 400);
     });
   }
 
@@ -5797,9 +5816,11 @@ function togglePlayPause() {
   // 1. YouTube Player
   if (state.activeMode === 'youtube') {
     if (state.isPlaying) {
+      if (typeof dismissAutoplayUnblockPrompt === 'function') dismissAutoplayUnblockPrompt();
       sendYtCommand('unMute');
+      sendYtCommand('setVolume', [100]);
       sendYtCommand('playVideo');
-      setTimeout(() => { if (state.isPlaying) { sendYtCommand('unMute'); sendYtCommand('playVideo'); } }, 120);
+      setTimeout(() => { if (state.isPlaying) { sendYtCommand('unMute'); sendYtCommand('setVolume', [100]); sendYtCommand('playVideo'); } }, 120);
       setTimeout(() => { if (state.isPlaying) sendYtCommand('playVideo'); }, 350);
       setTimeout(() => { if (state.isPlaying) sendYtCommand('playVideo'); }, 700);
     } else {
