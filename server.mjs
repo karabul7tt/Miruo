@@ -958,6 +958,22 @@ function validateInstagramUsername(username) {
     return;
   }
 
+  // GET PROFILE ENDPOINT
+  if (urlObj.pathname === '/api/auth/profile' && req.method === 'GET') {
+    const id = urlObj.searchParams.get('id') || '';
+    const email = (urlObj.searchParams.get('email') || '').trim().toLowerCase();
+    const username = (urlObj.searchParams.get('username') || '').replace(/^@/, '').trim().toLowerCase();
+    const users = loadUsers();
+    const found = users.find(u =>
+      (id && (u.id === id || u.appleUserId === id)) ||
+      (email && (u.email || '').toLowerCase() === email) ||
+      (username && (u.username || '').toLowerCase().replace(/^@/, '') === username)
+    );
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ success: !!found, user: found || null }));
+    return;
+  }
+
   // LOGIN (Items 5, 6, 7, 11, 12, 13, 14)
   if (urlObj.pathname === '/api/auth/login' && req.method === 'POST') {
     try {
