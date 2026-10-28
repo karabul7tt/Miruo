@@ -950,6 +950,9 @@ const I18N = {
     live_cam_feed: 'Canlı Kamera Feed',
     self_camera_badge: 'Sen (Kamera)',
     close_cam_title: 'Kamerayı Kapat',
+    flip_cam_title: 'Kamerayı Değiştir (Ön / Arka)',
+    switch_cam_success: 'Kamera değiştirildi',
+    cam_device_title: 'Görüntü Aygıtı (Kamera)',
     cam_off_label: 'Kamera Kapalı',
     cam_live_label: 'Canlı',
     you_badge: 'Sen',
@@ -1306,6 +1309,9 @@ const I18N = {
     live_cam_feed: 'Live Camera Feed',
     self_camera_badge: 'You (Camera)',
     close_cam_title: 'Turn Off Camera',
+    flip_cam_title: 'Switch Camera (Front / Back)',
+    switch_cam_success: 'Camera switched',
+    cam_device_title: 'Camera Device',
     cam_off_label: 'Camera Off',
     cam_live_label: 'Live',
     you_badge: 'You',
@@ -1662,6 +1668,9 @@ const I18N = {
     live_cam_feed: 'Live-Kamera-Feed',
     self_camera_badge: 'Du (Kamera)',
     close_cam_title: 'Kamera ausschalten',
+    flip_cam_title: 'Kamera wechseln (Vorne / Hinten)',
+    switch_cam_success: 'Kamera gewechselt',
+    cam_device_title: 'Kameragerät',
     cam_off_label: 'Kamera Aus',
     cam_live_label: 'Live',
     you_badge: 'Du',
@@ -1957,6 +1966,7 @@ const state = {
   screenStream: null,
   isMicOn: false,
   isCamOn: false,
+  cameraFacingMode: 'user',
   isScreenSharing: false,
 
   // Audio Ducking
@@ -2110,6 +2120,7 @@ const dom = {
   selfVideo: document.getElementById('selfVideo'),
   selfVideoPlaceholder: document.getElementById('selfVideoPlaceholder'),
   closeSelfPipBtn: document.getElementById('closeSelfPipBtn'),
+  flipSelfPipCamBtn: document.getElementById('flipSelfPipCamBtn'),
   selfPipAvatarInitial: document.getElementById('selfPipAvatarInitial'),
 
   // Split Layout & Live Chat Sidebar
@@ -2483,6 +2494,11 @@ const dom = {
   settingsMicTestHint: document.getElementById('settingsMicTestHint'),
   settingsNoiseSuppressionToggle: document.getElementById('settingsNoiseSuppressionToggle'),
   settingsEchoCancellationToggle: document.getElementById('settingsEchoCancellationToggle'),
+  settingsCamMasterToggle: document.getElementById('settingsCamMasterToggle'),
+  settingsCamStatusBadge: document.getElementById('settingsCamStatusBadge'),
+  settingsCamDeviceSelect: document.getElementById('settingsCamDeviceSelect'),
+  settingsFlipCameraBtn: document.getElementById('settingsFlipCameraBtn'),
+  settingsRefreshCameraDevicesBtn: document.getElementById('settingsRefreshCameraDevicesBtn'),
   pipShowInFullscreenCheckbox: document.getElementById('pipShowInFullscreenCheckbox'),
   openPlatformAccountsFromSettingsBtn: document.getElementById('openPlatformAccountsFromSettingsBtn'),
 
@@ -3620,8 +3636,8 @@ function renderStagePipCards() {
                     (p.clientId && state.peers?.[p.clientId]?.stream) ||
                     (p.userId && state.peers?.[p.userId]?.stream) ||
                     (p.userId === state.peerId || p.clientId === state.peerId ? state.remoteStream : null);
-    const hasLiveVideoTrack = pStream && pStream.getVideoTracks && pStream.getVideoTracks().some(t => t.readyState === 'live');
-    const isCamActive = p.isCamOn === true || hasLiveVideoTrack;
+    const hasLiveVideoTrack = pStream && pStream.getVideoTracks && pStream.getVideoTracks().some(t => t.readyState === 'live' && !t.muted);
+    const isCamActive = p.isCamOn === true || (p.isCamOn !== false && hasLiveVideoTrack);
     if (!isCamActive) return;
 
     const uKey = (p.userId || p.username || p.clientId || '').toLowerCase();
@@ -7658,21 +7674,41 @@ let micTestAnalyser = null;
 let micTestAnimFrame = null;
 
 async function refreshAudioDeviceList() {
-  if (!dom.settingsMicDeviceSelect || !navigator.mediaDevices || !navigator.mediaDevices.enumerateDevices) return;
+  if (!navigator.mediaDevices || !navigator.mediaDevices.enumerateDevices) return;
   try {
     const devices = await navigator.mediaDevices.enumerateDevices();
-    const audioInputs = devices.filter(d => d.kind === 'audioinput');
-    const savedDeviceId = localStorage.getItem('miruo_mic_device_id') || '';
+    
+    // 1. Audio Inputs (Microphones)
+    if (dom.settingsMicDeviceSelect) {
+      const audioInputs = devices.filter(d => d.kind === 'audioinput');
+      const savedDeviceId = localStorage.getItem('miruo_mic_device_id') || '';
 
-    dom.settingsMicDeviceSelect.innerHTML = '<option value="">Varsayılan Sistem Mikrofonu</option>';
+      dom.settingsMicDeviceSelect.innerHTML = '<option value="">Varsayılan Sistem Mikrofonu</option>';
 
-    audioInputs.forEach((dev, idx) => {
-      const opt = document.createElement('option');
-      opt.value = dev.deviceId;
-      opt.textContent = dev.label || `Mikrofon ${idx + 1}`;
-      if (dev.deviceId === savedDeviceId) opt.selected = true;
-      dom.settingsMicDeviceSelect.appendChild(opt);
-    });
+      audioInputs.forEach((dev, idx) => {
+        const opt = document.createElement('option');
+        opt.value = dev.deviceId;
+        opt.textContent = dev.label || `Mikrofon ${idx + 1}`;
+        if (dev.deviceId === savedDeviceId) opt.selected = true;
+        dom.settingsMicDeviceSelect.appendChild(opt);
+      });
+    }
+
+    // 2. Video Inputs (Webcams / Front / Rear Cameras)
+    if (dom.settingsCamDeviceSelect) {
+      const videoInputs = devices.filter(d => d.kind === 'videoinput');
+      const savedCamId = localStorage.getItem('miruo_cam_device_id') || '';
+
+      dom.settingsCamDeviceSelect.innerHTML = '<option value="">Varsayılan Kamera (Ön / Selfie)</option>';
+
+      videoInputs.forEach((dev, idx) => {
+        const opt = document.createElement('option');
+        opt.value = dev.deviceId;
+        opt.textContent = dev.label || `Kamera ${idx + 1}`;
+        if (dev.deviceId === savedCamId) opt.selected = true;
+        dom.settingsCamDeviceSelect.appendChild(opt);
+      });
+    }
   } catch (e) {
     console.warn('[Miruo] enumerateDevices error:', e);
   }
@@ -7689,6 +7725,20 @@ function syncMicSettingsValues() {
     } else {
       dom.settingsMicStatusBadge.textContent = 'Kapalı (Sessiz)';
       dom.settingsMicStatusBadge.className = 'text-[10px] px-2 py-0.5 rounded-full font-bold bg-white/10 text-gray-400 border border-white/10';
+    }
+  }
+
+  // Sync Camera Master Toggle & Status Badge
+  if (dom.settingsCamMasterToggle) {
+    dom.settingsCamMasterToggle.checked = !!state.isCamOn;
+  }
+  if (dom.settingsCamStatusBadge) {
+    if (state.isCamOn) {
+      dom.settingsCamStatusBadge.textContent = 'Açık (Canlı)';
+      dom.settingsCamStatusBadge.className = 'text-[10px] px-2 py-0.5 rounded-full font-bold bg-rose-500/20 text-rose-400 border border-rose-500/40';
+    } else {
+      dom.settingsCamStatusBadge.textContent = 'Kapalı';
+      dom.settingsCamStatusBadge.className = 'text-[10px] px-2 py-0.5 rounded-full font-bold bg-white/10 text-gray-400 border border-white/10';
     }
   }
   const savedGain = localStorage.getItem('miruo_mic_gain') || '100';
@@ -7798,6 +7848,15 @@ function describeMediaError(e, kind) {
   const what = kind === 'camera' ? 'Kamera' : 'Mikrofon';
   const name = (e && e.name) || '';
   if (name === 'NotAllowedError' || name === 'SecurityError' || name === 'PermissionDeniedError') {
+    try {
+      if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.openAppSettings) {
+        setTimeout(() => {
+          if (confirm(what + ' izni kapalı. Miruo Cihaz Ayarlarını açmak ister misiniz?')) {
+            window.webkit.messageHandlers.openAppSettings.postMessage({});
+          }
+        }, 300);
+      }
+    } catch (_) {}
     return what + ' izni verilmedi. Cihaz/tarayıcı ayarlarından ' + what.toLowerCase() + ' iznini açın.';
   }
   if (name === 'NotFoundError' || name === 'OverconstrainedError' || name === 'DevicesNotFoundError') {
@@ -7916,36 +7975,58 @@ function optimizeVideoSender(sender) {
   } catch (_) {}
 }
 
-async function getLiveCameraStream() {
+async function getLiveCameraStream(targetFacingMode = null, targetDeviceId = null) {
   if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
     throw new Error('navigator.mediaDevices.getUserMedia not supported');
   }
-  const tryConstraints = [
-    {
+  const facing = targetFacingMode || state.cameraFacingMode || 'user';
+  const deviceId = targetDeviceId || localStorage.getItem('miruo_cam_device_id') || null;
+
+  const tryConstraints = [];
+
+  // 1. Explicit Device ID selected
+  if (deviceId) {
+    tryConstraints.push({
       video: {
-        width: { ideal: 480, max: 640 },
-        height: { ideal: 360, max: 480 },
+        deviceId: { exact: deviceId },
+        width: { ideal: 640 },
+        height: { ideal: 480 },
         frameRate: { ideal: 24, max: 30 }
       },
       audio: false
-    },
-    {
-      video: {
-        width: { ideal: 480, max: 640 },
-        height: { ideal: 360, max: 480 },
-        frameRate: { ideal: 24, max: 30 },
-        facingMode: 'user'
-      },
+    });
+    tryConstraints.push({
+      video: { deviceId: { exact: deviceId } },
       audio: false
+    });
+  }
+
+  // 2. Facing mode prioritized (Front / Selfie camera default)
+  tryConstraints.push({
+    video: {
+      facingMode: { ideal: facing },
+      width: { ideal: 640 },
+      height: { ideal: 480 },
+      frameRate: { ideal: 24, max: 30 }
     },
-    {
-      video: {
-        frameRate: { ideal: 20, max: 24 }
-      },
-      audio: false
+    audio: false
+  });
+  tryConstraints.push({
+    video: {
+      facingMode: facing
     },
-    { video: true, audio: false }
-  ];
+    audio: false
+  });
+  tryConstraints.push({
+    video: {
+      width: { ideal: 640 },
+      height: { ideal: 480 },
+      frameRate: { ideal: 24, max: 30 }
+    },
+    audio: false
+  });
+  tryConstraints.push({ video: true, audio: false });
+
   let lastErr = null;
   for (const c of tryConstraints) {
     try {
@@ -7961,6 +8042,85 @@ async function getLiveCameraStream() {
   }
   throw lastErr || new Error('No camera stream');
 }
+
+async function switchCamera() {
+  const nextFacing = (state.cameraFacingMode === 'environment') ? 'user' : 'environment';
+  state.cameraFacingMode = nextFacing;
+
+  if (dom.selfVideo) {
+    if (nextFacing === 'user') {
+      dom.selfVideo.classList.add('mirror');
+    } else {
+      dom.selfVideo.classList.remove('mirror');
+    }
+  }
+
+  if (state.isCamOn) {
+    try {
+      const dictS = I18N[currentLang] || I18N.tr;
+      showToast(nextFacing === 'user' ? 'Ön Kameraya Geçiliyor...' : 'Arka Kameraya Geçiliyor...');
+      const camStream = await getLiveCameraStream(nextFacing);
+      const freshTrack = camStream.getVideoTracks()[0];
+      if (!freshTrack) throw new Error('Yeni kamera akışı alınamadı');
+
+      if (state.localStream) {
+        const oldTracks = state.localStream.getVideoTracks();
+        oldTracks.forEach(t => {
+          try { state.localStream.removeTrack(t); } catch (_) {}
+          try { t.stop(); } catch (_) {}
+        });
+        state.localStream.addTrack(freshTrack);
+      } else {
+        state.localStream = camStream;
+      }
+
+      if (dom.selfVideo) {
+        dom.selfVideo.srcObject = state.localStream;
+        dom.selfVideo.play().catch(() => {});
+      }
+
+      // Update video sender on all active WebRTC peers
+      const uniquePeers = getUniquePeerEntries();
+      for (const peer of uniquePeers) {
+        if (peer && peer.pc && peer.pc.signalingState !== 'closed') {
+          try {
+            const transceivers = peer.pc.getTransceivers ? peer.pc.getTransceivers() : [];
+            const vt = transceivers.find(t => 
+              (t.receiver && t.receiver.track && t.receiver.track.kind === 'video') ||
+              (t.sender && t.sender.track && t.sender.track.kind === 'video')
+            );
+            if (vt && vt.sender && typeof vt.sender.replaceTrack === 'function') {
+              await vt.sender.replaceTrack(freshTrack);
+            }
+            if (vt && vt.sender) optimizeVideoSender(vt.sender);
+          } catch (_) {}
+        }
+      }
+      if (state.pc && state.pc.signalingState !== 'closed') {
+        try {
+          const transceivers = state.pc.getTransceivers ? state.pc.getTransceivers() : [];
+          const vt = transceivers.find(t => 
+            (t.receiver && t.receiver.track && t.receiver.track.kind === 'video') ||
+            (t.sender && t.sender.track && t.sender.track.kind === 'video')
+          );
+          if (vt && vt.sender && typeof vt.sender.replaceTrack === 'function') {
+            await vt.sender.replaceTrack(freshTrack);
+          }
+          if (vt && vt.sender) optimizeVideoSender(vt.sender);
+        } catch (_) {}
+      }
+
+      showToast(dictS.switch_cam_success || 'Kamera değiştirildi');
+      if (typeof renderVideoGrid === 'function') renderVideoGrid();
+    } catch (err) {
+      console.warn('[Miruo] switchCamera failed:', err);
+      showToast(describeMediaError(err, 'camera'));
+    }
+  } else {
+    showToast(nextFacing === 'user' ? 'Ön kamera seçildi' : 'Arka kamera seçildi');
+  }
+}
+window.switchCamera = switchCamera;
 
 async function toggleCam() {
   if (state.isCamOn) {
@@ -8009,6 +8169,7 @@ async function toggleCam() {
     broadcastMyMediaStatus();
     renderParticipantsList();
     renderVideoGrid();
+    syncMicSettingsValues();
     showToast('Kamera Kapatıldı');
     return;
   }
@@ -8052,6 +8213,7 @@ async function toggleCam() {
       state.isSelfPipDismissed = false;
 
       if (dom.selfVideo) {
+        dom.selfVideo.classList.toggle('mirror', state.cameraFacingMode !== 'environment');
         dom.selfVideo.playsInline = true;
         dom.selfVideo.muted = true;
         dom.selfVideo.defaultMuted = true;
@@ -8149,6 +8311,7 @@ async function toggleCam() {
       broadcastMyMediaStatus();
       renderParticipantsList();
       renderVideoGrid();
+      syncMicSettingsValues();
       const dictCam = I18N[currentLang] || I18N.tr;
       showToast(dictCam.toast_cam_opened || 'Canlı Kamera Açıldı (Sürüklenebilir)');
     } else {
@@ -8163,6 +8326,7 @@ async function toggleCam() {
     broadcastMyMediaStatus();
     renderParticipantsList();
     renderVideoGrid();
+    syncMicSettingsValues();
     showToast(describeMediaError(e, 'camera'));
   }
 }
@@ -8385,8 +8549,9 @@ function renderVideoGrid() {
                        (state.peers && state.peers[m.userId] && state.peers[m.userId].stream) || 
                        m.stream || (m.userId === state.peerId ? state.remoteStream : null);
     const hasLiveVideo = peerStream && peerStream.getVideoTracks && peerStream.getVideoTracks().some(t => t.readyState === 'live' && !t.muted);
+    const isCamActive = m.isCamOn === true || (m.isCamOn !== false && hasLiveVideo);
 
-    if ((m.isCamOn || hasLiveVideo) && peerStream) {
+    if (isCamActive && peerStream) {
       const v = document.createElement('video');
       v.className = 'w-full h-full object-cover mirror pointer-events-none';
       v.autoplay = true;
@@ -22087,6 +22252,15 @@ function generateUniqueRoomCode(isPrivate = false) {
           }
           if (newTrack) {
             state.localStream.addTrack(newTrack);
+            const uniquePeers = getUniquePeerEntries();
+            for (const peer of uniquePeers) {
+              if (peer && peer.pc && peer.pc.signalingState !== 'closed') {
+                const at = peer.pc.getTransceivers ? peer.pc.getTransceivers().find(t => (t.receiver?.track?.kind === 'audio' || t.sender?.track?.kind === 'audio')) : null;
+                if (at && at.sender && typeof at.sender.replaceTrack === 'function') {
+                  await at.sender.replaceTrack(newTrack);
+                }
+              }
+            }
             if (state.pc) {
               const senders = state.pc.getSenders();
               const audioSender = senders.find(s => s.track && s.track.kind === 'audio');
@@ -22106,7 +22280,73 @@ function generateUniqueRoomCode(isPrivate = false) {
   if (dom.settingsRefreshAudioDevicesBtn) {
     dom.settingsRefreshAudioDevicesBtn.addEventListener('click', () => {
       refreshAudioDeviceList();
-      showToast('Ses aygıtları yenilendi');
+      showToast('Ses ve kamera aygıtları yenilendi');
+    });
+  }
+
+  // Settings: Camera Master Toggle
+  if (dom.settingsCamMasterToggle) {
+    dom.settingsCamMasterToggle.addEventListener('change', () => {
+      toggleCam();
+    });
+  }
+
+  // Settings: Camera Device Selection
+  if (dom.settingsCamDeviceSelect) {
+    dom.settingsCamDeviceSelect.addEventListener('change', async (e) => {
+      localStorage.setItem('miruo_cam_device_id', e.target.value);
+      if (state.isCamOn) {
+        try {
+          const camStream = await getLiveCameraStream(null, e.target.value);
+          const freshTrack = camStream.getVideoTracks()[0];
+          if (freshTrack && state.localStream) {
+            const oldTracks = state.localStream.getVideoTracks();
+            oldTracks.forEach(t => {
+              try { state.localStream.removeTrack(t); } catch (_) {}
+              try { t.stop(); } catch (_) {}
+            });
+            state.localStream.addTrack(freshTrack);
+            if (dom.selfVideo) dom.selfVideo.srcObject = state.localStream;
+            const uniquePeers = getUniquePeerEntries();
+            for (const peer of uniquePeers) {
+              if (peer && peer.pc && peer.pc.signalingState !== 'closed') {
+                const vt = peer.pc.getTransceivers ? peer.pc.getTransceivers().find(t => (t.receiver?.track?.kind === 'video' || t.sender?.track?.kind === 'video')) : null;
+                if (vt && vt.sender && typeof vt.sender.replaceTrack === 'function') {
+                  await vt.sender.replaceTrack(freshTrack);
+                }
+                if (vt && vt.sender) optimizeVideoSender(vt.sender);
+              }
+            }
+            if (state.pc) {
+              const senders = state.pc.getSenders();
+              const videoSender = senders.find(s => s.track && s.track.kind === 'video');
+              if (videoSender) videoSender.replaceTrack(freshTrack);
+            }
+          }
+          showToast('Kamera aygıtı değiştirildi');
+        } catch (err) {
+          console.warn('[Miruo] cam switch error:', err);
+        }
+      }
+    });
+  }
+
+  // Settings: Camera Flip Buttons
+  if (dom.settingsFlipCameraBtn) {
+    dom.settingsFlipCameraBtn.addEventListener('click', () => {
+      switchCamera();
+    });
+  }
+  if (dom.flipSelfPipCamBtn) {
+    dom.flipSelfPipCamBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      switchCamera();
+    });
+  }
+  if (dom.settingsRefreshCameraDevicesBtn) {
+    dom.settingsRefreshCameraDevicesBtn.addEventListener('click', () => {
+      refreshAudioDeviceList();
+      showToast('Kamera aygıtları yenilendi');
     });
   }
 

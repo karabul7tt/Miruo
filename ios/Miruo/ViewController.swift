@@ -99,6 +99,7 @@ class ViewController: UIViewController, WKNavigationDelegate, WKUIDelegate, WKSc
         userContentController.add(self, name: "copyToClipboard")
         userContentController.add(self, name: "clearPlatformSession")
         userContentController.add(self, name: "nativeShare")
+        userContentController.add(self, name: "openAppSettings")
         
         let authFixScriptSource = """
         (function() {
@@ -493,6 +494,11 @@ class ViewController: UIViewController, WKNavigationDelegate, WKUIDelegate, WKSc
                     }
                     self.present(activityVC, animated: true, completion: nil)
                 }
+            }
+        } else if message.name == "openAppSettings" {
+            if let settingsUrl = URL(string: UIApplication.openSettingsURLString),
+               UIApplication.shared.canOpenURL(settingsUrl) {
+                UIApplication.shared.open(settingsUrl, options: [:], completionHandler: nil)
             }
         }
     }

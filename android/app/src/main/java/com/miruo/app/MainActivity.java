@@ -169,16 +169,37 @@ public class MainActivity extends AppCompatActivity {
             @Override
             public void onPermissionRequest(final PermissionRequest request) {
                 runOnUiThread(() -> {
-                    boolean hasCam = ContextCompat.checkSelfPermission(MainActivity.this, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED;
-                    boolean hasMic = ContextCompat.checkSelfPermission(MainActivity.this, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED;
+                    String[] requestedResources = request.getResources();
+                    java.util.List<String> neededPermissions = new java.util.ArrayList<>();
+                    boolean needsCamera = false;
+                    boolean needsAudio = false;
+
+                    for (String r : requestedResources) {
+                        if (PermissionRequest.RESOURCE_VIDEO_CAPTURE.equals(r)) needsCamera = true;
+                        if (PermissionRequest.RESOURCE_AUDIO_CAPTURE.equals(r)) needsAudio = true;
+                    }
+
+                    boolean hasCam = !needsCamera || ContextCompat.checkSelfPermission(MainActivity.this, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED;
+                    boolean hasMic = !needsAudio || ContextCompat.checkSelfPermission(MainActivity.this, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED;
 
                     if (hasCam && hasMic) {
-                        request.grant(request.getResources());
+                        request.grant(requestedResources);
                     } else {
                         pendingPermissionRequest = request;
-                        ActivityCompat.requestPermissions(MainActivity.this,
-                                new String[]{Manifest.permission.CAMERA, Manifest.permission.RECORD_AUDIO},
-                                PERMISSION_REQUEST_CODE);
+                        if (needsCamera && ContextCompat.checkSelfPermission(MainActivity.this, Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {
+                            neededPermissions.add(Manifest.permission.CAMERA);
+                        }
+                        if (needsAudio && ContextCompat.checkSelfPermission(MainActivity.this, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+                            neededPermissions.add(Manifest.permission.RECORD_AUDIO);
+                        }
+                        if (!neededPermissions.isEmpty()) {
+                            ActivityCompat.requestPermissions(MainActivity.this,
+                                    neededPermissions.toArray(new String[0]),
+                                    PERMISSION_REQUEST_CODE);
+                        } else {
+                            request.deny();
+                            pendingPermissionRequest = null;
+                        }
                     }
                 });
             }
@@ -253,7 +274,23 @@ public class MainActivity extends AppCompatActivity {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults);
         if (requestCode == PERMISSION_REQUEST_CODE) {
             if (pendingPermissionRequest != null) {
-                pendingPermissionRequest.grant(pendingPermissionRequest.getResources());
+                java.util.List<String> grantedResources = new java.util.ArrayList<>();
+                boolean hasCam = ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED;
+                boolean hasMic = ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED;
+
+                for (String r : pendingPermissionRequest.getResources()) {
+                    if (PermissionRequest.RESOURCE_VIDEO_CAPTURE.equals(r) && hasCam) {
+                        grantedResources.add(r);
+                    } else if (PermissionRequest.RESOURCE_AUDIO_CAPTURE.equals(r) && hasMic) {
+                        grantedResources.add(r);
+                    }
+                }
+
+                if (!grantedResources.isEmpty()) {
+                    pendingPermissionRequest.grant(grantedResources.toArray(new String[0]));
+                } else {
+                    pendingPermissionRequest.deny();
+                }
                 pendingPermissionRequest = null;
             }
         }
