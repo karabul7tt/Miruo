@@ -2003,15 +2003,22 @@ const rtcConfig = {
     { urls: 'stun:stun1.l.google.com:19302' },
     { urls: 'stun:stun2.l.google.com:19302' },
     { urls: 'stun:stun.cloudflare.com:3478' },
-    { urls: 'stun:global.stun.twilio.com:3478' }
+    { urls: 'stun:global.stun.twilio.com:3478' },
+    { urls: 'stun:stun.relay.metered.ca:80' },
+    {
+      urls: [
+        'turn:global.relay.metered.ca:80',
+        'turn:global.relay.metered.ca:80?transport=tcp',
+        'turn:global.relay.metered.ca:443',
+        'turns:global.relay.metered.ca:443?transport=tcp'
+      ],
+      username: '6cf7107954c6d225edcd05ad',
+      credential: '5ckNisBlMU6n0ETg'
+    }
   ],
   iceCandidatePoolSize: 4,
   bundlePolicy: 'max-bundle'
 };
-// NOTE: openrelay.metered.ca is dead (DNS now points to 192.0.2.1), so it was removed.
-// Real TURN relay is required for cross-NAT/cellular calls. Configure it in config.js via
-//   window.MIRUO_TURN_SERVERS = [{ urls: ['turn:host:3478','turns:host:443?transport=tcp'], username: '..', credential: '..' }];
-// or window.MIRUO_TURN_API = 'https://<app>.metered.live/api/v1/turn/credentials?apiKey=...'
 (function setupTurnServers() {
   try {
     if (Array.isArray(window.MIRUO_TURN_SERVERS)) {
@@ -2848,16 +2855,17 @@ function connectSupabaseRoomSignaling() {
         if (!state.peerId) updatePeerStatus(false);
       }
 
-      // Sync state.participants with strict deduplication
+      // Sync state.participants with strict client-level distinction (supports multi-device testing under same account)
       peerKeys.forEach(pk => {
         const presences = pState[pk];
         if (presences && presences.length > 0) {
           const info = presences[0];
-          // Find existing key by userId or pk
-          const existingKey = Object.keys(state.participants).find(k => {
-            const p = state.participants[k];
-            return (info.userId && p.userId === info.userId) || (p.clientId && p.clientId === pk) || k === pk;
-          }) || pk;
+          const existingKey = pk;
+
+          let displayUsername = info.username || 'Misafir';
+          if (state.username && displayUsername.toLowerCase() === state.username.toLowerCase()) {
+            displayUsername = `${state.username} (Cihaz 2)`;
+          }
 
           const existing = state.participants[existingKey] || {};
           state.participants[existingKey] = {
@@ -2865,7 +2873,7 @@ function connectSupabaseRoomSignaling() {
             peerId: pk,
             clientId: info.clientId || pk,
             userId: info.userId || existing.userId || pk,
-            username: info.username || existing.username || 'Misafir',
+            username: displayUsername,
             avatar: info.avatar || existing.avatar || '',
             avatarColor: info.avatarColor || existing.avatarColor || 'from-rose-500 to-indigo-600',
             isMicOn: typeof info.isMicOn === 'boolean' ? info.isMicOn : !!existing.isMicOn,
@@ -3123,7 +3131,7 @@ function handleSignalMessage(msg) {
   if (msg.clientId && msg.clientId === state.clientId) return;
   // If targeted to a specific peer or client, ignore if not intended for this client
   if (msg.targetClientId && String(msg.targetClientId) !== String(state.clientId)) return;
-  if (msg.targetUserId && String(msg.targetUserId) !== String(state.userId) && String(msg.targetUserId) !== String(state.clientId)) return;
+  if (!msg.targetClientId && msg.targetUserId && String(msg.targetUserId) !== String(state.userId) && String(msg.targetUserId) !== String(state.clientId)) return;
 
   // Deduplicate signals received across Dual-Rail (Room Channel + Global Channel)
   const candStr = msg.candidate ? (typeof msg.candidate === 'string' ? msg.candidate : (msg.candidate.candidate || JSON.stringify(msg.candidate))) : '';
@@ -3619,16 +3627,12 @@ function renderStagePipCards() {
   state.dismissedPips = state.dismissedPips || {};
 
   const seenCamKeys = new Set();
-  if (state.userId) seenCamKeys.add(String(state.userId).toLowerCase());
-  if (state.username) seenCamKeys.add(String(state.username).toLowerCase());
   if (state.clientId) seenCamKeys.add(String(state.clientId));
 
   const activeCamMembers = [];
   Object.values(state.participants || {}).forEach(p => {
     if (!p) return;
-    const isSelf = (p.clientId && p.clientId === state.clientId) ||
-                   (p.userId && p.userId === state.userId) ||
-                   (p.username && state.username && p.username.toLowerCase() === state.username.toLowerCase());
+    const isSelf = (p.clientId && p.clientId === state.clientId);
     if (isSelf) return;
 
     // Check if camera is on or active video track exists
@@ -3640,12 +3644,9 @@ function renderStagePipCards() {
     const isCamActive = p.isCamOn === true || (p.isCamOn !== false && hasLiveVideoTrack);
     if (!isCamActive) return;
 
-    const uKey = (p.userId || p.username || p.clientId || '').toLowerCase();
+    const uKey = (p.clientId || p.userId || p.username || '').toLowerCase();
     if (!uKey || seenCamKeys.has(uKey)) return;
     seenCamKeys.add(uKey);
-    if (p.username) seenCamKeys.add(p.username.toLowerCase());
-    if (p.userId) seenCamKeys.add(String(p.userId).toLowerCase());
-    if (p.clientId) seenCamKeys.add(String(p.clientId));
 
     if (pStream && !p.stream) p.stream = pStream;
     activeCamMembers.push(p);
@@ -4738,7 +4739,7 @@ function loadYoutubeVideo(urlOrId, startPlaying = true, startTime = 0) {
 
   dom.ytPlayerContainer.innerHTML = `
     <iframe id="miruoYtIframe" 
-            src="https://www.youtube.com/embed/${videoId}?autoplay=${autoPlayParam}&playsinline=1&enablejsapi=1&controls=0&disablekb=1&fs=0&rel=0&modestbranding=1&iv_load_policy=3${startParam}${ccParam}${effectiveOrigin}" 
+            src="https://www.youtube.com/embed/${videoId}?autoplay=${autoPlayParam}&playsinline=1&enablejsapi=1&widgetid=1&controls=0&disablekb=1&fs=0&rel=0&modestbranding=1&iv_load_policy=3${startParam}${ccParam}${effectiveOrigin}" 
             allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share; fullscreen" 
             allowfullscreen 
             class="w-full h-full border-0 select-none">
@@ -4755,11 +4756,25 @@ function loadYoutubeVideo(urlOrId, startPlaying = true, startTime = 0) {
   const ytFrame = document.getElementById('miruoYtIframe');
   if (ytFrame) {
     ytFrame.addEventListener('load', () => {
+      if (window.YT && window.YT.Player) {
+        try {
+          state.ytPlayer = new YT.Player('miruoYtIframe', {
+            events: {
+              onStateChange: onYtStateChange
+            }
+          });
+        } catch (_) {}
+      }
+
       setTimeout(() => {
         if (ytFrame.contentWindow) {
           ytFrame.contentWindow.postMessage(JSON.stringify({ event: 'listening' }), '*');
         }
-        if (!startPlaying) {
+        if (startPlaying) {
+          sendYtCommand('playVideo');
+          setTimeout(() => { if (state.isPlaying) sendYtCommand('playVideo'); }, 200);
+          setTimeout(() => { if (state.isPlaying) sendYtCommand('playVideo'); }, 600);
+        } else {
           sendYtCommand('pauseVideo');
           if (typeof startTime === 'number' && startTime > 0) {
             sendYtCommand('seekTo', [startTime, true]);
@@ -5609,8 +5624,11 @@ function togglePlayPause() {
   // 1. YouTube Player
   if (state.activeMode === 'youtube') {
     if (state.isPlaying) {
+      sendYtCommand('unMute');
       sendYtCommand('playVideo');
-      setTimeout(() => { if (state.isPlaying) sendYtCommand('playVideo'); }, 120);
+      setTimeout(() => { if (state.isPlaying) { sendYtCommand('unMute'); sendYtCommand('playVideo'); } }, 120);
+      setTimeout(() => { if (state.isPlaying) sendYtCommand('playVideo'); }, 350);
+      setTimeout(() => { if (state.isPlaying) sendYtCommand('playVideo'); }, 700);
     } else {
       sendYtCommand('pauseVideo');
       setTimeout(() => { if (!state.isPlaying) sendYtCommand('pauseVideo'); }, 60);
@@ -7891,7 +7909,10 @@ async function toggleMic() {
       audioTrack.enabled = true;
       let micNeedsReneg = false;
 
-      if (dom.selfVideo && state.localStream) dom.selfVideo.srcObject = state.localStream;
+      if (dom.selfVideo && state.localStream && dom.selfVideo.srcObject !== state.localStream) {
+        dom.selfVideo.srcObject = state.localStream;
+        dom.selfVideo.play().catch(() => {});
+      }
 
       // Also register local stream with ducking monitor so video ducks when user speaks
       if (typeof setupAudioDucking === 'function' && state.localStream) {
@@ -7962,17 +7983,9 @@ async function toggleMic() {
 }
 
 function optimizeVideoSender(sender) {
-  if (!sender || typeof sender.getParameters !== 'function') return;
-  try {
-    const params = sender.getParameters();
-    if (!params.encodings || params.encodings.length === 0) {
-      params.encodings = [{}];
-    }
-    params.encodings[0].maxBitrate = 450000;
-    params.encodings[0].maxFramerate = 24;
-    params.degradationPreference = 'maintain-framerate';
-    sender.setParameters(params).catch(() => {});
-  } catch (_) {}
+  // WebKit / Safari camera capture encoder freezes if setParameters is mutated with custom framerates.
+  // Standard browser WebRTC automatically handles optimal bitrate adaptation.
+  return;
 }
 
 async function getLiveCameraStream(targetFacingMode = null, targetDeviceId = null) {
@@ -8498,26 +8511,19 @@ function renderVideoGrid() {
   selfTile.appendChild(selfBadge);
   dom.roomVideoGrid.appendChild(selfTile);
 
-  // 2. Remote / Partner Tiles (Strict deduplication: exactly 1 tile per unique remote person)
+  // 2. Remote / Partner Tiles (Strict client distinction: exactly 1 tile per unique remote device/user)
   const otherMembers = [];
   const seenMemberKeys = new Set();
-  if (state.userId) seenMemberKeys.add(String(state.userId).toLowerCase());
-  if (state.username) seenMemberKeys.add(String(state.username).toLowerCase());
   if (state.clientId) seenMemberKeys.add(String(state.clientId));
 
   Object.values(state.participants || {}).forEach(p => {
     if (!p) return;
-    const isSelf = (p.clientId && p.clientId === state.clientId) ||
-                   (p.userId && p.userId === state.userId) ||
-                   (p.username && state.username && p.username.toLowerCase() === state.username.toLowerCase());
+    const isSelf = (p.clientId && p.clientId === state.clientId);
     if (isSelf) return;
 
-    const uKey = (p.userId || p.username || p.clientId || '').toLowerCase();
+    const uKey = (p.clientId || p.userId || p.username || '').toLowerCase();
     if (!uKey || seenMemberKeys.has(uKey)) return;
     seenMemberKeys.add(uKey);
-    if (p.username) seenMemberKeys.add(p.username.toLowerCase());
-    if (p.userId) seenMemberKeys.add(String(p.userId).toLowerCase());
-    if (p.clientId) seenMemberKeys.add(String(p.clientId));
     otherMembers.push(p);
   });
 
@@ -8558,8 +8564,8 @@ function renderVideoGrid() {
       v.playsInline = true;
       v.muted = true; // MUST be muted for mobile autoplay
       v.srcObject = peerStream;
-      const p = v.play();
-      if (p && p.catch) p.catch(() => {});
+      const playP = v.play();
+      if (playP && playP.catch) playP.catch(() => {});
       tile.appendChild(v);
 
       const placeholder = document.createElement('div');
@@ -13904,7 +13910,7 @@ function renderParticipantsList() {
   const uniqueMembers = [];
   const seenKeys = new Set();
   allMembers.forEach(m => {
-    const key = String(m.userId || m.username);
+    const key = String(m.clientId || m.userId || m.username);
     if (!seenKeys.has(key)) {
       seenKeys.add(key);
       uniqueMembers.push(m);
@@ -19899,6 +19905,10 @@ function validateInstagramUsername(username) {
       touchGuard.addEventListener('touchend', handlePlayerTouchEnd);
       touchGuard.addEventListener('click', (e) => {
         if (e.detail === 1) {
+          if (!state.isPlaying) {
+            togglePlayPause();
+            return;
+          }
           const isOverlayHidden = dom.ravePlayerOverlay && dom.ravePlayerOverlay.classList.contains('opacity-0');
           if (isOverlayHidden) {
             showStageControls();
