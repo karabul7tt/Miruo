@@ -2091,10 +2091,11 @@ const state = {
 // ICE Configuration (Public STUN + Reliable TURN servers for cross-network NAT traversal)
 const rtcConfig = {
   iceServers: [
+    { urls: 'stun:stun.cloudflare.com:3478' },
+    { urls: 'stun:turn.cloudflare.com:3478' },
     { urls: 'stun:stun.l.google.com:19302' },
     { urls: 'stun:stun1.l.google.com:19302' },
     { urls: 'stun:stun2.l.google.com:19302' },
-    { urls: 'stun:stun.cloudflare.com:3478' },
     { urls: 'stun:global.stun.twilio.com:3478' },
     { urls: 'stun:stun.relay.metered.ca:80' },
     {
@@ -2109,7 +2110,8 @@ const rtcConfig = {
     }
   ],
   iceCandidatePoolSize: 4,
-  bundlePolicy: 'max-bundle'
+  bundlePolicy: 'max-bundle',
+  iceTransportPolicy: 'all'
 };
 (function setupTurnServers() {
   try {

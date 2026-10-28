@@ -7,8 +7,10 @@
 // Boş bırakılırsa uygulama "tek cihaz" modunda çalışır (odalar yalnızca bu cihazda).
 window.MIRUO_API_BASE = '';
 
-// Miruo TURN relay (Metered). Kamera/mikrofon/veri kanalı farklı ağlardaki cihazlar arasında bu röle ile çalışır.
+// Miruo TURN & STUN relays (Cloudflare Global Anycast + Metered TURN).
 window.MIRUO_TURN_SERVERS = [
+  { urls: 'stun:stun.cloudflare.com:3478' },
+  { urls: 'stun:turn.cloudflare.com:3478' },
   { urls: 'stun:stun.relay.metered.ca:80' },
   {
     urls: [
