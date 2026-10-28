@@ -4772,6 +4772,44 @@ window.onYouTubeIframeAPIReady = function() {
   console.log('YouTube API Hazır.');
 };
 
+// Autoplay Unblock Assistant: Ensures videos never stay on a dark/black screen when browser blocks unmuted playback
+function showAutoplayUnblockPrompt() {
+  if (document.getElementById('miruoAutoplayUnblockBtn')) return;
+  const container = dom.ytPlayerContainer || dom.stageContainer;
+  if (!container) return;
+  const promptEl = document.createElement('div');
+  promptEl.id = 'miruoAutoplayUnblockBtn';
+  promptEl.className = 'absolute inset-0 z-20 flex flex-col items-center justify-center p-4 bg-black/45 backdrop-blur-[2px] transition-all duration-300 pointer-events-none select-none';
+  promptEl.innerHTML = `
+    <button type="button" class="pointer-events-auto px-5 py-3 rounded-2xl bg-gradient-to-r from-rose-600 via-pink-600 to-indigo-600 hover:from-rose-500 hover:to-indigo-500 text-white font-bold text-xs sm:text-sm shadow-2xl flex items-center gap-2.5 active:scale-95 transition-all cursor-pointer border border-white/20">
+      <svg class="w-5 h-5 fill-current text-white shrink-0" viewBox="0 0 24 24"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+      <span>Videoyu Başlat / Sesi Aç</span>
+    </button>
+  `;
+  const unblockAct = (e) => {
+    if (e && e.stopPropagation) e.stopPropagation();
+    sendYtCommand('unMute');
+    sendYtCommand('setVolume', [100]);
+    sendYtCommand('playVideo');
+    if (dom.nativeVideoPlayer) {
+      dom.nativeVideoPlayer.muted = false;
+      dom.nativeVideoPlayer.play().catch(() => {});
+    }
+    state.isPlaying = true;
+    updatePlayPauseUI(true);
+    promptEl.remove();
+  };
+  promptEl.querySelector('button').addEventListener('click', unblockAct);
+  container.appendChild(promptEl);
+}
+window.showAutoplayUnblockPrompt = showAutoplayUnblockPrompt;
+
+function dismissAutoplayUnblockPrompt() {
+  const p = document.getElementById('miruoAutoplayUnblockBtn');
+  if (p) p.remove();
+}
+window.dismissAutoplayUnblockPrompt = dismissAutoplayUnblockPrompt;
+
 function loadYoutubeVideo(urlOrId, startPlaying = true, startTime = 0) {
   if (!state.isInRoom || (state.currentTab !== 'room' && !state.isMiniPlayer)) {
     console.warn('[Miruo] Video playback suppressed: User is not inside an active room');
@@ -4782,6 +4820,13 @@ function loadYoutubeVideo(urlOrId, startPlaying = true, startTime = 0) {
     showToast('Geçerli bir YouTube linki girin!');
     return;
   }
+
+  // Ensure video is visible and never stuck in hidden audio-only mode
+  if (typeof videoDisplaySettings !== 'undefined') {
+    videoDisplaySettings.showVideo = true;
+    if (typeof applyVideoDisplay === 'function') applyVideoDisplay();
+  }
+  dismissAutoplayUnblockPrompt();
 
   state.activeMode = 'youtube';
   state.currentVideoId = videoId;
@@ -4868,6 +4913,16 @@ function loadYoutubeVideo(urlOrId, startPlaying = true, startTime = 0) {
           sendYtCommand('playVideo');
           setTimeout(() => { if (state.isPlaying) sendYtCommand('playVideo'); }, 200);
           setTimeout(() => { if (state.isPlaying) sendYtCommand('playVideo'); }, 600);
+
+          // Autoplay Block Guard: If browser prevented unmuted playback, switch to muted playback and show unblock button
+          setTimeout(() => {
+            if (state.isPlaying && (!state.lastReportedYtTime || state.lastReportedYtTime === 0)) {
+              console.log('[Miruo] Autoplay policy guard triggered: trying muted playback');
+              sendYtCommand('mute');
+              sendYtCommand('playVideo');
+              showAutoplayUnblockPrompt();
+            }
+          }, 1400);
         } else {
           sendYtCommand('pauseVideo');
           if (typeof startTime === 'number' && startTime > 0) {
@@ -5026,7 +5081,7 @@ function loadTwitchStream(channelOrUrl, title) {
 
   if (dom.webPlayerFrame) {
     dom.webPlayerFrame.classList.remove('hidden');
-    const hostnames = new Set(['localhost', '127.0.0.1', 'miruo.app', 'miruo.com.tr']);
+    const hostnames = new Set(['localhost', '127.0.0.1', 'miruo.app', 'www.miruo.app', 'miruo.com.tr', 'www.miruo.com.tr']);
     if (window.location.hostname && !hostnames.has(window.location.hostname)) {
       hostnames.add(window.location.hostname);
     }
@@ -5052,6 +5107,13 @@ function loadDirectVideo(url, title, startPlaying = true, startTime = 0) {
     console.warn('[Miruo] Direct video playback suppressed: User is not inside an active room');
     return;
   }
+  // Ensure video is visible and never stuck in hidden audio-only mode
+  if (typeof videoDisplaySettings !== 'undefined') {
+    videoDisplaySettings.showVideo = true;
+    if (typeof applyVideoDisplay === 'function') applyVideoDisplay();
+  }
+  dismissAutoplayUnblockPrompt();
+
   state.activeMode = 'direct';
   state.currentProvider = 'Web Video';
   state.currentVideoId = url;
@@ -5070,6 +5132,15 @@ function loadDirectVideo(url, title, startPlaying = true, startTime = 0) {
   dom.nativeVideoPlayer.setAttribute('playsinline', 'true');
   dom.nativeVideoPlayer.setAttribute('webkit-playsinline', 'true');
 
+  // Error recovery listener
+  dom.nativeVideoPlayer.onerror = (e) => {
+    console.warn('[Miruo] Doğrudan video oynatılamadı:', dom.nativeVideoPlayer.error, e);
+    showToast('Video akışı yüklenemedi. Bağlantıyı kontrol edin.');
+    if (typeof showIframeFallback === 'function') {
+      showIframeFallback(url, 'Doğrudan Video');
+    }
+  };
+
   state.isPlaying = !!startPlaying;
   updatePlayPauseUI(state.isPlaying);
   if (typeof startTime === 'number' && startTime > 0) {
@@ -5081,7 +5152,13 @@ function loadDirectVideo(url, title, startPlaying = true, startTime = 0) {
       try { dom.nativeVideoPlayer.currentTime = startTime; } catch (_) {}
     }
     if (startPlaying) {
-      dom.nativeVideoPlayer.play().catch(e => console.log('Autoplay deferred:', e));
+      dom.nativeVideoPlayer.play().catch(e => {
+        console.log('[Miruo] Native video autoplay blocked, falling back to muted play:', e);
+        dom.nativeVideoPlayer.muted = true;
+        dom.nativeVideoPlayer.play().then(() => {
+          showAutoplayUnblockPrompt();
+        }).catch(err => console.log('Muted native play also rejected:', err));
+      });
     } else {
       dom.nativeVideoPlayer.pause();
     }
@@ -5102,6 +5179,12 @@ function loadDirectVideo(url, title, startPlaying = true, startTime = 0) {
       hls.attachMedia(dom.nativeVideoPlayer);
       hls.on(window.Hls.Events.MANIFEST_PARSED, () => {
         applySrcAndState();
+      });
+      hls.on(window.Hls.Events.ERROR, (_, data) => {
+        if (data && data.fatal) {
+          console.warn('[Miruo] HLS Fatal Error:', data);
+          showToast('HLS Canlı akış hatası oluştu');
+        }
       });
       window.activeHlsInstance = hls;
     } else {
@@ -5135,7 +5218,7 @@ function normalizeEmbedUrl(url) {
   if (url.includes('twitch.tv/') || url.startsWith('twitch:')) {
     const ch = extractTwitchChannel(url);
     if (ch) {
-      const hostnames = new Set(['localhost', '127.0.0.1', 'miruo.app', 'miruo.com.tr']);
+      const hostnames = new Set(['localhost', '127.0.0.1', 'miruo.app', 'www.miruo.app', 'miruo.com.tr', 'www.miruo.com.tr']);
       if (window.location.hostname) hostnames.add(window.location.hostname);
       const parentParams = Array.from(hostnames).map(h => `parent=${encodeURIComponent(h)}`).join('&');
       return `https://player.twitch.tv/?channel=${encodeURIComponent(ch)}&${parentParams}&autoplay=true&muted=false`;
@@ -5824,6 +5907,9 @@ window.addEventListener('message', (event) => {
         }
       }
       const isNowPlaying = data.info.playerState === 1;
+      if (isNowPlaying) {
+        if (typeof dismissAutoplayUnblockPrompt === 'function') dismissAutoplayUnblockPrompt();
+      }
       // Buffering(3)/unstarted(-1)/cued(5) are NOT pauses; treating them as pause stopped the whole room
       const isRealPlayPause = data.info.playerState === 1 || data.info.playerState === 2;
       if (isRealPlayPause) {
@@ -5833,6 +5919,12 @@ window.addEventListener('message', (event) => {
           return;
         }
         if (isNowPlaying !== state.isPlaying && !state.isRemoteAction) {
+          // If video was blocked by browser autoplay right at start (time is 0, room is supposed to play)
+          if (!isNowPlaying && state.isPlaying && (!state.currentTime || state.currentTime < 1.0)) {
+            console.log('[Miruo] Autoplay block detected on playerState 2 at start: preserving playing intent and showing prompt');
+            showAutoplayUnblockPrompt();
+            return;
+          }
           if (!canUserControlPlayback()) {
             // Unauthorized peer state divergence: lock back to room playback state!
             if (state.isPlaying) sendYtCommand('playVideo');
@@ -5870,16 +5962,31 @@ let _altYtAttempted = false;
 function showEmbedRestrictionFallback(videoId) {
   if (!videoId || !dom.ytPlayerContainer) return;
 
-  // Try youtube-nocookie first if not yet attempted
+  // 1. On iOS Native App: Offer direct launch in the in-app browser which has zero 3rd-party embed restrictions!
+  if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.openPlatform) {
+    try {
+      window.webkit.messageHandlers.openPlatform.postMessage({
+        provider: 'youtube',
+        url: 'https://m.youtube.com/watch?v=' + videoId,
+        title: state.currentVideoTitle || 'YouTube',
+        hasActiveVideo: true,
+        lang: currentLang
+      });
+      showToast('Telif kısıtı olan video uygulama içi tarayıcıda açıldı');
+      return;
+    } catch (_) {}
+  }
+
+  // 2. Try youtube-nocookie with interactive controls enabled first if not yet attempted
   if (!_altYtAttempted) {
     _altYtAttempted = true;
     console.log('[Miruo] Telif/gömme kısıtı için youtube-nocookie deneniyor:', videoId);
     dom.ytPlayerContainer.innerHTML = `
       <iframe id="miruoYtIframe" 
-              src="https://www.youtube-nocookie.com/embed/${videoId}?autoplay=1&playsinline=1&enablejsapi=1&controls=0&rel=0" 
+              src="https://www.youtube-nocookie.com/embed/${videoId}?autoplay=1&playsinline=1&enablejsapi=1&controls=1&rel=0" 
               allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share; fullscreen" 
               allowfullscreen 
-              class="w-full h-full border-0 select-none">
+              class="w-full h-full border-0">
       </iframe>
     `;
     return;
@@ -5899,7 +6006,7 @@ function showEmbedRestrictionFallback(videoId) {
     </div>
     <h3 class="text-white text-sm md:text-base font-bold mb-1">YouTube Gömme Kısıtlaması</h3>
     <p class="text-gray-300 text-xs max-w-sm mb-4 leading-relaxed">
-      Yayıncı bu içeriğin üçüncü taraf uygulamalarda oynatılmasını sınırlandırmış. Başka bir video seçebilir veya tarayıcıda izleyebilirsiniz.
+      Yayıncı bu içeriğin üçüncü taraf uygulamalarda oynatılmasını sınırlandırmış. Tarayıcıda izleyebilir veya başka bir video seçebilirsiniz.
     </p>
     <div class="flex items-center gap-2">
       <button type="button" onclick="if(typeof openVideoChooser==='function')openVideoChooser()" class="px-4 py-2 rounded-xl bg-gradient-to-r from-rose-500 to-indigo-600 text-white text-xs font-bold shadow-md cursor-pointer hover:opacity-90 active:scale-95 transition-all">
