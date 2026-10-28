@@ -498,8 +498,8 @@
           <div id="ytPlayer"></div>
         </div>
 
-        <!-- Touch Shield Layer: Intercepts taps so YouTube native UI NEVER appears and never clashes with Miruo -->
-        <div id="miruoTouchGuard" class="absolute inset-0 cursor-pointer select-none" style="z-index: 12;"></div>
+        <!-- Touch Shield Layer: pointer-events-none so users can interact with video directly without blocking -->
+        <div id="miruoTouchGuard" class="absolute inset-0 pointer-events-none select-none" style="z-index: 12;"></div>
 
         <!-- HTML5 Video Player (For Screen Share & Local Video) -->
         <video id="nativeVideoPlayer" class="w-full h-full object-contain hidden" playsinline controls></video>
@@ -3325,8 +3325,8 @@
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="https://www.youtube.com/iframe_api"></script>
   <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
-  <script src="config.js"></script>
-  <script src="app.js"></script>
+  <script src="config.js?v=52"></script>
+  <script src="app.js?v=52"></script>
 
 </body>
 </html>

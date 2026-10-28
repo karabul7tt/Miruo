@@ -1984,7 +1984,7 @@ const state = {
   isHost: false,
   hostName: '',
   userRole: 'member', // 'owner' | 'admin' | 'video_control' | 'dj' | 'member'
-  controlMode: 'host_only', // 'host_only' | 'everyone'
+  controlMode: 'everyone', // 'host_only' | 'everyone'
   hasDjPermission: false,   // Whether current user can control media
 
   // Friends & Invite
@@ -3641,8 +3641,8 @@ function renderStagePipCards() {
                     (p.userId && state.peers?.[p.userId]?.stream) ||
                     (p.userId === state.peerId || p.clientId === state.peerId ? state.remoteStream : null);
     const hasLiveVideoTrack = pStream && pStream.getVideoTracks && pStream.getVideoTracks().some(t => t.readyState === 'live' && !t.muted);
-    const isCamActive = p.isCamOn === true || (p.isCamOn !== false && hasLiveVideoTrack);
-    if (!isCamActive) return;
+    const isCamActive = !!(hasLiveVideoTrack || p.isCamOn === true);
+    if (!isCamActive || p.isCamOn === false && !hasLiveVideoTrack) return;
 
     const uKey = (p.clientId || p.userId || p.username || '').toLowerCase();
     if (!uKey || seenCamKeys.has(uKey)) return;
@@ -4739,10 +4739,10 @@ function loadYoutubeVideo(urlOrId, startPlaying = true, startTime = 0) {
 
   dom.ytPlayerContainer.innerHTML = `
     <iframe id="miruoYtIframe" 
-            src="https://www.youtube.com/embed/${videoId}?autoplay=${autoPlayParam}&playsinline=1&enablejsapi=1&widgetid=1&controls=0&disablekb=1&fs=0&rel=0&modestbranding=1&iv_load_policy=3${startParam}${ccParam}${effectiveOrigin}" 
+            src="https://www.youtube.com/embed/${videoId}?autoplay=${autoPlayParam}&playsinline=1&enablejsapi=1&widgetid=1&controls=1&rel=0&modestbranding=1${startParam}${ccParam}" 
             allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share; fullscreen" 
             allowfullscreen 
-            class="w-full h-full border-0 select-none">
+            class="w-full h-full border-0">
     </iframe>
   `;
 
@@ -5258,15 +5258,11 @@ function handleRemoteSync(payload) {
     }
     const role = (participant && participant.role) || (isFromHost ? 'owner' : (payload.userRole || 'member'));
 
-    let isAuthorized = false;
-    if (state.controlMode === 'everyone') {
-      isAuthorized = true;
-    } else if (payload.isHost === true || payload.canControl === true) {
-      isAuthorized = true;
-    } else if (isFromHost || role === 'owner' || role === 'admin' || role === 'dj' || role === 'video_control') {
-      isAuthorized = true;
-    } else if (cleanUser(sender) === cleanUser(state.username) && canUserControlPlayback()) {
-      isAuthorized = true;
+    // In active watch party rooms, all connected peers can seamlessly play, pause and sync video together
+    let isAuthorized = true;
+    if (state.controlMode === 'host_only' && !isFromHost && role !== 'owner' && role !== 'admin' && role !== 'dj' && role !== 'video_control' && cleanUser(sender) !== cleanUser(state.username)) {
+      // Only strictly locked rooms restrict control
+      isAuthorized = false;
     }
 
     if (!isAuthorized) {
@@ -8527,21 +8523,7 @@ function renderVideoGrid() {
     otherMembers.push(p);
   });
 
-  if (otherMembers.length === 0 && activeRoomBots && activeRoomBots.length > 0) {
-    activeRoomBots.slice(0, 3).forEach((b, idx) => {
-      otherMembers.push({
-        userId: 'bot_' + b.name,
-        username: b.name,
-        avatar: b.avatar,
-        avatarColor: b.color,
-        isMicOn: idx === 0,
-        isCamOn: false,
-        role: idx === 0 ? 'video_control' : 'member'
-      });
-    });
-  }
-
-  // Update room counter badges to match true participants count
+  // True participant count without simulated fake bot padding
   const totalCount = 1 + otherMembers.length;
   if (dom.roomMemberCountBadge) dom.roomMemberCountBadge.textContent = totalCount;
   if (dom.participantsCountHeader) dom.participantsCountHeader.textContent = totalCount;
@@ -8555,7 +8537,7 @@ function renderVideoGrid() {
                        (state.peers && state.peers[m.userId] && state.peers[m.userId].stream) || 
                        m.stream || (m.userId === state.peerId ? state.remoteStream : null);
     const hasLiveVideo = peerStream && peerStream.getVideoTracks && peerStream.getVideoTracks().some(t => t.readyState === 'live' && !t.muted);
-    const isCamActive = m.isCamOn === true || (m.isCamOn !== false && hasLiveVideo);
+    const isCamActive = !!(hasLiveVideo || m.isCamOn === true);
 
     if (isCamActive && peerStream) {
       const v = document.createElement('video');
@@ -8978,7 +8960,7 @@ function createAndJoinRoom(title, isPrivate = false, category = 'YouTube', video
   state.isHost = true;
   state.hostName = state.username;
   state.userRole = 'owner';
-  state.controlMode = 'host_only';
+  state.controlMode = 'everyone';
   state.hasDjPermission = true;
 
   const accounts = typeof getConnectedAccounts === 'function' ? getConnectedAccounts() : {};
@@ -9299,7 +9281,7 @@ function renderRoomList(roomsToRender) {
       state.hostName = r.host || 'Yönetici';
       state.isHost = (r.host === state.username);
       state.userRole = state.isHost ? 'owner' : 'member';
-      state.controlMode = 'host_only';
+      state.controlMode = 'everyone';
       state.hasDjPermission = state.isHost;
       state.isInRoom = true;
       if (dom.currentRoomDisplay) dom.currentRoomDisplay.textContent = roomId;
@@ -13886,24 +13868,6 @@ function renderParticipantsList() {
       isHost: !state.isHost,
       role: !state.isHost ? 'owner' : 'member',
       isSelf: false
-    });
-  }
-
-  // Add active simulated bots in the room
-  if (activeRoomBots && activeRoomBots.length > 0) {
-    activeRoomBots.forEach(bot => {
-      allMembers.push({
-        userId: 'bot_' + bot.name,
-        username: bot.name,
-        avatar: bot.avatar,
-        avatarColor: bot.color,
-        isMicOn: false,
-        isCamOn: false,
-        isHost: false,
-        role: bot.role || 'member',
-        isSelf: false,
-        isBot: true
-      });
     });
   }
 
@@ -21785,7 +21749,7 @@ function generateUniqueRoomCode(isPrivate = false) {
       // Creator is always Host
       state.isHost = true;
       state.hostName = state.username;
-      state.controlMode = 'host_only';
+      state.controlMode = 'everyone';
       state.hasDjPermission = true;
       state.isPrivateRoom = !!newRoomIsPrivate;
       state.isInRoom = true;
@@ -22661,7 +22625,7 @@ window.extractRoomIdFromInput = extractRoomIdFromInput;
         state.isHost = false;
         state.userRole = 'member';
         state.hasDjPermission = false;
-        state.controlMode = 'host_only';
+        state.controlMode = 'everyone';
         if (dom.activeRoomTitle) dom.activeRoomTitle.textContent = finalRoomId;
         if (dom.currentRoomDisplay) dom.currentRoomDisplay.textContent = finalRoomId;
         switchToMyRoom();
