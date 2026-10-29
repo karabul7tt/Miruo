@@ -3041,9 +3041,28 @@ function connectSupabaseRoomSignaling() {
         if (key && key !== state.clientId) {
           showToast('Katılımcı odaya katıldı');
           if (state.isHost) {
+            const hostUserObj = JSON.parse(localStorage.getItem('miruo_user') || '{}');
+            const fullRoster = {
+              ...state.participants,
+              [state.clientId]: {
+                peerId: state.clientId,
+                clientId: state.clientId,
+                userId: state.userId,
+                username: state.username,
+                avatar: state.avatarUrl || hostUserObj.avatarUrl || '',
+                avatarColor: state.avatarBg || hostUserObj.avatarBg || 'from-rose-500 to-indigo-600',
+                isMicOn: !!state.isMicOn,
+                isCamOn: !!state.isCamOn,
+                isHost: true,
+                role: 'owner',
+                isSelf: false
+              }
+            };
             sendSignal({
               type: 'room-roster',
-              roster: state.participants
+              roster: fullRoster,
+              hostName: state.username,
+              hostId: state.userId
             });
             if (state.currentVideoId) {
               const syncPayload = {
@@ -3349,9 +3368,28 @@ function handleSignalMessage(msg) {
         }, 300);
       }
       if (state.isHost) {
+        const hostUserObj = JSON.parse(localStorage.getItem('miruo_user') || '{}');
+        const fullRoster = {
+          ...state.participants,
+          [state.clientId]: {
+            peerId: state.clientId,
+            clientId: state.clientId,
+            userId: state.userId,
+            username: state.username,
+            avatar: state.avatarUrl || hostUserObj.avatarUrl || '',
+            avatarColor: state.avatarBg || hostUserObj.avatarBg || 'from-rose-500 to-indigo-600',
+            isMicOn: !!state.isMicOn,
+            isCamOn: !!state.isCamOn,
+            isHost: true,
+            role: 'owner',
+            isSelf: false
+          }
+        };
         sendSignal({
           type: 'room-roster',
-          roster: state.participants
+          roster: fullRoster,
+          hostName: state.username,
+          hostId: state.userId
         });
         if (state.currentVideoId) {
           sendP2PData('sync', {
@@ -3367,16 +3405,27 @@ function handleSignalMessage(msg) {
       break;
 
     case 'room-roster':
+      if (msg.hostName) {
+        state.hostName = msg.hostName;
+        state.host = msg.hostName;
+      }
       if (msg.roster && typeof msg.roster === 'object') {
         Object.keys(msg.roster).forEach(uid => {
-          if (uid !== state.userId && uid !== state.clientId) {
-            const entry = msg.roster[uid];
-            const existingKey = Object.keys(state.participants).find(k => {
-              const p = state.participants[k];
-              return (entry.userId && p.userId === entry.userId) || (entry.clientId && p.clientId === entry.clientId);
-            }) || uid;
-            state.participants[existingKey] = Object.assign(state.participants[existingKey] || {}, entry);
-          }
+          const entry = msg.roster[uid];
+          if (!entry) return;
+          const isSelf = (entry.clientId && entry.clientId === state.clientId) || (entry.userId && entry.userId === state.userId);
+          if (isSelf) return;
+
+          const existingKey = Object.keys(state.participants).find(k => {
+            const p = state.participants[k];
+            if (!p) return false;
+            return (entry.clientId && p.clientId === entry.clientId) || (entry.userId && p.userId === entry.userId) || (entry.username && p.username === entry.username);
+          }) || (entry.clientId || entry.userId || uid);
+
+          state.participants[existingKey] = Object.assign(state.participants[existingKey] || {}, entry, {
+            clientId: entry.clientId || existingKey,
+            userId: entry.userId || existingKey
+          });
         });
         renderParticipantsList();
         renderVideoGrid();
@@ -3493,7 +3542,7 @@ function handleSignalMessage(msg) {
 
     case 'media_status':
     case 'media-status':
-      updateRemoteParticipantStatus(msg.userId, msg.username, msg.isMicOn, msg.isCamOn);
+      updateRemoteParticipantStatus(msg.userId, msg.username, msg.isMicOn, msg.isCamOn, msg.avatar, msg.avatarColor, msg.clientId);
       break;
 
     case 'platform-switch':
@@ -3726,17 +3775,16 @@ function renderStagePipCards() {
   const activeCamMembers = [];
   Object.values(state.participants || {}).forEach(p => {
     if (!p) return;
-    const isSelf = (p.clientId && p.clientId === state.clientId);
+    const isSelf = (p.clientId && p.clientId === state.clientId) || (p.userId && p.userId === state.userId);
     if (isSelf) return;
 
-    // Check if camera is on or active video track exists
+    // Strict rule: Only show camera bubble if the participant explicitly has their camera turned ON
+    if (!p.isCamOn) return;
+
     const pStream = p.stream || 
                     (p.clientId && state.peers?.[p.clientId]?.stream) ||
                     (p.userId && state.peers?.[p.userId]?.stream) ||
                     (p.userId === state.peerId || p.clientId === state.peerId ? state.remoteStream : null);
-    const hasLiveVideoTrack = pStream && pStream.getVideoTracks && pStream.getVideoTracks().some(t => t.readyState === 'live');
-    const isCamActive = !!(hasLiveVideoTrack || p.isCamOn === true || (pStream && pStream.getVideoTracks && pStream.getVideoTracks().length > 0));
-    if (!isCamActive) return;
 
     const uKey = (p.clientId || p.userId || p.username || '').toLowerCase();
     if (!uKey || seenCamKeys.has(uKey)) return;
@@ -4111,17 +4159,18 @@ function getOrCreatePeerConnection(peerId, isInitiator, meta = {}) {
     } else if (hasVideo) {
       const activateCam = () => {
         if (matchingP) {
-          matchingP.isCamOn = true;
           matchingP.stream = peerEntry.stream;
-          state.dismissedPips = state.dismissedPips || {};
-          if (matchingP.userId) state.dismissedPips[matchingP.userId] = false;
-          if (matchingP.clientId) state.dismissedPips[matchingP.clientId] = false;
+          if (matchingP.isCamOn) {
+            state.dismissedPips = state.dismissedPips || {};
+            if (matchingP.userId) state.dismissedPips[matchingP.userId] = false;
+            if (matchingP.clientId) state.dismissedPips[matchingP.clientId] = false;
+            if (typeof renderStagePipCards === 'function') renderStagePipCards();
+          }
         }
         if (!state.peerId || state.peerId === peerId) {
           state.peerId = peerId;
           state.remoteStream = peerEntry.stream;
         }
-        if (typeof renderStagePipCards === 'function') renderStagePipCards();
         if (typeof renderVideoGrid === 'function') renderVideoGrid();
         if (typeof clampPipCardsToStage === 'function') clampPipCardsToStage();
         updateBlockedMediaState();
@@ -4133,8 +4182,8 @@ function getOrCreatePeerConnection(peerId, isInitiator, meta = {}) {
       track.onunmute = activateCam;
       track.onmute = () => {
         const anyLive = peerEntry.stream.getVideoTracks().some(t => t.readyState === 'live');
-        if (matchingP) {
-          matchingP.isCamOn = anyLive;
+        if (matchingP && !anyLive) {
+          matchingP.isCamOn = false;
         }
         if (typeof renderStagePipCards === 'function') renderStagePipCards();
         if (typeof renderVideoGrid === 'function') renderVideoGrid();
@@ -4534,7 +4583,7 @@ function setupDataChannelEvents(channel) {
         if (typeof handleIncomingRoomInvite === 'function') handleIncomingRoomInvite(payload);
       }
       if (data.type === 'chat') renderChatMessage(data.sender || payload.sender, data.text || payload.text, false, data.time || payload.time, data.imageUrl || payload.imageUrl, data.avatarUrl || payload.avatarUrl);
-      if (data.type === 'media_status') updateRemoteParticipantStatus(data.userId || payload.userId, data.username || payload.username, data.isMicOn !== undefined ? data.isMicOn : payload.isMicOn, data.isCamOn !== undefined ? data.isCamOn : payload.isCamOn);
+      if (data.type === 'media_status') updateRemoteParticipantStatus(data.userId || payload.userId, data.username || payload.username, data.isMicOn !== undefined ? data.isMicOn : payload.isMicOn, data.isCamOn !== undefined ? data.isCamOn : payload.isCamOn, data.avatar || payload.avatar, data.avatarColor || payload.avatarColor, data.clientId || payload.clientId);
       if (data.type === 'platform_switch') {
         switchRoomPlatform(data.platform || payload.platform);
         const sender = payload.user || payload.fromUser || data.user;
@@ -4779,13 +4828,13 @@ function showAutoplayUnblockPrompt() {
   if (!container) return;
   const promptEl = document.createElement('div');
   promptEl.id = 'miruoAutoplayUnblockBtn';
-  promptEl.className = 'absolute inset-0 flex flex-col items-center justify-center p-4 bg-black/60 backdrop-blur-sm transition-all duration-300 pointer-events-auto select-none';
-  promptEl.style.setProperty('z-index', '35', 'important');
+  promptEl.className = 'absolute inset-0 flex flex-col items-center justify-center p-4 bg-black/70 backdrop-blur-sm transition-all duration-300 pointer-events-auto select-none';
+  promptEl.style.setProperty('z-index', '60', 'important');
   promptEl.innerHTML = `
     <div class="flex flex-col items-center gap-2.5 max-w-xs text-center">
       <button type="button" id="miruoUnblockActionBtn" class="px-6 py-3.5 rounded-2xl bg-gradient-to-r from-rose-600 via-pink-600 to-indigo-600 hover:scale-105 active:scale-95 text-white font-bold text-sm sm:text-base shadow-2xl flex items-center gap-3 cursor-pointer border border-white/25 transition-all">
         <svg class="w-6 h-6 fill-current text-white shrink-0 ml-0.5" viewBox="0 0 24 24"><polygon points="5 3 19 12 5 21 5 3"/></svg>
-        <span>Videoyu Başlat</span>
+        <span>Videoyu Başlat & Sesi Aç</span>
       </button>
       <span class="text-[11px] text-gray-300 font-medium drop-shadow">Tarayıcı güvenliği için oynatmayı başlatmak üzere dokunun</span>
     </div>
@@ -4795,6 +4844,13 @@ function showAutoplayUnblockPrompt() {
     sendYtCommand('unMute');
     sendYtCommand('setVolume', [100]);
     sendYtCommand('playVideo');
+    if (state.ytPlayer) {
+      try {
+        state.ytPlayer.unMute();
+        state.ytPlayer.setVolume(100);
+        state.ytPlayer.playVideo();
+      } catch (_) {}
+    }
     if (dom.nativeVideoPlayer) {
       dom.nativeVideoPlayer.muted = false;
       dom.nativeVideoPlayer.play().catch(() => {});
@@ -4895,10 +4951,13 @@ function loadYoutubeVideo(urlOrId, startPlaying = true, startTime = 0) {
 
   const autoPlayParam = startPlaying ? 1 : 0;
   const startParam = (typeof startTime === 'number' && startTime > 0) ? `&start=${Math.floor(startTime)}` : '';
+  const originParam = (window.location && window.location.origin && !window.location.origin.includes('file:'))
+    ? `&origin=${encodeURIComponent(window.location.origin)}`
+    : '';
 
   dom.ytPlayerContainer.innerHTML = `
     <iframe id="miruoYtIframe" 
-            src="https://www.youtube.com/embed/${videoId}?autoplay=${autoPlayParam}&playsinline=1&enablejsapi=1&controls=1&rel=0&modestbranding=1${startParam}${ccParam}" 
+            src="https://www.youtube.com/embed/${videoId}?autoplay=${autoPlayParam}&playsinline=1&enablejsapi=1&controls=1&rel=0&modestbranding=1${startParam}${ccParam}${originParam}" 
             allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share; fullscreen" 
             allowfullscreen 
             class="w-full h-full border-0">
@@ -4918,6 +4977,50 @@ function loadYoutubeVideo(urlOrId, startPlaying = true, startTime = 0) {
         }
       } catch (_) {}
 
+      if (window.YT && window.YT.Player) {
+        try {
+          if (state.ytPlayer && typeof state.ytPlayer.destroy === 'function') {
+            try { state.ytPlayer.destroy(); } catch (_) {}
+          }
+          state.ytPlayer = new YT.Player('miruoYtIframe', {
+            events: {
+              onReady: (event) => {
+                state.ytReady = true;
+                if (startPlaying) {
+                  try { event.target.playVideo(); } catch (_) {}
+                }
+              },
+              onStateChange: (event) => {
+                const s = event && event.data;
+                if (s === 1) { // Playing
+                  dismissAutoplayUnblockPrompt();
+                  state.isPlaying = true;
+                  updatePlayPauseUI(true);
+                } else if (s === 2) { // Paused
+                  // Suppress stall/autoplay-guard pause during initial startup
+                  if (state.isPlaying && (Date.now() - (state.ytLoadingAt || 0) < 6000 || !state.currentTime || state.currentTime < 1.5)) {
+                    console.log('[Miruo] Suppressing initial YouTube stall pause');
+                    try { event.target.playVideo(); } catch (_) {}
+                    return;
+                  }
+                  if (state.isPlaying && canUserControlPlayback()) {
+                    state.isPlaying = false;
+                    updatePlayPauseUI(false);
+                    sendP2PData('sync', { action: 'pause', time: state.currentTime, isHost: state.isHost, userRole: 'owner', sentAt: Date.now() });
+                  }
+                }
+              },
+              onError: (event) => {
+                const code = event && event.data;
+                if (code === 150 || code === 101 || code === 152 || code === 153 || code === 154) {
+                  showEmbedRestrictionFallback(videoId);
+                }
+              }
+            }
+          });
+        } catch (_) {}
+      }
+
       setTimeout(() => {
         if (startPlaying) {
           sendYtCommand('playVideo');
@@ -4932,7 +5035,7 @@ function loadYoutubeVideo(urlOrId, startPlaying = true, startTime = 0) {
               sendYtCommand('playVideo');
               showAutoplayUnblockPrompt();
             }
-          }, 1200);
+          }, 1500);
         } else {
           sendYtCommand('pauseVideo');
           if (typeof startTime === 'number' && startTime > 0) {
@@ -5437,12 +5540,15 @@ function handleRemoteSync(payload) {
 
     const cleanUser = (u) => String(u || '').toLowerCase().replace(/^@/, '').trim();
     const sender = payload.fromUser || payload.user;
-    const isFromHost = !!sender && (
+    const isFromHost = (payload.isHost === true) || (payload.userRole === 'owner') || (!!sender && (
       cleanUser(sender) === cleanUser(state.hostName) ||
       cleanUser(sender) === cleanUser(state.host) ||
-      (payload.isHost === true) ||
       (payload.userId && state.participants && Object.values(state.participants).some(p => (p.isHost || p.role === 'owner') && p.userId === payload.userId))
-    );
+    ));
+    if (isFromHost && sender && !state.hostName) {
+      state.hostName = sender;
+      state.host = sender;
+    }
     let participant = null;
     if (state.participants) {
       if (sender && state.participants[sender]) {
@@ -5451,7 +5557,7 @@ function handleRemoteSync(payload) {
         participant = Object.values(state.participants).find(p => cleanUser(p.userId) === cleanUser(sender) || cleanUser(p.username) === cleanUser(sender) || (payload.userId && cleanUser(p.userId) === cleanUser(payload.userId)));
       }
     }
-    const role = (participant && participant.role) || (isFromHost ? 'owner' : (payload.userRole || 'member'));
+    const role = (isFromHost ? 'owner' : (participant && participant.role)) || (payload.userRole || 'member');
 
     // In active watch party rooms, all connected peers can seamlessly play, pause and sync video together
     let isAuthorized = true;
@@ -5523,8 +5629,14 @@ function handleRemoteSync(payload) {
     state.isPlaying = false;
     updatePlayPauseUI(false);
     sendYtCommand('pauseVideo');
+    if (state.ytPlayer && typeof state.ytPlayer.pauseVideo === 'function') {
+      try { state.ytPlayer.pauseVideo(); } catch (_) {}
+    }
     if (typeof payload.time === 'number' && state.activeMode === 'youtube') {
       sendYtCommand('seekTo', [targetTime, true]);
+      if (state.ytPlayer && typeof state.ytPlayer.seekTo === 'function') {
+        try { state.ytPlayer.seekTo(targetTime, true); } catch (_) {}
+      }
     }
     state.currentTime = targetTime;
     if (dom.nativeVideoPlayer) {
@@ -5540,6 +5652,9 @@ function handleRemoteSync(payload) {
     const enforceRemotePause = () => {
       if (!state.isPlaying) {
         sendYtCommand('pauseVideo');
+        if (state.ytPlayer && typeof state.ytPlayer.pauseVideo === 'function') {
+          try { state.ytPlayer.pauseVideo(); } catch (_) {}
+        }
         if (dom.nativeVideoPlayer) {
           try { dom.nativeVideoPlayer.pause(); } catch (_) {}
         }
@@ -5931,7 +6046,7 @@ window.addEventListener('message', (event) => {
         }
       }
       // Buffering(3)/unstarted(-1)/cued(5) are NOT pauses; treating them as pause stopped the whole room
-      const isLoadingGrace = state.ytLoadingAt && (Date.now() - state.ytLoadingAt < 3500);
+      const isLoadingGrace = state.ytLoadingAt && (Date.now() - state.ytLoadingAt < 6000);
       const isRealPlayPause = data.info.playerState === 1 || data.info.playerState === 2;
       if (isRealPlayPause) {
         if (!state.isPlaying && isNowPlaying) {
@@ -5942,9 +6057,9 @@ window.addEventListener('message', (event) => {
           }
         }
         if (isNowPlaying !== state.isPlaying && !state.isRemoteAction) {
-          // If video was blocked by browser autoplay or in initial buffering (during loading grace or currentTime < 1.2s)
+          // If video was blocked by browser autoplay or in initial buffering (during loading grace or currentTime < 2.0s)
           if (!isNowPlaying && state.isPlaying) {
-            if (isLoadingGrace || !state.currentTime || state.currentTime < 1.2) {
+            if (isLoadingGrace || !state.currentTime || state.currentTime < 2.0) {
               console.log('[Miruo] Initial buffering/autoplay guard: suppressing premature pause');
               if (Date.now() - (state.ytLoadingAt || 0) > 1200) {
                 showAutoplayUnblockPrompt();
@@ -5964,6 +6079,8 @@ window.addEventListener('message', (event) => {
           sendP2PData('sync', {
             action: isNowPlaying ? 'play' : 'pause',
             time: state.currentTime,
+            isHost: state.isHost,
+            userRole: 'owner',
             sentAt: Date.now()
           });
         }
@@ -6088,22 +6205,7 @@ function handleAppForegroundResume() {
 }
 
 document.addEventListener('visibilitychange', () => {
-  if (document.visibilityState === 'hidden') {
-    // Screen locked or tab/app hidden - pause video playback
-    if (state.isPlaying) {
-      if (typeof sendYtCommand === 'function') {
-        try { sendYtCommand('pauseVideo'); } catch (_) {}
-      }
-      if (state.ytPlayer && typeof state.ytPlayer.pauseVideo === 'function') {
-        try { state.ytPlayer.pauseVideo(); } catch (_) {}
-      }
-      if (dom.nativeVideoPlayer) {
-        try { dom.nativeVideoPlayer.pause(); } catch (_) {}
-      }
-      state.isPlaying = false;
-      if (typeof updatePlayPauseUI === 'function') updatePlayPauseUI(false);
-    }
-  } else if (document.visibilityState === 'visible') {
+  if (document.visibilityState === 'visible') {
     handleAppForegroundResume();
   }
 });
@@ -9512,9 +9614,14 @@ function renderRoomList(roomsToRender) {
       state.controlMode = 'everyone';
       state.hasDjPermission = state.isHost;
       state.isInRoom = true;
+      state.roomName = r.name || 'Canlı Oda';
+      state.roomCategory = r.category || 'YouTube';
       if (dom.currentRoomDisplay) dom.currentRoomDisplay.textContent = roomId;
       switchToMyRoom();
       connectSignaling();
+      if (typeof applyPlatformToActiveRoom === 'function') {
+        applyPlatformToActiveRoom(r.category || 'YouTube');
+      }
       if (r.videoId) {
         setTimeout(() => { loadYoutubeVideo(r.videoId); }, 300);
       }
@@ -13779,43 +13886,74 @@ function updatePartnerPipIdentity(name, avatar) {
 }
 window.updatePartnerPipIdentity = updatePartnerPipIdentity;
 
-function updateRemoteParticipantStatus(userId, username, isMicOn, isCamOn, avatar, avatarColor) {
-  if (!userId) return;
-  const existing = state.participants[userId] || {};
+function updateRemoteParticipantStatus(userId, username, isMicOn, isCamOn, avatar, avatarColor, clientId) {
+  if (!userId && !clientId) return;
+  // Prevent tracking self as a remote participant
+  if ((clientId && clientId === state.clientId) || (userId && userId === state.userId)) return;
+
+  // Find if already exists by clientId, userId, or username to eliminate duplicate participants
+  const existingKey = Object.keys(state.participants || {}).find(k => {
+    const p = state.participants[k];
+    if (!p) return false;
+    if (clientId && (k === clientId || p.clientId === clientId)) return true;
+    if (userId && (k === userId || p.userId === userId)) return true;
+    if (username && p.username && p.username.toLowerCase() === username.toLowerCase()) return true;
+    return false;
+  }) || clientId || userId;
+
+  const existing = state.participants[existingKey] || {};
   const prevSnapshot = existing.userId ? [existing.isMicOn, existing.isCamOn, existing.username, existing.avatar].join('|') : null;
   const finalUName = username || existing.username || 'Katılımcı';
   const finalAvatar = avatar || existing.avatar || '';
   const finalColor = avatarColor || existing.avatarColor || 'from-indigo-500 to-purple-600';
-  state.participants[userId] = {
+  const effectiveCam = typeof isCamOn === 'boolean' ? isCamOn : !!existing.isCamOn;
+  const effectiveMic = typeof isMicOn === 'boolean' ? isMicOn : !!existing.isMicOn;
+
+  state.participants[existingKey] = {
     ...existing,
-    userId,
+    clientId: clientId || existing.clientId || existingKey,
+    userId: userId || existing.userId || existingKey,
     username: finalUName,
     avatar: finalAvatar,
     avatarColor: finalColor,
-    isMicOn: typeof isMicOn === 'boolean' ? isMicOn : !!existing.isMicOn,
-    isCamOn: typeof isCamOn === 'boolean' ? isCamOn : !!existing.isCamOn,
+    isMicOn: effectiveMic,
+    isCamOn: effectiveCam,
     role: existing.role || (existing.isHost ? 'owner' : 'member'),
     lastSeen: Date.now()
   };
-  if (isCamOn) {
+
+  // Clean up any other duplicate keys in state.participants referencing the same user/client
+  Object.keys(state.participants).forEach(k => {
+    if (k !== existingKey) {
+      const other = state.participants[k];
+      if (other && ((clientId && other.clientId === clientId) || (userId && other.userId === userId))) {
+        delete state.participants[k];
+      }
+    }
+  });
+
+  if (effectiveCam) {
     state.dismissedPips = state.dismissedPips || {};
-    state.dismissedPips[userId] = false;
+    state.dismissedPips[existingKey] = false;
+    if (userId) state.dismissedPips[userId] = false;
+    if (clientId) state.dismissedPips[clientId] = false;
   }
   state.isPartnerCamOn = Object.values(state.participants).some(p => p.userId !== state.userId && p.isCamOn);
 
   // If we hear from someone we have no connection with (missed join/presence), connect to them now
   try {
-    if (state.isInRoom && String(userId) !== String(state.userId) && (!state.peers || !state.peers[userId]) &&
+    const connTarget = clientId || userId;
+    if (state.isInRoom && String(userId) !== String(state.userId) && (!state.peers || !state.peers[connTarget]) &&
         typeof getOrCreatePeerConnection === 'function') {
-      getOrCreatePeerConnection(userId, String(state.userId) < String(userId));
-      if (!state.peerId) state.peerId = userId;
+      getOrCreatePeerConnection(connTarget, String(state.clientId || state.userId) < String(connTarget));
+      if (!state.peerId) state.peerId = connTarget;
       if (typeof updatePeerStatus === 'function') updatePeerStatus(true);
     }
   } catch (_) {}
 
-  const nowP = state.participants[userId];
+  const nowP = state.participants[existingKey];
   const newSnapshot = [nowP.isMicOn, nowP.isCamOn, nowP.username, nowP.avatar].join('|');
-  if (prevSnapshot === newSnapshot) return; // nothing changed (periodic re-announce): avoid re-rendering/flicker
+  if (prevSnapshot === newSnapshot) return;
   if (typeof renderStagePipCards === 'function') {
     renderStagePipCards();
   }

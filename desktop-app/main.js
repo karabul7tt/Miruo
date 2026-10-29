@@ -877,7 +877,9 @@ function createWindow(port) {
       const url = details.url || '';
       if (url.includes('/embed/') || url.includes('/v/') || url.includes('twitch.tv')) {
         details.requestHeaders['Referer'] = 'https://miruo.com.tr/';
-        details.requestHeaders['Origin'] = 'https://miruo.com.tr';
+        if (details.requestHeaders['Origin'] && !details.requestHeaders['Origin'].includes('127.0.0.1')) {
+          details.requestHeaders['Origin'] = 'https://miruo.com.tr';
+        }
       }
       callback({ cancel: false, requestHeaders: details.requestHeaders });
     }
