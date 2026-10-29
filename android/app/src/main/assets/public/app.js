@@ -4865,11 +4865,27 @@ function loadYoutubeVideo(urlOrId, startPlaying = true, startTime = 0) {
     dom.ytPlayerContainer.innerHTML = '';
   }
 
+  // 1. Reset all playback state to clean initial values
+  state.currentTime = (typeof startTime === 'number' && startTime > 0) ? startTime : 0;
+  state.duration = 0;
+  state.lastReportedYtTime = 0;
+  state.lastReportedYtAt = null;
+  state.lastHardSeekAt = 0;
+  state.lastSyncSentAt = 0;
+  state.ytLoadingAt = Date.now();
+  state.ytReady = false;
+  state.ytPlayer = null;
+
+  if (dom.currentTimeDisplay) dom.currentTimeDisplay.textContent = formatTime(state.currentTime);
+  if (dom.durationDisplay) dom.durationDisplay.textContent = '00:00';
+  if (dom.seekSlider) dom.seekSlider.value = 0;
+  if (dom.stageBottomMiniProgressBar) dom.stageBottomMiniProgressBar.style.width = '0%';
+  if (dom.nowPlayingSeekSlider) dom.nowPlayingSeekSlider.value = 0;
+  if (dom.nowPlayingCurrentTime) dom.nowPlayingCurrentTime.textContent = '00:00';
+  if (dom.nowPlayingDuration) dom.nowPlayingDuration.textContent = '00:00';
+
   // Direct responsive embed iframe that plays 100% reliably in WKWebView & Desktop browsers
   _altYtAttempted = false;
-  const isLocalOrigin = !window.location.origin || window.location.origin.includes('127.0.0.1') || window.location.origin.includes('localhost') || window.location.protocol === 'file:';
-  const effectiveOrigin = isLocalOrigin ? '' : `&origin=${encodeURIComponent(window.location.origin)}`;
-  
   const prefCaptionLang = (function() {
     try { return localStorage.getItem('miruo_caption_lang'); } catch (_) { return null; }
   })();
@@ -4882,7 +4898,7 @@ function loadYoutubeVideo(urlOrId, startPlaying = true, startTime = 0) {
 
   dom.ytPlayerContainer.innerHTML = `
     <iframe id="miruoYtIframe" 
-            src="https://www.youtube.com/embed/${videoId}?autoplay=${autoPlayParam}&playsinline=1&enablejsapi=1&controls=1&rel=0&modestbranding=1${startParam}${ccParam}${effectiveOrigin}" 
+            src="https://www.youtube.com/embed/${videoId}?autoplay=${autoPlayParam}&playsinline=1&enablejsapi=1&controls=1&rel=0&modestbranding=1${startParam}${ccParam}" 
             allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share; fullscreen" 
             allowfullscreen 
             class="w-full h-full border-0">
@@ -4891,9 +4907,6 @@ function loadYoutubeVideo(urlOrId, startPlaying = true, startTime = 0) {
 
   state.isPlaying = !!startPlaying;
   updatePlayPauseUI(state.isPlaying);
-  if (typeof startTime === 'number' && startTime > 0) {
-    state.currentTime = startTime;
-  }
 
   // Hook iframe load to enable postMessage events & restore preferred quality and captions
   const ytFrame = document.getElementById('miruoYtIframe');
@@ -4905,31 +4918,6 @@ function loadYoutubeVideo(urlOrId, startPlaying = true, startTime = 0) {
         }
       } catch (_) {}
 
-      if (window.YT && window.YT.Player) {
-        try {
-          if (state.ytPlayer && typeof state.ytPlayer.destroy === 'function') {
-            try { state.ytPlayer.destroy(); } catch (_) {}
-          }
-          state.ytPlayer = new YT.Player('miruoYtIframe', {
-            events: {
-              onReady: (event) => {
-                state.ytReady = true;
-                if (startPlaying) {
-                  try { event.target.playVideo(); } catch (_) {}
-                }
-              },
-              onStateChange: onYtStateChange,
-              onError: (event) => {
-                const code = event && event.data;
-                if (code === 150 || code === 101 || code === 152 || code === 153 || code === 154) {
-                  showEmbedRestrictionFallback(videoId);
-                }
-              }
-            }
-          });
-        } catch (_) {}
-      }
-
       setTimeout(() => {
         if (startPlaying) {
           sendYtCommand('playVideo');
@@ -4939,12 +4927,12 @@ function loadYoutubeVideo(urlOrId, startPlaying = true, startTime = 0) {
           // Autoplay Block Guard: If browser prevented unmuted playback, switch to muted playback and show unblock button
           setTimeout(() => {
             if (state.isPlaying && (!state.lastReportedYtTime || state.lastReportedYtTime === 0)) {
-              console.log('[Miruo] Autoplay policy guard triggered: trying muted playback');
+              console.log('[Miruo] Autoplay policy guard triggered: trying muted playback to unblock buffer');
               sendYtCommand('mute');
               sendYtCommand('playVideo');
               showAutoplayUnblockPrompt();
             }
-          }, 1400);
+          }, 1200);
         } else {
           sendYtCommand('pauseVideo');
           if (typeof startTime === 'number' && startTime > 0) {
@@ -4965,7 +4953,7 @@ function loadYoutubeVideo(urlOrId, startPlaying = true, startTime = 0) {
             window.setCaptionLanguage(savedCap);
           }
         } catch (_) {}
-      }, 400);
+      }, 350);
     });
   }
 
@@ -5309,7 +5297,12 @@ function extractYouTubeId(url) {
 function onYtStateChange(event) {
   if (state.isRemoteAction) return;
 
-  if (event.data === YT.PlayerState.PLAYING) {
+  const dataVal = event && typeof event.data !== 'undefined' ? event.data : event;
+  const isPlayingEvent = dataVal === 1 || (window.YT && dataVal === YT.PlayerState.PLAYING);
+  const isPausedEvent = dataVal === 2 || (window.YT && dataVal === YT.PlayerState.PAUSED);
+
+  if (isPlayingEvent) {
+    if (typeof dismissAutoplayUnblockPrompt === 'function') dismissAutoplayUnblockPrompt();
     if (!state.isPlaying) {
       if (!canUserControlPlayback()) {
         // Unauthorized user tried to play or iframe auto-resumed -> force back to room paused state!
@@ -5318,9 +5311,15 @@ function onYtStateChange(event) {
       }
       state.isPlaying = true;
       updatePlayPauseUI(true);
-      sendP2PData('sync', { action: 'play', time: state.ytPlayer ? state.ytPlayer.getCurrentTime() : state.currentTime, sentAt: Date.now() });
+      sendP2PData('sync', { action: 'play', time: (typeof getLivePlayerTime === 'function' ? getLivePlayerTime() : state.currentTime), sentAt: Date.now() });
     }
-  } else if (event.data === YT.PlayerState.PAUSED) {
+  } else if (isPausedEvent) {
+    // Suppress pause event during initial loading grace period (first 3.5s or time < 1.0s)
+    const isInitialLoad = (state.ytLoadingAt && (Date.now() - state.ytLoadingAt < 3500)) || (!state.currentTime || state.currentTime < 1.0);
+    if (isInitialLoad) {
+      console.log('[Miruo] Ignoring transient YouTube pause event during initial load');
+      return;
+    }
     if (state.isPlaying) {
       if (!canUserControlPlayback()) {
         // Unauthorized user tried to pause -> force back to room playing state!
@@ -5329,7 +5328,7 @@ function onYtStateChange(event) {
       }
       state.isPlaying = false;
       updatePlayPauseUI(false);
-      sendP2PData('sync', { action: 'pause', time: state.ytPlayer ? state.ytPlayer.getCurrentTime() : state.currentTime, sentAt: Date.now() });
+      sendP2PData('sync', { action: 'pause', time: (typeof getLivePlayerTime === 'function' ? getLivePlayerTime() : state.currentTime), sentAt: Date.now() });
     }
   }
 }
@@ -5643,18 +5642,24 @@ function handleRemoteSync(payload) {
       // Continuous, sub-second precision synchronization:
       // If drift is noticeable (> 0.5s), snap instantly to target with hard seek
       const now = Date.now();
-      if (absDrift > 0.5) {
+      const isLoadingGrace = state.ytLoadingAt && (now - state.ytLoadingAt < 3500);
+      if (absDrift > 0.5 && !isLoadingGrace) {
         if (!state.lastHardSeekAt || (now - state.lastHardSeekAt) > 1200) {
-          state.lastHardSeekAt = now;
-          if (state.activeMode === 'youtube') {
-            sendYtCommand('seekTo', [targetTime, true]);
-            sendYtCommand('setPlaybackRate', [1.0]);
-          } else if (dom.nativeVideoPlayer) {
-            dom.nativeVideoPlayer.currentTime = targetTime;
-            dom.nativeVideoPlayer.playbackRate = 1.0;
+          // If both local and target are near start (< 2.0s), do not hard-seek, let initial stream buffer!
+          if (targetTime < 2.0 && localTime < 2.0) {
+            // Already at origin, avoid seek storm
+          } else {
+            state.lastHardSeekAt = now;
+            if (state.activeMode === 'youtube') {
+              sendYtCommand('seekTo', [targetTime, true]);
+              sendYtCommand('setPlaybackRate', [1.0]);
+            } else if (dom.nativeVideoPlayer) {
+              dom.nativeVideoPlayer.currentTime = targetTime;
+              dom.nativeVideoPlayer.playbackRate = 1.0;
+            }
+            state.currentTime = targetTime;
+            state.playbackRate = 1.0;
           }
-          state.currentTime = targetTime;
-          state.playbackRate = 1.0;
         }
       } else if (absDrift > 0.15) {
         // Micro drift (0.15s to 0.5s):
@@ -5671,14 +5676,6 @@ function handleRemoteSync(payload) {
         }
       } else {
         // In tight sync (< 0.15s): maintain normal 1.0x rate
-        if (state.playbackRate !== 1.0) {
-          if (state.activeMode === 'youtube') {
-            sendYtCommand('setPlaybackRate', [1.0]);
-          } else if (dom.nativeVideoPlayer) {
-            dom.nativeVideoPlayer.playbackRate = 1.0;
-          }
-          state.playbackRate = 1.0;
-        }
         if (state.playbackRate !== 1.0) {
           if (state.activeMode === 'youtube') {
             sendYtCommand('setPlaybackRate', [1.0]);
@@ -5742,8 +5739,6 @@ function startPlaybackTracking() {
         if (state.lastReportedYtAt) {
           const elapsed = (Date.now() - state.lastReportedYtAt) / 1000;
           state.currentTime = Math.min((state.duration || 999999), (state.lastReportedYtTime || 0) + elapsed);
-        } else {
-          state.currentTime = Math.min((state.duration || 999999), (state.currentTime || 0) + 0.5);
         }
       }
     } else if (state.activeMode === 'direct' && dom.nativeVideoPlayer) {
@@ -5930,21 +5925,32 @@ window.addEventListener('message', (event) => {
       const isNowPlaying = data.info.playerState === 1;
       if (isNowPlaying) {
         if (typeof dismissAutoplayUnblockPrompt === 'function') dismissAutoplayUnblockPrompt();
+        if (!state.isPlaying && (state.ytLoadingAt && Date.now() - state.ytLoadingAt < 5000)) {
+          state.isPlaying = true;
+          updatePlayPauseUI(true);
+        }
       }
       // Buffering(3)/unstarted(-1)/cued(5) are NOT pauses; treating them as pause stopped the whole room
+      const isLoadingGrace = state.ytLoadingAt && (Date.now() - state.ytLoadingAt < 3500);
       const isRealPlayPause = data.info.playerState === 1 || data.info.playerState === 2;
       if (isRealPlayPause) {
         if (!state.isPlaying && isNowPlaying) {
-          // Room state is paused: kill any rogue autoplay from iframe immediately!
-          sendYtCommand('pauseVideo');
-          return;
+          if (!isLoadingGrace) {
+            // Room state is paused: kill any rogue autoplay from iframe immediately!
+            sendYtCommand('pauseVideo');
+            return;
+          }
         }
         if (isNowPlaying !== state.isPlaying && !state.isRemoteAction) {
-          // If video was blocked by browser autoplay right at start (time is 0, room is supposed to play)
-          if (!isNowPlaying && state.isPlaying && (!state.currentTime || state.currentTime < 1.0)) {
-            console.log('[Miruo] Autoplay block detected on playerState 2 at start: preserving playing intent and showing prompt');
-            showAutoplayUnblockPrompt();
-            return;
+          // If video was blocked by browser autoplay or in initial buffering (during loading grace or currentTime < 1.2s)
+          if (!isNowPlaying && state.isPlaying) {
+            if (isLoadingGrace || !state.currentTime || state.currentTime < 1.2) {
+              console.log('[Miruo] Initial buffering/autoplay guard: suppressing premature pause');
+              if (Date.now() - (state.ytLoadingAt || 0) > 1200) {
+                showAutoplayUnblockPrompt();
+              }
+              return;
+            }
           }
           if (!canUserControlPlayback()) {
             // Unauthorized peer state divergence: lock back to room playback state!
