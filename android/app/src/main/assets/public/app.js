@@ -672,13 +672,22 @@ function triggerPhotoPicker(target = 'avatar') {
   // Web Browser / Standard HTML fallback
   if (target === 'avatar') {
     const el = (dom && dom.avatarFileInput) || document.getElementById('avatarFileInput');
-    if (el) el.click();
+    if (el) {
+      el.value = '';
+      el.click();
+    }
   } else if (target === 'chat') {
     const el = document.getElementById('chatImageFileInput');
-    if (el) el.click();
+    if (el) {
+      el.value = '';
+      el.click();
+    }
   } else if (target === 'signup') {
     const el = (dom && dom.signUpAvatarFileInput) || document.getElementById('signUpAvatarFileInput');
-    if (el) el.click();
+    if (el) {
+      el.value = '';
+      el.click();
+    }
   }
 }
 window.triggerPhotoPicker = triggerPhotoPicker;
@@ -4951,7 +4960,7 @@ function loadYoutubeVideo(urlOrId, startPlaying = true, startTime = 0) {
 
   const autoPlayParam = startPlaying ? 1 : 0;
   const startParam = (typeof startTime === 'number' && startTime > 0) ? `&start=${Math.floor(startTime)}` : '';
-  const originParam = (window.location && window.location.origin && !window.location.origin.includes('file:'))
+  const originParam = (window.location && window.location.origin && !window.location.origin.includes('file:') && !window.location.origin.includes('127.0.0.1') && !window.location.origin.includes('localhost'))
     ? `&origin=${encodeURIComponent(window.location.origin)}`
     : '';
 
@@ -4979,9 +4988,6 @@ function loadYoutubeVideo(urlOrId, startPlaying = true, startTime = 0) {
 
       if (window.YT && window.YT.Player) {
         try {
-          if (state.ytPlayer && typeof state.ytPlayer.destroy === 'function') {
-            try { state.ytPlayer.destroy(); } catch (_) {}
-          }
           state.ytPlayer = new YT.Player('miruoYtIframe', {
             events: {
               onReady: (event) => {
@@ -4998,7 +5004,8 @@ function loadYoutubeVideo(urlOrId, startPlaying = true, startTime = 0) {
                   updatePlayPauseUI(true);
                 } else if (s === 2) { // Paused
                   // Suppress stall/autoplay-guard pause during initial startup
-                  if (state.isPlaying && (Date.now() - (state.ytLoadingAt || 0) < 6000 || !state.currentTime || state.currentTime < 1.5)) {
+                  const isStartup = (Date.now() - (state.ytLoadingAt || 0) < 8000) || !state.currentTime || state.currentTime < 2.0;
+                  if (state.isPlaying && isStartup) {
                     console.log('[Miruo] Suppressing initial YouTube stall pause');
                     try { event.target.playVideo(); } catch (_) {}
                     return;
@@ -5027,15 +5034,26 @@ function loadYoutubeVideo(urlOrId, startPlaying = true, startTime = 0) {
           setTimeout(() => { if (state.isPlaying) sendYtCommand('playVideo'); }, 300);
           setTimeout(() => { if (state.isPlaying) sendYtCommand('playVideo'); }, 800);
 
+          // Watchdog: ensures video never stays locked in black/buffering screen
+          clearInterval(state.ytPlayWatchdog);
+          let watchdogAttempts = 0;
+          state.ytPlayWatchdog = setInterval(() => {
+            watchdogAttempts++;
+            if (!state.isPlaying || watchdogAttempts > 10 || (state.lastReportedYtTime && state.lastReportedYtTime > 0.8)) {
+              clearInterval(state.ytPlayWatchdog);
+              return;
+            }
+            sendYtCommand('playVideo');
+          }, 600);
+
           // Autoplay Block Guard: If browser prevented unmuted playback, switch to muted playback and show unblock button
           setTimeout(() => {
             if (state.isPlaying && (!state.lastReportedYtTime || state.lastReportedYtTime === 0)) {
-              console.log('[Miruo] Autoplay policy guard triggered: trying muted playback to unblock buffer');
-              sendYtCommand('mute');
+              console.log('[Miruo] Autoplay policy guard triggered: trying unmuted kick');
               sendYtCommand('playVideo');
               showAutoplayUnblockPrompt();
             }
-          }, 1500);
+          }, 3500);
         } else {
           sendYtCommand('pauseVideo');
           if (typeof startTime === 'number' && startTime > 0) {
@@ -6046,7 +6064,7 @@ window.addEventListener('message', (event) => {
         }
       }
       // Buffering(3)/unstarted(-1)/cued(5) are NOT pauses; treating them as pause stopped the whole room
-      const isLoadingGrace = state.ytLoadingAt && (Date.now() - state.ytLoadingAt < 6000);
+      const isLoadingGrace = state.ytLoadingAt && (Date.now() - state.ytLoadingAt < 8000);
       const isRealPlayPause = data.info.playerState === 1 || data.info.playerState === 2;
       if (isRealPlayPause) {
         if (!state.isPlaying && isNowPlaying) {
@@ -6061,9 +6079,7 @@ window.addEventListener('message', (event) => {
           if (!isNowPlaying && state.isPlaying) {
             if (isLoadingGrace || !state.currentTime || state.currentTime < 2.0) {
               console.log('[Miruo] Initial buffering/autoplay guard: suppressing premature pause');
-              if (Date.now() - (state.ytLoadingAt || 0) > 1200) {
-                showAutoplayUnblockPrompt();
-              }
+              sendYtCommand('playVideo');
               return;
             }
           }
@@ -9660,10 +9676,11 @@ let globalRoomsSubscribed = false;
 function initGlobalPublicRoomsSync() {
   if (!supabaseClient || globalRoomsChannel) return;
   try {
-    const presenceKey = (state && state.userId) ? String(state.userId) : ('guest_' + Math.random().toString(36).substring(2, 9));
+    const myPresenceKey = state.clientId || (state.clientId = 'cl_' + Math.random().toString(36).substring(2, 9) + '_' + Date.now().toString(36));
     globalRoomsChannel = supabaseClient.channel('miruo_global_public_rooms', {
       config: {
-        presence: { key: presenceKey }
+        presence: { key: myPresenceKey },
+        broadcast: { ack: false, self: false }
       }
     });
 
@@ -9697,6 +9714,16 @@ function initGlobalPublicRoomsSync() {
       .subscribe((status) => {
         if (status === 'SUBSCRIBED') {
           globalRoomsSubscribed = true;
+          if (state.pendingPublicRoomPayload) {
+            try {
+              globalRoomsChannel.track(state.pendingPublicRoomPayload).catch(() => {});
+              globalRoomsChannel.send({
+                type: 'broadcast',
+                event: 'room_announced',
+                payload: state.pendingPublicRoomPayload
+              }).catch(() => {});
+            } catch (_) {}
+          }
           if (state.isInRoom && state.roomId && !state.isPrivateRoom) {
             syncCurrentRoomToGlobalPresence();
           }
@@ -9705,7 +9732,7 @@ function initGlobalPublicRoomsSync() {
             globalRoomsChannel.send({
               type: 'broadcast',
               event: 'request_public_rooms',
-              payload: { from: state.userId || 'guest', ts: Date.now() }
+              payload: { from: state.clientId || state.userId || 'guest', ts: Date.now() }
             }).catch(() => {});
           } catch (_) {}
         } else if (status === 'CLOSED' || status === 'CHANNEL_ERROR') {
@@ -9823,8 +9850,9 @@ function syncCurrentRoomToGlobalPresence() {
     avatars: myAvatar ? [myAvatar] : [{ initial: (state.username || 'U').charAt(0).toUpperCase(), bg: 'from-purple-500 to-indigo-600' }],
     updatedAt: Date.now()
   };
+  state.pendingPublicRoomPayload = payload;
   upsertGlobalRealtimeRoom(payload);
-  if (globalRoomsChannel) {
+  if (globalRoomsChannel && globalRoomsSubscribed) {
     try {
       globalRoomsChannel.track(payload).catch(e => console.warn('[Presence] track error:', e));
       globalRoomsChannel.send({
@@ -9838,13 +9866,13 @@ function syncCurrentRoomToGlobalPresence() {
   }
 }
 
-// Global 8-second Heartbeat: keeps host room continuously alive and visible across all networks
+// Global 4-second Heartbeat: keeps host room continuously alive and visible across all networks
 if (!window._publicRoomHeartbeatInterval) {
   window._publicRoomHeartbeatInterval = setInterval(() => {
     if (state.isInRoom && state.roomId && !state.isPrivateRoom) {
       syncCurrentRoomToGlobalPresence();
     }
-  }, 8000);
+  }, 4000);
 }
 
 function mergeAllPublicRooms(serverRooms = []) {
@@ -19357,13 +19385,17 @@ function initEvents() {
 
   // Avatar file upload trigger & reader
   const triggerAvatarPicker = (e) => {
-    if (e && window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.pickImage) {
-      e.preventDefault();
+    if (e) {
+      if (typeof e.preventDefault === 'function') e.preventDefault();
+      if (typeof e.stopPropagation === 'function') e.stopPropagation();
+    }
+    if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.pickImage) {
       triggerPhotoPicker('avatar');
       return;
     }
     const fileInput = dom.avatarFileInput || document.getElementById('avatarFileInput');
-    if (fileInput && (!e || e.target !== fileInput)) {
+    if (fileInput) {
+      fileInput.value = '';
       fileInput.click();
     }
   };
@@ -21283,11 +21315,14 @@ function validateInstagramUsername(username) {
   }
 
   // Platform Launchers & Create Room Modal Logic
-  let newRoomIsPrivate = true;
+  let newRoomIsPrivate = false;
   let selectedPlatform = 'YouTube';
 
   function openCreateRoomModal(platform = 'YouTube') {
     selectedPlatform = platform;
+    newRoomIsPrivate = false;
+    if (dom.selectPublicRoomBtn) dom.selectPublicRoomBtn.className = 'p-3 rounded-2xl border-2 border-purple-500 bg-purple-500/10 text-left transition-all';
+    if (dom.selectPrivateRoomBtn) dom.selectPrivateRoomBtn.className = 'p-3 rounded-2xl border border-white/10 bg-white/5 hover:bg-white/10 text-left transition-all';
     const isSleep = (platform || '').toLowerCase().includes('uyku') || (platform || '').toLowerCase().includes('sleep');
 
     const platformSec = document.getElementById('createRoomPlatformSection');
