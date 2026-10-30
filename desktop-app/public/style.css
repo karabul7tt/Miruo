@@ -1805,26 +1805,69 @@ body.has-mini-player #stageContainer #miniPlayerOverlay {
   overscroll-behavior: contain !important;
 }
 
-/* High-Contrast Touch-Friendly Seek Bar Thumbs */
-#nowPlayingSeekSlider::-webkit-slider-thumb,
-#seekSlider::-webkit-slider-thumb {
+/* YouTube-Style Interactive Scrubber Bar & Range Inputs */
+.yt-range-slider {
   -webkit-appearance: none;
   appearance: none;
-  width: 14px;
-  height: 14px;
-  border-radius: 50%;
-  background: #f43f5e;
+  background: rgba(255, 255, 255, 0.22);
   cursor: pointer;
-  box-shadow: 0 0 6px rgba(244, 63, 94, 0.6);
-  border: 2px solid #ffffff;
+  height: 4px;
+  border-radius: 9999px;
+  transition: height 0.15s ease, background 0.1s ease;
+  position: relative;
+}
+.yt-range-slider:hover,
+.yt-range-slider:active {
+  height: 6px;
+}
+#nowPlayingSeekSlider::-webkit-slider-thumb,
+#seekSlider::-webkit-slider-thumb,
+.yt-range-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 13px;
+  height: 13px;
+  border-radius: 50%;
+  background: #FF0000;
+  cursor: pointer;
+  box-shadow: 0 0 10px rgba(255, 0, 0, 0.8), 0 0 2px rgba(255, 255, 255, 0.9);
+  border: 1.5px solid #ffffff;
+  transition: transform 0.15s cubic-bezier(0.2, 0.9, 0.3, 1), background-color 0.15s ease;
+  transform: scale(0.95);
+}
+#nowPlayingSeekSlider:hover::-webkit-slider-thumb,
+#seekSlider:hover::-webkit-slider-thumb,
+.yt-range-slider:hover::-webkit-slider-thumb,
+#nowPlayingSeekSlider:active::-webkit-slider-thumb,
+#seekSlider:active::-webkit-slider-thumb,
+.yt-range-slider:active::-webkit-slider-thumb {
+  transform: scale(1.35);
+  background: #FF1A1A;
 }
 #nowPlayingSeekSlider::-moz-range-thumb,
-#seekSlider::-moz-range-thumb {
-  width: 14px;
-  height: 14px;
+#seekSlider::-moz-range-thumb,
+.yt-range-slider::-moz-range-thumb {
+  width: 13px;
+  height: 13px;
   border-radius: 50%;
-  background: #f43f5e;
+  background: #FF0000;
   cursor: pointer;
-  box-shadow: 0 0 6px rgba(244, 63, 94, 0.6);
-  border: 2px solid #ffffff;
+  box-shadow: 0 0 10px rgba(255, 0, 0, 0.8);
+  border: 1.5px solid #ffffff;
+  transition: transform 0.15s ease;
+}
+
+#stageBottomMiniProgressContainer {
+  height: 4px;
+  background: rgba(255, 255, 255, 0.2);
+  cursor: pointer;
+  transition: height 0.15s ease, background-color 0.15s ease;
+}
+#stageBottomMiniProgressContainer:hover {
+  height: 7px;
+  background: rgba(255, 255, 255, 0.3);
+}
+#stageBottomMiniProgressBar {
+  background: #FF0000;
+  box-shadow: 0 0 8px rgba(255, 0, 0, 0.8);
 }

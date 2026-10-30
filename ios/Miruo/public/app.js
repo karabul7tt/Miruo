@@ -986,9 +986,9 @@ const I18N = {
     terms_sec3_desc: 'İzlenen videolar ilgili platformların (YouTube, Netflix vb.) kullanım şartlarına tabidir. Miruo hiçbir video içeriğinin telif hakkı sahibi değildir.',
     terms_sec4_title: '4. Hizmet Değişiklikleri',
     terms_sec4_desc: 'Miruo, özelliklerde güncelleme yapma veya hizmet şartlarını revize etme hakkını saklı tutar.',
-    rave_title: 'YouTube',
+    rave_title: 'Video & Müzik',
     rave_subtitle: 'Video seçin ve odadakilerle birlikte izleyin.',
-    rave_search_ph: 'YouTube\'da şarkı, klip, sanatçı, dizi veya kanal ara...',
+    rave_search_ph: 'Şarkı, klip, sanatçı, dizi veya video ara...',
     rave_search_btn: 'Ara',
     rave_tab_trending: 'Trendler',
     rave_tab_music: 'Popüler Müzik',
@@ -1130,13 +1130,13 @@ const I18N = {
     platform_select_label: 'İzleme / Dinleme Platformu',
     screen_share_label: 'Ekran Paylaş',
     submit_create_room_btn: 'Odayı Başlat & Katıl',
-    yt_modal_title: 'YouTube',
+    yt_modal_title: 'Video & Müzik',
     yt_modal_sub: 'Video seçin ve odadakilerle birlikte izleyin.',
     yt_browse_btn: 'Gezin ↗',
-    yt_browse_title: "m.youtube.com'u açıp hesabına gir",
+    yt_browse_title: "Tarayıcıyı aç",
     yt_currently_playing_prefix: 'Şu an çalıyor:',
     yt_background_playing: 'Arka Planda Kesintisiz Devam Ediyor',
-    yt_search_ph: "YouTube'da şarkı, klip, sanatçı, dizi veya kanal ara...",
+    yt_search_ph: "Şarkı, klip, sanatçı, dizi veya video ara...",
     yt_search_btn: 'Ara',
     tab_trending: 'Trendler',
     tab_music: 'Popüler Müzik',
@@ -1345,9 +1345,9 @@ const I18N = {
     terms_sec3_desc: 'Content watched is governed by the terms of each platform (YouTube, Netflix, etc.). Miruo does not own any third-party content.',
     terms_sec4_title: '4. Service Changes',
     terms_sec4_desc: 'Miruo reserves the right to update features or revise terms of service at any time.',
-    rave_title: 'YouTube',
+    rave_title: 'Video & Müzik',
     rave_subtitle: 'Choose a video and watch together with the room.',
-    rave_search_ph: 'Search songs, clips, artists or channels on YouTube...',
+    rave_search_ph: 'Search songs, clips, artists or videos...',
     rave_search_btn: 'Search',
     rave_tab_trending: 'Trending',
     rave_tab_music: 'Popular Music',
@@ -1423,7 +1423,7 @@ const I18N = {
     video_placeholder_desc: 'Tap "Select Video" to choose any video or platform.',
     miruo_player: 'Miruo Player',
     video_title_default: 'Video Title',
-    video_subtitle_default: 'Miruo on YouTube',
+    video_subtitle_default: 'Miruo Video',
     fullscreen_title: 'Fullscreen',
     live_cam_feed: 'Live Camera Feed',
     self_camera_badge: 'You (Camera)',
@@ -1489,13 +1489,13 @@ const I18N = {
     platform_select_label: 'Watching Platform',
     screen_share_label: 'Screen',
     submit_create_room_btn: 'Start & Join Room',
-    yt_modal_title: 'YouTube',
+    yt_modal_title: 'Video & Müzik',
     yt_modal_sub: 'Select a video and watch together with the room.',
     yt_browse_btn: 'Browse ↗',
-    yt_browse_title: 'Open m.youtube.com and sign in',
+    yt_browse_title: 'Open browser',
     yt_currently_playing_prefix: 'Now playing:',
     yt_background_playing: 'Playing continuously in background',
-    yt_search_ph: 'Search songs, clips, artists or channels on YouTube...',
+    yt_search_ph: 'Search songs, clips, artists or videos...',
     yt_search_btn: 'Search',
     tab_trending: 'Trending',
     tab_music: 'Popular Music',
@@ -1704,9 +1704,9 @@ const I18N = {
     terms_sec3_desc: 'Angesehene Inhalte unterliegen den Bedingungen der jeweiligen Plattform (YouTube, Netflix usw.).',
     terms_sec4_title: '4. Service-Änderungen',
     terms_sec4_desc: 'Miruo behält sich das Recht vor, Funktionen oder Bedingungen jederzeit anzupassen.',
-    rave_title: 'YouTube',
+    rave_title: 'Video & Musik',
     rave_subtitle: 'Video auswählen und gemeinsam im Raum ansehen.',
-    rave_search_ph: 'Auf YouTube nach Videos, Musik oder Kanälen suchen...',
+    rave_search_ph: 'Nach Videos, Musik oder Kanälen suchen...',
     rave_search_btn: 'Suchen',
     rave_tab_trending: 'Trends',
     rave_tab_music: 'Beliebte Musik',
@@ -1782,7 +1782,7 @@ const I18N = {
     video_placeholder_desc: 'Tippen Sie auf "Video wählen", um ein Video oder eine Plattform zu starten.',
     miruo_player: 'Miruo Player',
     video_title_default: 'Videotitel',
-    video_subtitle_default: 'Miruo auf YouTube',
+    video_subtitle_default: 'Miruo Video',
     fullscreen_title: 'Vollbild',
     live_cam_feed: 'Live-Kamera-Feed',
     self_camera_badge: 'Du (Kamera)',
@@ -1848,13 +1848,13 @@ const I18N = {
     platform_select_label: 'Streaming-Plattform',
     screen_share_label: 'Bildschirm',
     submit_create_room_btn: 'Raum starten & beitreten',
-    yt_modal_title: 'YouTube',
+    yt_modal_title: 'Video & Musik',
     yt_modal_sub: 'Wählen Sie ein Video und schauen Sie gemeinsam im Raum.',
     yt_browse_btn: 'Durchsuchen ↗',
-    yt_browse_title: 'm.youtube.com öffnen und anmelden',
+    yt_browse_title: 'Browser öffnen',
     yt_currently_playing_prefix: 'Läuft gerade:',
     yt_background_playing: 'Läuft ununterbrochen im Hintergrund weiter',
-    yt_search_ph: 'Auf YouTube nach Videos, Musik oder Kanälen suchen...',
+    yt_search_ph: 'Nach Videos, Musik oder Kanälen suchen...',
     yt_search_btn: 'Suchen',
     tab_trending: 'Trends',
     tab_music: 'Beliebte Musik',
@@ -4919,9 +4919,9 @@ function loadYoutubeVideo(urlOrId, startPlaying = true, startTime = 0) {
   state.activeMode = 'youtube';
   state.currentVideoId = videoId;
   state.currentVideoThumb = `https://img.youtube.com/vi/${videoId}/mqdefault.jpg`;
-  state.currentProvider = 'YouTube';
+  state.currentProvider = 'Video';
   if (typeof syncCurrentRoomToGlobalPresence === 'function') syncCurrentRoomToGlobalPresence();
-  if (dom.nowPlayingProviderBadge) dom.nowPlayingProviderBadge.textContent = 'YouTube';
+  if (dom.nowPlayingProviderBadge) dom.nowPlayingProviderBadge.textContent = 'Video';
   if (typeof updateNowPlayingLikeState === 'function') updateNowPlayingLikeState();
   switchActiveTab('youtube');
 
@@ -4985,10 +4985,10 @@ function loadYoutubeVideo(urlOrId, startPlaying = true, startTime = 0) {
 
   dom.ytPlayerContainer.innerHTML = `
     <iframe id="miruoYtIframe" 
-            src="https://www.youtube.com/embed/${videoId}?autoplay=${autoPlayParam}&playsinline=1&enablejsapi=1&controls=1&rel=0&modestbranding=1${startParam}${ccParam}${originParam}" 
+            src="https://www.youtube.com/embed/${videoId}?autoplay=${autoPlayParam}&playsinline=1&enablejsapi=1&controls=0&rel=0&modestbranding=1&disablekb=1&iv_load_policy=3${startParam}${ccParam}${originParam}" 
             allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share; fullscreen" 
             allowfullscreen 
-            class="w-full h-full border-0">
+            class="w-full h-full border-0 pointer-events-none">
     </iframe>
   `;
 
@@ -5891,12 +5891,28 @@ function startSyncHeartbeat() {
   }, 800);
 }
 
-// Playback Tracking (Timeline Slider & Duration - Drift-Free Hardware Sync)
+// Playback Tracking (Timeline Slider & Duration - YouTube-Style Drift-Free Engine)
 let trackingInterval = null;
 function startPlaybackTracking() {
   if (trackingInterval) clearInterval(trackingInterval);
   trackingInterval = setInterval(() => {
     if (state.activeMode === 'youtube') {
+      if (state.ytPlayer && state.ytReady) {
+        try {
+          if (typeof state.ytPlayer.getDuration === 'function') {
+            const d = state.ytPlayer.getDuration();
+            if (typeof d === 'number' && d > 0) state.duration = d;
+          }
+          if (typeof state.ytPlayer.getCurrentTime === 'function') {
+            const c = state.ytPlayer.getCurrentTime();
+            if (typeof c === 'number' && c >= 0) {
+              state.lastReportedYtTime = c;
+              state.lastReportedYtAt = Date.now();
+              if (!state.isUserDraggingSeek) state.currentTime = c;
+            }
+          }
+        } catch (_) {}
+      }
       if (state.isPlaying && !state.isUserDraggingSeek) {
         if (state.lastReportedYtAt) {
           const elapsed = (Date.now() - state.lastReportedYtAt) / 1000;
@@ -5904,33 +5920,43 @@ function startPlaybackTracking() {
         }
       }
     } else if (state.activeMode === 'direct' && dom.nativeVideoPlayer) {
-      state.currentTime = dom.nativeVideoPlayer.currentTime || 0;
+      if (!state.isUserDraggingSeek) {
+        state.currentTime = dom.nativeVideoPlayer.currentTime || 0;
+      }
       state.duration = dom.nativeVideoPlayer.duration || 0;
     }
 
     if (state.duration > 0) {
-      const pct = (state.currentTime / state.duration) * 100;
+      const pct = Math.min(100, Math.max(0, (state.currentTime / state.duration) * 100));
       if (dom.currentTimeDisplay) dom.currentTimeDisplay.textContent = formatTime(state.currentTime);
       if (dom.durationDisplay) dom.durationDisplay.textContent = formatTime(state.duration);
       if (dom.seekSlider && !state.isUserDraggingSeek) {
         dom.seekSlider.value = pct;
+        dom.seekSlider.style.background = `linear-gradient(to right, #FF0000 0%, #FF0000 ${pct}%, rgba(255,255,255,0.22) ${pct}%, rgba(255,255,255,0.22) 100%)`;
       }
       if (dom.stageBottomMiniProgressBar) {
-        dom.stageBottomMiniProgressBar.style.width = `${Math.min(100, Math.max(0, pct))}%`;
+        dom.stageBottomMiniProgressBar.style.width = `${pct}%`;
       }
       if (dom.nowPlayingSeekSlider && !state.isUserDraggingSeek) {
         dom.nowPlayingSeekSlider.value = pct;
+        dom.nowPlayingSeekSlider.style.background = `linear-gradient(to right, #FF0000 0%, #FF0000 ${pct}%, rgba(255,255,255,0.22) ${pct}%, rgba(255,255,255,0.22) 100%)`;
       }
       if (dom.nowPlayingCurrentTime) dom.nowPlayingCurrentTime.textContent = formatTime(state.currentTime);
       if (dom.nowPlayingDuration) dom.nowPlayingDuration.textContent = formatTime(state.duration);
     }
-  }, 500);
+  }, 250);
 }
 
 function formatTime(seconds) {
-  const mins = Math.floor(seconds / 60);
-  const secs = Math.floor(seconds % 60);
-  return `${mins < 10 ? '0' : ''}${mins}:${secs < 10 ? '0' : ''}${secs}`;
+  if (!seconds || isNaN(seconds) || seconds < 0) return '0:00';
+  const totalSecs = Math.floor(seconds);
+  const hrs = Math.floor(totalSecs / 3600);
+  const mins = Math.floor((totalSecs % 3600) / 60);
+  const secs = totalSecs % 60;
+  if (hrs > 0) {
+    return `${hrs}:${mins < 10 ? '0' : ''}${mins}:${secs < 10 ? '0' : ''}${secs}`;
+  }
+  return `${mins}:${secs < 10 ? '0' : ''}${secs}`;
 }
 
 function updatePlayPauseUI(playing) {
@@ -18653,7 +18679,7 @@ function initEvents() {
         sendP2PData('chat', { sender: 'SİSTEM', text: ann, time: getNowTimeString() });
       } else {
         const roomTitle = title ? `${title.substring(0, 24)} Partisi` : 'İzleme Odası';
-        createAndJoinRoom(roomTitle, state.isPrivateRoom, 'YouTube', cleanYtId);
+        createAndJoinRoom(roomTitle, state.isPrivateRoom, 'Video', cleanYtId);
         showToast(`"${title}" ile oda başlatıldı!`);
       }
     } else {
@@ -20904,6 +20930,15 @@ function validateInstagramUsername(username) {
         dom.nativeVideoPlayer.currentTime = targetTime;
       }
       sendP2PData('sync', { action: 'seek', time: targetTime, isPlaying: state.isPlaying, sentAt: Date.now() });
+      if (dom.stageBottomMiniProgressBar) {
+        dom.stageBottomMiniProgressBar.style.width = `${targetPercent}%`;
+      }
+      if (dom.seekSlider) {
+        dom.seekSlider.style.background = `linear-gradient(to right, #FF0000 0%, #FF0000 ${targetPercent}%, rgba(255,255,255,0.22) ${targetPercent}%, rgba(255,255,255,0.22) 100%)`;
+      }
+      if (dom.nowPlayingSeekSlider) {
+        dom.nowPlayingSeekSlider.style.background = `linear-gradient(to right, #FF0000 0%, #FF0000 ${targetPercent}%, rgba(255,255,255,0.22) ${targetPercent}%, rgba(255,255,255,0.22) 100%)`;
+      }
     }
   };
 
@@ -20919,6 +20954,8 @@ function validateInstagramUsername(username) {
         const targetTime = (targetPercent / 100) * state.duration;
         if (dom.currentTimeDisplay) dom.currentTimeDisplay.textContent = formatTime(targetTime);
         if (dom.nowPlayingCurrentTime) dom.nowPlayingCurrentTime.textContent = formatTime(targetTime);
+        dom.seekSlider.style.background = `linear-gradient(to right, #FF0000 0%, #FF0000 ${targetPercent}%, rgba(255,255,255,0.22) ${targetPercent}%, rgba(255,255,255,0.22) 100%)`;
+        if (dom.stageBottomMiniProgressBar) dom.stageBottomMiniProgressBar.style.width = `${targetPercent}%`;
       }
     });
 
@@ -20940,11 +20977,79 @@ function validateInstagramUsername(username) {
         const targetTime = (targetPercent / 100) * state.duration;
         if (dom.nowPlayingCurrentTime) dom.nowPlayingCurrentTime.textContent = formatTime(targetTime);
         if (dom.currentTimeDisplay) dom.currentTimeDisplay.textContent = formatTime(targetTime);
+        dom.nowPlayingSeekSlider.style.background = `linear-gradient(to right, #FF0000 0%, #FF0000 ${targetPercent}%, rgba(255,255,255,0.22) ${targetPercent}%, rgba(255,255,255,0.22) 100%)`;
+        if (dom.stageBottomMiniProgressBar) dom.stageBottomMiniProgressBar.style.width = `${targetPercent}%`;
       }
     });
 
     dom.nowPlayingSeekSlider.addEventListener('change', finishSeek);
     dom.nowPlayingSeekSlider.addEventListener('mouseup', finishSeek);
+    dom.nowPlayingSeekSlider.addEventListener('touchend', finishSeek);
+  }
+
+  // Stage Bottom Mini Progress Bar (YouTube-Style Interactive Ambient Scrubber)
+  const miniBarContainer = document.getElementById('stageBottomMiniProgressContainer');
+  const hoverTooltip = document.getElementById('stageSeekHoverTooltip');
+  if (miniBarContainer) {
+    const handleMiniBarSeek = (clientX) => {
+      if (!state.duration || state.duration <= 0) return;
+      if (!canUserControlPlayback()) {
+        showToast('Videoyu sarma yetkisi sadece Oda Sahibi ve Yöneticilere aittir.');
+        return;
+      }
+      const rect = miniBarContainer.getBoundingClientRect();
+      const pct = Math.min(1, Math.max(0, (clientX - rect.left) / rect.width));
+      const targetTime = pct * state.duration;
+      state.currentTime = targetTime;
+      if (state.activeMode === 'youtube') {
+        sendYtCommand('seekTo', [targetTime, true]);
+      } else if (state.activeMode === 'direct' && dom.nativeVideoPlayer) {
+        dom.nativeVideoPlayer.currentTime = targetTime;
+      }
+      sendP2PData('sync', { action: 'seek', time: targetTime, isPlaying: state.isPlaying, sentAt: Date.now() });
+      const targetPercent = pct * 100;
+      if (dom.seekSlider) {
+        dom.seekSlider.value = targetPercent;
+        dom.seekSlider.style.background = `linear-gradient(to right, #FF0000 0%, #FF0000 ${targetPercent}%, rgba(255,255,255,0.22) ${targetPercent}%, rgba(255,255,255,0.22) 100%)`;
+      }
+      if (dom.nowPlayingSeekSlider) {
+        dom.nowPlayingSeekSlider.value = targetPercent;
+        dom.nowPlayingSeekSlider.style.background = `linear-gradient(to right, #FF0000 0%, #FF0000 ${targetPercent}%, rgba(255,255,255,0.22) ${targetPercent}%, rgba(255,255,255,0.22) 100%)`;
+      }
+      if (dom.stageBottomMiniProgressBar) dom.stageBottomMiniProgressBar.style.width = `${targetPercent}%`;
+    };
+
+    miniBarContainer.addEventListener('click', (e) => {
+      e.stopPropagation();
+      handleMiniBarSeek(e.clientX);
+    });
+
+    miniBarContainer.addEventListener('mousemove', (e) => {
+      if (!state.duration || state.duration <= 0 || !hoverTooltip) return;
+      const rect = miniBarContainer.getBoundingClientRect();
+      const pct = Math.min(1, Math.max(0, (e.clientX - rect.left) / rect.width));
+      const hoverSec = pct * state.duration;
+      hoverTooltip.textContent = formatTime(hoverSec);
+      hoverTooltip.style.left = `${Math.min(rect.width - 24, Math.max(24, e.clientX - rect.left))}px`;
+      hoverTooltip.classList.remove('hidden');
+    });
+
+    miniBarContainer.addEventListener('mouseleave', () => {
+      if (hoverTooltip) hoverTooltip.classList.add('hidden');
+    });
+
+    miniBarContainer.addEventListener('touchstart', (e) => {
+      if (e.touches && e.touches[0]) {
+        handleMiniBarSeek(e.touches[0].clientX);
+      }
+    }, { passive: true });
+
+    miniBarContainer.addEventListener('touchmove', (e) => {
+      if (e.touches && e.touches[0]) {
+        handleMiniBarSeek(e.touches[0].clientX);
+      }
+    }, { passive: true });
+  }
     dom.nowPlayingSeekSlider.addEventListener('touchend', finishSeek);
   }
 
