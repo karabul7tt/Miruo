@@ -19618,7 +19618,6 @@ function initEvents() {
       }
     });
   }
-  }
 
   // Remove Custom Avatar Photo
   if (dom.removeAvatarPhotoBtn) {
@@ -21049,8 +21048,6 @@ function validateInstagramUsername(username) {
         handleMiniBarSeek(e.touches[0].clientX);
       }
     }, { passive: true });
-  }
-    dom.nowPlayingSeekSlider.addEventListener('touchend', finishSeek);
   }
 
   if (dom.nowPlayingPlayPauseQuickBtn) {
