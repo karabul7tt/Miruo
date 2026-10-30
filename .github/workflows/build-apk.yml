@@ -31,10 +31,21 @@ jobs:
     - name: Setup Android SDK
       uses: android-actions/setup-android@v3
 
+    - name: Accept Android SDK Licenses
+      run: |
+        yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses || true
+        yes | $ANDROID_HOME/tools/bin/sdkmanager --licenses || true
+
     - name: Setup Gradle
       uses: gradle/actions/setup-gradle@v3
       with:
         gradle-version: 8.2.2
+
+    - name: Generate Gradle Wrapper
+      run: |
+        cd android
+        gradle wrapper --gradle-version 8.2.2
+        chmod +x gradlew
 
     - name: Generate Release Keystore
       run: |
@@ -53,17 +64,22 @@ jobs:
     - name: Build Android APK
       run: |
         cd android
-        gradle assembleRelease \
+        ./gradlew assembleRelease \
           -PRELEASE_STORE_FILE=miruo-release.jks \
           -PRELEASE_STORE_PASSWORD=miruopassword2026 \
           -PRELEASE_KEY_ALIAS=miruokey \
           -PRELEASE_KEY_PASSWORD=miruopassword2026 \
+          --no-daemon \
           --stacktrace
 
     - name: Copy APK to Downloads and Website
       run: |
         APK_FILE=$(find android/app/build/outputs/apk -name "*.apk" | head -n 1)
         echo "Found APK: $APK_FILE"
+        if [ -z "$APK_FILE" ]; then
+          echo "Error: No APK file generated!"
+          exit 1
+        fi
         mkdir -p downloads website/downloads
         cp "$APK_FILE" downloads/Miruo.apk
         cp "$APK_FILE" website/downloads/Miruo.apk
