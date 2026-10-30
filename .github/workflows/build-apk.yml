@@ -28,14 +28,6 @@ jobs:
         java-version: '17'
         distribution: 'temurin'
 
-    - name: Setup Android SDK
-      uses: android-actions/setup-android@v3
-
-    - name: Accept Android SDK Licenses
-      run: |
-        yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses || true
-        yes | $ANDROID_HOME/tools/bin/sdkmanager --licenses || true
-
     - name: Setup Gradle
       uses: gradle/actions/setup-gradle@v3
       with:
@@ -100,5 +92,6 @@ jobs:
           echo "No APK changes to commit"
         else
           git commit -m "build(android): auto-generate and release Miruo.apk [skip ci]"
+          git pull --rebase origin main || true
           git push origin main
         fi
