@@ -209,8 +209,26 @@ async function authenticateFromUrl(url) {
   return session;
 }
 
+let _supabaseInitInterval = null;
 function initSupabase() {
   if (supabaseClient) return;
+  if (!window.supabase || typeof window.supabase.createClient !== 'function') {
+    if (!_supabaseInitInterval) {
+      let attempts = 0;
+      _supabaseInitInterval = setInterval(() => {
+        attempts++;
+        if (window.supabase && typeof window.supabase.createClient === 'function') {
+          clearInterval(_supabaseInitInterval);
+          _supabaseInitInterval = null;
+          initSupabase();
+        } else if (attempts > 80) {
+          clearInterval(_supabaseInitInterval);
+          _supabaseInitInterval = null;
+        }
+      }, 150);
+    }
+    return;
+  }
   try {
     if (window.supabase && typeof window.supabase.createClient === 'function') {
       supabaseClient = window.supabase.createClient(SUPABASE_CONFIG.url, SUPABASE_CONFIG.anonKey, {
@@ -2085,8 +2103,9 @@ const state = {
   isHost: false,
   hostName: '',
   userRole: 'member', // 'owner' | 'admin' | 'video_control' | 'dj' | 'member'
-  controlMode: 'everyone', // 'host_only' | 'everyone'
+  controlMode: 'host_only', // 'host_only' | 'everyone'
   hasDjPermission: false,   // Whether current user can control media
+  isPrivateRoom: false,
 
   // Friends & Invite
   friendCode: '',
@@ -5046,14 +5065,15 @@ function loadYoutubeVideo(urlOrId, startPlaying = true, startTime = 0) {
             sendYtCommand('playVideo');
           }, 600);
 
-          // Autoplay Block Guard: If browser prevented unmuted playback, switch to muted playback and show unblock button
+          // Autoplay Block Guard: If browser prevented unmuted playback, switch to muted playback to break spinner lock and show unblock button
           setTimeout(() => {
             if (state.isPlaying && (!state.lastReportedYtTime || state.lastReportedYtTime === 0)) {
-              console.log('[Miruo] Autoplay policy guard triggered: trying unmuted kick');
+              console.log('[Miruo] Autoplay policy guard triggered: starting muted to break spinner lock');
+              sendYtCommand('mute');
               sendYtCommand('playVideo');
               showAutoplayUnblockPrompt();
             }
-          }, 3500);
+          }, 1800);
         } else {
           sendYtCommand('pauseVideo');
           if (typeof startTime === 'number' && startTime > 0) {
@@ -5716,14 +5736,19 @@ function handleRemoteSync(payload) {
   if (payload.action === 'heartbeat') {
     const cleanUser = (u) => String(u || '').toLowerCase().replace(/^@/, '').trim();
     const sender = payload.fromUser || payload.user;
-    const isFromHost = !!sender && (
+    const isFromHost = (payload.isHost === true) || (payload.userRole === 'owner') || (!!sender && (
       cleanUser(sender) === cleanUser(state.hostName) ||
       cleanUser(sender) === cleanUser(state.host) ||
-      (payload.isHost === true)
-    );
-    const hbAuthorized = payload.isHost === true || payload.canControl === true || isFromHost || state.controlMode === 'everyone' || payload.userRole === 'owner' || payload.userRole === 'admin' || payload.userRole === 'dj' || payload.userRole === 'video_control';
+      (payload.userId && state.participants && Object.values(state.participants).some(p => (p.isHost || p.role === 'owner') && p.userId === payload.userId))
+    ));
+    const hbAuthorized = isFromHost || (payload.canControl === true && state.controlMode === 'everyone');
     if (!state.isHost && hbAuthorized) {
       if (!payload.isPlaying) {
+        // Protect initial load grace period (first 6 seconds) so a delayed pause heartbeat doesn't kill newly started videos
+        const isStartupGrace = state.ytLoadingAt && (Date.now() - state.ytLoadingAt < 6000);
+        if (isStartupGrace && state.isPlaying) {
+          return;
+        }
         // Authoritative state is PAUSED: force peer to stay strictly paused!
         state.isPlaying = false;
         updatePlayPauseUI(false);
@@ -5848,7 +5873,9 @@ let syncHeartbeatInterval = null;
 function startSyncHeartbeat() {
   if (syncHeartbeatInterval) clearInterval(syncHeartbeatInterval);
   syncHeartbeatInterval = setInterval(() => {
-    if (state.isInRoom && (state.isHost || state.hasDjPermission || state.controlMode === 'everyone') && (state.activeMode === 'youtube' || state.activeMode === 'direct')) {
+    // Only the room Host (or authorized controller when host delegates) broadcasts the heartbeat
+    const canBroadcastHeartbeat = state.isInRoom && (state.isHost || (!state.host && state.hasDjPermission)) && (state.activeMode === 'youtube' || state.activeMode === 'direct');
+    if (canBroadcastHeartbeat) {
       const liveTime = getLivePlayerTime();
       state.currentTime = liveTime;
       sendP2PData('sync', {
@@ -5856,6 +5883,8 @@ function startSyncHeartbeat() {
         time: liveTime,
         isPlaying: !!state.isPlaying,
         rate: state.playbackRate || 1.0,
+        isHost: !!state.isHost,
+        userRole: state.userRole || 'owner',
         sentAt: Date.now()
       });
     }
@@ -5984,13 +6013,18 @@ function togglePlayPause() {
   }
 
   // 4. Send authoritative playback sync broadcast across all peers
-  sendP2PData('sync', {
+  const toggleSyncPayload = {
     action: state.isPlaying ? 'play' : 'pause',
     time: curTime,
     isPlaying: state.isPlaying,
     activeMode: state.activeMode,
+    isHost: state.isHost,
+    userRole: state.userRole || 'owner',
+    canControl: true,
     sentAt: Date.now()
-  });
+  };
+  sendP2PData('sync', toggleSyncPayload);
+  sendSignal({ type: 'sync', ...toggleSyncPayload });
 }
 
 // YouTube postMessage Bridge: Two-Way Frame-Accurate Zero-Latency Play State & Scrubber Sync
@@ -6092,13 +6126,16 @@ window.addEventListener('message', (event) => {
           state.isPlaying = isNowPlaying;
           updatePlayPauseUI(isNowPlaying);
           state.lastSyncSentAt = Date.now();
-          sendP2PData('sync', {
+          const syncActionPayload = {
             action: isNowPlaying ? 'play' : 'pause',
             time: state.currentTime,
             isHost: state.isHost,
-            userRole: 'owner',
+            userRole: state.userRole || 'owner',
+            canControl: true,
             sentAt: Date.now()
-          });
+          };
+          sendP2PData('sync', syncActionPayload);
+          sendSignal({ type: 'sync', ...syncActionPayload });
         }
       }
     }
@@ -9306,7 +9343,7 @@ function createAndJoinRoom(title, isPrivate = false, category = 'YouTube', video
   state.isHost = true;
   state.hostName = state.username;
   state.userRole = 'owner';
-  state.controlMode = 'everyone';
+  state.controlMode = 'host_only';
   state.hasDjPermission = true;
 
   const accounts = typeof getConnectedAccounts === 'function' ? getConnectedAccounts() : {};
@@ -9627,7 +9664,7 @@ function renderRoomList(roomsToRender) {
       state.hostName = r.host || 'Yönetici';
       state.isHost = (r.host === state.username);
       state.userRole = state.isHost ? 'owner' : 'member';
-      state.controlMode = 'everyone';
+      state.controlMode = 'host_only';
       state.hasDjPermission = state.isHost;
       state.isInRoom = true;
       state.roomName = r.name || 'Canlı Oda';
@@ -9672,10 +9709,19 @@ function removeMyPublicRoom(id) {
 let globalRealtimeRooms = [];
 let globalRoomsChannel = null;
 let globalRoomsSubscribed = false;
+let _globalRoomsReconnectTimer = null;
 
 function initGlobalPublicRoomsSync() {
-  if (!supabaseClient || globalRoomsChannel) return;
+  if (!supabaseClient) {
+    if (typeof initSupabase === 'function') initSupabase();
+    return;
+  }
+  if (globalRoomsChannel && globalRoomsSubscribed) return;
   try {
+    if (globalRoomsChannel && !globalRoomsSubscribed) {
+      try { supabaseClient.removeChannel(globalRoomsChannel); } catch (_) {}
+      globalRoomsChannel = null;
+    }
     const myPresenceKey = state.clientId || (state.clientId = 'cl_' + Math.random().toString(36).substring(2, 9) + '_' + Date.now().toString(36));
     globalRoomsChannel = supabaseClient.channel('miruo_global_public_rooms', {
       config: {
@@ -9711,10 +9757,15 @@ function initGlobalPublicRoomsSync() {
           syncCurrentRoomToGlobalPresence();
         }
       })
+      .on('broadcast', { event: 'room_invite' }, ({ payload }) => {
+        if (typeof handleIncomingRoomInvite === 'function') {
+          handleIncomingRoomInvite(payload);
+        }
+      })
       .subscribe((status) => {
         if (status === 'SUBSCRIBED') {
           globalRoomsSubscribed = true;
-          if (state.pendingPublicRoomPayload) {
+          if (state.pendingPublicRoomPayload && !state.isPrivateRoom) {
             try {
               globalRoomsChannel.track(state.pendingPublicRoomPayload).catch(() => {});
               globalRoomsChannel.send({
@@ -9735,8 +9786,14 @@ function initGlobalPublicRoomsSync() {
               payload: { from: state.clientId || state.userId || 'guest', ts: Date.now() }
             }).catch(() => {});
           } catch (_) {}
-        } else if (status === 'CLOSED' || status === 'CHANNEL_ERROR') {
+        } else if (status === 'CLOSED' || status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
           globalRoomsSubscribed = false;
+          if (!_globalRoomsReconnectTimer) {
+            _globalRoomsReconnectTimer = setTimeout(() => {
+              _globalRoomsReconnectTimer = null;
+              initGlobalPublicRoomsSync();
+            }, 2500);
+          }
         }
       });
   } catch (e) {
@@ -9747,13 +9804,7 @@ function initGlobalPublicRoomsSync() {
 function parseGlobalRoomsFromPresence(presenceState) {
   if (!presenceState) return;
   const roomMap = new Map();
-  // Preserve previously announced broadcast rooms that are still fresh
-  (globalRealtimeRooms || []).forEach(r => {
-    if (r && r.id && (Date.now() - (r.ts || 0) < 180000)) {
-      roomMap.set(r.id, r);
-    }
-  });
-
+  // 1. Add rooms actively tracked in Presence right now
   Object.keys(presenceState).forEach(key => {
     const presences = presenceState[key] || [];
     presences.forEach(p => {
@@ -9775,6 +9826,15 @@ function parseGlobalRoomsFromPresence(presenceState) {
       }
     });
   });
+
+  // 2. Add broadcast rooms only if they are fresh (< 60s) and not private
+  const now = Date.now();
+  (globalRealtimeRooms || []).forEach(r => {
+    if (r && r.id && !roomMap.has(r.id) && (now - (r.ts || 0) < 60000)) {
+      roomMap.set(r.id, r);
+    }
+  });
+
   globalRealtimeRooms = Array.from(roomMap.values());
   if (dom.publicRoomsGrid) {
     renderRoomList(mergeAllPublicRooms([]));
@@ -9971,7 +10031,7 @@ function updateRoomPrivacyUI(isPrivate) {
   }
   
   if (isPrivate) {
-    if (globalRoomsChannel && state.isHost) {
+    if (globalRoomsChannel) {
       try {
         globalRoomsChannel.send({
           type: 'broadcast',
@@ -9982,7 +10042,9 @@ function updateRoomPrivacyUI(isPrivate) {
       } catch (_) {}
     }
     removeMyPublicRoom(state.roomId);
+    removeGlobalRealtimeRoom(state.roomId);
   } else {
+    state.isPrivateRoom = false;
     syncCurrentRoomToGlobalPresence();
   }
   
@@ -10538,9 +10600,21 @@ function sendRoomInvite(friend) {
     fromUsername: myUsername,
     toUsername: cleanTarget,
     roomId: roomId,
+    roomName: state.roomName || `${myUsername} Odası`,
+    category: state.roomCategory || (state.activeMode === 'youtube' ? 'YouTube' : 'Canlı Yayın'),
     createdAt: Date.now()
   };
   // Davet KARŞI tarafa gerçek zamanlı gider (gönderenin kendi listesine yazılmaz). 30 dk geçerli.
+  if (globalUsersChannel) {
+    try {
+      globalUsersChannel.send({ type: 'broadcast', event: 'room_invite', payload: newInvite }).catch(() => {});
+    } catch (_) {}
+  }
+  if (globalRoomsChannel) {
+    try {
+      globalRoomsChannel.send({ type: 'broadcast', event: 'room_invite', payload: newInvite }).catch(() => {});
+    } catch (_) {}
+  }
   queueGlobalEvent('room_invite', cleanTarget, newInvite, 30 * 60000);
   sendSignal({ type: 'room-invite', payload: newInvite });
   sendP2PData('room_invite', newInvite);
@@ -10809,7 +10883,8 @@ function initGlobalUsersChannel() {
     const myCleanUsername = (state.username || 'user').toLowerCase().replace(/^@/, '');
     globalUsersChannel = supabaseClient.channel('miruo_global_users', {
       config: {
-        presence: { key: myCleanUsername }
+        presence: { key: myCleanUsername },
+        broadcast: { ack: false, self: false }
       }
     });
 
@@ -11052,11 +11127,20 @@ function saveOutbox(list) {
 }
 
 function deliverGlobalEvent(event, payload) {
-  if (!globalUsersChannel) return false;
-  try {
-    globalUsersChannel.send({ type: 'broadcast', event, payload }).catch(() => {});
-    return true;
-  } catch (_) { return false; }
+  let ok = false;
+  if (globalUsersChannel) {
+    try {
+      globalUsersChannel.send({ type: 'broadcast', event, payload }).catch(() => {});
+      ok = true;
+    } catch (_) {}
+  }
+  if (globalRoomsChannel) {
+    try {
+      globalRoomsChannel.send({ type: 'broadcast', event, payload }).catch(() => {});
+      ok = true;
+    } catch (_) {}
+  }
+  return ok;
 }
 
 function queueGlobalEvent(event, toUsername, payload, ttlMs) {
@@ -11196,7 +11280,9 @@ window.showRoomInviteModal = showRoomInviteModal;
 // ---- Oda davetleri: gerçek zamanlı ----
 function handleIncomingRoomInvite(inv) {
   if (!inv || !inv.id) return;
-  if (cleanUserKey(inv.toUsername) !== cleanUserKey(state.username)) return;
+  const currentUsername = (state.username || localStorage.getItem('miruo_username') || '').toLowerCase().replace(/^@/, '').trim();
+  const targetUser = cleanUserKey(inv.toUsername);
+  if (targetUser !== currentUsername && (!state.userId || targetUser !== String(state.userId).toLowerCase())) return;
   if (isUserBlocked(inv.fromUsername)) return;
   if (Date.now() - (inv.createdAt || 0) > 30 * 60000) return; // bayat davet
   let list = [];
@@ -11571,8 +11657,8 @@ function renderIncomingRequests() {
         </div>
       </div>
       <div class="flex items-center gap-1.5 shrink-0">
-        <button type="button" class="join-room-inv-btn px-3 py-1.5 rounded-xl bg-gradient-to-r from-indigo-600 to-cyan-600 hover:opacity-95 active:scale-95 text-white font-bold text-xs shadow-md shadow-indigo-600/30 transition-all cursor-pointer">
-          Katıl
+        <button type="button" class="join-room-inv-btn px-3 py-1.5 rounded-xl bg-gradient-to-r from-rose-600 via-pink-600 to-indigo-600 hover:opacity-95 active:scale-95 text-white font-bold text-xs shadow-md shadow-rose-600/30 transition-all cursor-pointer">
+          Kabul Et
         </button>
         <button type="button" class="reject-room-inv-btn px-2.5 py-1.5 rounded-xl bg-white/10 hover:bg-white/15 active:scale-95 text-gray-300 hover:text-white font-semibold text-xs border border-white/10 transition-all cursor-pointer">
           Reddet
@@ -19384,15 +19470,98 @@ function initEvents() {
   }
 
   // Avatar file upload trigger & reader
-  const triggerAvatarPicker = (e) => {
-    if (e) {
-      if (typeof e.preventDefault === 'function') e.preventDefault();
-      if (typeof e.stopPropagation === 'function') e.stopPropagation();
+  async function applyNewAvatarPhoto(base64Data) {
+    if (!base64Data) return;
+    window.pendingAvatarUrl = base64Data;
+    window.pendingAvatarBg = '';
+    if (dom.editAvatarPreview) {
+      dom.editAvatarPreview.innerHTML = `<img src="${window.pendingAvatarUrl}" class="w-full h-full object-cover rounded-2xl" alt="PP">`;
+      dom.editAvatarPreview.className = 'w-20 h-20 rounded-2xl overflow-hidden shadow-xl border-2 border-[#A64D79] ring-4 ring-[#A64D79]/20 flex items-center justify-center';
     }
+
+    // Auto-save & activate immediately across all storage vaults
+    const savedUser = JSON.parse(localStorage.getItem('miruo_user') || '{}');
+    savedUser.avatarUrl = base64Data;
+    savedUser.avatarBg = '';
+    savedUser.hasCustomProfile = true;
+    savedUser.customAvatarUrl = base64Data;
+    state.avatarUrl = base64Data;
+    state.avatarBg = '';
+    localStorage.setItem('miruo_user', JSON.stringify(savedUser));
+    localStorage.setItem('miruo_custom_avatar', base64Data);
+    localStorage.setItem('miruo_avatar', base64Data);
+    if (savedUser.id) {
+      localStorage.setItem(`miruo_custom_avatar_${savedUser.id}`, base64Data);
+      localStorage.setItem(`miruo_saved_profile_${savedUser.id}`, JSON.stringify(savedUser));
+    }
+    if (savedUser.email) {
+      const cleanE = savedUser.email.toLowerCase().trim();
+      localStorage.setItem(`miruo_custom_avatar_${cleanE}`, base64Data);
+      localStorage.setItem(`miruo_saved_profile_${cleanE}`, JSON.stringify(savedUser));
+    }
+    if (savedUser.username) {
+      const cleanU = savedUser.username.toLowerCase().replace(/^@/, '').trim();
+      localStorage.setItem(`miruo_custom_avatar_${cleanU}`, base64Data);
+      localStorage.setItem(`miruo_saved_profile_${cleanU}`, JSON.stringify(savedUser));
+    }
+    if (typeof persistUserToLocalRegistry === 'function') persistUserToLocalRegistry(savedUser);
+
+    if (window.miruoDesktop && typeof window.miruoDesktop.saveDesktopProfile === 'function') {
+      try { window.miruoDesktop.saveDesktopProfile(savedUser); } catch (_) {}
+    }
+
+    try {
+      const profilePayload = {
+        userId: savedUser.id || state.userId,
+        username: (savedUser.username || state.username || '').replace(/^@/, ''),
+        fullName: savedUser.fullName || savedUser.name || '',
+        avatarUrl: base64Data
+      };
+      fetch('/api/auth/update-profile', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(profilePayload)
+      }).catch(async () => {
+        if (window.location.port !== '3000') {
+          fetch('http://127.0.0.1:3000/api/auth/update-profile', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(profilePayload)
+          }).catch(() => {});
+        }
+      });
+    } catch (e) {}
+    syncUserProfileToSupabase(savedUser);
+
+    updateUserUI(savedUser);
+    if (typeof renderProfileTab === 'function') renderProfileTab();
+    showToast('Profil fotoğrafı güncellendi');
+  }
+  window.applyNewAvatarPhoto = applyNewAvatarPhoto;
+
+  const triggerAvatarPicker = async (e) => {
+    if (e && typeof e.stopPropagation === 'function') e.stopPropagation();
+
+    // 1. Desktop native dialog (Mac & Windows Electron)
+    if (window.miruoDesktop && typeof window.miruoDesktop.selectPhotoFile === 'function') {
+      try {
+        const photoData = await window.miruoDesktop.selectPhotoFile();
+        if (photoData) {
+          applyNewAvatarPhoto(photoData);
+          return;
+        }
+      } catch (err) {
+        console.warn('[Miruo Desktop] Native file picker error:', err);
+      }
+    }
+
+    // 2. iOS native PHPicker
     if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.pickImage) {
       triggerPhotoPicker('avatar');
       return;
     }
+
+    // 3. Web HTML5 File Input
     const fileInput = dom.avatarFileInput || document.getElementById('avatarFileInput');
     if (fileInput) {
       fileInput.value = '';
@@ -19416,71 +19585,13 @@ function initEvents() {
 
       try {
         const base64Data = await compressAvatarFile(file);
-        window.pendingAvatarUrl = base64Data;
-        window.pendingAvatarBg = '';
-        if (dom.editAvatarPreview) {
-          dom.editAvatarPreview.innerHTML = `<img src="${window.pendingAvatarUrl}" class="w-full h-full object-cover rounded-2xl" alt="PP">`;
-          dom.editAvatarPreview.className = 'w-20 h-20 rounded-2xl overflow-hidden shadow-xl border-2 border-[#A64D79] ring-4 ring-[#A64D79]/20 flex items-center justify-center';
-        }
-
-        // Auto-save & activate immediately across all storage vaults
-        const savedUser = JSON.parse(localStorage.getItem('miruo_user') || '{}');
-        savedUser.avatarUrl = base64Data;
-        savedUser.avatarBg = '';
-        savedUser.hasCustomProfile = true;
-        savedUser.customAvatarUrl = base64Data;
-        state.avatarUrl = base64Data;
-        state.avatarBg = '';
-        localStorage.setItem('miruo_user', JSON.stringify(savedUser));
-        localStorage.setItem('miruo_custom_avatar', base64Data);
-        localStorage.setItem('miruo_avatar', base64Data);
-        if (savedUser.id) {
-          localStorage.setItem(`miruo_custom_avatar_${savedUser.id}`, base64Data);
-          localStorage.setItem(`miruo_saved_profile_${savedUser.id}`, JSON.stringify(savedUser));
-        }
-        if (savedUser.email) {
-          const cleanE = savedUser.email.toLowerCase().trim();
-          localStorage.setItem(`miruo_custom_avatar_${cleanE}`, base64Data);
-          localStorage.setItem(`miruo_saved_profile_${cleanE}`, JSON.stringify(savedUser));
-        }
-        if (savedUser.username) {
-          const cleanU = savedUser.username.toLowerCase().replace(/^@/, '').trim();
-          localStorage.setItem(`miruo_custom_avatar_${cleanU}`, base64Data);
-          localStorage.setItem(`miruo_saved_profile_${cleanU}`, JSON.stringify(savedUser));
-        }
-        if (typeof persistUserToLocalRegistry === 'function') persistUserToLocalRegistry(savedUser);
-
-        try {
-          const profilePayload = {
-            userId: savedUser.id || state.userId,
-            username: (savedUser.username || state.username || '').replace(/^@/, ''),
-            fullName: savedUser.fullName || savedUser.name || '',
-            avatarUrl: base64Data
-          };
-          fetch('/api/auth/update-profile', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(profilePayload)
-          }).catch(async () => {
-            if (window.location.port !== '3000') {
-              fetch('http://127.0.0.1:3000/api/auth/update-profile', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(profilePayload)
-              }).catch(() => {});
-            }
-          });
-        } catch (e) {}
-        syncUserProfileToSupabase(savedUser);
-
-        updateUserUI(savedUser);
-        if (typeof renderProfileTab === 'function') renderProfileTab();
-        showToast('Profil fotoğrafı güncellendi');
+        applyNewAvatarPhoto(base64Data);
       } catch (err) {
         console.error('Avatar processing error:', err);
         showToast('Fotoğraf yüklenirken bir hata oluştu');
       }
     });
+  }
   }
 
   // Remove Custom Avatar Photo
@@ -22257,7 +22368,7 @@ function generateUniqueRoomCode(isPrivate = false) {
       // Creator is always Host
       state.isHost = true;
       state.hostName = state.username;
-      state.controlMode = 'everyone';
+      state.controlMode = 'host_only';
       state.hasDjPermission = true;
       state.isPrivateRoom = !!newRoomIsPrivate;
       state.isInRoom = true;
@@ -23133,7 +23244,7 @@ window.extractRoomIdFromInput = extractRoomIdFromInput;
         state.isHost = false;
         state.userRole = 'member';
         state.hasDjPermission = false;
-        state.controlMode = 'everyone';
+        state.controlMode = 'host_only';
         if (dom.activeRoomTitle) dom.activeRoomTitle.textContent = finalRoomId;
         if (dom.currentRoomDisplay) dom.currentRoomDisplay.textContent = finalRoomId;
         switchToMyRoom();

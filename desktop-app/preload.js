@@ -8,6 +8,7 @@ contextBridge.exposeInMainWorld('miruoDesktop', {
   getSystemUserInfo: () => ipcRenderer.invoke('get-system-user-info'),
   getDesktopProfile: () => ipcRenderer.invoke('get-desktop-profile'),
   saveDesktopProfile: (profile) => ipcRenderer.invoke('save-desktop-profile', profile),
+  selectPhotoFile: () => ipcRenderer.invoke('select-photo-file'),
   onNavBackward: (cb) => { ipcRenderer.on('nav-backward', cb); },
   onNavForward: (cb) => { ipcRenderer.on('nav-forward', cb); }
 });

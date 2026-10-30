@@ -1,4 +1,4 @@
-const { app, BrowserWindow, shell, session, Menu, ipcMain, systemPreferences, desktopCapturer } = require('electron');
+const { app, BrowserWindow, shell, session, Menu, ipcMain, systemPreferences, desktopCapturer, dialog } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const http = require('http');
@@ -391,6 +391,27 @@ ipcMain.handle('desktop-oauth-login', async (event, { provider, authUrl }) => {
 
 ipcMain.handle('get-system-user-info', async () => {
   return { username: '', fullName: '', email: '' };
+});
+
+ipcMain.handle('select-photo-file', async () => {
+  try {
+    const res = await dialog.showOpenDialog(mainWindow || null, {
+      title: 'Profil Fotoğrafı Seç',
+      properties: ['openFile'],
+      filters: [
+        { name: 'Görseller', extensions: ['jpg', 'png', 'jpeg', 'webp', 'gif', 'bmp', 'heic'] }
+      ]
+    });
+    if (res.canceled || !res.filePaths || res.filePaths.length === 0) return null;
+    const filePath = res.filePaths[0];
+    const fileBuf = fs.readFileSync(filePath);
+    const ext = path.extname(filePath).slice(1).toLowerCase() || 'jpeg';
+    const mime = ext === 'png' ? 'image/png' : ext === 'webp' ? 'image/webp' : ext === 'gif' ? 'image/gif' : 'image/jpeg';
+    return `data:${mime};base64,${fileBuf.toString('base64')}`;
+  } catch (err) {
+    console.warn('[Miruo Desktop] File picker error:', err);
+    return null;
+  }
 });
 
 ipcMain.handle('get-desktop-profile', async () => {
