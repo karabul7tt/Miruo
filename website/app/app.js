@@ -4024,11 +4024,6 @@ function playPeerAudio(peerId, stream) {
       el.play().catch(() => {});
     }
   };
-
-  // Wire up audio ducking for this incoming stream so video ducks when this peer speaks
-  if (typeof setupAudioDucking === 'function') {
-    setupAudioDucking(stream);
-  }
 }
 window.playPeerAudio = playPeerAudio;
 
@@ -4187,13 +4182,13 @@ function getOrCreatePeerConnection(peerId, isInitiator, meta = {}) {
     } else if (hasVideo) {
       const activateCam = () => {
         if (matchingP) {
+          matchingP.isCamOn = true;
           matchingP.stream = peerEntry.stream;
-          if (matchingP.isCamOn) {
-            state.dismissedPips = state.dismissedPips || {};
-            if (matchingP.userId) state.dismissedPips[matchingP.userId] = false;
-            if (matchingP.clientId) state.dismissedPips[matchingP.clientId] = false;
-            if (typeof renderStagePipCards === 'function') renderStagePipCards();
-          }
+          state.dismissedPips = state.dismissedPips || {};
+          if (matchingP.userId) state.dismissedPips[matchingP.userId] = false;
+          if (matchingP.clientId) state.dismissedPips[matchingP.clientId] = false;
+          if (typeof attachRemoteStreamToPartnerVideo === 'function') attachRemoteStreamToPartnerVideo(matchingP);
+          if (typeof renderStagePipCards === 'function') renderStagePipCards();
         }
         if (!state.peerId || state.peerId === peerId) {
           state.peerId = peerId;
@@ -4220,6 +4215,9 @@ function getOrCreatePeerConnection(peerId, isInitiator, meta = {}) {
 
     if (track.kind === 'audio' || peerEntry.stream.getAudioTracks().length > 0) {
       playPeerAudio(peerId, peerEntry.stream);
+      track.onunmute = () => {
+        playPeerAudio(peerId, peerEntry.stream);
+      };
     }
   };
 
@@ -8314,9 +8312,12 @@ async function toggleMic() {
       audioTrack.enabled = true;
       let micNeedsReneg = false;
 
-      if (dom.selfVideo && state.localStream && (state.isCamOn || state.localStream.getVideoTracks().length > 0) && dom.selfVideo.srcObject !== state.localStream) {
-        dom.selfVideo.srcObject = state.localStream;
-        dom.selfVideo.play().catch(() => {});
+      if (dom.selfVideo && state.localStream && (state.isCamOn || state.localStream.getVideoTracks().length > 0)) {
+        const vTrack = state.localStream.getVideoTracks().find(t => t.readyState === 'live');
+        if (vTrack && (!dom.selfVideo.srcObject || !dom.selfVideo.srcObject.getVideoTracks().includes(vTrack))) {
+          dom.selfVideo.srcObject = new MediaStream([vTrack]);
+          dom.selfVideo.play().catch(() => {});
+        }
       }
 
       // Also register local stream with ducking monitor so video ducks when user speaks
@@ -8360,7 +8361,9 @@ async function toggleMic() {
           try { state.pc.addTrack(audioTrack, state.localStream); } catch (_) {}
         }
       }
-      if (micNeedsReneg && typeof renegotiateWebRTC === 'function') { try { await renegotiateWebRTC(); } catch (_) {} }
+      if (typeof renegotiateWebRTC === 'function') {
+        try { await renegotiateWebRTC(); } catch (_) {}
+      }
       showToast('Mikrofon Açık (Canlı)');
     } catch (e) {
       console.warn('Microphone hardware error:', e);
@@ -8368,13 +8371,16 @@ async function toggleMic() {
       showToast(describeMediaError(e, 'mic'));
     }
   } else {
-    // Mute: Simply disable live audio tracks. DO NOT stop hardware track, DO NOT replaceTrack(null), DO NOT renegotiate!
+    // Mute: Simply disable live audio tracks
     if (state.localStream) {
       state.localStream.getAudioTracks().forEach(t => { 
         t.enabled = false;
       });
     }
     showToast('Mikrofon Kapatıldı');
+    if (typeof renegotiateWebRTC === 'function') {
+      try { renegotiateWebRTC(); } catch (_) {}
+    }
   }
 
   updateAVToolbarUI();
@@ -8407,9 +8413,17 @@ async function getLiveCameraStream(targetFacingMode = null, targetDeviceId = nul
     tryConstraints.push({
       video: {
         deviceId: { exact: deviceId },
+        width: { ideal: 1280, max: 1920 },
+        height: { ideal: 720, max: 1080 },
+        frameRate: { ideal: 30 }
+      },
+      audio: false
+    });
+    tryConstraints.push({
+      video: {
+        deviceId: { exact: deviceId },
         width: { ideal: 640 },
-        height: { ideal: 480 },
-        frameRate: { ideal: 24, max: 30 }
+        height: { ideal: 480 }
       },
       audio: false
     });
@@ -8419,27 +8433,28 @@ async function getLiveCameraStream(targetFacingMode = null, targetDeviceId = nul
     });
   }
 
-  // 2. Facing mode prioritized (Front / Selfie camera default)
+  // 2. Facing mode prioritized (720p 30fps real-time fluid video call)
+  tryConstraints.push({
+    video: {
+      facingMode: { ideal: facing },
+      width: { ideal: 1280, max: 1920 },
+      height: { ideal: 720, max: 1080 },
+      frameRate: { ideal: 30 }
+    },
+    audio: false
+  });
   tryConstraints.push({
     video: {
       facingMode: { ideal: facing },
       width: { ideal: 640 },
-      height: { ideal: 480 },
-      frameRate: { ideal: 24, max: 30 }
-    },
-    audio: false
-  });
-  tryConstraints.push({
-    video: {
-      facingMode: facing
+      height: { ideal: 480 }
     },
     audio: false
   });
   tryConstraints.push({
     video: {
       width: { ideal: 640 },
-      height: { ideal: 480 },
-      frameRate: { ideal: 24, max: 30 }
+      height: { ideal: 480 }
     },
     audio: false
   });
@@ -8493,7 +8508,7 @@ async function switchCamera() {
       }
 
       if (dom.selfVideo) {
-        dom.selfVideo.srcObject = state.localStream;
+        dom.selfVideo.srcObject = new MediaStream([freshTrack]);
         dom.selfVideo.play().catch(() => {});
       }
 
@@ -8583,6 +8598,9 @@ async function toggleCam() {
     if (dom.selfPipCard) {
       dom.selfPipCard.classList.add('hidden');
     }
+    if (typeof renegotiateWebRTC === 'function') {
+      try { await renegotiateWebRTC(); } catch (_) {}
+    }
     updateAVToolbarUI();
     broadcastMyMediaStatus();
     renderParticipantsList();
@@ -8641,7 +8659,7 @@ async function toggleCam() {
         dom.selfVideo.setAttribute('muted', '');
         dom.selfVideo.setAttribute('autoplay', 'true');
 
-        dom.selfVideo.srcObject = state.localStream;
+        dom.selfVideo.srcObject = new MediaStream([videoTrack]);
         const playPromise = dom.selfVideo.play();
         if (playPromise !== undefined) {
           playPromise.catch(err => console.warn('Self video play warning:', err));
@@ -8722,8 +8740,8 @@ async function toggleCam() {
           console.warn('WebRTC cam track error:', err);
         }
       }
-      if (camNeedsReneg && typeof renegotiateWebRTC === 'function') {
-        await renegotiateWebRTC();
+      if (typeof renegotiateWebRTC === 'function') {
+        try { await renegotiateWebRTC(); } catch (_) {}
       }
 
       broadcastMyMediaStatus();
@@ -9248,6 +9266,10 @@ function switchToProviderPicker() {
   document.documentElement.classList.remove('in-room-mode');
   if (typeof stopProfileStarCanvas === 'function') stopProfileStarCanvas();
   stopBotsForActiveRoom();
+  if (dom.createRoomModal) {
+    dom.createRoomModal.classList.add('hidden');
+    dom.createRoomModal.classList.remove('flex');
+  }
   if (dom.profileEditModal) {
     dom.profileEditModal.classList.add('hidden');
     dom.profileEditModal.classList.remove('flex');
@@ -14119,6 +14141,7 @@ function broadcastMyMediaStatus() {
   const savedUserObj = JSON.parse(localStorage.getItem('miruo_user') || '{}');
   const payload = {
     userId: state.userId,
+    clientId: state.clientId,
     username: state.username,
     avatar: state.avatarUrl || savedUserObj.avatarUrl || '',
     avatarColor: state.avatarBg || savedUserObj.avatarBg || 'from-rose-500 to-indigo-600',
@@ -15752,7 +15775,7 @@ function initEvents() {
   bindNav(document.getElementById('mobileNavExploreBtn'), () => switchToExplore());
   bindNav(document.getElementById('mobileNavFriendsBtn'), () => switchToFriendsTab());
   bindNav(document.getElementById('mobileNavProfileBtn'), () => switchToProfileTab());
-  bindNav(document.getElementById('raveFabPlusBtn'), () => { if (typeof openCreateRoomModal === 'function') openCreateRoomModal(); });
+  bindNav(document.getElementById('raveFabPlusBtn'), () => { if (typeof switchToProviderPicker === 'function') switchToProviderPicker(); });
   bindNav(document.getElementById('navLogoBtn'), () => switchToExplore());
   bindNav(document.getElementById('refreshRoomsBtn'), () => { if (typeof loadPublicRooms === 'function') loadPublicRooms(); });
 
@@ -21442,19 +21465,21 @@ function validateInstagramUsername(username) {
   window.setPlayerQuality = setPlayerQuality;
 
   function toggleRaveRoomSettingsMenu(show) {
-    if (!dom.raveRoomSettingsMenu) return;
-    const isHidden = dom.raveRoomSettingsMenu.classList.contains('hidden');
+    const menu = dom.raveRoomSettingsMenu || document.getElementById('raveRoomSettingsMenu');
+    if (!menu) return;
+    const isHidden = menu.classList.contains('hidden');
     const target = (typeof show === 'boolean') ? show : isHidden;
     const backdrop = dom.raveRoomSettingsBackdrop || document.getElementById('raveRoomSettingsBackdrop');
     if (target) {
-      dom.raveRoomSettingsMenu.classList.remove('hidden');
+      menu.classList.remove('hidden');
       if (backdrop) backdrop.classList.remove('hidden');
       updateMenuAVStatus();
     } else {
-      dom.raveRoomSettingsMenu.classList.add('hidden');
+      menu.classList.add('hidden');
       if (backdrop) backdrop.classList.add('hidden');
     }
   }
+  window.toggleRaveRoomSettingsMenu = toggleRaveRoomSettingsMenu;
 
   function canControlPlayback() {
     if (!state.roomId) return true;
@@ -21724,6 +21749,10 @@ function validateInstagramUsername(username) {
   let selectedPlatform = 'YouTube';
 
   function openCreateRoomModal(platform = 'YouTube') {
+    if (dom.providerPickerSection) {
+      dom.providerPickerSection.classList.add('hidden');
+      dom.providerPickerSection.classList.remove('flex');
+    }
     selectedPlatform = platform;
     newRoomIsPrivate = false;
     if (dom.selectPublicRoomBtn) dom.selectPublicRoomBtn.className = 'p-3 rounded-2xl border-2 border-purple-500 bg-purple-500/10 text-left transition-all';
