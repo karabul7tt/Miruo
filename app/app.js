@@ -9240,6 +9240,7 @@ function switchToExplore() {
   }
   loadPublicRooms();
 }
+window.switchToExplore = switchToExplore;
 
 function switchToProviderPicker() {
   state.currentTab = 'provider_picker';
@@ -12599,6 +12600,7 @@ function switchToFriendsTab() {
   loadFriends();
   renderFriendsTab();
 }
+window.switchToFriendsTab = switchToFriendsTab;
 
 function switchToProfileTab() {
   state.currentTab = 'profile';
@@ -12639,6 +12641,7 @@ function switchToProfileTab() {
   renderProfileTab();
   startProfileStarCanvas();
 }
+window.switchToProfileTab = switchToProfileTab;
 
 function renderProfileTab() {
   const savedUser = JSON.parse(localStorage.getItem('miruo_user') || '{}');
@@ -15739,6 +15742,20 @@ function initMobileKeyboardProtection() {
 window.initMobileKeyboardProtection = initMobileKeyboardProtection;
 
 function initEvents() {
+  // Bind Primary Navigation Immediately for 100% Guaranteed Responsiveness
+  const bindNav = (el, fn) => {
+    if (!el) return;
+    el.onclick = (e) => { if (e && e.preventDefault) e.preventDefault(); fn(e); };
+    el.addEventListener('click', (e) => { if (e && e.preventDefault) e.preventDefault(); fn(e); });
+    el.addEventListener('touchend', (e) => { if (e && e.preventDefault) e.preventDefault(); fn(e); }, { passive: false });
+  };
+  bindNav(document.getElementById('mobileNavExploreBtn'), () => switchToExplore());
+  bindNav(document.getElementById('mobileNavFriendsBtn'), () => switchToFriendsTab());
+  bindNav(document.getElementById('mobileNavProfileBtn'), () => switchToProfileTab());
+  bindNav(document.getElementById('raveFabPlusBtn'), () => { if (typeof openCreateRoomModal === 'function') openCreateRoomModal(); });
+  bindNav(document.getElementById('navLogoBtn'), () => switchToExplore());
+  bindNav(document.getElementById('refreshRoomsBtn'), () => { if (typeof loadPublicRooms === 'function') loadPublicRooms(); });
+
   initMobileKeyboardProtection();
   try {
     if (typeof initGlobalPublicRoomsSync === 'function') initGlobalPublicRoomsSync();
@@ -24306,5 +24323,14 @@ const unlockAudioSystem = () => {
 window.addEventListener('click', unlockAudioSystem, { passive: true });
 window.addEventListener('touchstart', unlockAudioSystem, { passive: true });
 
-// Start
-document.addEventListener('DOMContentLoaded', initEvents);
+// Start: Handle both pending DOMContentLoaded and already-interactive document
+window.initEvents = initEvents;
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', initEvents);
+} else {
+  try {
+    initEvents();
+  } catch (err) {
+    console.error('[Miruo] Immediate initEvents error:', err);
+  }
+}

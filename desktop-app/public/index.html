@@ -86,7 +86,7 @@
     <div class="max-w-7xl mx-auto w-full flex items-center justify-between">
       <div class="w-8 shrink-0"></div>
       <!-- Center: MIRUO logo wordmark with iconic emblem & localized tagline -->
-      <div class="flex flex-col items-center cursor-pointer py-0.5 select-none" id="navLogoBtn">
+      <div class="flex flex-col items-center cursor-pointer py-0.5 select-none" id="navLogoBtn" onclick="if(window.switchToExplore)window.switchToExplore();">
         <div class="flex items-center gap-2">
           <img src="logo.svg" alt="Miruo" class="w-6 h-6 rounded-lg shadow-sm">
           <span class="text-xl sm:text-2xl font-black tracking-tight text-white font-['Plus_Jakarta_Sans'] leading-none">MIRUO</span>
@@ -115,7 +115,7 @@
           <svg class="w-4 h-4 text-gray-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15.3 15.3 0 014 10 15.3 15.3 0 01-4 10 15.3 15.3 0 01-4-10 15.3 15.3 0 014-10z"/></svg>
           <span class="text-sm sm:text-base font-extrabold tracking-tight" data-i18n="live_rooms">Canlı Keşfet</span>
         </div>
-        <button id="refreshRoomsBtn" class="text-gray-400 hover:text-white text-xs sm:text-sm font-semibold flex items-center gap-1 transition-colors cursor-pointer">
+        <button id="refreshRoomsBtn" onclick="if(window.loadPublicRooms)window.loadPublicRooms();" class="text-gray-400 hover:text-white text-xs sm:text-sm font-semibold flex items-center gap-1 transition-colors cursor-pointer">
           <span data-i18n="refresh_btn">Yenile</span>
         </button>
       </div>
@@ -1030,24 +1030,24 @@
   <!-- Bottom Navigation Bar (Responsive: Pinned to bottom on phones, floating centered dock on Mac & Windows desktop) -->
   <nav id="mobileBottomNav" class="fixed bottom-0 sm:bottom-4 inset-x-0 sm:inset-x-auto sm:left-1/2 sm:-translate-x-1/2 bg-[#0B0D14]/95 backdrop-blur-2xl border-t sm:border border-white/15 z-40 px-6 sm:px-8 py-2 sm:py-2.5 flex items-center justify-between sm:gap-10 sm:rounded-full safe-area-bottom shadow-2xl transition-all">
     <!-- 1. Keşfet -->
-    <button id="mobileNavExploreBtn" type="button" class="flex flex-col items-center gap-1 text-white font-bold py-1 px-3 transition-all cursor-pointer" title="Canlı Yayınlar & Keşfet">
+    <button id="mobileNavExploreBtn" type="button" onclick="if(window.switchToExplore)window.switchToExplore();" class="flex flex-col items-center gap-1 text-white font-bold py-1 px-3 transition-all cursor-pointer" title="Canlı Yayınlar & Keşfet">
       <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76"/></svg>
       <span class="text-[10px] font-medium" data-i18n="nav_explore">Keşfet</span>
     </button>
 
     <!-- 2. Arkadaşlar -->
-    <button id="mobileNavFriendsBtn" type="button" class="flex flex-col items-center gap-1 text-gray-400 hover:text-white py-1 px-3 transition-all cursor-pointer" title="Arkadaşlarım">
+    <button id="mobileNavFriendsBtn" type="button" onclick="if(window.switchToFriendsTab)window.switchToFriendsTab();" class="flex flex-col items-center gap-1 text-gray-400 hover:text-white py-1 px-3 transition-all cursor-pointer" title="Arkadaşlarım">
       <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"/></svg>
       <span class="text-[10px] font-medium" data-i18n="nav_friends">Arkadaşlar</span>
     </button>
 
     <!-- 3. Prominent White Circular "+" Button -->
-    <button id="raveFabPlusBtn" type="button" class="w-14 h-14 -mt-6 rounded-full bg-white text-black hover:scale-105 active:scale-95 shadow-2xl shadow-white/30 flex items-center justify-center font-bold text-2xl transition-all border-4 border-[#0B0D14] cursor-pointer" title="Yeni Oda / Platform Seç">
+    <button id="raveFabPlusBtn" type="button" onclick="if(window.openCreateRoomModal)window.openCreateRoomModal();" class="w-14 h-14 -mt-6 rounded-full bg-white text-black hover:scale-105 active:scale-95 shadow-2xl shadow-white/30 flex items-center justify-center font-bold text-2xl transition-all border-4 border-[#0B0D14] cursor-pointer" title="Yeni Oda / Platform Seç">
       <svg class="w-7 h-7 text-black stroke-[3]" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/></svg>
     </button>
 
     <!-- 4. En Sağda: Profil (Image 2 Birebir Referans Tasarımı) -->
-    <button id="mobileNavProfileBtn" type="button" class="flex flex-col items-center gap-1 text-gray-400 hover:text-white py-1 px-3 transition-all cursor-pointer" title="Profil">
+    <button id="mobileNavProfileBtn" type="button" onclick="if(window.switchToProfileTab)window.switchToProfileTab();" class="flex flex-col items-center gap-1 text-gray-400 hover:text-white py-1 px-3 transition-all cursor-pointer" title="Profil">
       <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
         <path stroke-linecap="round" stroke-linejoin="round" d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
         <circle cx="12" cy="7" r="4"/>
