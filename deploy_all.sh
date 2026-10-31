@@ -18,14 +18,26 @@ for target in desktop-app/public ios/Miruo/public android/app/src/main/assets/pu
 done
 echo "✅ Dosyalar eşitlendi."
 
-echo "🍏 [2/6] macOS Masaüstü Uygulaması derleniyor..."
+echo "🍏 [2/6] macOS Masaüstü Uygulaması derleniyor ve Apple Noter Onayı alınıyor..."
 (
   cd desktop-app
   npm run dist:mac
 )
+# DMG imzalama
+codesign --force --sign "Developer ID Application: MEHMET KARABULUT (VR7K23PNPM)" desktop-app/dist/Miruo-1.0.0-arm64.dmg
 cp -f desktop-app/dist/Miruo-1.0.0-arm64.dmg downloads/Miruo.dmg
-cp -f desktop-app/dist/Miruo-1.0.0-arm64.dmg website/downloads/Miruo.dmg
-echo "✅ macOS DMG hazırlandı ve indirme dizinlerine kopyalandı."
+
+echo "🍏 Apple Noter Sunucusuna gönderiliyor..."
+xcrun notarytool submit downloads/Miruo.dmg \
+  --apple-id "dythin.app@gmail.com" \
+  --password "bjnl-emth-buct-zzxb" \
+  --team-id "VR7K23PNPM" \
+  --wait
+
+echo "🍏 Apple Onay Bileti DMG'ye zımbalanıyor (Staple)..."
+xcrun stapler staple downloads/Miruo.dmg
+cp -f downloads/Miruo.dmg website/downloads/Miruo.dmg
+echo "✅ macOS DMG resmi Apple noter onayıyla hazırlandı."
 
 echo "🪟 [3/6] Windows Uygulaması paketleniyor..."
 cp -f desktop-app/dist/mac-arm64/Miruo.app/Contents/Resources/app.asar desktop-app/dist/win-unpacked/resources/app.asar
