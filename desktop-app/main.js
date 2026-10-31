@@ -840,6 +840,27 @@ function createWindow(port) {
     }
   });
 
+  // Universal Keyboard & Media Keys Dispatcher for macOS
+  mainWindow.webContents.on('before-input-event', (event, input) => {
+    if (input.type !== 'keyDown') return;
+
+    // Standard media / shortcut keys to forward when not actively editing text
+    const mediaKeys = [' ', 'Space', 'ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'k', 'K', 'j', 'J', 'l', 'L', 'm', 'M', 'f', 'F', 'Escape'];
+    const isDigit = /^[0-9]$/.test(input.key);
+
+    if (mediaKeys.includes(input.key) || isDigit) {
+      // Send to renderer which checks if activeElement is an input field
+      mainWindow.webContents.send('media-key', {
+        key: input.key,
+        code: input.code,
+        altKey: input.alt,
+        ctrlKey: input.control,
+        metaKey: input.meta,
+        shiftKey: input.shift
+      });
+    }
+  });
+
   // Support hardware/mouse back & forward buttons
   mainWindow.on('app-command', (e, cmd) => {
     if (cmd === 'browser-backward') {
@@ -964,13 +985,16 @@ app.whenReady().then(() => {
     createWindow(port);
   });
 
-  // Mac Application Menu
+  // Mac Application Menu with official macOS Cocoa Responder Roles
   if (process.platform === 'darwin') {
     const template = [
       {
+        role: 'appMenu',
         label: 'Miruo',
         submenu: [
           { role: 'about', label: 'Miruo Hakkında' },
+          { type: 'separator' },
+          { role: 'services', label: 'Servisler' },
           { type: 'separator' },
           { role: 'hide', label: 'Miruo\'yu Gizle' },
           { role: 'hideOthers', label: 'Diğerlerini Gizle' },
@@ -980,6 +1004,7 @@ app.whenReady().then(() => {
         ]
       },
       {
+        role: 'editMenu',
         label: 'Düzenle',
         submenu: [
           { role: 'undo', label: 'Geri Al' },
@@ -988,10 +1013,13 @@ app.whenReady().then(() => {
           { role: 'cut', label: 'Kes' },
           { role: 'copy', label: 'Kopyala' },
           { role: 'paste', label: 'Yapıştır' },
+          { role: 'pasteAndMatchStyle', label: 'Yapıştır ve Stili Eşle' },
+          { role: 'delete', label: 'Sil' },
           { role: 'selectAll', label: 'Tümünü Seç' }
         ]
       },
       {
+        role: 'viewMenu',
         label: 'Görünüm',
         submenu: [
           { role: 'reload', label: 'Yenile' },
@@ -1005,6 +1033,7 @@ app.whenReady().then(() => {
         ]
       },
       {
+        role: 'windowMenu',
         label: 'Pencere',
         submenu: [
           { role: 'minimize', label: 'Küçült' },

@@ -10118,6 +10118,7 @@ function canUserManageRoom() {
 window.canUserManageRoom = canUserManageRoom;
 
 function canUserControlPlayback() {
+  if (!state.isInRoom) return true;
   if (state.isHost) return true;
   if (state.controlMode === 'everyone') return true;
   const role = state.userRole || 'member';
@@ -10126,6 +10127,7 @@ function canUserControlPlayback() {
 window.canUserControlPlayback = canUserControlPlayback;
 
 function canUserChooseVideo() {
+  if (!state.isInRoom) return true;
   if (state.isHost) return true;
   if (state.controlMode === 'everyone') return true;
   const role = state.userRole || 'member';
@@ -20526,20 +20528,193 @@ function validateInstagramUsername(username) {
     }
   }
 
-  document.addEventListener('keydown', (e) => {
-    if (['input', 'textarea'].includes((document.activeElement?.tagName || '').toLowerCase())) return;
-    if (document.activeElement?.isContentEditable) return;
-    if (e.key === ' ' || e.code === 'Space') {
-      if (state.isInRoom && (state.activeMode === 'youtube' || state.activeMode === 'direct')) {
-        e.preventDefault();
-        togglePlayPause();
+  // Visual On-Screen Feedback HUD for Keyboard Interactions
+  function showKeyFeedback(text, icon = '') {
+    try {
+      let badge = document.getElementById('miruoKeyFeedbackBadge');
+      if (!badge) {
+        badge = document.createElement('div');
+        badge.id = 'miruoKeyFeedbackBadge';
+        badge.style.cssText = 'position:fixed;top:50%;left:50%;transform:translate(-50%,-50%) scale(0.92);z-index:2147483647;pointer-events-none;display:flex;align-items:center;gap:10px;padding:14px 24px;border-radius:24px;background:rgba(14,5,18,0.88);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);border:1px solid rgba(255,255,255,0.2);box-shadow:0 20px 50px rgba(0,0,0,0.7);color:#fff;font-family:system-ui,-apple-system,BlinkMacSystemFont,sans-serif;font-weight:700;font-size:16px;letter-spacing:0.3px;opacity:0;transition:opacity 0.16s ease, transform 0.16s ease;user-select:none;';
+        document.body.appendChild(badge);
       }
+      badge.innerHTML = `${icon ? `<span style="font-size:20px;line-height:1;">${icon}</span>` : ''}<span>${text}</span>`;
+      badge.style.opacity = '1';
+      badge.style.transform = 'translate(-50%, -50%) scale(1)';
+      clearTimeout(badge._timer);
+      badge._timer = setTimeout(() => {
+        badge.style.opacity = '0';
+        badge.style.transform = 'translate(-50%, -50%) scale(0.92)';
+      }, 850);
+    } catch (_) {}
+  }
+  window.showKeyFeedback = showKeyFeedback;
+
+  function adjustVolume(delta) {
+    state.currentVolume = Math.max(0, Math.min(100, (typeof state.currentVolume === 'number' ? state.currentVolume : 100) + delta));
+    state.isMuted = false;
+    sendYtCommand('unMute');
+    sendYtCommand('setVolume', [state.currentVolume]);
+    if (dom.nativeVideoPlayer) {
+      dom.nativeVideoPlayer.muted = false;
+      dom.nativeVideoPlayer.volume = state.currentVolume / 100;
     }
+    const icon = state.currentVolume === 0 ? '🔇' : state.currentVolume < 50 ? '🔉' : '🔊';
+    showKeyFeedback(`Ses: %${Math.round(state.currentVolume)}`, icon);
+  }
+  window.adjustVolume = adjustVolume;
+
+  function toggleMute() {
+    state.isMuted = !state.isMuted;
+    if (state.isMuted) {
+      sendYtCommand('mute');
+      if (dom.nativeVideoPlayer) dom.nativeVideoPlayer.muted = true;
+      showKeyFeedback('Sessiz', '🔇');
+    } else {
+      sendYtCommand('unMute');
+      const vol = typeof state.currentVolume === 'number' ? state.currentVolume : 100;
+      sendYtCommand('setVolume', [vol]);
+      if (dom.nativeVideoPlayer) {
+        dom.nativeVideoPlayer.muted = false;
+        dom.nativeVideoPlayer.volume = vol / 100;
+      }
+      showKeyFeedback(`Ses: %${Math.round(vol)}`, '🔊');
+    }
+  }
+  window.toggleMute = toggleMute;
+
+  function seekToPercent(pct) {
+    if (!state.duration || state.duration <= 0) return;
+    const target = Math.max(0, Math.min(state.duration * (pct / 100), state.duration));
+    state.currentTime = target;
+    if (state.activeMode === 'youtube') {
+      sendYtCommand('seekTo', [target, true]);
+    } else if (dom.nativeVideoPlayer) {
+      dom.nativeVideoPlayer.currentTime = target;
+    }
+    if (!state.isRemoteAction) {
+      sendP2PData('sync', { action: 'seek', time: target, isPlaying: state.isPlaying, sentAt: Date.now() });
+    }
+    showKeyFeedback(`%${pct} (${formatTime(target)})`, '⏱');
+  }
+  window.seekToPercent = seekToPercent;
+
+  function handleUniversalKey(e) {
+    const activeEl = document.activeElement;
+    const tag = (activeEl?.tagName || '').toLowerCase();
+    if (['input', 'textarea', 'select'].includes(tag)) return;
+    if (activeEl?.isContentEditable) return;
+
+    // 1. Space or K: Play / Pause
+    if (e.key === ' ' || e.code === 'Space' || e.key === 'k' || e.key === 'K') {
+      e.preventDefault();
+      togglePlayPause();
+      showKeyFeedback(state.isPlaying ? 'Oynatılıyor' : 'Duraklatıldı', state.isPlaying ? '▶' : '⏸');
+      return;
+    }
+
+    // 2. Left Arrow: Rewind 5s
+    if (e.key === 'ArrowLeft') {
+      e.preventDefault();
+      seekRelative(-5);
+      showKeyFeedback('-5 sn', '⏪');
+      return;
+    }
+
+    // 3. Right Arrow: Fast-forward 5s
+    if (e.key === 'ArrowRight') {
+      e.preventDefault();
+      seekRelative(5);
+      showKeyFeedback('+5 sn', '⏩');
+      return;
+    }
+
+    // 4. J: Rewind 10s
+    if (e.key === 'j' || e.key === 'J') {
+      e.preventDefault();
+      seekRelative(-10);
+      showKeyFeedback('-10 sn', '⏪');
+      return;
+    }
+
+    // 5. L: Fast-forward 10s
+    if (e.key === 'l' || e.key === 'L') {
+      e.preventDefault();
+      seekRelative(10);
+      showKeyFeedback('+10 sn', '⏩');
+      return;
+    }
+
+    // 6. Up Arrow: Volume +10%
+    if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      adjustVolume(10);
+      return;
+    }
+
+    // 7. Down Arrow: Volume -10%
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      adjustVolume(-10);
+      return;
+    }
+
+    // 8. M: Mute / Unmute
+    if (e.key === 'm' || e.key === 'M') {
+      e.preventDefault();
+      toggleMute();
+      return;
+    }
+
+    // 9. F: Fullscreen
     if (e.key === 'f' || e.key === 'F') {
       e.preventDefault();
       toggleFullscreen();
+      showKeyFeedback(document.fullscreenElement ? 'Tam Ekrandan Çıkıldı' : 'Tam Ekran', '⛶');
+      return;
     }
-  });
+
+    // 10. Numbers 0-9: Seek percent
+    if (/^[0-9]$/.test(e.key)) {
+      e.preventDefault();
+      seekToPercent(parseInt(e.key, 10) * 10);
+      return;
+    }
+
+    // 11. Escape: Close topmost modal or exit fullscreen
+    if (e.key === 'Escape') {
+      const openModals = [
+        document.getElementById('desktopBrowserOverlay'),
+        dom.profileEditModal,
+        dom.roomPlatformChooserModal,
+        dom.raveYoutubeModal,
+        dom.userProfileDropdown,
+        document.getElementById('addFriendModal'),
+        document.getElementById('createRoomModal')
+      ];
+      for (const modal of openModals) {
+        if (modal && !modal.classList.contains('hidden') && modal.offsetParent !== null) {
+          e.preventDefault();
+          modal.classList.add('hidden');
+          return;
+        }
+      }
+      if (document.fullscreenElement) {
+        e.preventDefault();
+        if (document.exitFullscreen) document.exitFullscreen().catch(() => {});
+      }
+    }
+  }
+
+  document.addEventListener('keydown', handleUniversalKey);
+  window.handleUniversalKey = handleUniversalKey;
+
+  // Listen for media key IPC from Electron Main Process if available
+  if (window.miruoDesktop && typeof window.miruoDesktop.onMediaKey === 'function') {
+    window.miruoDesktop.onMediaKey((event, keyData) => {
+      handleUniversalKey(keyData);
+    });
+  }
 
   document.addEventListener('fullscreenchange', updateFullscreenUI);
   document.addEventListener('webkitfullscreenchange', updateFullscreenUI);
