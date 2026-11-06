@@ -2990,6 +2990,15 @@ function connectSupabaseRoomSignaling() {
           }
 
           const existing = state.participants[existingKey] || {};
+          const peerHasLiveCamTrack = (existing.stream && existing.stream.getVideoTracks().some(t => t.readyState === 'live')) ||
+                                      (state.peers && state.peers[pk] && state.peers[pk].stream && state.peers[pk].stream.getVideoTracks().some(t => t.readyState === 'live'));
+          const peerHasLiveMicTrack = (existing.stream && existing.stream.getAudioTracks().some(t => t.readyState === 'live')) ||
+                                      (state.peers && state.peers[pk] && state.peers[pk].stream && state.peers[pk].stream.getAudioTracks().some(t => t.readyState === 'live'));
+
+          // Retain live status if confirmed by WebRTC track or recent media_status broadcast
+          const finalCam = peerHasLiveCamTrack || (existing.isCamOn === true) || (info.isCamOn === true);
+          const finalMic = peerHasLiveMicTrack || (existing.isMicOn === true) || (info.isMicOn === true);
+
           state.participants[existingKey] = {
             ...existing,
             peerId: pk,
@@ -2998,8 +3007,8 @@ function connectSupabaseRoomSignaling() {
             username: displayUsername,
             avatar: info.avatar || existing.avatar || '',
             avatarColor: info.avatarColor || existing.avatarColor || 'from-rose-500 to-indigo-600',
-            isMicOn: typeof info.isMicOn === 'boolean' ? info.isMicOn : !!existing.isMicOn,
-            isCamOn: typeof info.isCamOn === 'boolean' ? info.isCamOn : !!existing.isCamOn,
+            isMicOn: finalMic,
+            isCamOn: finalCam,
             isHost: typeof info.isHost === 'boolean' ? info.isHost : !!existing.isHost,
             role: info.role || existing.role || (info.isHost ? 'owner' : 'member'),
             isSelf: false,
@@ -3008,7 +3017,7 @@ function connectSupabaseRoomSignaling() {
           if (info.isHost && info.username) {
             state.hostName = info.username;
           }
-          if (info.isCamOn) {
+          if (finalCam) {
             state.dismissedPips = state.dismissedPips || {};
             state.dismissedPips[pk] = false;
             if (info.userId) state.dismissedPips[info.userId] = false;
@@ -3016,27 +3025,16 @@ function connectSupabaseRoomSignaling() {
         }
       });
 
-      // Gracefully clean up vanished peers after grace period
-      const activePresenceUserIds = new Set();
+      // Swiftly clean up vanished peers so ghost participants never linger
       const activePresenceClientIds = new Set(Object.keys(pState));
-      Object.values(pState).forEach(arr => {
-        if (Array.isArray(arr)) {
-          arr.forEach(item => {
-            if (item.userId) activePresenceUserIds.add(String(item.userId).toLowerCase());
-            if (item.clientId) activePresenceClientIds.add(item.clientId);
-          });
-        }
-      });
-
       Object.keys(state.participants).forEach(pid => {
         if (pid.startsWith('bot_') || pid === state.clientId) return;
         const p = state.participants[pid];
-        const hasClient = p.clientId && activePresenceClientIds.has(p.clientId);
-        const hasUser = p.userId && activePresenceUserIds.has(String(p.userId).toLowerCase());
-        if (!hasClient && !hasUser) {
+        const hasClient = (p.clientId && activePresenceClientIds.has(p.clientId)) || activePresenceClientIds.has(pid);
+        if (!hasClient) {
           if (!p.vanishedSince) {
             p.vanishedSince = Date.now();
-          } else if (Date.now() - p.vanishedSince > 12000) {
+          } else if (Date.now() - p.vanishedSince > 1500) {
             delete state.participants[pid];
             if (typeof closePeerConnection === 'function') closePeerConnection(pid);
           }
@@ -3792,17 +3790,19 @@ function attachRemoteStreamToPartnerVideo(preferredMember = null) {
 
   const checkPartnerVideo = () => {
     if (!dom.partnerVideo) return;
-    const hasActiveFrames = dom.partnerVideo.videoWidth > 0 || (dom.partnerVideo.readyState >= 2 && !dom.partnerVideo.paused);
-    if (hasActiveFrames || (dom.partnerVideo.srcObject && dom.partnerVideo.currentTime > 0)) {
+    const hasActiveFrames = (dom.partnerVideo.videoWidth > 0 && !dom.partnerVideo.paused);
+    if (hasActiveFrames) {
       if (dom.partnerVideoPlaceholder) {
         dom.partnerVideoPlaceholder.classList.add('hidden');
         dom.partnerVideoPlaceholder.style.display = 'none';
       }
-      if (dom.partnerVideo.paused && dom.partnerVideo.srcObject) dom.partnerVideo.play().catch(() => {});
     } else {
-      if (dom.partnerVideoPlaceholder && !dom.partnerVideo.srcObject) {
+      if (dom.partnerVideoPlaceholder) {
         dom.partnerVideoPlaceholder.classList.remove('hidden');
         dom.partnerVideoPlaceholder.style.removeProperty('display');
+      }
+      if (dom.partnerVideo.paused && dom.partnerVideo.srcObject) {
+        dom.partnerVideo.play().catch(() => {});
       }
     }
   };
@@ -3826,7 +3826,7 @@ function renderStagePipCards() {
   state.dismissedPips = state.dismissedPips || {};
 
   const seenCamKeys = new Set();
-  if (state.clientId) seenCamKeys.add(String(state.clientId));
+  if (state.clientId) seenCamKeys.add(String(state.clientId).toLowerCase());
 
   const activeCamMembers = [];
   Object.values(state.participants || {}).forEach(p => {
@@ -3834,13 +3834,14 @@ function renderStagePipCards() {
     const isSelf = p.clientId ? (p.clientId === state.clientId) : (p.userId === state.userId && !p.clientId);
     if (isSelf) return;
 
-    // Strict rule: Only show camera bubble if the participant explicitly has their camera turned ON
-    if (!p.isCamOn) return;
-
     const pStream = p.stream || 
                     (p.clientId && state.peers?.[p.clientId]?.stream) ||
                     (p.userId && state.peers?.[p.userId]?.stream) ||
                     (p.userId === state.peerId || p.clientId === state.peerId ? state.remoteStream : null);
+
+    const hasLiveVideo = pStream && pStream.getVideoTracks().some(t => t.readyState === 'live');
+    if (!p.isCamOn && !hasLiveVideo) return;
+    if (hasLiveVideo && !p.isCamOn) p.isCamOn = true;
 
     const uKey = String(p.clientId || (p.userId ? p.userId + '_pip' : p.username) || '').toLowerCase();
     if (!uKey || seenCamKeys.has(uKey)) return;
@@ -3910,7 +3911,7 @@ function renderStagePipCards() {
 
       card.innerHTML = `
         <div class="w-full h-full rounded-full overflow-hidden relative pointer-events-none">
-          <video class="extra-partner-video w-full h-full object-cover mirror pointer-events-none" playsinline webkit-playsinline autoplay muted></video>
+          <video class="extra-partner-video w-full h-full object-cover pointer-events-none" playsinline webkit-playsinline autoplay muted></video>
           <div class="extra-partner-placeholder absolute inset-0 flex flex-col items-center justify-center bg-gradient-to-br from-[#1A1325] via-[#0E111A] to-[#121626] text-center p-2 pointer-events-none">
             <div class="w-12 h-12 rounded-full bg-gradient-to-tr from-indigo-500 to-purple-600 border border-white/20 shadow-md flex items-center justify-center text-white font-bold text-sm mb-1 overflow-hidden">
               ${avInner}
@@ -3957,10 +3958,10 @@ function renderStagePipCards() {
       if (vid.srcObject !== peerStream) vid.srcObject = peerStream;
       vid.play().catch(() => {});
       const checkF = () => {
-        if ((vid.videoWidth > 0 || vid.readyState >= 2) && ph) {
+        if (vid.videoWidth > 0 && !vid.paused && ph) {
           ph.classList.add('hidden');
           ph.style.display = 'none';
-        } else if (ph && !vid.srcObject) {
+        } else if (ph) {
           ph.classList.remove('hidden');
           ph.style.removeProperty('display');
         }
@@ -4012,6 +4013,12 @@ function playPeerAudio(peerId, stream) {
 
   const safeId = String(peerId).replace(/[^a-zA-Z0-9_-]/g, '_');
   let el = document.getElementById('remoteVoiceAudio_' + safeId);
+  if (!el) {
+    const rootEl = document.getElementById('remoteVoiceAudio');
+    if (rootEl && (!rootEl.srcObject || rootEl.srcObject === stream)) {
+      el = rootEl;
+    }
+  }
   if (!el) {
     el = document.createElement('audio');
     el.id = 'remoteVoiceAudio_' + safeId;
@@ -4117,14 +4124,28 @@ function getOrCreatePeerConnection(peerId, isInitiator, meta = {}) {
   if (peerEntry.clientId) state.peers[peerEntry.clientId] = peerEntry;
   if (peerEntry.userId) state.peers[peerEntry.userId] = peerEntry;
 
-  // Pre-allocate audio & video transceivers in sendrecv mode
+  // Pre-allocate audio & video transceivers in sendrecv mode with H.264 hardware priority (iOS Safari <-> Desktop)
   try {
     if (typeof pc.addTransceiver === 'function') {
       const trans = pc.getTransceivers ? pc.getTransceivers() : [];
       const hasAudio = trans.some(t => (t.receiver && t.receiver.track && t.receiver.track.kind === 'audio') || (t.sender && t.sender.track && t.sender.track.kind === 'audio'));
       const hasVideo = trans.some(t => (t.receiver && t.receiver.track && t.receiver.track.kind === 'video') || (t.sender && t.sender.track && t.sender.track.kind === 'video'));
       if (!hasAudio) pc.addTransceiver('audio', { direction: 'sendrecv' });
-      if (!hasVideo) pc.addTransceiver('video', { direction: 'sendrecv' });
+      if (!hasVideo) {
+        const vt = pc.addTransceiver('video', { direction: 'sendrecv' });
+        try {
+          if (typeof RTCRtpSender.getCapabilities === 'function') {
+            const caps = RTCRtpSender.getCapabilities('video');
+            if (caps && caps.codecs) {
+              const h264 = caps.codecs.filter(c => (c.mimeType || '').toLowerCase() === 'video/h264');
+              const others = caps.codecs.filter(c => (c.mimeType || '').toLowerCase() !== 'video/h264');
+              if (h264.length > 0 && typeof vt.setCodecPreferences === 'function') {
+                vt.setCodecPreferences([...h264, ...others]);
+              }
+            }
+          }
+        } catch (_) {}
+      }
     }
   } catch (_) {}
 
@@ -4168,13 +4189,13 @@ function getOrCreatePeerConnection(peerId, isInitiator, meta = {}) {
       peerEntry.stream.addTrack(track);
     }
     let matchingP = state.participants[peerId] || 
-                    Object.values(state.participants).find(p => (peerEntry.userId && p.userId === peerEntry.userId) || (peerEntry.clientId && p.clientId === peerEntry.clientId));
+                    Object.values(state.participants).find(p => (peerEntry.clientId && p.clientId === peerEntry.clientId) || (peerEntry.userId && p.userId === peerEntry.userId));
     if (!matchingP) {
       const fallbackP = Object.values(state.participants).find(p => {
-        const isSelf = (p.clientId && p.clientId === state.clientId) || (p.userId && p.userId === state.userId);
+        const isSelf = p.clientId ? (p.clientId === state.clientId) : (p.userId === state.userId && !p.clientId);
         return !isSelf;
       });
-      const pKey = peerEntry.userId || peerEntry.clientId || peerId;
+      const pKey = peerEntry.clientId || peerEntry.userId || peerId;
       matchingP = {
         userId: peerEntry.userId || (fallbackP && fallbackP.userId) || peerId,
         clientId: peerEntry.clientId || (fallbackP && fallbackP.clientId) || peerId,
@@ -4227,16 +4248,17 @@ function getOrCreatePeerConnection(peerId, isInitiator, meta = {}) {
         updateBlockedMediaState();
       };
 
-      if (track.readyState === 'live') {
+      if (track.readyState === 'live' && !track.muted) {
         activateCam();
       }
-      track.onunmute = activateCam;
+      track.onunmute = () => {
+        activateCam();
+      };
       track.onmute = () => {
-        const anyLive = peerEntry.stream.getVideoTracks().some(t => t.readyState === 'live');
-        if (matchingP && !anyLive) {
-          matchingP.isCamOn = false;
+        const anyLive = peerEntry.stream.getVideoTracks().some(t => t.readyState === 'live' && !t.muted);
+        if (matchingP && !anyLive && !matchingP.isCamOn) {
+          if (typeof renderStagePipCards === 'function') renderStagePipCards();
         }
-        if (typeof renderStagePipCards === 'function') renderStagePipCards();
         if (typeof renderVideoGrid === 'function') renderVideoGrid();
       };
     }
@@ -4826,41 +4848,47 @@ function triggerAudioDucking(shouldDuck) {
   if (shouldDuck) {
     if (state.duckTimeout) clearTimeout(state.duckTimeout);
 
-    const duckFactor = typeof state.duckingTargetVolume === 'number' ? state.duckingTargetVolume : 0.35;
+    const duckFactor = typeof state.duckingTargetVolume === 'number' ? state.duckingTargetVolume : 0.3;
+    const baseVol = (typeof state.currentVolume === 'number' && state.currentVolume > 0) ? state.currentVolume : (state.normalVolume || 80);
+    state.normalVolume = baseVol;
 
-    if (!state.isDucked) {
-      state.isDucked = true;
-      if (dom.duckingLiveNotice) dom.duckingLiveNotice.style.opacity = '1';
+    state.isDucked = true;
+    if (dom.duckingLiveNotice) dom.duckingLiveNotice.style.opacity = '1';
 
-      // Drop Media Volume
-      if (state.ytPlayer && state.ytReady && typeof state.ytPlayer.setVolume === 'function') {
-        const curVol = state.ytPlayer.getVolume ? state.ytPlayer.getVolume() : (state.normalVolume || 100);
-        state.normalVolume = curVol || 100;
-        state.ytPlayer.setVolume(Math.max(10, Math.round(state.normalVolume * duckFactor)));
-      }
-      if (dom.nativeVideoPlayer) {
-        state.normalNativeVolume = typeof dom.nativeVideoPlayer.volume === 'number' ? dom.nativeVideoPlayer.volume : 1.0;
-        dom.nativeVideoPlayer.volume = Math.max(0.12, state.normalNativeVolume * duckFactor);
-      }
+    const duckedVol = Math.max(5, Math.round(baseVol * duckFactor));
+    if (state.ytPlayer && state.ytReady && typeof state.ytPlayer.setVolume === 'function') {
+      state.ytPlayer.setVolume(duckedVol);
+    }
+    sendYtCommand('setVolume', [duckedVol]);
+    if (dom.nativeVideoPlayer) {
+      dom.nativeVideoPlayer.volume = Math.max(0.06, duckedVol / 100);
     }
 
-    // Auto restore after 800ms of silence
-    state.duckTimeout = setTimeout(() => {
-      restoreAudioDucking();
-    }, 800);
+    // Only auto-restore if user's own mic is closed (i.e. ducking was triggered by remote partner speech)
+    if (!state.isMicOn) {
+      state.duckTimeout = setTimeout(() => {
+        restoreAudioDucking();
+      }, 1000);
+    }
   }
 }
 
 function restoreAudioDucking() {
+  // If user still has microphone ON, retain ducked level to prevent feedback & volume blast
+  if (state.isMicOn) return;
+
   if (state.isDucked) {
     state.isDucked = false;
     if (dom.duckingLiveNotice) dom.duckingLiveNotice.style.opacity = '0';
 
+    const restoreVol = (typeof state.currentVolume === 'number' && state.currentVolume >= 0) ? state.currentVolume : (state.normalVolume || 80);
+
     if (state.ytPlayer && state.ytReady && typeof state.ytPlayer.setVolume === 'function') {
-      state.ytPlayer.setVolume(state.normalVolume || 100);
+      state.ytPlayer.setVolume(restoreVol);
     }
+    sendYtCommand('setVolume', [restoreVol]);
     if (dom.nativeVideoPlayer) {
-      dom.nativeVideoPlayer.volume = typeof state.normalNativeVolume === 'number' ? state.normalNativeVolume : 1.0;
+      dom.nativeVideoPlayer.volume = Math.min(1.0, restoreVol / 100);
     }
   }
 }
@@ -8348,9 +8376,9 @@ async function toggleMic() {
         }
       }
 
-      // Also register local stream with ducking monitor so video ducks when user speaks
-      if (typeof setupAudioDucking === 'function' && state.localStream) {
-        setupAudioDucking(state.localStream);
+      // Automatically duck video volume while microphone is active so user speech is crystal clear
+      if (typeof triggerAudioDucking === 'function') {
+        triggerAudioDucking(true);
       }
 
       const uniquePeers = getUniquePeerEntries();
@@ -8399,11 +8427,14 @@ async function toggleMic() {
       showToast(describeMediaError(e, 'mic'));
     }
   } else {
-    // Mute: Simply disable live audio tracks
+    // Mute: Simply disable live audio tracks & restore video volume
     if (state.localStream) {
       state.localStream.getAudioTracks().forEach(t => { 
         t.enabled = false;
       });
+    }
+    if (typeof restoreAudioDucking === 'function') {
+      restoreAudioDucking();
     }
     showToast('Mikrofon Kapatıldı');
     if (typeof renegotiateWebRTC === 'function') {
@@ -9441,6 +9472,9 @@ function createAndJoinRoom(title, isPrivate = false, category = 'YouTube', video
   }).then(code => {
     state.roomId = code;
     state.isInRoom = true;
+    state.participants = {};
+    if (dom.roomMemberCountBadge) dom.roomMemberCountBadge.textContent = '1';
+    if (dom.participantsCountHeader) dom.participantsCountHeader.textContent = '1';
     state.roomName = title || `${category} Partisi`;
     state.roomCategory = category;
     if (!isPrivate) {
@@ -9487,6 +9521,9 @@ function joinRoomByCode(rawCode) {
       state.hasDjPermission = false;
       state.roomId = d.room.id;
       state.isInRoom = true;
+      state.participants = {};
+      if (dom.roomMemberCountBadge) dom.roomMemberCountBadge.textContent = '1';
+      if (dom.participantsCountHeader) dom.participantsCountHeader.textContent = '1';
       state.hostName = d.room.host;
       state.connectedAccount = d.room.connectedAccount || '';
       if (dom.activeRoomTitle) dom.activeRoomTitle.textContent = state.roomId;
@@ -20629,13 +20666,19 @@ function validateInstagramUsername(username) {
   window.showKeyFeedback = showKeyFeedback;
 
   function adjustVolume(delta) {
-    state.currentVolume = Math.max(0, Math.min(100, (typeof state.currentVolume === 'number' ? state.currentVolume : 100) + delta));
+    state.currentVolume = Math.max(0, Math.min(100, (typeof state.currentVolume === 'number' ? state.currentVolume : 80) + delta));
+    state.normalVolume = state.currentVolume;
     state.isMuted = false;
     sendYtCommand('unMute');
-    sendYtCommand('setVolume', [state.currentVolume]);
+    const duckFactor = typeof state.duckingTargetVolume === 'number' ? state.duckingTargetVolume : 0.3;
+    const effectiveVol = state.isMicOn ? Math.max(5, Math.round(state.currentVolume * duckFactor)) : state.currentVolume;
+    sendYtCommand('setVolume', [effectiveVol]);
+    if (state.ytPlayer && state.ytReady && typeof state.ytPlayer.setVolume === 'function') {
+      state.ytPlayer.setVolume(effectiveVol);
+    }
     if (dom.nativeVideoPlayer) {
       dom.nativeVideoPlayer.muted = false;
-      dom.nativeVideoPlayer.volume = state.currentVolume / 100;
+      dom.nativeVideoPlayer.volume = effectiveVol / 100;
     }
     const icon = state.currentVolume === 0 ? '🔇' : state.currentVolume < 50 ? '🔉' : '🔊';
     showKeyFeedback(`Ses: %${Math.round(state.currentVolume)}`, icon);
