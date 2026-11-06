@@ -287,7 +287,9 @@ function handleWebSocketConnection(socket, req) {
   const urlObj = new URL(req.url, `http://${req.headers.host}`);
   const rawRoom = urlObj.searchParams.get('room') || 'default';
   const roomId = isValidRoomCode(rawRoom) ? rawRoom.toUpperCase() : 'DEFAULT';
+  const clientId = sanitizeText(urlObj.searchParams.get('clientId') || '', 60);
   const userId = sanitizeText(urlObj.searchParams.get('userId') || crypto.randomUUID().slice(0, 8), 40);
+  const clientKey = clientId || userId;
   const userName = sanitizeText(urlObj.searchParams.get('name') || 'Misafir', 30);
   const userRole = urlObj.searchParams.get('role') === 'admin' ? ROLES.ADMIN : ROLES.USER;
 
@@ -298,21 +300,22 @@ function handleWebSocketConnection(socket, req) {
     room.meta.host = userName;
   }
 
-  const clientObj = { type: 'ws', socket, id: userId, roomId, name: userName, role: userRole };
-  room.clients.set(userId, clientObj);
+  const clientObj = { type: 'ws', socket, id: clientKey, clientId: clientKey, userId, roomId, name: userName, role: userRole };
+  room.clients.set(clientKey, clientObj);
 
-  safeLog('WS', `Client bağlandı: ${userName} (${userId}) -> Oda: ${roomId}`, { total: room.clients.size });
+  safeLog('WS', `Client bağlandı: ${userName} (${clientKey}) -> Oda: ${roomId}`, { total: room.clients.size });
 
   // Notify everyone in room about peer list
   const peerList = Array.from(room.clients.keys());
   sendWsFrame(socket, JSON.stringify({ 
     type: 'init', 
     userId, 
-    peers: peerList.filter(p => p !== userId),
+    clientId: clientKey,
+    peers: peerList.filter(p => p !== clientKey),
     roomMeta: room.meta,
     isHost: room.meta.hostUserId === userId || userRole === ROLES.ADMIN
   }));
-  broadcastToRoom(roomId, userId, { type: 'peer-joined', userId, name: userName });
+  broadcastToRoom(roomId, clientKey, { type: 'peer-joined', clientId: clientKey, userId, name: userName });
 
   let buffer = Buffer.alloc(0);
 
@@ -426,7 +429,7 @@ function handleWebSocketConnection(socket, req) {
             }
           }
 
-          broadcastToRoom(roomId, userId, msg);
+          broadcastToRoom(roomId, clientKey, msg);
         } catch (e) {
           // Bad JSON or frame ignored safely
         }
@@ -435,10 +438,10 @@ function handleWebSocketConnection(socket, req) {
   });
 
   const cleanup = () => {
-    if (room.clients.has(userId)) {
-      room.clients.delete(userId);
-      safeLog('WS', `Client ayrıldı: ${userId} -> Oda: ${roomId}`);
-      broadcastToRoom(roomId, userId, { type: 'peer-left', userId });
+    if (room.clients.has(clientKey)) {
+      room.clients.delete(clientKey);
+      safeLog('WS', `Client ayrıldı: ${clientKey} -> Oda: ${roomId}`);
+      broadcastToRoom(roomId, clientKey, { type: 'peer-left', clientId: clientKey, userId });
       // Keep seeded rooms alive, delete dynamic private rooms if empty
       if (room.clients.size === 0 && room.meta.isPrivate) {
         rooms.delete(roomId);

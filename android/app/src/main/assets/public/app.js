@@ -3162,10 +3162,10 @@ function connectSignaling() {
   }
   let wsUrl;
   if (MIRUO_API_BASE) {
-    wsUrl = `${MIRUO_API_BASE.replace(/^http/i, 'ws')}/?room=${encodeURIComponent(state.roomId)}&userId=${state.userId}`;
+    wsUrl = `${MIRUO_API_BASE.replace(/^http/i, 'ws')}/?room=${encodeURIComponent(state.roomId)}&userId=${state.userId}&clientId=${state.clientId}`;
   } else {
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    wsUrl = `${protocol}//${window.location.host}/?room=${encodeURIComponent(state.roomId)}&userId=${state.userId}`;
+    wsUrl = `${protocol}//${window.location.host}/?room=${encodeURIComponent(state.roomId)}&userId=${state.userId}&clientId=${state.clientId}`;
   }
 
   try {
@@ -3312,34 +3312,48 @@ function handleSignalMessage(msg) {
       break;
 
     case 'peer-joined':
-      const joinedId = msg.userId;
-      if (!state.peerId) state.peerId = joinedId;
+      const remoteKey = msg.clientId || msg.userId;
+      if (!remoteKey) break;
+      if (!state.peerId) state.peerId = remoteKey;
       updatePeerStatus(true);
-      const joinedName = msg.name || msg.username || 'Katılımcı';
+      let joinedName = msg.name || msg.username || 'Katılımcı';
+      if (state.username && joinedName.toLowerCase() === state.username.toLowerCase()) {
+        joinedName = `${state.username} (Cihaz 2)`;
+      }
 
       // If this user is blocked by me:
-      if (typeof isUserBlocked === 'function' && (isUserBlocked(joinedName) || isUserBlocked(joinedId))) {
+      if (typeof isUserBlocked === 'function' && (isUserBlocked(joinedName) || isUserBlocked(remoteKey) || (msg.userId && isUserBlocked(msg.userId)))) {
         if (state.isHost && typeof kickParticipant === 'function') {
-          kickParticipant(joinedId, joinedName);
+          kickParticipant(remoteKey, joinedName);
           return;
         }
       }
 
-      state.participants[joinedId] = {
-        userId: joinedId,
+      const existingP = state.participants[remoteKey] || {};
+      state.participants[remoteKey] = {
+        ...existingP,
+        peerId: remoteKey,
+        clientId: msg.clientId || remoteKey,
+        userId: msg.userId || existingP.userId || remoteKey,
         username: joinedName,
-        isMicOn: false,
-        isCamOn: false,
+        avatar: msg.avatar || existingP.avatar || '',
+        avatarColor: msg.avatarColor || existingP.avatarColor || 'from-rose-500 to-indigo-600',
+        isMicOn: typeof msg.isMicOn === 'boolean' ? msg.isMicOn : (typeof existingP.isMicOn === 'boolean' ? existingP.isMicOn : false),
+        isCamOn: typeof msg.isCamOn === 'boolean' ? msg.isCamOn : (typeof existingP.isCamOn === 'boolean' ? existingP.isCamOn : false),
         isHost: false,
-        role: 'member'
+        role: 'member',
+        isSelf: false,
+        lastSeen: Date.now()
       };
       renderParticipantsList();
+      renderVideoGrid();
+      if (typeof renderStagePipCards === 'function') renderStagePipCards();
       updateBlockedMediaState();
       showToast(`${joinedName} odaya katıldı`);
 
-      const isInitiator = String(state.userId) < String(joinedId);
+      const isInitiator = String(state.clientId) < String(remoteKey);
       if (typeof getOrCreatePeerConnection === 'function') {
-        getOrCreatePeerConnection(joinedId, isInitiator);
+        getOrCreatePeerConnection(remoteKey, isInitiator, { clientId: msg.clientId || remoteKey, userId: msg.userId });
       } else {
         if (isInitiator) initiateWebRTC(true);
         else setupWebRTC();
@@ -3441,19 +3455,33 @@ function handleSignalMessage(msg) {
         Object.keys(msg.roster).forEach(uid => {
           const entry = msg.roster[uid];
           if (!entry) return;
-          const isSelf = (entry.clientId && entry.clientId === state.clientId) || (entry.userId && entry.userId === state.userId);
+          const isSelf = entry.clientId ? (entry.clientId === state.clientId) : (entry.userId === state.userId && !entry.clientId);
           if (isSelf) return;
 
           const existingKey = Object.keys(state.participants).find(k => {
             const p = state.participants[k];
             if (!p) return false;
-            return (entry.clientId && p.clientId === entry.clientId) || (entry.userId && p.userId === entry.userId) || (entry.username && p.username === entry.username);
+            if (entry.clientId && p.clientId === entry.clientId) return true;
+            return false;
           }) || (entry.clientId || entry.userId || uid);
+
+          let displayUsername = entry.username || 'Katılımcı';
+          if (state.username && displayUsername.toLowerCase() === state.username.toLowerCase()) {
+            displayUsername = `${state.username} (Cihaz 2)`;
+          }
 
           state.participants[existingKey] = Object.assign(state.participants[existingKey] || {}, entry, {
             clientId: entry.clientId || existingKey,
-            userId: entry.userId || existingKey
+            userId: entry.userId || existingKey,
+            username: displayUsername,
+            isSelf: false
           });
+
+          // Ensure WebRTC peer connection exists for this roster member
+          const isInitiator = String(state.clientId) < String(existingKey);
+          if (typeof getOrCreatePeerConnection === 'function') {
+            getOrCreatePeerConnection(existingKey, isInitiator, { clientId: entry.clientId || existingKey, userId: entry.userId });
+          }
         });
         renderParticipantsList();
         renderVideoGrid();
@@ -3803,7 +3831,7 @@ function renderStagePipCards() {
   const activeCamMembers = [];
   Object.values(state.participants || {}).forEach(p => {
     if (!p) return;
-    const isSelf = (p.clientId && p.clientId === state.clientId) || (p.userId && p.userId === state.userId);
+    const isSelf = p.clientId ? (p.clientId === state.clientId) : (p.userId === state.userId && !p.clientId);
     if (isSelf) return;
 
     // Strict rule: Only show camera bubble if the participant explicitly has their camera turned ON
@@ -3814,7 +3842,7 @@ function renderStagePipCards() {
                     (p.userId && state.peers?.[p.userId]?.stream) ||
                     (p.userId === state.peerId || p.clientId === state.peerId ? state.remoteStream : null);
 
-    const uKey = (p.clientId || p.userId || p.username || '').toLowerCase();
+    const uKey = String(p.clientId || (p.userId ? p.userId + '_pip' : p.username) || '').toLowerCase();
     if (!uKey || seenCamKeys.has(uKey)) return;
     seenCamKeys.add(uKey);
 
@@ -3831,14 +3859,14 @@ function renderStagePipCards() {
   }
 
   // 1. Primary Member: Uses #partnerPipCard
-  let primaryMember = activeCamMembers.find(m => (m.userId && m.userId === state.activePipPeerId) || (m.clientId && m.clientId === state.activePipPeerId));
+  let primaryMember = activeCamMembers.find(m => (m.clientId && m.clientId === state.activePipPeerId) || (m.userId && m.userId === state.activePipPeerId));
   if (!primaryMember) {
     primaryMember = activeCamMembers[0];
-    state.activePipPeerId = primaryMember.userId || primaryMember.clientId;
+    state.activePipPeerId = primaryMember.clientId || primaryMember.userId;
   }
 
-  const pKey = primaryMember.userId || primaryMember.clientId;
-  const isPrimaryDismissed = !!(state.dismissedPips[pKey] || (primaryMember.userId && state.dismissedPips[primaryMember.userId]) || (primaryMember.clientId && state.dismissedPips[primaryMember.clientId]));
+  const pKey = primaryMember.clientId || primaryMember.userId;
+  const isPrimaryDismissed = !!(state.dismissedPips[pKey] || (primaryMember.clientId && state.dismissedPips[primaryMember.clientId]) || (primaryMember.userId && state.dismissedPips[primaryMember.userId]));
   if (dom.partnerPipCard) {
     if (isPrimaryDismissed) {
       dom.partnerPipCard.classList.add('hidden');
@@ -4042,7 +4070,7 @@ function getUniquePeerEntries() {
 window.getUniquePeerEntries = getUniquePeerEntries;
 
 function flushPeerQueuedIceCandidates(peerId) {
-  const peer = state.peers && state.peers[peerId];
+  const peer = getPeerEntry(peerId);
   if (peer && peer.pc && peer.iceCandidateQueue && peer.iceCandidateQueue.length > 0) {
     const list = [...peer.iceCandidateQueue];
     peer.iceCandidateQueue = [];
@@ -8941,19 +8969,19 @@ function renderVideoGrid() {
 
   Object.values(state.participants || {}).forEach(p => {
     if (!p) return;
-    const isSelf = (p.clientId && p.clientId === state.clientId);
+    const isSelf = p.clientId ? (p.clientId === state.clientId) : (p.userId === state.userId && !p.clientId);
     if (isSelf) return;
 
-    const uKey = (p.clientId || p.userId || p.username || '').toLowerCase();
+    const uKey = String(p.clientId || (p.userId ? p.userId + '_tile' : p.username) || '').toLowerCase();
     if (!uKey || seenMemberKeys.has(uKey)) return;
     seenMemberKeys.add(uKey);
     otherMembers.push(p);
   });
 
-  // True participant count without simulated fake bot padding
+  // True participant count without simulated fake bot padding: exact real integer count
   const totalCount = 1 + otherMembers.length;
-  if (dom.roomMemberCountBadge) dom.roomMemberCountBadge.textContent = totalCount;
-  if (dom.participantsCountHeader) dom.participantsCountHeader.textContent = totalCount;
+  if (dom.roomMemberCountBadge) dom.roomMemberCountBadge.textContent = String(totalCount);
+  if (dom.participantsCountHeader) dom.participantsCountHeader.textContent = String(totalCount);
 
   otherMembers.forEach(m => {
     const tile = document.createElement('div');
@@ -14056,21 +14084,23 @@ window.updatePartnerPipIdentity = updatePartnerPipIdentity;
 function updateRemoteParticipantStatus(userId, username, isMicOn, isCamOn, avatar, avatarColor, clientId) {
   if (!userId && !clientId) return;
   // Prevent tracking self as a remote participant
-  if ((clientId && clientId === state.clientId) || (userId && userId === state.userId)) return;
+  const isSelf = clientId ? (clientId === state.clientId) : (userId === state.userId && !clientId);
+  if (isSelf) return;
 
-  // Find if already exists by clientId, userId, or username to eliminate duplicate participants
+  // Find if already exists by clientId to eliminate duplicate participants
   const existingKey = Object.keys(state.participants || {}).find(k => {
     const p = state.participants[k];
     if (!p) return false;
     if (clientId && (k === clientId || p.clientId === clientId)) return true;
-    if (userId && (k === userId || p.userId === userId)) return true;
-    if (username && p.username && p.username.toLowerCase() === username.toLowerCase()) return true;
     return false;
   }) || clientId || userId;
 
   const existing = state.participants[existingKey] || {};
   const prevSnapshot = existing.userId ? [existing.isMicOn, existing.isCamOn, existing.username, existing.avatar].join('|') : null;
-  const finalUName = username || existing.username || 'Katılımcı';
+  let finalUName = username || existing.username || 'Katılımcı';
+  if (state.username && finalUName.toLowerCase() === state.username.toLowerCase()) {
+    finalUName = `${state.username} (Cihaz 2)`;
+  }
   const finalAvatar = avatar || existing.avatar || '';
   const finalColor = avatarColor || existing.avatarColor || 'from-indigo-500 to-purple-600';
   const effectiveCam = typeof isCamOn === 'boolean' ? isCamOn : !!existing.isCamOn;
@@ -14078,6 +14108,7 @@ function updateRemoteParticipantStatus(userId, username, isMicOn, isCamOn, avata
 
   state.participants[existingKey] = {
     ...existing,
+    peerId: existingKey,
     clientId: clientId || existing.clientId || existingKey,
     userId: userId || existing.userId || existingKey,
     username: finalUName,
@@ -14086,14 +14117,15 @@ function updateRemoteParticipantStatus(userId, username, isMicOn, isCamOn, avata
     isMicOn: effectiveMic,
     isCamOn: effectiveCam,
     role: existing.role || (existing.isHost ? 'owner' : 'member'),
+    isSelf: false,
     lastSeen: Date.now()
   };
 
-  // Clean up any other duplicate keys in state.participants referencing the same user/client
+  // Clean up any other duplicate keys in state.participants referencing the same client
   Object.keys(state.participants).forEach(k => {
     if (k !== existingKey) {
       const other = state.participants[k];
-      if (other && ((clientId && other.clientId === clientId) || (userId && other.userId === userId))) {
+      if (other && clientId && other.clientId === clientId) {
         delete state.participants[k];
       }
     }
@@ -14105,14 +14137,14 @@ function updateRemoteParticipantStatus(userId, username, isMicOn, isCamOn, avata
     if (userId) state.dismissedPips[userId] = false;
     if (clientId) state.dismissedPips[clientId] = false;
   }
-  state.isPartnerCamOn = Object.values(state.participants).some(p => p.userId !== state.userId && p.isCamOn);
+  state.isPartnerCamOn = Object.values(state.participants).some(p => p.clientId !== state.clientId && p.isCamOn);
 
   // If we hear from someone we have no connection with (missed join/presence), connect to them now
   try {
     const connTarget = clientId || userId;
-    if (state.isInRoom && String(userId) !== String(state.userId) && (!state.peers || !state.peers[connTarget]) &&
+    if (state.isInRoom && String(connTarget) !== String(state.clientId) && (!state.peers || !state.peers[connTarget]) &&
         typeof getOrCreatePeerConnection === 'function') {
-      getOrCreatePeerConnection(connTarget, String(state.clientId || state.userId) < String(connTarget));
+      getOrCreatePeerConnection(connTarget, String(state.clientId) < String(connTarget), { clientId: clientId || connTarget, userId });
       if (!state.peerId) state.peerId = connTarget;
       if (typeof updatePeerStatus === 'function') updatePeerStatus(true);
     }
@@ -14385,7 +14417,7 @@ function renderParticipantsList() {
 
   // Add active partner or remote participants
   Object.values(state.participants).forEach(p => {
-    const isSelf = p.clientId ? (p.clientId === state.clientId) : (p.userId === state.userId);
+    const isSelf = p.clientId ? (p.clientId === state.clientId) : (p.userId === state.userId && !p.clientId);
     if (!isSelf) {
       if (!p.role) p.role = p.isHost ? 'owner' : 'member';
       allMembers.push(p);
@@ -14393,10 +14425,15 @@ function renderParticipantsList() {
   });
 
   // If in room with a peer but participant object not yet sent, seed standard partner
-  if (state.peerId && state.peerId !== state.userId && !allMembers.some(m => m.userId === state.peerId || (state.hostName && m.username === state.hostName))) {
+  if (state.peerId && state.peerId !== state.clientId && !allMembers.some(m => m.clientId === state.peerId || (m.userId && m.userId === state.peerId))) {
+    let pName = state.hostName && state.hostName !== 'Sen' ? state.hostName : 'Katılımcı';
+    if (state.username && pName.toLowerCase() === state.username.toLowerCase()) {
+      pName = `${state.username} (Cihaz 2)`;
+    }
     allMembers.push({
+      clientId: state.peerId,
       userId: state.peerId,
-      username: state.hostName && state.hostName !== 'Sen' ? state.hostName : 'Partner',
+      username: pName,
       isMicOn: false,
       isCamOn: false,
       isHost: !state.isHost,
@@ -14408,16 +14445,17 @@ function renderParticipantsList() {
   const uniqueMembers = [];
   const seenKeys = new Set();
   allMembers.forEach(m => {
-    const key = String(m.clientId || m.userId || m.username);
+    const key = String(m.clientId || (m.userId ? m.userId + '_' + (m.isSelf ? 'self' : 'remote') : m.username));
     if (!seenKeys.has(key)) {
       seenKeys.add(key);
       uniqueMembers.push(m);
     }
   });
 
-  // Update counter badges
-  if (dom.roomMemberCountBadge) dom.roomMemberCountBadge.textContent = uniqueMembers.length;
-  if (dom.participantsCountHeader) dom.participantsCountHeader.textContent = uniqueMembers.length;
+  // Update counter badges with exact integer count
+  const realCount = uniqueMembers.length;
+  if (dom.roomMemberCountBadge) dom.roomMemberCountBadge.textContent = String(realCount);
+  if (dom.participantsCountHeader) dom.participantsCountHeader.textContent = String(realCount);
 
   uniqueMembers.forEach(m => {
     const card = document.createElement('div');
