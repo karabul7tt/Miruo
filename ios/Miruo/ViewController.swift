@@ -53,8 +53,11 @@ class ViewController: UIViewController, WKNavigationDelegate, WKUIDelegate, WKSc
             let session = AVAudioSession.sharedInstance()
             try session.setCategory(.playAndRecord, mode: .videoChat, options: [.defaultToSpeaker, .allowBluetooth, .allowBluetoothA2DP, .mixWithOthers])
             try session.setActive(true, options: .notifyOthersOnDeactivation)
+            try session.overrideOutputAudioPort(.speaker)
             NotificationCenter.default.removeObserver(self, name: AVAudioSession.interruptionNotification, object: session)
             NotificationCenter.default.addObserver(self, selector: #selector(handleAudioInterruption(_:)), name: AVAudioSession.interruptionNotification, object: session)
+            NotificationCenter.default.removeObserver(self, name: AVAudioSession.routeChangeNotification, object: session)
+            NotificationCenter.default.addObserver(self, selector: #selector(handleRouteChange(_:)), name: AVAudioSession.routeChangeNotification, object: session)
         } catch {
             print("AVAudioSession configuration error: \(error)")
         }
@@ -69,8 +72,28 @@ class ViewController: UIViewController, WKNavigationDelegate, WKUIDelegate, WKSc
                 let session = AVAudioSession.sharedInstance()
                 try session.setCategory(.playAndRecord, mode: .videoChat, options: [.defaultToSpeaker, .allowBluetooth, .allowBluetoothA2DP, .mixWithOthers])
                 try session.setActive(true)
+                try session.overrideOutputAudioPort(.speaker)
             } catch {
                 print("AVAudioSession resume error: \(error)")
+            }
+        }
+    }
+
+    @objc private func handleRouteChange(_ notification: Notification) {
+        guard let userInfo = notification.userInfo,
+              let _ = userInfo[AVAudioSessionRouteChangeReasonKey] as? UInt else { return }
+        let session = AVAudioSession.sharedInstance()
+        let hasHeadphones = session.currentRoute.outputs.contains { output in
+            output.portType == .headphones || 
+            output.portType == .bluetoothA2DP || 
+            output.portType == .bluetoothHFP || 
+            output.portType == .bluetoothLE
+        }
+        if !hasHeadphones {
+            do {
+                try session.overrideOutputAudioPort(.speaker)
+            } catch {
+                print("AVAudioSession speaker override error: \(error)")
             }
         }
     }

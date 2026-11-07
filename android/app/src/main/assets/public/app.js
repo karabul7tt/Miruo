@@ -466,13 +466,13 @@ function resolveCustomizedUserProfile({ id, email, rawName, rawUsername, rawAvat
 
   // 2. Resolve Username: NEVER wipe user's customized username!
   const customUsername = 
+    localStorage.getItem('miruo_custom_username') ||
+    (saved && (saved.customUsername || (saved.hasCustomProfile && saved.username && !saved.username.startsWith('user_') ? saved.username : ''))) ||
     (cleanId && localStorage.getItem(`miruo_custom_username_${cleanId}`)) ||
     (cleanEmail && localStorage.getItem(`miruo_custom_username_${cleanEmail}`)) ||
     (inputUsername && localStorage.getItem(`miruo_custom_username_${inputUsername}`)) ||
-    (saved && (saved.customUsername || (saved.username && !saved.username.startsWith('user_') ? saved.username : ''))) ||
     meta.custom_username ||
     meta.username ||
-    localStorage.getItem('miruo_custom_username') ||
     '';
 
   const fallbackUsername = (rawUsername || (cleanEmail ? cleanEmail.split('@')[0] : 'kullanici'))
@@ -484,12 +484,12 @@ function resolveCustomizedUserProfile({ id, email, rawName, rawUsername, rawAvat
 
   // 3. Resolve Full Name: NEVER wipe user's customized full name!
   const customFullName =
+    localStorage.getItem('miruo_custom_fullname') ||
+    (saved && (saved.customFullName || (saved.hasCustomProfile && saved.fullName ? saved.fullName : (saved.name && !saved.name.startsWith('@') && saved.name !== 'Misafir' ? saved.name : '')))) ||
     (cleanId && localStorage.getItem(`miruo_custom_fullname_${cleanId}`)) ||
     (cleanEmail && localStorage.getItem(`miruo_custom_fullname_${cleanEmail}`)) ||
     (inputUsername && localStorage.getItem(`miruo_custom_fullname_${inputUsername}`)) ||
-    (saved && (saved.customFullName || (saved.fullName && !saved.fullName.startsWith('@') ? saved.fullName : (saved.name && !saved.name.startsWith('@') && saved.name !== 'Misafir' ? saved.name : '')))) ||
     meta.custom_full_name ||
-    localStorage.getItem('miruo_custom_fullname') ||
     '';
 
   const fallbackFullName = rawName || (cleanEmail ? cleanEmail.split('@')[0] : 'Miruo Kullanıcısı');
@@ -3774,9 +3774,10 @@ function attachRemoteStreamToPartnerVideo(preferredMember = null) {
     dom.partnerVideo.setAttribute('muted', '');
     dom.partnerVideo.setAttribute('autoplay', 'true');
 
-    if (dom.partnerVideo.srcObject !== sourceStream) {
-      dom.partnerVideo.srcObject = sourceStream;
-    }
+    // Video-only stream prevents WebKit autoplay policy blocks on iOS
+    const vidOnlyStream = new MediaStream([remoteTrack]);
+    dom.partnerVideo.srcObject = vidOnlyStream;
+
     const p = dom.partnerVideo.play();
     if (p && p.catch) p.catch(() => {});
     remoteTrack.onunmute = () => {
@@ -3790,7 +3791,8 @@ function attachRemoteStreamToPartnerVideo(preferredMember = null) {
 
   const checkPartnerVideo = () => {
     if (!dom.partnerVideo) return;
-    const hasActiveFrames = (dom.partnerVideo.videoWidth > 0 && !dom.partnerVideo.paused);
+    const hasLiveTrack = remoteTrack && remoteTrack.readyState === 'live' && !remoteTrack.muted;
+    const hasActiveFrames = (dom.partnerVideo.videoWidth > 0 && !dom.partnerVideo.paused) || hasLiveTrack;
     if (hasActiveFrames) {
       if (dom.partnerVideoPlaceholder) {
         dom.partnerVideoPlaceholder.classList.add('hidden');
@@ -3827,6 +3829,39 @@ function renderStagePipCards() {
 
   const seenCamKeys = new Set();
   if (state.clientId) seenCamKeys.add(String(state.clientId).toLowerCase());
+
+  // Ensure every active peer with a live video track is included in state.participants
+  if (state.peers) {
+    Object.entries(state.peers).forEach(([pId, peerObj]) => {
+      if (!peerObj || !peerObj.stream) return;
+      const vTracks = peerObj.stream.getVideoTracks().filter(t => t.readyState === 'live');
+      if (vTracks.length === 0) return;
+      const pKey = peerObj.clientId || peerObj.userId || pId;
+      if (state.clientId && (pKey === state.clientId || peerObj.clientId === state.clientId)) return;
+      if (state.userId && (pKey === state.userId || peerObj.userId === state.userId)) return;
+
+      let p = state.participants[pKey] || Object.values(state.participants || {}).find(part => 
+        (peerObj.clientId && part.clientId === peerObj.clientId) || 
+        (peerObj.userId && part.userId === peerObj.userId) ||
+        (pId && (part.clientId === pId || part.userId === pId))
+      );
+      if (!p) {
+        p = {
+          userId: peerObj.userId || pId,
+          clientId: peerObj.clientId || pId,
+          username: peerObj.username || 'Katılımcı',
+          avatar: peerObj.avatar || '',
+          isMicOn: false,
+          isCamOn: true,
+          stream: peerObj.stream
+        };
+        state.participants[pKey] = p;
+      } else {
+        p.isCamOn = true;
+        if (!p.stream || p.stream !== peerObj.stream) p.stream = peerObj.stream;
+      }
+    });
+  }
 
   const activeCamMembers = [];
   Object.values(state.participants || {}).forEach(p => {
@@ -3958,10 +3993,12 @@ function renderStagePipCards() {
       if (vid.srcObject !== peerStream) vid.srcObject = peerStream;
       vid.play().catch(() => {});
       const checkF = () => {
-        if (vid.videoWidth > 0 && !vid.paused && ph) {
+        const vTrack = peerStream && peerStream.getVideoTracks().find(t => t.readyState === 'live');
+        const hasLive = (vid.videoWidth > 0 && !vid.paused) || (vTrack && !vTrack.muted);
+        if (hasLive && ph) {
           ph.classList.add('hidden');
           ph.style.display = 'none';
-        } else if (ph) {
+        } else if (ph && !vTrack) {
           ph.classList.remove('hidden');
           ph.style.removeProperty('display');
         }
@@ -4008,17 +4045,11 @@ window.arrangePipsRow = arrangePipsRow;
 
 function playPeerAudio(peerId, stream) {
   if (!peerId || !stream) return;
-  const aTracks = stream.getAudioTracks ? stream.getAudioTracks() : [];
+  const aTracks = stream.getAudioTracks ? stream.getAudioTracks().filter(t => t.readyState === 'live') : [];
   if (aTracks.length === 0) return;
 
   const safeId = String(peerId).replace(/[^a-zA-Z0-9_-]/g, '_');
   let el = document.getElementById('remoteVoiceAudio_' + safeId);
-  if (!el) {
-    const rootEl = document.getElementById('remoteVoiceAudio');
-    if (rootEl && (!rootEl.srcObject || rootEl.srcObject === stream)) {
-      el = rootEl;
-    }
-  }
   if (!el) {
     el = document.createElement('audio');
     el.id = 'remoteVoiceAudio_' + safeId;
@@ -4028,6 +4059,7 @@ function playPeerAudio(peerId, stream) {
     el.setAttribute('webkit-playsinline', 'true');
     el.style.position = 'fixed';
     el.style.left = '0';
+    el.style.top = '0';
     el.style.width = '1px';
     el.style.height = '1px';
     el.style.opacity = '0.01';
@@ -4035,32 +4067,62 @@ function playPeerAudio(peerId, stream) {
     el.style.zIndex = '-1';
     document.body.appendChild(el);
   }
-  if (el.srcObject !== stream) {
-    el.srcObject = stream;
-  }
+
+  // Dedicated audio MediaStream forces WebKit & Chromium to build an active audio decode graph
+  const audioOnlyStream = new MediaStream(aTracks);
+  el.srcObject = audioOnlyStream;
   el.muted = false;
+  el.defaultMuted = false;
   el.volume = 1.0;
-  const p = el.play();
-  if (p && p.catch) {
-    p.catch(() => {
-      const resume = () => {
-        el.muted = false;
-        el.volume = 1.0;
-        el.play().catch(() => {});
-        window.removeEventListener('click', resume);
-        window.removeEventListener('touchstart', resume);
-      };
-      window.addEventListener('click', resume, { once: true });
-      window.addEventListener('touchstart', resume, { once: true });
-    });
-  }
+
+  const tryPlay = () => {
+    if (!el.srcObject) return;
+    el.muted = false;
+    el.volume = 1.0;
+    const p = el.play();
+    if (p && p.catch) {
+      p.catch(() => {
+        const resume = () => {
+          el.muted = false;
+          el.volume = 1.0;
+          el.play().catch(() => {});
+        };
+        window.addEventListener('click', resume, { once: true });
+        window.addEventListener('touchstart', resume, { once: true });
+        window.addEventListener('keydown', resume, { once: true });
+      });
+    }
+  };
+
+  tryPlay();
+
+  aTracks.forEach(tr => {
+    tr.onunmute = tryPlay;
+  });
+
   el.onpause = () => {
     if (state.isInRoom && el.srcObject && !el.muted) {
-      el.play().catch(() => {});
+      tryPlay();
     }
   };
 }
 window.playPeerAudio = playPeerAudio;
+
+// Global user interaction listener to unblock WebRTC voice audio on mobile & desktop
+if (!window._audioUnlockRegistered) {
+  window._audioUnlockRegistered = true;
+  ['touchstart', 'touchend', 'click', 'keydown'].forEach(evt => {
+    window.addEventListener(evt, () => {
+      document.querySelectorAll('audio[id^="remoteVoiceAudio"]').forEach(a => {
+        if (a && a.paused && a.srcObject) {
+          a.muted = false;
+          a.volume = 1.0;
+          a.play().catch(() => {});
+        }
+      });
+    }, { passive: true });
+  });
+}
 
 function getUniquePeerEntries() {
   if (!state.peers) return [];
@@ -4230,15 +4292,39 @@ function getOrCreatePeerConnection(peerId, isInitiator, meta = {}) {
       }
     } else if (hasVideo) {
       const activateCam = () => {
-        if (matchingP) {
-          matchingP.isCamOn = true;
-          matchingP.stream = peerEntry.stream;
-          state.dismissedPips = state.dismissedPips || {};
-          if (matchingP.userId) state.dismissedPips[matchingP.userId] = false;
-          if (matchingP.clientId) state.dismissedPips[matchingP.clientId] = false;
-          if (typeof attachRemoteStreamToPartnerVideo === 'function') attachRemoteStreamToPartnerVideo(matchingP);
-          if (typeof renderStagePipCards === 'function') renderStagePipCards();
+        let currentP = state.participants[peerId] || 
+                       Object.values(state.participants || {}).find(p => (peerEntry.clientId && p.clientId === peerEntry.clientId) || (peerEntry.userId && p.userId === peerEntry.userId)) ||
+                       matchingP;
+        if (!currentP) {
+          const fallbackP = Object.values(state.participants || {}).find(p => {
+            const isSelf = p.clientId ? (p.clientId === state.clientId) : (p.userId === state.userId && !p.clientId);
+            return !isSelf;
+          });
+          const pKey = peerEntry.clientId || peerEntry.userId || peerId;
+          currentP = {
+            userId: peerEntry.userId || (fallbackP && fallbackP.userId) || peerId,
+            clientId: peerEntry.clientId || (fallbackP && fallbackP.clientId) || peerId,
+            username: (fallbackP && fallbackP.username) || peerEntry.username || 'Katılımcı',
+            avatar: (fallbackP && fallbackP.avatar) || '',
+            isMicOn: false,
+            isCamOn: true,
+            role: 'member',
+            stream: peerEntry.stream
+          };
+          state.participants[pKey] = currentP;
+        } else {
+          currentP.isCamOn = true;
+          currentP.stream = peerEntry.stream;
         }
+        peerEntry.isCamOn = true;
+        state.isPartnerCamOn = true;
+        state.dismissedPips = state.dismissedPips || {};
+        if (currentP.userId) state.dismissedPips[currentP.userId] = false;
+        if (currentP.clientId) state.dismissedPips[currentP.clientId] = false;
+        state.dismissedPips[peerId] = false;
+        if (typeof attachRemoteStreamToPartnerVideo === 'function') attachRemoteStreamToPartnerVideo(currentP);
+        if (typeof renderStagePipCards === 'function') renderStagePipCards();
+
         if (!state.peerId || state.peerId === peerId) {
           state.peerId = peerId;
           state.remoteStream = peerEntry.stream;
@@ -11477,11 +11563,101 @@ async function sendFriendRequest(targetUsername) {
 }
 window.sendFriendRequest = sendFriendRequest;
 
+function playNotificationPing() {
+  try {
+    const AudioCtx = window.AudioContext || window.webkitAudioContext;
+    if (!AudioCtx) return;
+    const ctx = new AudioCtx();
+    if (ctx.state === 'suspended') ctx.resume().catch(() => {});
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(587.33, ctx.currentTime);
+    osc.frequency.exponentialRampToValueAtTime(880, ctx.currentTime + 0.12);
+    gain.gain.setValueAtTime(0.35, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.35);
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.start();
+    osc.stop(ctx.currentTime + 0.36);
+  } catch (_) {}
+}
+window.playNotificationPing = playNotificationPing;
+
+function showInRoomFriendRequestNotification(req) {
+  if (!req) return;
+  const cardId = 'miruo_friend_req_toast_' + (req.id || Date.now());
+  if (document.getElementById(cardId)) return;
+
+  const toastCard = document.createElement('div');
+  toastCard.id = cardId;
+  toastCard.className = 'fixed top-4 right-4 z-[999999] max-w-sm w-[92vw] sm:w-80 bg-[#121522]/95 border-2 border-indigo-500/80 rounded-2xl p-3.5 shadow-2xl backdrop-blur-xl flex flex-col gap-2.5 transition-all duration-300 pointer-events-auto ring-4 ring-indigo-500/10 animate-bounce-once';
+
+  const cleanFrom = (req.fromUsername || 'Kullanıcı').replace(/^@/, '').trim();
+  const avatarHtml = req.fromAvatarUrl
+    ? `<img src="${req.fromAvatarUrl}" class="w-10 h-10 rounded-full object-cover shrink-0 border border-white/20 shadow-md">`
+    : `<div class="w-10 h-10 rounded-full bg-gradient-to-tr ${req.fromAvatarBg || 'from-rose-500 to-indigo-600'} flex items-center justify-center text-sm font-bold text-white shrink-0 shadow-md">${cleanFrom.charAt(0).toUpperCase()}</div>`;
+
+  toastCard.innerHTML = `
+    <div class="flex items-center gap-3">
+      ${avatarHtml}
+      <div class="min-w-0 flex-1">
+        <div class="text-xs font-bold text-white truncate">@${cleanFrom} arkadaşlık isteği gönderdi!</div>
+        <div class="text-[10px] text-gray-300">Arkadaş listenize ekleyip birlikte izleyebilirsiniz</div>
+      </div>
+      <button type="button" class="close-req-toast p-1 text-gray-400 hover:text-white rounded-lg transition-colors cursor-pointer" title="Kapat">
+        <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+    <div class="flex items-center justify-end gap-2 pt-1 border-t border-white/10">
+      <button type="button" class="decline-req-btn px-3 py-1.5 rounded-xl bg-white/10 hover:bg-white/20 active:scale-95 text-gray-300 text-xs font-semibold transition-all cursor-pointer">
+        Reddet
+      </button>
+      <button type="button" class="accept-req-btn px-4 py-1.5 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-600 hover:opacity-95 active:scale-95 text-white text-xs font-bold shadow-md shadow-emerald-500/20 transition-all cursor-pointer flex items-center gap-1.5">
+        <svg class="w-3.5 h-3.5 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+        <span>Kabul Et</span>
+      </button>
+    </div>
+  `;
+
+  document.body.appendChild(toastCard);
+
+  const removeCard = () => {
+    toastCard.classList.add('opacity-0', 'translate-y-[-10px]');
+    setTimeout(() => { try { toastCard.remove(); } catch (_) {} }, 250);
+  };
+
+  const closeBtn = toastCard.querySelector('.close-req-toast');
+  if (closeBtn) closeBtn.onclick = removeCard;
+
+  const declineBtn = toastCard.querySelector('.decline-req-btn');
+  if (declineBtn) {
+    declineBtn.onclick = () => {
+      removeCard();
+      if (typeof rejectFriendRequest === 'function') rejectFriendRequest(req.id);
+    };
+  }
+
+  const acceptBtn = toastCard.querySelector('.accept-req-btn');
+  if (acceptBtn) {
+    acceptBtn.onclick = () => {
+      removeCard();
+      if (typeof acceptFriendRequest === 'function') acceptFriendRequest(req.id);
+    };
+  }
+
+  setTimeout(removeCard, 35000);
+}
+window.showInRoomFriendRequestNotification = showInRoomFriendRequestNotification;
+
 function handleIncomingFriendRequest(req) {
   if (!req || !req.toUsername) return;
-  const myUsername = (state.username || '').toLowerCase().replace(/^@/, '').trim();
-  const targetUsername = (req.toUsername || '').toLowerCase().replace(/^@/, '').trim();
-  if (targetUsername !== myUsername) return;
+  const myUsername = (state.username || '').toLowerCase().replace(/^@/, '').replace(/\s*\(cihaz\s*\d+\)/gi, '').trim();
+  const targetUsername = (req.toUsername || '').toLowerCase().replace(/^@/, '').replace(/\s*\(cihaz\s*\d+\)/gi, '').trim();
+  const isTargetMatch = targetUsername === myUsername ||
+                        (state.userId && req.targetUserId && String(req.targetUserId).toLowerCase() === String(state.userId).toLowerCase()) ||
+                        (state.isInRoom && req.roomId && req.roomId === state.roomId);
+  if (!isTargetMatch) return;
 
   const cleanFrom = (req.fromUsername || '').toLowerCase().replace(/^@/, '').trim();
   if (isUserBlocked(cleanFrom)) return;
@@ -11495,6 +11671,10 @@ function handleIncomingFriendRequest(req) {
   incoming.unshift(req);
   localStorage.setItem('miruo_incoming_friend_requests', JSON.stringify(incoming));
 
+  playNotificationPing();
+  try { if (navigator.vibrate) navigator.vibrate([100, 50, 100]); } catch (_) {}
+
+  showInRoomFriendRequestNotification(req);
   showToast(`@${cleanFrom} sana arkadaşlık isteği gönderdi!`);
   updateFriendRequestBadge();
 
@@ -11547,6 +11727,7 @@ function acceptFriendRequest(reqId) {
   sendSignal({ type: 'friend-accepted', payload: acceptPayload });
   sendP2PData('friend_accepted', acceptPayload);
 
+  playNotificationPing();
   showToast(`@${cleanFrom} ile artık arkadaşsınız!`);
   updateFriendRequestBadge();
   renderIncomingRequests();
@@ -11582,6 +11763,7 @@ function handleIncomingFriendAccepted(payload) {
     localStorage.setItem('miruo_friends', JSON.stringify(state.friends));
   }
 
+  playNotificationPing();
   showToast(`🎉 @${cleanFriend} arkadaşlık isteğini kabul etti!`);
   renderFriendsTab();
   if (typeof renderParticipantsList === 'function') renderParticipantsList();
@@ -15115,20 +15297,25 @@ function loadUserSession() {
       }
     } catch (e) {}
 
-    if (customUsername && !user.username) {
-      user.username = customUsername.replace(/^@/, '');
-    }
-    if (user.username) {
+    const customSavedUsername = localStorage.getItem('miruo_custom_username');
+    const customSavedFullName = localStorage.getItem('miruo_custom_fullname');
+    if (customSavedUsername) {
+      user.username = customSavedUsername.replace(/^@/, '');
+    } else if (user.username) {
       user.username = user.username.replace(/^@/, '');
     }
-    if (!user.fullName || user.fullName === '@' + user.username) {
+    if (customSavedFullName) {
+      user.fullName = customSavedFullName;
+      user.name = customSavedFullName;
+    } else if (!user.fullName || user.fullName === '@' + user.username) {
       if (user.name && !user.name.startsWith('@') && user.name !== 'Misafir') {
         user.fullName = user.name;
       }
     }
   }
+  const customSavedUsernameFinal = localStorage.getItem('miruo_custom_username');
   state.userId = user.id || state.userId;
-  state.username = ((user && user.username) || customUsername || (user && user.name) || 'kullanici').replace(/^@/, '');
+  state.username = (customSavedUsernameFinal || (user && user.username) || (user && user.name) || 'kullanici').replace(/^@/, '');
   state.roomId = (roomFromUrl || '').toUpperCase();
   state.isInRoom = !!roomFromUrl;
   state.avatarUrl = (user && user.avatarUrl) || backupAvatar || '';
@@ -19852,6 +20039,50 @@ function validateInstagramUsername(username) {
   return { valid: true, cleanUsername: raw.toLowerCase() };
 }
 
+function checkUsernameChangeAllowed() {
+  try {
+    let history = [];
+    try {
+      history = JSON.parse(localStorage.getItem('miruo_username_change_history') || '[]');
+    } catch (_) { history = []; }
+    const now = Date.now();
+    const FOURTEEN_DAYS_MS = 14 * 24 * 60 * 60 * 1000;
+    const recent = history.filter(ts => typeof ts === 'number' && (now - ts) < FOURTEEN_DAYS_MS);
+    if (recent.length >= 2) {
+      const oldest = Math.min(...recent);
+      const remainingMs = FOURTEEN_DAYS_MS - (now - oldest);
+      const remainingDays = Math.max(1, Math.ceil(remainingMs / (24 * 60 * 60 * 1000)));
+      return {
+        allowed: false,
+        remainingDays,
+        message: `Kullanıcı adını 14 günde en fazla 2 kez değiştirebilirsin. Tekrar değiştirebilmek için ${remainingDays} gün beklemelisin.`
+      };
+    }
+    return {
+      allowed: true,
+      remainingCount: 2 - recent.length
+    };
+  } catch (_) {
+    return { allowed: true, remainingCount: 2 };
+  }
+}
+window.checkUsernameChangeAllowed = checkUsernameChangeAllowed;
+
+function recordUsernameChange() {
+  try {
+    let history = [];
+    try {
+      history = JSON.parse(localStorage.getItem('miruo_username_change_history') || '[]');
+    } catch (_) { history = []; }
+    const now = Date.now();
+    const FOURTEEN_DAYS_MS = 14 * 24 * 60 * 60 * 1000;
+    const recent = history.filter(ts => typeof ts === 'number' && (now - ts) < FOURTEEN_DAYS_MS);
+    recent.push(now);
+    localStorage.setItem('miruo_username_change_history', JSON.stringify(recent));
+  } catch (_) {}
+}
+window.recordUsernameChange = recordUsernameChange;
+
   if (dom.saveProfileBtn) {
     dom.saveProfileBtn.addEventListener('click', async () => {
       const fullNameVal = (dom.editProfileFullNameInput && dom.editProfileFullNameInput.value.trim()) || '';
@@ -19880,8 +20111,19 @@ function validateInstagramUsername(username) {
       const savedUser = JSON.parse(localStorage.getItem('miruo_user') || '{}');
       const currentActiveUsername = (savedUser.username || state.username || '').toLowerCase().replace(/^@/, '');
 
-      // Duplicate username check (if changing to a new username)
+      // Rate limit check: 14 günde en fazla 2 kez değiştirme hakkı
       if (cleanUsername !== currentActiveUsername) {
+        const changeCheck = checkUsernameChangeAllowed();
+        if (!changeCheck.allowed) {
+          if (statusEl) {
+            statusEl.textContent = changeCheck.message;
+            statusEl.className = 'text-[11px] font-semibold text-rose-400 pt-0.5 block';
+          }
+          if (dom.editProfileUsernameInput) dom.editProfileUsernameInput.focus();
+          showToast(changeCheck.message);
+          return;
+        }
+
         const prevBtnHtml = dom.saveProfileBtn.innerHTML;
         dom.saveProfileBtn.disabled = true;
         dom.saveProfileBtn.innerHTML = `<span>Kontrol ediliyor...</span>`;
@@ -19963,7 +20205,9 @@ function validateInstagramUsername(username) {
       savedUser.hasCustomProfile = true;
       savedUser.customUsername = cleanUsername;
       savedUser.customFullName = resolvedFullName;
-      if (savedUser.avatarUrl) savedUser.customAvatarUrl = savedUser.avatarUrl;
+      if (cleanUsername !== currentActiveUsername) {
+        recordUsernameChange();
+      }
 
       localStorage.setItem('miruo_user', JSON.stringify(savedUser));
       localStorage.setItem('miruo_custom_username', cleanUsername);
