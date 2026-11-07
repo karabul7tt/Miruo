@@ -3268,6 +3268,7 @@ function connectFallbackSSE() {
 function handleSignalMessage(msg) {
   if (!msg || !msg.type) return;
   if (msg.clientId && msg.clientId === state.clientId) return;
+  if (typeof msg.type === 'string' && msg.type.indexOf('av-') === 0) { if (typeof MiruoAV !== 'undefined') MiruoAV.onSignal(msg); return; }
   // If targeted to a specific peer or client, ignore if not intended for this client
   if (msg.targetClientId && String(msg.targetClientId) !== String(state.clientId)) return;
   if (!msg.targetClientId && msg.targetUserId && String(msg.targetUserId) !== String(state.userId) && String(msg.targetUserId) !== String(state.clientId)) return;
@@ -9105,7 +9106,8 @@ function renderVideoGrid() {
     tile.className = 'relative w-20 h-20 sm:w-22 sm:h-22 rounded-xl overflow-hidden bg-black/70 border border-white/10 hover:border-indigo-400/80 shadow-md shrink-0 flex flex-col items-center justify-center cursor-pointer transition-all active:scale-95';
     tile.title = `${m.username} kamerasını ana ekrana getir`;
 
-    const peerStream = (m.clientId && state.peers && state.peers[m.clientId] && state.peers[m.clientId].stream) ||
+    const peerStream = (window.MiruoAV && m.clientId && MiruoAV.streamFor(m.clientId)) ||
+                       (m.clientId && state.peers && state.peers[m.clientId] && state.peers[m.clientId].stream) ||
                        (state.peers && state.peers[m.userId] && state.peers[m.userId].stream) || 
                        m.stream || (m.userId === state.peerId ? state.remoteStream : null);
     const hasLiveVideo = peerStream && peerStream.getVideoTracks && peerStream.getVideoTracks().some(t => t.readyState === 'live');
@@ -9168,6 +9170,11 @@ function renderVideoGrid() {
 
     // Tapping remote member tile toggles THAT participant's camera bubble on the stage
     tile.addEventListener('click', () => {
+      if (window.MiruoAV && m.clientId && MiruoAV.info[m.clientId]) {
+        const shown = MiruoAV.toggle(m.clientId);
+        showToast(shown ? `${m.username} ana ekrana getirildi` : `${m.username} ana ekrandan gizlendi`);
+        return;
+      }
       state.dismissedPips = state.dismissedPips || {};
       const uId = m.userId || m.clientId;
       const isCurrentlyDismissed = !!(state.dismissedPips[uId] || (m.userId && state.dismissedPips[m.userId]) || (m.clientId && state.dismissedPips[m.clientId]));
@@ -24688,3 +24695,250 @@ if (document.readyState === 'loading') {
     console.error('[Miruo] Immediate initEvents error:', err);
   }
 }
+
+/* ==========================================================================
+   Miruo AV — odadaki herkes arasında canlı kamera + mikrofon (tam mesh).
+   Kendi RTCPeerConnection'ları, "mükemmel müzakere" (perfect negotiation),
+   kendi sinyalleri (av-*) ve kendi yuvarlak kamera balonları vardır.
+   ========================================================================== */
+const MiruoAV = (() => {
+  const peers = {};          // clientId -> { pc, polite, makingOffer, ignoreOffer, stream, audioEl, videoEl... }
+  const info = {};           // clientId -> { name, avatar, cam, mic, seen }
+  const dismissed = {};      // clientId -> true (balon kapatıldı)
+  const seenIds = new Set();
+  const avPcs = new WeakSet(), avSenders = new WeakSet();
+  const inLocal = (t) => !!(t && state.localStream && state.localStream.getTracks().includes(t));
+  // Eski (video-paylaşım) bağlantılar mikrofon/kamerayı göndermesin; ses/görüntü yalnızca MiruoAV üzerinden gider.
+  try {
+    const origRT = RTCRtpSender.prototype.replaceTrack;
+    RTCRtpSender.prototype.replaceTrack = function (t) {
+      if (t && !avSenders.has(this) && inLocal(t)) return Promise.resolve();
+      return origRT.call(this, t);
+    };
+    const origAT = RTCPeerConnection.prototype.addTrack;
+    RTCPeerConnection.prototype.addTrack = function (track, ...streams) {
+      if (track && !avPcs.has(this) && inLocal(track)) {
+        return this.addTransceiver(track.kind, { direction: 'recvonly' }).sender;
+      }
+      return origAT.call(this, track, ...streams);
+    };
+  } catch (_) {}
+  let roomKey = null;
+  let host = null;
+
+  const rtcCfg = () => (typeof rtcConfig !== 'undefined' ? rtcConfig : { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] });
+  const rid = () => Math.random().toString(36).slice(2) + Date.now().toString(36);
+  const send = (msg) => { try { sendSignal({ ...msg, avId: rid() }); } catch (_) {} };
+
+  function myAvatar() {
+    const a = state.avatarUrl || localStorage.getItem('miruo_avatar') || '';
+    return (a && a.length < 3000) ? a : '';
+  }
+  function localTracks() {
+    const s = state.localStream;
+    const live = (k) => s ? s.getTracks().find(t => t.kind === k && t.readyState === 'live') : null;
+    return {
+      audio: state.isMicOn ? live('audio') : null,
+      video: state.isCamOn ? live('video') : null
+    };
+  }
+
+  function sendHello(targetClientId) {
+    const m = { type: 'av-hello', cam: !!state.isCamOn, mic: !!state.isMicOn, name: state.username || '', avatar: myAvatar() };
+    if (targetClientId) m.targetClientId = targetClientId;
+    send(m);
+  }
+
+  function ensurePeer(cid) {
+    if (peers[cid]) return peers[cid];
+    const pc = new RTCPeerConnection(rtcCfg());
+    const p = {
+      cid, pc, polite: String(state.clientId) > String(cid),
+      makingOffer: false, ignoreOffer: false, stream: new MediaStream(), audioEl: null, queue: []
+    };
+    peers[cid] = p;
+    avPcs.add(pc);
+    // Sabit m-line'lar: ses + görüntü, her iki yöne
+    p.aT = pc.addTransceiver('audio', { direction: 'sendrecv' });
+    p.vT = pc.addTransceiver('video', { direction: 'sendrecv' });
+    avSenders.add(p.aT.sender); avSenders.add(p.vT.sender);
+    pc.onicecandidate = (e) => {
+      if (e.candidate) send({ type: 'av-ice', targetClientId: cid, candidate: e.candidate.toJSON ? e.candidate.toJSON() : e.candidate });
+    };
+    pc.onnegotiationneeded = async () => {
+      try {
+        p.makingOffer = true;
+        await pc.setLocalDescription();
+        send({ type: 'av-desc', targetClientId: cid, description: pc.localDescription.toJSON ? pc.localDescription.toJSON() : pc.localDescription });
+      } catch (e) { console.warn('[AV] negotiation', e); }
+      finally { p.makingOffer = false; }
+    };
+    pc.ontrack = (ev) => {
+      const t = ev.track;
+      if (!p.stream.getTracks().includes(t)) p.stream.addTrack(t);
+      if (t.kind === 'audio') attachAudio(p);
+      render();
+    };
+    pc.oniceconnectionstatechange = () => {
+      if (pc.iceConnectionState === 'failed') { try { pc.restartIce(); } catch (_) {} }
+    };
+    applyLocalTracks(p);
+    return p;
+  }
+
+  function applyLocalTracks(p) {
+    const { audio, video } = localTracks();
+    const set = (tr, t, stream) => {
+      if (!tr) return;
+      const cur = tr.sender.track;
+      if ((cur && t && cur.id === t.id) || (!cur && !t)) return;
+      tr.sender.replaceTrack(t || null).catch(() => {});
+      if (t && stream) { try { tr.sender.setStreams(stream); } catch (_) {} }
+    };
+    set(p.aT, audio, state.localStream);
+    set(p.vT, video, state.localStream);
+  }
+
+  function attachAudio(p) {
+    if (!p.audioEl) {
+      const a = document.createElement('audio');
+      a.autoplay = true; a.playsInline = true; a.setAttribute('playsinline', '');
+      a.id = 'miruoAvAudio_' + p.cid;
+      a.style.display = 'none';
+      document.body.appendChild(a);
+      p.audioEl = a;
+    }
+    const at = p.stream.getAudioTracks();
+    const ms = new MediaStream(at);
+    if (!p.audioEl.srcObject || p.audioEl.srcObject.getAudioTracks().map(t => t.id).join() !== at.map(t => t.id).join()) {
+      p.audioEl.srcObject = ms;
+    }
+    p.audioEl.volume = 1; p.audioEl.muted = false;
+    const pr = p.audioEl.play(); if (pr && pr.catch) pr.catch(() => {});
+  }
+
+  async function onDesc(msg) {
+    const cid = msg.clientId; if (!cid) return;
+    const p = ensurePeer(cid); const pc = p.pc;
+    const d = msg.description; if (!d) return;
+    try {
+      const collision = d.type === 'offer' && (p.makingOffer || pc.signalingState !== 'stable');
+      p.ignoreOffer = !p.polite && collision;
+      if (p.ignoreOffer) return;
+      await pc.setRemoteDescription(d);
+      while (p.queue.length) { try { await pc.addIceCandidate(p.queue.shift()); } catch (_) {} }
+      if (d.type === 'offer') {
+        await pc.setLocalDescription();
+        send({ type: 'av-desc', targetClientId: cid, description: pc.localDescription.toJSON ? pc.localDescription.toJSON() : pc.localDescription });
+      }
+      applyLocalTracks(p);
+    } catch (e) { console.warn('[AV] desc', e); }
+  }
+
+  async function onIce(msg) {
+    const cid = msg.clientId; if (!cid || !msg.candidate) return;
+    const p = ensurePeer(cid);
+    try {
+      if (p.pc.remoteDescription) await p.pc.addIceCandidate(msg.candidate);
+      else p.queue.push(msg.candidate);
+    } catch (e) { if (!p.ignoreOffer) console.warn('[AV] ice', e); }
+  }
+
+  function onSignal(msg) {
+    if (msg.avId) { if (seenIds.has(msg.avId)) return; seenIds.add(msg.avId); if (seenIds.size > 600) seenIds.delete(seenIds.values().next().value); }
+    const cid = msg.clientId; if (!cid || cid === state.clientId) return;
+    if (msg.targetClientId && String(msg.targetClientId) !== String(state.clientId)) return;
+    if (msg.type === 'av-hello') {
+      const first = !info[cid];
+      info[cid] = { name: msg.name || 'Misafir', avatar: msg.avatar || '', cam: !!msg.cam, mic: !!msg.mic, seen: Date.now() };
+      ensurePeer(cid);
+      if (first) sendHello(cid);
+      render();
+    } else if (msg.type === 'av-desc') { onDesc(msg); }
+    else if (msg.type === 'av-ice') { onIce(msg); }
+    else if (msg.type === 'av-bye') { drop(cid); render(); }
+  }
+
+  function drop(cid) {
+    const p = peers[cid];
+    if (p) {
+      try { p.pc.close(); } catch (_) {}
+      if (p.audioEl) { try { p.audioEl.srcObject = null; p.audioEl.remove(); } catch (_) {} }
+      delete peers[cid];
+    }
+    delete info[cid];
+  }
+  function dropAll() { Object.keys(peers).forEach(drop); Object.keys(info).forEach(k => delete info[k]); render(); }
+
+  /* ---------- Arayüz: yuvarlak balonlar + alt kareler ---------- */
+  function ensureUI() {
+    if (host) return;
+    const css = document.createElement('style');
+    css.textContent = `
+      #partnerPipCard, .remote-extra-pip { display: none !important; }
+      #miruoAvHost { position: fixed; top: 76px; right: 12px; z-index: 9000; display: flex; flex-direction: column; gap: 10px; pointer-events: none; align-items: flex-end; }
+      .mav-bubble { position: relative; width: 112px; height: 112px; border-radius: 50%; overflow: hidden; background: #1b1b24; border: 2px solid rgba(255,255,255,.35); box-shadow: 0 6px 18px rgba(0,0,0,.5); pointer-events: auto; }
+      .mav-bubble video { width: 100%; height: 100%; object-fit: cover; display: block; }
+      .mav-bubble .mav-x { position: absolute; top: 4px; right: 4px; width: 24px; height: 24px; border-radius: 50%; border: 0; background: rgba(0,0,0,.65); color: #fff; font-size: 14px; line-height: 24px; padding: 0; cursor: pointer; }
+      .mav-bubble .mav-name { position: absolute; bottom: 0; left: 0; right: 0; text-align: center; font-size: 11px; color: #fff; background: linear-gradient(transparent, rgba(0,0,0,.7)); padding: 8px 4px 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+      @media (max-width: 700px) { .mav-bubble { width: 92px; height: 92px; } #miruoAvHost { top: 64px; right: 8px; } }
+    `;
+    document.head.appendChild(css);
+    host = document.createElement('div'); host.id = 'miruoAvHost'; document.body.appendChild(host);
+  }
+
+  function render() {
+    ensureUI();
+    const ids = Object.keys(info).filter(c => peers[c]);
+    // balonlar
+    const want = ids.filter(c => info[c].cam && !dismissed[c] && peers[c].stream.getVideoTracks().length > 0);
+    Array.from(host.children).forEach(el => { if (!want.includes(el.dataset.cid)) el.remove(); });
+    want.forEach(cid => {
+      let el = host.querySelector(`[data-cid="${cid}"]`);
+      if (!el) {
+        el = document.createElement('div'); el.className = 'mav-bubble'; el.dataset.cid = cid;
+        const v = document.createElement('video'); v.autoplay = true; v.playsInline = true; v.muted = true; v.setAttribute('playsinline', '');
+        const x = document.createElement('button'); x.className = 'mav-x'; x.textContent = '×'; x.setAttribute('aria-label', 'Kapat');
+        const fn = (e) => { e.preventDefault(); e.stopPropagation(); dismissed[cid] = true; render(); };
+        x.addEventListener('click', fn); x.addEventListener('touchend', fn);
+        const n = document.createElement('div'); n.className = 'mav-name';
+        el.append(v, x, n); host.appendChild(el);
+      }
+      const v = el.querySelector('video');
+      const vt = peers[cid].stream.getVideoTracks();
+      if (!v.srcObject || v.srcObject.getVideoTracks().map(t => t.id).join() !== vt.map(t => t.id).join()) v.srcObject = new MediaStream(vt);
+      if (v.paused) { const pr = v.play(); if (pr && pr.catch) pr.catch(() => {}); }
+      el.querySelector('.mav-name').textContent = info[cid].name;
+    });
+  }
+
+  function tick() {
+    const key = state.isInRoom && state.roomId ? state.roomId : null;
+    if (key !== roomKey) {
+      if (roomKey) { send({ type: 'av-bye' }); }
+      Object.keys(peers).forEach(drop); Object.keys(info).forEach(k => delete info[k]);
+      Object.keys(dismissed).forEach(k => delete dismissed[k]);
+      roomKey = key; render();
+    }
+    if (!key) return;
+    sendHello();
+    const now = Date.now();
+    Object.keys(info).forEach(cid => { if (now - info[cid].seen > 12000) drop(cid); });
+    Object.values(peers).forEach(applyLocalTracks);
+    render();
+  }
+
+  function unlock() {
+    Object.values(peers).forEach(p => { if (p.audioEl) { const pr = p.audioEl.play(); if (pr && pr.catch) pr.catch(() => {}); } });
+    document.querySelectorAll('#miruoAvHost video').forEach(v => { if (v.paused) v.play().catch(() => {}); });
+  }
+  ['click', 'touchend', 'keydown'].forEach(ev => document.addEventListener(ev, unlock, { passive: true }));
+  window.addEventListener('beforeunload', () => { try { send({ type: 'av-bye' }); } catch (_) {} });
+  setInterval(tick, 2500);
+  setInterval(() => { if (roomKey) { Object.values(peers).forEach(applyLocalTracks); } }, 700);
+  setTimeout(tick, 800);
+  function toggle(cid) { dismissed[cid] = !dismissed[cid]; render(); return !dismissed[cid]; }
+  function streamFor(cid) { const p = peers[cid]; return (p && info[cid] && info[cid].cam && p.stream.getVideoTracks().length) ? new MediaStream(p.stream.getVideoTracks()) : null; }
+  return { onSignal, peers, info, dismissed, tick, render, sendHello, toggle, streamFor };
+})();
+window.MiruoAV = MiruoAV;
