@@ -11441,7 +11441,7 @@ function getOutgoingFriendRequests() {
 // kaybolmaz; karşı taraf çevrimiçi olunca otomatik yeniden iletilir, ACK ile silinir.
 // ------------------------------------------------------------------
 function cleanUserKey(u) {
-  return String(u || '').toLowerCase().replace(/^@/, '').trim();
+  return String(u || '').toLowerCase().replace(/^@/, '').replace(/\s*\(cihaz\s*\d+\)/gi, '').trim();
 }
 
 function getOutbox() {
@@ -11780,16 +11780,19 @@ window.showInRoomFriendRequestNotification = showInRoomFriendRequestNotification
 
 function handleIncomingFriendRequest(req) {
   if (!req || !req.toUsername) return;
-  const myUsername = (state.username || '').toLowerCase().replace(/^@/, '').replace(/\s*\(cihaz\s*\d+\)/gi, '').trim();
-  const targetUsername = (req.toUsername || '').toLowerCase().replace(/^@/, '').replace(/\s*\(cihaz\s*\d+\)/gi, '').trim();
-  const isTargetMatch = targetUsername === myUsername ||
+  const myUsername = cleanUserKey(state.username);
+  const targetUsername = cleanUserKey(req.toUsername);
+  const cleanFrom = cleanUserKey(req.fromUsername);
+  if (!myUsername || !targetUsername) return;
+  if (cleanFrom === myUsername) return; // Ignore own broadcast / self-request
+
+  const isTargetMatch = (targetUsername && targetUsername === myUsername) ||
                         (state.userId && req.targetUserId && String(req.targetUserId).toLowerCase() === String(state.userId).toLowerCase()) ||
-                        (state.isInRoom && req.roomId && req.roomId === state.roomId);
+                        (req.targetClientId && (req.targetClientId === state.clientId || req.targetClientId === state.userId));
   if (!isTargetMatch) return;
 
-  const cleanFrom = (req.fromUsername || '').toLowerCase().replace(/^@/, '').trim();
   if (isUserBlocked(cleanFrom)) return;
-  if (state.friends.some(f => (f.username || f.name || '').toLowerCase().replace(/^@/, '').trim() === cleanFrom)) return;
+  if (state.friends.some(f => cleanUserKey(f.username || f.name) === cleanFrom)) return;
 
   const incoming = getIncomingFriendRequests();
   if (incoming.some(r => r.id === req.id || (r.fromUsername || '').toLowerCase() === cleanFrom)) {
@@ -11866,16 +11869,17 @@ window.acceptFriendRequest = acceptFriendRequest;
 
 function handleIncomingFriendAccepted(payload) {
   if (!payload || !payload.toUsername) return;
-  const myUsername = (state.username || '').toLowerCase().replace(/^@/, '');
-  if (payload.toUsername.toLowerCase().replace(/^@/, '') !== myUsername) return;
+  const myUsername = cleanUserKey(state.username);
+  if (cleanUserKey(payload.toUsername) !== myUsername) return;
 
-  const cleanFriend = (payload.fromUsername || '').replace(/^@/, '').trim();
-  const alreadyFriend = state.friends.some(f => (f.username || f.name || '').toLowerCase().replace(/^@/, '') === cleanFriend.toLowerCase());
+  const cleanFriend = cleanUserKey(payload.fromUsername);
+  if (!cleanFriend || cleanFriend === myUsername) return;
+  const alreadyFriend = state.friends.some(f => cleanUserKey(f.username || f.name) === cleanFriend);
   const outgoing = getOutgoingFriendRequests();
-  const filtered = outgoing.filter(r => (r.toUsername || '').toLowerCase().replace(/^@/, '') !== cleanFriend.toLowerCase());
+  const filtered = outgoing.filter(r => cleanUserKey(r.toUsername) !== cleanFriend);
   localStorage.setItem('miruo_outgoing_friend_requests', JSON.stringify(filtered));
   if (alreadyFriend) return; // tekrar teslimatta sessiz kal
-  if (!state.friends.some(f => (f.username || f.name || '').toLowerCase().replace(/^@/, '') === cleanFriend.toLowerCase())) {
+  if (!state.friends.some(f => cleanUserKey(f.username || f.name) === cleanFriend)) {
     const newFriend = {
       id: 'f_' + Date.now(),
       name: payload.fromName || cleanFriend,
@@ -11906,7 +11910,7 @@ function rejectFriendRequest(reqId) {
 
   if (req) {
     queueGlobalEvent('friend_declined', req.fromUsername, {
-      id: req.id, requestId: req.id, toUsername: req.fromUsername, fromUsername: state.username, timestamp: Date.now()
+      id: req.id, requestId: req.id, toUsername: req.fromUsername, fromUsername: cleanUserKey(state.username), timestamp: Date.now()
     });
   }
   showToast('Arkadaşlık isteği reddedildi.');
@@ -11917,12 +11921,12 @@ window.rejectFriendRequest = rejectFriendRequest;
 
 function handleIncomingFriendDeclined(payload) {
   if (!payload || !payload.toUsername) return;
-  const myUsername = (state.username || '').toLowerCase().replace(/^@/, '');
-  if (payload.toUsername.toLowerCase().replace(/^@/, '') !== myUsername) return;
+  const myUsername = cleanUserKey(state.username);
+  if (cleanUserKey(payload.toUsername) !== myUsername) return;
 
-  const cleanDecliner = (payload.fromUsername || '').replace(/^@/, '').trim();
+  const cleanDecliner = cleanUserKey(payload.fromUsername);
   const outgoing = getOutgoingFriendRequests();
-  const filtered = outgoing.filter(r => (r.toUsername || '').toLowerCase().replace(/^@/, '') !== cleanDecliner.toLowerCase());
+  const filtered = outgoing.filter(r => cleanUserKey(r.toUsername) !== cleanDecliner);
   localStorage.setItem('miruo_outgoing_friend_requests', JSON.stringify(filtered));
   renderFriendsTab();
 }
@@ -14864,7 +14868,7 @@ function renderParticipantsList() {
       member: `<span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-[10px] bg-white/10 text-gray-300 font-medium border border-white/10"><svg class="w-3 h-3 text-gray-400 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg><span>${dictPart.role_member || 'İzleyici'}</span></span>`
     };
 
-    const cleanTargetName = (m.username || '').replace(/^@/, '').replace(/\s*\(Sen\)/gi, '').replace(/\s*\(Simüle\)/gi, '').replace(/\s*\(Partner\)/gi, '').trim();
+    const cleanTargetName = cleanUserKey(m.username).replace(/\s*\(sen\)/gi, '').replace(/\s*\(simüle\)/gi, '').replace(/\s*\(partner\)/gi, '').trim();
     const isTargetOwner = currentRole === 'owner' || m.isHost;
 
     let actionsHtml = '';
@@ -14894,9 +14898,12 @@ function renderParticipantsList() {
     let friendBtnHtml = '';
     let blockBtnHtml = '';
     if (!m.isSelf) {
-      const isAlreadyFriend = state.friends.some(f => (f.username || f.name).toLowerCase().replace(/^@/, '') === cleanTargetName.toLowerCase());
+      const isAlreadyFriend = state.friends.some(f => cleanUserKey(f.username || f.name) === cleanTargetName);
+      const isPending = getOutgoingFriendRequests().some(r => cleanUserKey(r.toUsername) === cleanTargetName);
       if (isAlreadyFriend) {
         friendBtnHtml = `<span class="px-2 py-0.5 rounded-lg text-[9px] bg-white/5 text-emerald-400 border border-emerald-500/20 font-medium shrink-0">${dictPart.friend_badge || '✓ Arkadaş'}</span>`;
+      } else if (isPending) {
+        friendBtnHtml = `<span class="px-2 py-0.5 rounded-lg text-[9px] bg-amber-500/15 text-amber-300 border border-amber-500/25 font-medium shrink-0">İstek Yollandı</span>`;
       } else {
         friendBtnHtml = `
           <button type="button" class="add-friend-from-participant-btn px-2 py-1 rounded-xl bg-gradient-to-r from-rose-500 to-indigo-600 hover:opacity-90 active:scale-95 text-white text-[10px] font-bold shadow-sm transition-all cursor-pointer flex items-center gap-1 shrink-0" data-username="${cleanTargetName}" title="${dictPart.add_friend_title || 'Arkadaş Ekle'}">
