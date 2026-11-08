@@ -2929,8 +2929,26 @@ function connectSupabaseRoomSignaling() {
   const cleanRoom = (state.roomId || 'ODA-77').trim().toUpperCase().replace(/[^A-Z0-9_-]/g, '_');
   state.roomId = cleanRoom;
 
-  // If already connected to this exact room and channel is active, keep existing channel alive
+  const savedUserObj = JSON.parse(localStorage.getItem('miruo_user') || '{}');
+  const myData = {
+    clientId: state.clientId,
+    userId: state.userId,
+    username: state.username,
+    avatar: state.avatarUrl || savedUserObj.avatarUrl || '',
+    avatarColor: state.avatarBg || savedUserObj.avatarBg || 'from-rose-500 to-indigo-600',
+    isMicOn: !!state.isMicOn,
+    isCamOn: !!state.isCamOn,
+    isHost: !!state.isHost,
+    role: state.userRole || (state.isHost ? 'owner' : 'member')
+  };
+
+  // If already connected to this exact room and channel is active, ensure presence is tracked and media broadcasted
   if (roomSupabaseChannel && currentRoomSubscribed === cleanRoom && (roomSupabaseChannel.state === 'joined' || roomSupabaseChannel.state === 'joining')) {
+    try {
+      roomSupabaseChannel.track(myData).catch(() => {});
+      sendSignal({ type: 'peer-joined', clientId: state.clientId, userId: state.userId, username: state.username, avatar: myData.avatar });
+      broadcastMyMediaStatus();
+    } catch (_) {}
     return;
   }
 
@@ -3124,7 +3142,7 @@ function connectSupabaseRoomSignaling() {
         }
         showToast('Katılımcı odadan ayrıldı');
       })
-      .subscribe((status) => {
+      .subscribe((status, err) => {
         if (status === 'SUBSCRIBED') {
           const savedUserObj = JSON.parse(localStorage.getItem('miruo_user') || '{}');
           const myData = {
@@ -3139,8 +3157,9 @@ function connectSupabaseRoomSignaling() {
             role: state.userRole || (state.isHost ? 'owner' : 'member')
           };
           roomSupabaseChannel.track(myData).catch(() => {});
+          sendSignal({ type: 'peer-joined', clientId: state.clientId, userId: state.userId, username: state.username, avatar: myData.avatar });
+          broadcastMyMediaStatus();
           if (!state.isHost) {
-            sendSignal({ type: 'peer-joined', clientId: state.clientId, userId: state.userId, username: state.username });
             setTimeout(() => {
               sendP2PData('sync', { action: 'request_sync', sentAt: Date.now() });
             }, 300);
@@ -3276,9 +3295,20 @@ function handleSignalMessage(msg) {
   if (!msg || !msg.type) return;
   if (msg.clientId && msg.clientId === state.clientId) return;
   // If targeted to a specific peer or client, ignore if not intended for this client
+  const myCleanUser = (state.username || '').replace(/^@/, '').trim().toLowerCase();
+  const targetC = (msg.targetClientId ? String(msg.targetClientId).replace(/^@/, '').trim().toLowerCase() : '');
+  const targetU = (msg.targetUserId ? String(msg.targetUserId).replace(/^@/, '').trim().toLowerCase() : '');
   const isTargetedToMe = (!msg.targetClientId && !msg.targetUserId) ||
-                         (msg.targetClientId && (String(msg.targetClientId) === String(state.clientId) || String(msg.targetClientId) === String(state.userId))) ||
-                         (msg.targetUserId && (String(msg.targetUserId) === String(state.userId) || String(msg.targetUserId) === String(state.clientId)));
+                         (msg.targetClientId && (
+                           String(msg.targetClientId) === String(state.clientId) || 
+                           String(msg.targetClientId) === String(state.userId) ||
+                           (myCleanUser && targetC && (targetC === myCleanUser || targetC === '@' + myCleanUser))
+                         )) ||
+                         (msg.targetUserId && (
+                           String(msg.targetUserId) === String(state.userId) || 
+                           String(msg.targetUserId) === String(state.clientId) ||
+                           (myCleanUser && targetU && (targetU === myCleanUser || targetU === '@' + myCleanUser))
+                         ));
   if (!isTargetedToMe) return;
 
   // Deduplicate signals received across Dual-Rail (Room Channel + Global Channel)
@@ -4345,9 +4375,7 @@ function getOrCreatePeerConnection(peerId, isInitiator, meta = {}) {
         updateBlockedMediaState();
       };
 
-      if (track.readyState === 'live' && !track.muted) {
-        activateCam();
-      }
+      activateCam();
       track.onunmute = () => {
         activateCam();
       };
@@ -4623,6 +4651,25 @@ async function handleRtcOffer(offer, fromId, meta = {}) {
       answer: pc.localDescription
     });
 
+    const pKey = meta.clientId || meta.userId || peerId;
+    if (!state.participants[pKey] && pKey !== state.clientId && pKey !== state.userId) {
+      state.participants[pKey] = {
+        peerId: pKey,
+        clientId: meta.clientId || peerId,
+        userId: meta.userId || peerId,
+        username: meta.username || peer.username || (pKey.startsWith('cl_') ? 'Katılımcı' : pKey),
+        avatar: meta.avatar || '',
+        avatarColor: 'from-indigo-500 to-purple-600',
+        isMicOn: false,
+        isCamOn: true,
+        role: 'member',
+        isSelf: false,
+        stream: peer.stream
+      };
+    } else if (state.participants[pKey]) {
+      state.participants[pKey].stream = peer.stream;
+    }
+
     if (!state.peerId || state.peerId === peerId) {
       state.pc = pc;
       state.peerId = peerId;
@@ -4632,6 +4679,7 @@ async function handleRtcOffer(offer, fromId, meta = {}) {
     }
     if (typeof renderStagePipCards === 'function') renderStagePipCards();
     if (typeof renderVideoGrid === 'function') renderVideoGrid();
+    if (typeof renderParticipantsList === 'function') renderParticipantsList();
   } catch (err) {
     console.error(`Handle offer error for ${peerId}:`, err);
   }
@@ -4646,12 +4694,31 @@ async function handleRtcAnswer(answer, fromId) {
       await pc.setRemoteDescription(new RTCSessionDescription(answer));
       if (peer) flushPeerQueuedIceCandidates(peer.peerId);
       else flushQueuedIceCandidates();
+
+      const pKey = (peer && (peer.clientId || peer.userId)) || peerId;
+      if (!state.participants[pKey] && pKey !== state.clientId && pKey !== state.userId) {
+        state.participants[pKey] = {
+          peerId: pKey,
+          clientId: (peer && peer.clientId) || pKey,
+          userId: (peer && peer.userId) || pKey,
+          username: (peer && peer.username) || (pKey.startsWith('cl_') ? 'Katılımcı' : pKey),
+          avatar: (peer && peer.avatar) || '',
+          avatarColor: 'from-indigo-500 to-purple-600',
+          isMicOn: false,
+          isCamOn: true,
+          role: 'member',
+          isSelf: false,
+          stream: peer ? peer.stream : null
+        };
+      }
+
       if (!state.peerId || state.peerId === peerId) {
         if (typeof attachRemoteStreamToPartnerVideo === 'function') attachRemoteStreamToPartnerVideo();
         if (typeof attachRemoteAudioStream === 'function') attachRemoteAudioStream();
       }
       if (typeof renderStagePipCards === 'function') renderStagePipCards();
       if (typeof renderVideoGrid === 'function') renderVideoGrid();
+      if (typeof renderParticipantsList === 'function') renderParticipantsList();
     } catch (err) {
       console.error(`Handle answer error for ${peerId}:`, err);
     }
@@ -4851,7 +4918,16 @@ function sendP2PData(type, payload = {}) {
   else if (type === 'affinity_unbound') sendSignal({ type: 'affinity-unbound', fromUsername: enrichedPayload.fromUsername, toUsername: enrichedPayload.toUsername });
   else if (type === 'room_invite') sendSignal({ type: 'room-invite', payload: enrichedPayload });
   else if (type === 'chat') sendSignal({ type: 'chat-message', sender: enrichedPayload.sender, text: enrichedPayload.text, time: enrichedPayload.time, imageUrl: enrichedPayload.imageUrl, avatarUrl: enrichedPayload.avatarUrl });
-  else if (type === 'media_status') sendSignal({ type: 'media-status', userId: enrichedPayload.userId, username: enrichedPayload.username, isMicOn: enrichedPayload.isMicOn, isCamOn: enrichedPayload.isCamOn });
+  else if (type === 'media_status') sendSignal({
+    type: 'media-status',
+    userId: enrichedPayload.userId,
+    clientId: enrichedPayload.clientId,
+    username: enrichedPayload.username,
+    avatar: enrichedPayload.avatar,
+    avatarColor: enrichedPayload.avatarColor,
+    isMicOn: enrichedPayload.isMicOn,
+    isCamOn: enrichedPayload.isCamOn
+  });
   else if (type === 'platform_switch') sendSignal({ type: 'platform-switch', platform: enrichedPayload.platform });
   else if (type === 'kick_user') sendSignal({ type: 'kick-user', targetUserId: enrichedPayload.targetUserId, targetUsername: enrichedPayload.targetUsername });
   else if (type === 'role_update') sendSignal({ type: 'role-update', targetUserId: enrichedPayload.targetUserId, newRole: enrichedPayload.newRole, targetUsername: enrichedPayload.targetUsername });
@@ -9105,6 +9181,39 @@ function renderVideoGrid() {
     seenMemberKeys.add(uKey);
     otherMembers.push(p);
   });
+
+  // Also include any active peers from WebRTC mesh connections
+  if (state.peers) {
+    Object.entries(state.peers).forEach(([pId, peerObj]) => {
+      if (!peerObj) return;
+      if (state.clientId && (pId === state.clientId || peerObj.clientId === state.clientId)) return;
+      if (state.userId && (pId === state.userId || peerObj.userId === state.userId)) return;
+      const uKey = String(peerObj.clientId || peerObj.userId || pId || '').toLowerCase();
+      if (!uKey || seenMemberKeys.has(uKey)) return;
+
+      let p = state.participants[pId] || Object.values(state.participants || {}).find(part =>
+        (peerObj.clientId && part.clientId === peerObj.clientId) ||
+        (peerObj.userId && part.userId === peerObj.userId) ||
+        (part.clientId === pId || part.userId === pId)
+      );
+      if (!p) {
+        p = {
+          userId: peerObj.userId || pId,
+          clientId: peerObj.clientId || pId,
+          username: peerObj.username || (pId.startsWith('cl_') ? 'Katılımcı' : pId),
+          avatar: peerObj.avatar || '',
+          avatarColor: 'from-indigo-500 to-purple-600',
+          isMicOn: false,
+          isCamOn: peerObj.stream ? peerObj.stream.getVideoTracks().some(t => t.readyState === 'live') : false,
+          role: 'member',
+          stream: peerObj.stream
+        };
+        state.participants[pId] = p;
+      }
+      seenMemberKeys.add(uKey);
+      otherMembers.push(p);
+    });
+  }
 
   // True participant count without simulated fake bot padding: exact real integer count
   const totalCount = 1 + otherMembers.length;
@@ -14396,7 +14505,7 @@ function updateRemoteParticipantStatus(userId, username, isMicOn, isCamOn, avata
 if (!window._mediaAnnounceTimer) {
   window._mediaAnnounceTimer = setInterval(() => {
     try { if (state.isInRoom && state.roomId) broadcastMyMediaStatus(); } catch (_) {}
-  }, 5000);
+  }, 3000);
 }
 
 function broadcastMyMediaStatus() {
@@ -14653,6 +14762,29 @@ function renderParticipantsList() {
       allMembers.push(p);
     }
   });
+
+  // Include any active WebRTC peers
+  if (state.peers) {
+    Object.entries(state.peers).forEach(([pId, peerObj]) => {
+      if (!peerObj) return;
+      if (state.clientId && (pId === state.clientId || peerObj.clientId === state.clientId)) return;
+      if (state.userId && (pId === state.userId || peerObj.userId === state.userId)) return;
+      if (allMembers.some(m => m.clientId === pId || m.userId === pId || (peerObj.clientId && m.clientId === peerObj.clientId) || (peerObj.userId && m.userId === peerObj.userId))) return;
+
+      allMembers.push({
+        clientId: peerObj.clientId || pId,
+        userId: peerObj.userId || pId,
+        username: peerObj.username || (pId.startsWith('cl_') ? 'Katılımcı' : pId),
+        avatar: peerObj.avatar || '',
+        avatarColor: 'from-indigo-500 to-purple-600',
+        isMicOn: false,
+        isCamOn: peerObj.stream ? peerObj.stream.getVideoTracks().some(t => t.readyState === 'live') : false,
+        isHost: false,
+        role: 'member',
+        isSelf: false
+      });
+    });
+  }
 
   // If in room with a peer but participant object not yet sent, seed standard partner
   if (state.peerId && state.peerId !== state.clientId && !allMembers.some(m => m.clientId === state.peerId || (m.userId && m.userId === state.peerId))) {
