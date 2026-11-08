@@ -688,7 +688,9 @@
               <div class="relative flex-1 flex items-center h-4">
                 <input type="range" id="seekSlider" min="0" max="100" value="0" class="w-full yt-range-slider cursor-pointer">
               </div>
-              <span id="durationDisplay" class="shrink-0 min-w-[28px] text-gray-400">0:00</span>
+              <button id="stageVolumeBtn" type="button" class="text-white hover:text-rose-400 transition-colors p-1 cursor-pointer" title="Sesi Aç/Kapat" onclick="if(window.toggleMute)window.toggleMute();">
+                <svg id="stageVolumeIcon" class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"/></svg>
+              </button>
               <button id="toggleVideoDisplayBtn" class="text-white hover:text-rose-400 transition-colors p-1 cursor-pointer" title="Videoyu Göster/Gizle" data-i18n-title="toggle_video_display">
                 <svg id="videoDisplayIcon" class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
               </button>

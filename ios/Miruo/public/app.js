@@ -3711,10 +3711,12 @@ function updatePeerStatus(connected) {
 // 2. WebRTC PEER CONNECTION (AV & Data)
 // ==========================================
 function attachRemoteAudioStream() {
-  if (state.peers && Object.keys(state.peers).length > 0) {
-    Object.keys(state.peers).forEach(pid => {
-      const p = state.peers[pid];
-      if (p && p.stream) playPeerAudio(pid, p.stream);
+  const uniquePeers = (typeof getUniquePeerEntries === 'function') ? getUniquePeerEntries() : [];
+  if (uniquePeers.length > 0) {
+    uniquePeers.forEach(p => {
+      if (p && p.stream) {
+        playPeerAudio(p.userId || p.clientId || p.peerId, p.stream);
+      }
     });
     return;
   }
@@ -3943,7 +3945,7 @@ function renderStagePipCards() {
   }
 
   const pKey = primaryMember.clientId || primaryMember.userId;
-  const isPrimaryDismissed = !!(state.dismissedPips[pKey] || (primaryMember.clientId && state.dismissedPips[primaryMember.clientId]) || (primaryMember.userId && state.dismissedPips[primaryMember.userId]));
+  const isPrimaryDismissed = !!(state.dismissedPips[pKey] || (primaryMember.clientId && state.dismissedPips[primaryMember.clientId]) || (primaryMember.userId && state.dismissedPips[primaryMember.userId]) || (primaryMember.username && state.dismissedPips[primaryMember.username.toLowerCase()]));
   if (dom.partnerPipCard) {
     if (isPrimaryDismissed) {
       dom.partnerPipCard.classList.add('hidden');
@@ -4089,7 +4091,10 @@ function playPeerAudio(peerId, stream) {
   const aTracks = stream.getAudioTracks ? stream.getAudioTracks().filter(t => t.readyState === 'live') : [];
   if (aTracks.length === 0) return;
 
-  const safeId = String(peerId).replace(/[^a-zA-Z0-9_-]/g, '_');
+  const peerObj = (state.peers && (state.peers[peerId] || Object.values(state.peers).find(p => p.clientId === peerId || p.userId === peerId)));
+  const canonicalId = (peerObj && (peerObj.userId || peerObj.clientId)) || peerId;
+  const safeId = String(canonicalId).replace(/[^a-zA-Z0-9_-]/g, '_');
+
   let el = document.getElementById('remoteVoiceAudio_' + safeId);
   if (!el) {
     el = document.createElement('audio');
@@ -4107,6 +4112,18 @@ function playPeerAudio(peerId, stream) {
     el.style.pointerEvents = 'none';
     el.style.zIndex = '-1';
     document.body.appendChild(el);
+  }
+
+  // If already playing this track, don't re-create srcObject which disrupts active audio graph
+  if (el.srcObject) {
+    const activeTracks = el.srcObject.getAudioTracks ? el.srcObject.getAudioTracks() : [];
+    const hasLive = activeTracks.some(t => aTracks.includes(t) && t.readyState === 'live');
+    if (hasLive) {
+      el.muted = false;
+      el.volume = 1.0;
+      if (el.paused) el.play().catch(() => {});
+      return;
+    }
   }
 
   // Dedicated audio MediaStream forces WebKit & Chromium to build an active audio decode graph
@@ -5996,15 +6013,8 @@ function handleRemoteSync(payload) {
         return;
       }
 
-      // Authoritative state is PLAYING
-      // Compensate variable delivery delay: min(recv - sent) ~ clock skew + base latency; anything above it is extra delay
-      let hbExtra = 0;
-      if (typeof payload.sentAt === 'number') {
-        const rawDelay = Date.now() - payload.sentAt;
-        state.minSyncDelay = (typeof state.minSyncDelay === 'number') ? Math.min(state.minSyncDelay, rawDelay) : rawDelay;
-        hbExtra = Math.max(0, Math.min(15000, rawDelay - state.minSyncDelay)) / 1000;
-      }
-      const targetTime = (typeof payload.time === 'number' ? payload.time : (state.currentTime || 0)) + hbExtra;
+      // Authoritative state is PLAYING (Direct zero-skew synchronization)
+      const targetTime = typeof payload.time === 'number' ? payload.time : (state.currentTime || 0);
       const localTime = typeof getLivePlayerTime === 'function' ? getLivePlayerTime() : (state.currentTime || 0);
       const drift = targetTime - localTime; // positive: viewer behind host; negative: viewer ahead
       const absDrift = Math.abs(drift);
@@ -6025,14 +6035,13 @@ function handleRemoteSync(payload) {
       }
 
       // Continuous, sub-second precision synchronization:
-      // If drift is noticeable (> 0.5s), snap instantly to target with hard seek
+      // If drift is noticeable (> 0.75s), snap instantly to host's exact second with hard seek
       const now = Date.now();
       const isLoadingGrace = state.ytLoadingAt && (now - state.ytLoadingAt < 3500);
-      if (absDrift > 0.5 && !isLoadingGrace) {
-        if (!state.lastHardSeekAt || (now - state.lastHardSeekAt) > 1200) {
-          // If both local and target are near start (< 2.0s), do not hard-seek, let initial stream buffer!
-          if (targetTime < 2.0 && localTime < 2.0) {
-            // Already at origin, avoid seek storm
+      if (absDrift > 0.75 && !isLoadingGrace) {
+        if (!state.lastHardSeekAt || (now - state.lastHardSeekAt) > 1000) {
+          if (targetTime < 1.5 && localTime < 1.5) {
+            // Already at origin, avoid seek loop
           } else {
             state.lastHardSeekAt = now;
             if (state.activeMode === 'youtube') {
@@ -6046,10 +6055,8 @@ function handleRemoteSync(payload) {
             state.playbackRate = 1.0;
           }
         }
-      } else if (absDrift > 0.15) {
-        // Micro drift (0.15s to 0.5s):
-        // If viewer is behind: speed up to 1.25x (supported natively by YouTube & HTML5 video)
-        // If viewer is ahead: slow down to 0.75x (supported natively by YouTube & HTML5 video)
+      } else if (absDrift > 0.20) {
+        // Micro drift (0.20s to 0.75s): speed up (1.25x) or slow down (0.75x) to seamlessly match host
         const targetRate = drift > 0 ? 1.25 : 0.75;
         if (state.playbackRate !== targetRate) {
           if (state.activeMode === 'youtube') {
@@ -6060,7 +6067,7 @@ function handleRemoteSync(payload) {
           state.playbackRate = targetRate;
         }
       } else {
-        // In tight sync (< 0.15s): maintain normal 1.0x rate
+        // In tight sync (< 0.20s): maintain standard 1.0x rate
         if (state.playbackRate !== 1.0) {
           if (state.activeMode === 'youtube') {
             sendYtCommand('setPlaybackRate', [1.0]);
@@ -7477,7 +7484,7 @@ function clampPipCardsToStage() {
   const stage = dom.stageContainer || document.getElementById('stageContainer');
   if (!stage) return;
 
-  if (state.isCamOn && dom.selfPipCard) {
+  if (state.isCamOn && !state.isSelfPipDismissed && dom.selfPipCard) {
     dom.selfPipCard.classList.remove('hidden', 'pip-hidden-fullscreen');
   }
 
@@ -9290,11 +9297,12 @@ function renderVideoGrid() {
     tile.addEventListener('click', () => {
       state.dismissedPips = state.dismissedPips || {};
       const uId = m.userId || m.clientId;
-      const isCurrentlyDismissed = !!(state.dismissedPips[uId] || (m.userId && state.dismissedPips[m.userId]) || (m.clientId && state.dismissedPips[m.clientId]));
+      const isCurrentlyDismissed = !!(state.dismissedPips[uId] || (m.userId && state.dismissedPips[m.userId]) || (m.clientId && state.dismissedPips[m.clientId]) || (m.username && state.dismissedPips[m.username.toLowerCase()]));
       const nextDismissed = !isCurrentlyDismissed;
       state.dismissedPips[uId] = nextDismissed;
       if (m.userId) state.dismissedPips[m.userId] = nextDismissed;
       if (m.clientId) state.dismissedPips[m.clientId] = nextDismissed;
+      if (m.username) state.dismissedPips[m.username.toLowerCase()] = nextDismissed;
       state.activePipPeerId = m.userId || m.clientId;
 
       if (typeof renderStagePipCards === 'function') renderStagePipCards();
@@ -21074,9 +21082,13 @@ window.recordUsernameChange = recordUsernameChange;
 
   function toggleMute() {
     state.isMuted = !state.isMuted;
+    const volIcon = document.getElementById('stageVolumeIcon');
     if (state.isMuted) {
       sendYtCommand('mute');
       if (dom.nativeVideoPlayer) dom.nativeVideoPlayer.muted = true;
+      if (volIcon) {
+        volIcon.innerHTML = '<line x1="1" y1="1" x2="23" y2="23"/><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M23 9l-6 6"/><path d="M17 9l6 6"/>';
+      }
       showKeyFeedback('Sessiz', '🔇');
     } else {
       sendYtCommand('unMute');
@@ -21086,12 +21098,19 @@ window.recordUsernameChange = recordUsernameChange;
         dom.nativeVideoPlayer.muted = false;
         dom.nativeVideoPlayer.volume = vol / 100;
       }
+      if (volIcon) {
+        volIcon.innerHTML = '<polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"/>';
+      }
       showKeyFeedback(`Ses: %${Math.round(vol)}`, '🔊');
     }
   }
   window.toggleMute = toggleMute;
 
   function seekToPercent(pct) {
+    if (!canUserControlPlayback()) {
+      showToast('Videoyu sarma yetkisi sadece Oda Sahibi ve Yöneticilere aittir.');
+      return;
+    }
     if (!state.duration || state.duration <= 0) return;
     const target = Math.max(0, Math.min(state.duration * (pct / 100), state.duration));
     state.currentTime = target;
@@ -23784,6 +23803,12 @@ function generateUniqueRoomCode(isPrivate = false) {
       if (currentTargetId) {
         state.dismissedPips = state.dismissedPips || {};
         state.dismissedPips[currentTargetId] = true;
+        const part = state.participants[currentTargetId] || Object.values(state.participants || {}).find(p => p.clientId === currentTargetId || p.userId === currentTargetId);
+        if (part) {
+          if (part.userId) state.dismissedPips[part.userId] = true;
+          if (part.clientId) state.dismissedPips[part.clientId] = true;
+          if (part.username) state.dismissedPips[part.username.toLowerCase()] = true;
+        }
       }
       if (dom.partnerPipCard) {
         dom.partnerPipCard.classList.add('hidden');

@@ -51,7 +51,7 @@ class ViewController: UIViewController, WKNavigationDelegate, WKUIDelegate, WKSc
     private func setupAudioSession() {
         do {
             let session = AVAudioSession.sharedInstance()
-            try session.setCategory(.playAndRecord, mode: .videoChat, options: [.defaultToSpeaker, .allowBluetooth, .allowBluetoothA2DP, .mixWithOthers])
+            try session.setCategory(.playAndRecord, mode: .default, options: [.defaultToSpeaker, .allowBluetooth, .allowBluetoothA2DP, .mixWithOthers])
             try session.setActive(true, options: .notifyOthersOnDeactivation)
             try session.overrideOutputAudioPort(.speaker)
             NotificationCenter.default.removeObserver(self, name: AVAudioSession.interruptionNotification, object: session)
@@ -70,7 +70,7 @@ class ViewController: UIViewController, WKNavigationDelegate, WKUIDelegate, WKSc
         if type == .ended {
             do {
                 let session = AVAudioSession.sharedInstance()
-                try session.setCategory(.playAndRecord, mode: .videoChat, options: [.defaultToSpeaker, .allowBluetooth, .allowBluetoothA2DP, .mixWithOthers])
+                try session.setCategory(.playAndRecord, mode: .default, options: [.defaultToSpeaker, .allowBluetooth, .allowBluetoothA2DP, .mixWithOthers])
                 try session.setActive(true)
                 try session.overrideOutputAudioPort(.speaker)
             } catch {
