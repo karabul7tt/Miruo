@@ -3233,7 +3233,11 @@ function connectSignaling() {
 }
 
 function sendSignal(msg) {
-  const isGlobalFriendSignal = msg && (msg.type === 'friend-request' || msg.type === 'friend-accepted' || msg.type === 'friend-declined');
+  const isGlobalFriendSignal = msg && (
+    msg.type === 'friend-request' || msg.type === 'friend-accepted' || msg.type === 'friend-declined' ||
+    msg.type === 'friend-removed' || msg.type === 'affinity-unbound' ||
+    msg.type === 'affinity-breakup-request' || msg.type === 'affinity-breakup-accepted' || msg.type === 'affinity-breakup-declined'
+  );
   if (!isGlobalFriendSignal && (!state.isInRoom || !state.roomId)) return;
   const cleanRoom = (state.roomId || '').trim().toUpperCase().replace(/[^A-Z0-9_-]/g, '_');
   const payload = {
@@ -3611,6 +3615,18 @@ function handleSignalMessage(msg) {
       if (typeof handleRemoteAffinityUnbound === 'function') {
         handleRemoteAffinityUnbound(msg.fromUsername, msg.toUsername);
       }
+      break;
+
+    case 'affinity-breakup-request':
+      if (typeof handleIncomingAffinityBreakupRequest === 'function') handleIncomingAffinityBreakupRequest(msg.payload);
+      break;
+
+    case 'affinity-breakup-accepted':
+      if (typeof handleIncomingAffinityBreakupAccepted === 'function') handleIncomingAffinityBreakupAccepted(msg.payload);
+      break;
+
+    case 'affinity-breakup-declined':
+      if (typeof handleIncomingAffinityBreakupDeclined === 'function') handleIncomingAffinityBreakupDeclined(msg.payload);
       break;
 
     case 'room-invite':
@@ -4836,6 +4852,15 @@ function setupDataChannelEvents(channel) {
       if (data.type === 'affinity_unbound') {
         if (typeof handleRemoteAffinityUnbound === 'function') handleRemoteAffinityUnbound(payload.fromUsername, payload.toUsername);
       }
+      if (data.type === 'affinity_breakup_request') {
+        if (typeof handleIncomingAffinityBreakupRequest === 'function') handleIncomingAffinityBreakupRequest(payload);
+      }
+      if (data.type === 'affinity_breakup_accepted') {
+        if (typeof handleIncomingAffinityBreakupAccepted === 'function') handleIncomingAffinityBreakupAccepted(payload);
+      }
+      if (data.type === 'affinity_breakup_declined') {
+        if (typeof handleIncomingAffinityBreakupDeclined === 'function') handleIncomingAffinityBreakupDeclined(payload);
+      }
       if (data.type === 'room_invite') {
         if (typeof handleIncomingRoomInvite === 'function') handleIncomingRoomInvite(payload);
       }
@@ -4933,6 +4958,9 @@ function sendP2PData(type, payload = {}) {
   else if (type === 'friend_declined') sendSignal({ type: 'friend-declined', payload: enrichedPayload });
   else if (type === 'friend_removed') sendSignal({ type: 'friend-removed', fromUsername: enrichedPayload.fromUsername, toUsername: enrichedPayload.toUsername });
   else if (type === 'affinity_unbound') sendSignal({ type: 'affinity-unbound', fromUsername: enrichedPayload.fromUsername, toUsername: enrichedPayload.toUsername });
+  else if (type === 'affinity_breakup_request') sendSignal({ type: 'affinity-breakup-request', payload: enrichedPayload });
+  else if (type === 'affinity_breakup_accepted') sendSignal({ type: 'affinity-breakup-accepted', payload: enrichedPayload });
+  else if (type === 'affinity_breakup_declined') sendSignal({ type: 'affinity-breakup-declined', payload: enrichedPayload });
   else if (type === 'room_invite') sendSignal({ type: 'room-invite', payload: enrichedPayload });
   else if (type === 'chat') sendSignal({ type: 'chat-message', sender: enrichedPayload.sender, text: enrichedPayload.text, time: enrichedPayload.time, imageUrl: enrichedPayload.imageUrl, avatarUrl: enrichedPayload.avatarUrl });
   else if (type === 'media_status') sendSignal({
@@ -11269,6 +11297,18 @@ function initGlobalUsersChannel() {
         handleIncomingAffinityDeclined(payload);
         if (payload) ackGlobalEvent('affinity_declined', payload.id, payload.fromUsername, payload.toUsername);
       })
+      .on('broadcast', { event: 'affinity_breakup_request' }, ({ payload }) => {
+        handleIncomingAffinityBreakupRequest(payload);
+        if (payload) ackGlobalEvent('affinity_breakup_request', payload.id, payload.fromUsername, payload.toUsername);
+      })
+      .on('broadcast', { event: 'affinity_breakup_accepted' }, ({ payload }) => {
+        handleIncomingAffinityBreakupAccepted(payload);
+        if (payload) ackGlobalEvent('affinity_breakup_accepted', payload.id, payload.fromUsername, payload.toUsername);
+      })
+      .on('broadcast', { event: 'affinity_breakup_declined' }, ({ payload }) => {
+        handleIncomingAffinityBreakupDeclined(payload);
+        if (payload) ackGlobalEvent('affinity_breakup_declined', payload.id, payload.fromUsername, payload.toUsername);
+      })
       .on('broadcast', { event: 'room_invite' }, ({ payload }) => {
         handleIncomingRoomInvite(payload);
         if (payload) ackGlobalEvent('room_invite', payload.id, payload.fromUsername, payload.toUsername);
@@ -11559,6 +11599,231 @@ function handleIncomingAffinityDeclined(p) {
   showToast(`@${cleanUserKey(p.fromUsername)} ${p.categoryTitle || 'ilişki'} isteğini reddetti.`);
   renderAffinityTree();
 }
+
+// ---- Yakınlığı Bitirme (Ayrılma) İsteği Sistemi ----
+// Kullanıcı isteği gönderir, karşı taraf onaylarsa yakınlık bağı kaldırılır.
+// Arkadaşlık ve birlikte izleme süresi SIFIRLANMAZ (korunur).
+function sendAffinityBreakupRequest(slotKey) {
+  if (!slotKey) return;
+  const currentTree = getUserAffinityTree();
+  const item = currentTree[slotKey];
+  if (!item || !item.username) return;
+
+  const targetClean = cleanUserKey(item.username);
+  if (!targetClean) return;
+
+  const slotDef = AFFINITY_SLOTS.find(s => s.key === slotKey);
+  const slotTitle = slotDef ? slotDef.title : (item.category || 'Yakınlık');
+
+  const req = {
+    id: 'aff_break_' + Date.now() + '_' + Math.random().toString(36).substring(2, 6),
+    slotKey: slotKey,
+    category: item.category || 'partner',
+    categoryTitle: slotTitle,
+    fromUsername: cleanUserKey(state.username),
+    fromName: (state.fullName && !state.fullName.startsWith('@')) ? state.fullName : (state.name || cleanUserKey(state.username)),
+    fromAvatarUrl: state.avatarUrl || '',
+    toUsername: targetClean,
+    timestamp: Date.now()
+  };
+
+  let outgoing = [];
+  try { outgoing = JSON.parse(localStorage.getItem('miruo_outgoing_affinity_breakups') || '[]'); } catch (_) { outgoing = []; }
+  outgoing = outgoing.filter(o => cleanUserKey(o.toUsername) !== targetClean);
+  outgoing.push(req);
+  localStorage.setItem('miruo_outgoing_affinity_breakups', JSON.stringify(outgoing));
+
+  queueGlobalEvent('affinity_breakup_request', targetClean, req);
+  sendSignal({ type: 'affinity-breakup-request', payload: req });
+  sendP2PData('affinity_breakup_request', req);
+
+  closeAffinitySlotDetail();
+  renderAffinityTree();
+  showToast(`@${targetClean} kullanıcısına ${slotTitle} yakınlığını bitirme isteği gönderildi. Onay bekleniyor.`);
+}
+window.sendAffinityBreakupRequest = sendAffinityBreakupRequest;
+
+function handleIncomingAffinityBreakupRequest(req) {
+  if (!req || !req.id) return;
+  if (cleanUserKey(req.toUsername) !== cleanUserKey(state.username)) return;
+  if (isUserBlocked(req.fromUsername)) return;
+
+  playNotificationPing();
+  try { if (navigator.vibrate) navigator.vibrate([100, 50, 100]); } catch (_) {}
+  showAffinityBreakupModal(req);
+}
+window.handleIncomingAffinityBreakupRequest = handleIncomingAffinityBreakupRequest;
+
+function showAffinityBreakupModal(req) {
+  if (!req) return;
+  const modalId = 'miruoAffinityBreakupDialog';
+  let modal = document.getElementById(modalId);
+  if (!modal) {
+    modal = document.createElement('div');
+    modal.id = modalId;
+    modal.className = 'fixed inset-0 z-[100001] flex items-center justify-center bg-black/85 backdrop-blur-md p-4';
+    document.body.appendChild(modal);
+  }
+  const fromUser = cleanUserKey(req.fromUsername || 'Arkadaşın');
+  const catTitle = req.categoryTitle || 'Yakınlık';
+
+  modal.innerHTML = `
+    <div class="bg-[#0F131F] border border-rose-500/40 rounded-3xl p-6 max-w-sm w-full shadow-2xl text-center space-y-4 animate-in fade-in zoom-in-95 duration-200">
+      <div class="w-16 h-16 mx-auto rounded-full bg-gradient-to-tr from-rose-500/20 to-indigo-500/20 border-2 border-rose-500/40 flex items-center justify-center text-rose-400 shadow-lg">
+        <svg class="w-8 h-8" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"/><line x1="2" y1="2" x2="22" y2="22"/></svg>
+      </div>
+      <div>
+        <h3 class="text-base font-extrabold text-white">Yakınlığı Bitirme İsteği</h3>
+        <p class="text-xs text-gray-300 mt-1.5 leading-relaxed">
+          <span class="text-rose-400 font-bold">@${fromUser}</span> seninle olan <span class="text-white font-bold">${catTitle}</span> yakınlık bağını bitirmek istiyor.
+        </p>
+        <p class="text-[11px] text-emerald-400 font-medium mt-1">
+          ✓ Arkadaşlığınız ve birlikte izleme süreniz korunur.
+        </p>
+      </div>
+      <div class="flex items-center gap-3 pt-2">
+        <button id="declineAffinityBreakupBtn" type="button" class="flex-1 py-2.5 rounded-xl bg-white/10 hover:bg-white/15 text-gray-300 font-bold text-xs transition-all cursor-pointer">
+          Reddet
+        </button>
+        <button id="acceptAffinityBreakupBtn" type="button" class="flex-1 py-2.5 rounded-xl bg-gradient-to-r from-rose-500 to-pink-600 hover:opacity-95 text-white font-bold text-xs transition-all cursor-pointer shadow-lg shadow-rose-500/25">
+          Onayla
+        </button>
+      </div>
+    </div>
+  `;
+  modal.classList.remove('hidden');
+  modal.classList.add('flex');
+
+  const closeDialog = () => {
+    modal.classList.add('hidden');
+    modal.classList.remove('flex');
+  };
+
+  const decBtn = modal.querySelector('#declineAffinityBreakupBtn');
+  if (decBtn) decBtn.onclick = () => {
+    closeDialog();
+    rejectAffinityBreakup(req);
+  };
+
+  const accBtn = modal.querySelector('#acceptAffinityBreakupBtn');
+  if (accBtn) accBtn.onclick = () => {
+    closeDialog();
+    acceptAffinityBreakup(req);
+  };
+}
+window.showAffinityBreakupModal = showAffinityBreakupModal;
+
+function acceptAffinityBreakup(req) {
+  if (!req) return;
+  const cleanFrom = cleanUserKey(req.fromUsername);
+  const currentTree = getUserAffinityTree();
+  let slotChanged = false;
+  Object.entries(currentTree).forEach(([sKey, val]) => {
+    if (val) {
+      const vU = cleanUserKey(val.username || val.name);
+      if (vU === cleanFrom) {
+        delete currentTree[sKey];
+        slotChanged = true;
+      }
+    }
+  });
+  if (slotChanged) {
+    saveUserAffinityTree(currentTree);
+  }
+
+  try {
+    const mutuals = JSON.parse(localStorage.getItem('miruo_mutual_affinities') || '{}');
+    delete mutuals[cleanFrom];
+    localStorage.setItem('miruo_mutual_affinities', JSON.stringify(mutuals));
+  } catch (_) {}
+
+  // NOTICE: Shared watch time is NOT reset! (Arkadaşlık ve izleme süresi korunur)
+
+  const acceptPayload = {
+    id: req.id,
+    fromUsername: cleanUserKey(state.username),
+    toUsername: cleanFrom,
+    categoryTitle: req.categoryTitle,
+    timestamp: Date.now()
+  };
+  queueGlobalEvent('affinity_breakup_accepted', cleanFrom, acceptPayload);
+  sendSignal({ type: 'affinity-breakup-accepted', payload: acceptPayload });
+  sendP2PData('affinity_breakup_accepted', acceptPayload);
+
+  renderAffinityTree();
+  if (typeof renderFriendsTab === 'function') renderFriendsTab();
+  showToast(`@${cleanFrom} ile olan yakınlık bağı sonlandırıldı. (İzleme süreniz korundu)`);
+}
+window.acceptAffinityBreakup = acceptAffinityBreakup;
+
+function rejectAffinityBreakup(req) {
+  if (!req) return;
+  const cleanFrom = cleanUserKey(req.fromUsername);
+  const declinePayload = {
+    id: req.id,
+    fromUsername: cleanUserKey(state.username),
+    toUsername: cleanFrom,
+    categoryTitle: req.categoryTitle,
+    timestamp: Date.now()
+  };
+  queueGlobalEvent('affinity_breakup_declined', cleanFrom, declinePayload);
+  sendSignal({ type: 'affinity-breakup-declined', payload: declinePayload });
+  sendP2PData('affinity_breakup_declined', declinePayload);
+  showToast('Yakınlığı bitirme isteği reddedildi.');
+}
+window.rejectAffinityBreakup = rejectAffinityBreakup;
+
+function handleIncomingAffinityBreakupAccepted(payload) {
+  if (!payload || cleanUserKey(payload.toUsername) !== cleanUserKey(state.username)) return;
+  const cleanFrom = cleanUserKey(payload.fromUsername);
+  const currentTree = getUserAffinityTree();
+  let slotChanged = false;
+  Object.entries(currentTree).forEach(([sKey, val]) => {
+    if (val) {
+      const vU = cleanUserKey(val.username || val.name);
+      if (vU === cleanFrom) {
+        delete currentTree[sKey];
+        slotChanged = true;
+      }
+    }
+  });
+  if (slotChanged) {
+    saveUserAffinityTree(currentTree);
+  }
+
+  try {
+    const mutuals = JSON.parse(localStorage.getItem('miruo_mutual_affinities') || '{}');
+    delete mutuals[cleanFrom];
+    localStorage.setItem('miruo_mutual_affinities', JSON.stringify(mutuals));
+  } catch (_) {}
+
+  try {
+    let outgoing = JSON.parse(localStorage.getItem('miruo_outgoing_affinity_breakups') || '[]');
+    outgoing = outgoing.filter(o => cleanUserKey(o.toUsername) !== cleanFrom);
+    localStorage.setItem('miruo_outgoing_affinity_breakups', JSON.stringify(outgoing));
+  } catch (_) {}
+
+  // NOTICE: Shared watch time is NOT reset! (İzleme süresi korunur)
+
+  playNotificationPing();
+  renderAffinityTree();
+  if (typeof renderFriendsTab === 'function') renderFriendsTab();
+  showToast(`🎉 @${cleanFrom} yakınlığı bitirme isteğinizi onayladı. Yakınlık bağı sonlandırıldı (izleme süreniz korundu).`);
+}
+window.handleIncomingAffinityBreakupAccepted = handleIncomingAffinityBreakupAccepted;
+
+function handleIncomingAffinityBreakupDeclined(payload) {
+  if (!payload || cleanUserKey(payload.toUsername) !== cleanUserKey(state.username)) return;
+  const cleanFrom = cleanUserKey(payload.fromUsername);
+  try {
+    let outgoing = JSON.parse(localStorage.getItem('miruo_outgoing_affinity_breakups') || '[]');
+    outgoing = outgoing.filter(o => cleanUserKey(o.toUsername) !== cleanFrom);
+    localStorage.setItem('miruo_outgoing_affinity_breakups', JSON.stringify(outgoing));
+  } catch (_) {}
+  showToast(`@${cleanFrom} yakınlığı bitirme isteğinizi reddetti.`);
+  renderAffinityTree();
+}
+window.handleIncomingAffinityBreakupDeclined = handleIncomingAffinityBreakupDeclined;
 
 function showRoomInviteModal(inv) {
   if (!inv) return;
@@ -12214,29 +12479,26 @@ window.showMiruoConfirm = showMiruoConfirm;
 // Centralized Friend Removal with Instant Multi-View Refresh
 function executeRemoveFriend(targetUser) {
   if (!targetUser) return;
-  const clean = (targetUser.username || targetUser.name || '').toLowerCase().replace(/^@/, '').trim();
-  const displayName = targetUser.name || targetUser.username || clean;
+  const clean = cleanUserKey(targetUser.username || targetUser.name);
   if (!clean) return;
 
-  // 1. Remove from state.friends matching username or name
+  // 1. Remove from state.friends matching clean username or name
   if (Array.isArray(state.friends)) {
     state.friends = state.friends.filter(f => {
-      const fU = (f.username || '').toLowerCase().replace(/^@/, '').trim();
-      const fN = (f.name || '').toLowerCase().replace(/^@/, '').trim();
-      return fU !== clean && fN !== clean;
+      const fU = cleanUserKey(f.username || f.cleanUsername || f.name);
+      return fU !== clean;
     });
     localStorage.setItem('miruo_friends', JSON.stringify(state.friends));
   }
 
-  // 2. Remove from affinity tree
+  // 2. Remove automatically from affinity tree
   try {
     const currentTree = getUserAffinityTree();
     let slotChanged = false;
     Object.entries(currentTree).forEach(([sKey, val]) => {
       if (val) {
-        const vU = (val.username || '').toLowerCase().replace(/^@/, '').trim();
-        const vN = (val.name || '').toLowerCase().replace(/^@/, '').trim();
-        if (vU === clean || vN === clean) {
+        const vU = cleanUserKey(val.username || val.name);
+        if (vU === clean) {
           delete currentTree[sKey];
           slotChanged = true;
         }
@@ -12250,7 +12512,17 @@ function executeRemoveFriend(targetUser) {
     }
   } catch (err) {}
 
-  // 3. Immediately refresh Friends Tab, Friends List, and Profile Tab
+  // 3. Remove mutual affinities
+  try {
+    const mutuals = JSON.parse(localStorage.getItem('miruo_mutual_affinities') || '{}');
+    delete mutuals[clean];
+    localStorage.setItem('miruo_mutual_affinities', JSON.stringify(mutuals));
+  } catch (err) {}
+
+  // 4. RESET SHARED WATCH TIME TO ZERO! (Arkadaşlıktan çıkarılınca 0'a düşsün)
+  resetSharedWatchMinutes(clean);
+
+  // 5. Immediately refresh Friends Tab, Friends List, and Profile Tab
   if (typeof renderFriendsTab === 'function') {
     const searchInput = document.getElementById('tabFriendSearchInput');
     renderFriendsTab(searchInput ? searchInput.value : '');
@@ -12258,21 +12530,21 @@ function executeRemoveFriend(targetUser) {
   if (typeof renderFriendsList === 'function') renderFriendsList();
   if (typeof renderProfileTab === 'function') renderProfileTab();
 
-  // 4. Update profile buttons if open
+  // 6. Update profile buttons if open
   const friendToggleText = document.getElementById('publicProfileFriendToggleText');
   if (friendToggleText) friendToggleText.textContent = 'Arkadaş Ekle';
 
   if (typeof closePublicProfileOptionsMenu === 'function') closePublicProfileOptionsMenu();
   if (typeof closePublicUserProfile === 'function') closePublicUserProfile();
 
-  // 5. Notify remote peer so connection is severed on both sides
+  // 7. Notify remote peer so connection & affinity are severed on both sides
   sendP2PData('friend_removed', { fromUsername: state.username, toUsername: clean });
   sendSignal({ type: 'friend-removed', fromUsername: state.username, toUsername: clean });
   if (typeof queueGlobalEvent === 'function') {
     queueGlobalEvent('friend_removed', clean, { fromUsername: state.username });
   }
 
-  showToast(`@${clean} arkadaş listenizden çıkarıldı.`);
+  showToast(`@${clean} arkadaş listenizden çıkarıldı. Yakınlık bağı ve izleme süresi sıfırlandı.`);
 }
 window.executeRemoveFriend = executeRemoveFriend;
 
@@ -12291,7 +12563,7 @@ function handleRemoteFriendRemoved(fromUser, toUser) {
     localStorage.setItem('miruo_friends', JSON.stringify(state.friends));
   }
 
-  // 2. Remove from affinity tree
+  // 2. Remove automatically from affinity tree
   try {
     const currentTree = getUserAffinityTree();
     let slotChanged = false;
@@ -12312,14 +12584,24 @@ function handleRemoteFriendRemoved(fromUser, toUser) {
     }
   } catch (_) {}
 
-  // 3. Re-render UI
+  // 3. Remove mutual affinities
+  try {
+    const mutuals = JSON.parse(localStorage.getItem('miruo_mutual_affinities') || '{}');
+    delete mutuals[cleanFrom];
+    localStorage.setItem('miruo_mutual_affinities', JSON.stringify(mutuals));
+  } catch (_) {}
+
+  // 4. RESET SHARED WATCH TIME TO ZERO! (0'a düşsün ve 0'lansın)
+  resetSharedWatchMinutes(cleanFrom);
+
+  // 5. Re-render UI
   if (typeof renderFriendsTab === 'function') {
     const searchInput = document.getElementById('tabFriendSearchInput');
     renderFriendsTab(searchInput ? searchInput.value : '');
   }
   if (typeof renderFriendsList === 'function') renderFriendsList();
   if (typeof renderProfileTab === 'function') renderProfileTab();
-  showToast(`@${cleanFrom} ile arkadaşlık bağlantısı sonlandırıldı.`);
+  showToast(`@${cleanFrom} ile arkadaşlık bağlantısı sonlandırıldı. Yakınlık bağı ve izleme süresi sıfırlandı.`);
 }
 window.handleRemoteFriendRemoved = handleRemoteFriendRemoved;
 
@@ -13176,7 +13458,7 @@ window.formatSharedWatchTime = formatSharedWatchTime;
 
 function getSharedWatchMinutes(username) {
   if (!username) return 0;
-  const clean = username.toLowerCase().replace(/^@/, '').trim();
+  const clean = cleanUserKey(username);
   let saved = {};
   try {
     saved = JSON.parse(localStorage.getItem('miruo_shared_watch_time') || '{}');
@@ -13194,7 +13476,7 @@ function getSharedWatchMinutes(username) {
 
 function setSharedWatchMinutes(username, minutes) {
   if (!username) return;
-  const clean = username.toLowerCase().replace(/^@/, '').trim();
+  const clean = cleanUserKey(username);
   let saved = {};
   try {
     saved = JSON.parse(localStorage.getItem('miruo_shared_watch_time') || '{}');
@@ -13204,6 +13486,20 @@ function setSharedWatchMinutes(username, minutes) {
   saved[clean] = Math.max(0, Number(minutes) || 0);
   localStorage.setItem('miruo_shared_watch_time', JSON.stringify(saved));
 }
+
+function resetSharedWatchMinutes(username) {
+  if (!username) return;
+  const clean = cleanUserKey(username);
+  let saved = {};
+  try {
+    saved = JSON.parse(localStorage.getItem('miruo_shared_watch_time') || '{}');
+  } catch (e) {
+    saved = {};
+  }
+  saved[clean] = 0;
+  localStorage.setItem('miruo_shared_watch_time', JSON.stringify(saved));
+}
+window.resetSharedWatchMinutes = resetSharedWatchMinutes;
 
 function addSharedWatchMinutes(username, addedMinutes) {
   const current = getSharedWatchMinutes(username);
@@ -13842,10 +14138,20 @@ function openAffinitySlotDetail(slotKey, assigned) {
   }
 
   if (unbindBtn) {
-    unbindBtn.textContent = isPending ? 'İsteği İptal Et' : 'Bağlantıyı Kaldır';
-    unbindBtn.className = isPending
-      ? 'w-full py-2.5 rounded-xl bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 text-xs font-bold transition-all cursor-pointer'
-      : 'w-full py-2.5 rounded-xl bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 border border-rose-500/40 text-xs font-bold transition-all cursor-pointer';
+    let outgoingBreakups = [];
+    try { outgoingBreakups = JSON.parse(localStorage.getItem('miruo_outgoing_affinity_breakups') || '[]'); } catch (_) {}
+    const hasPendingBreakup = assigned && assigned.username && outgoingBreakups.some(b => cleanUserKey(b.toUsername) === cleanUserKey(assigned.username));
+
+    if (isPending) {
+      unbindBtn.textContent = 'İsteği İptal Et';
+      unbindBtn.className = 'w-full py-2.5 rounded-xl bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 text-xs font-bold transition-all cursor-pointer';
+    } else if (hasPendingBreakup) {
+      unbindBtn.textContent = 'Ayrılma Onayı Bekleniyor';
+      unbindBtn.className = 'w-full py-2.5 rounded-xl bg-amber-500/15 text-amber-300 border border-amber-500/30 text-xs font-bold transition-all cursor-default opacity-85';
+    } else {
+      unbindBtn.textContent = 'Yakınlığı Bitirme İsteği Gönder';
+      unbindBtn.className = 'w-full py-2.5 rounded-xl bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 border border-rose-500/40 text-xs font-bold transition-all cursor-pointer';
+    }
   }
 
   modal.classList.remove('hidden');
@@ -24641,7 +24947,7 @@ function initAffinityEvents() {
     });
   }
 
-  // Bağlantıyı Kaldır Butonu (Doğrudan ve Hızlıca Kaldırır)
+  // Yakınlığı Bitirme Butonu (Onaylı Ayrılma İsteği Gönderir, Arkadaşlık ve İzleme Süresi Korunur)
   const affinityDetailUnbindBtn = document.getElementById('affinityDetailUnbindBtn');
   if (affinityDetailUnbindBtn) {
     addInstantTap(affinityDetailUnbindBtn, (e) => {
@@ -24658,30 +24964,38 @@ function initAffinityEvents() {
           try {
             requests = JSON.parse(localStorage.getItem('miruo_affinity_requests') || '[]');
           } catch (err) { requests = []; }
-          const targetClean = (item.username || '').replace(/^@/, '').toLowerCase();
-          localStorage.setItem('miruo_affinity_requests', JSON.stringify(requests.filter(r => (r.toUsername || '').toLowerCase() !== targetClean)));
+          const targetClean = cleanUserKey(item.username);
+          localStorage.setItem('miruo_affinity_requests', JSON.stringify(requests.filter(r => cleanUserKey(r.toUsername) !== targetClean)));
+
+          currentTree[currentDetailSlotKey] = null;
+          saveUserAffinityTree(currentTree);
+          closeAffinitySlotDetail();
+          renderAffinityTree();
+          showToast(`${friendName} ile olan ilişki isteği iptal edildi.`);
+          return;
         }
 
-        const cleanUser = (item.username || '').replace(/^@/, '').toLowerCase();
-        let mutuals = {};
-        try {
-          mutuals = JSON.parse(localStorage.getItem('miruo_mutual_affinities') || '{}');
-          delete mutuals[cleanUser];
-          localStorage.setItem('miruo_mutual_affinities', JSON.stringify(mutuals));
-        } catch (err) {}
-
-        currentTree[currentDetailSlotKey] = null;
-        saveUserAffinityTree(currentTree);
-        closeAffinitySlotDetail();
-        renderAffinityTree();
-
-        sendP2PData('affinity_unbound', { fromUsername: state.username, toUsername: cleanUser });
-        sendSignal({ type: 'affinity-unbound', fromUsername: state.username, toUsername: cleanUser });
-        if (typeof queueGlobalEvent === 'function') {
-          queueGlobalEvent('affinity_unbound', cleanUser, { fromUsername: state.username });
+        const cleanUser = cleanUserKey(item.username);
+        let outgoingBreakups = [];
+        try { outgoingBreakups = JSON.parse(localStorage.getItem('miruo_outgoing_affinity_breakups') || '[]'); } catch (_) {}
+        const hasPendingBreakup = outgoingBreakups.some(b => cleanUserKey(b.toUsername) === cleanUser);
+        if (hasPendingBreakup) {
+          showToast(`@${cleanUser} kullanıcısına zaten yakınlığı bitirme isteği gönderildi. Onay bekleniyor.`);
+          return;
         }
 
-        showToast(isPending ? `${friendName} ile olan ilişki isteği iptal edildi.` : `${friendName} ile olan bağlantı kaldırıldı.`);
+        if (typeof showMiruoConfirm === 'function') {
+          showMiruoConfirm({
+            title: 'Yakınlığı Bitir',
+            message: `@${cleanUser} adlı kullanıcıya yakınlığı bitirme isteği gönderilsin mi? Karşı taraf onayladığında yakınlık bağı sonlandırılır, ancak arkadaşlığınız ve birlikte izleme süreniz korunur.`,
+            actionText: 'İstek Gönder',
+            onConfirm: () => {
+              sendAffinityBreakupRequest(currentDetailSlotKey);
+            }
+          });
+        } else {
+          sendAffinityBreakupRequest(currentDetailSlotKey);
+        }
       }
     });
   }
