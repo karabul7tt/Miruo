@@ -2966,7 +2966,7 @@ function connectSupabaseRoomSignaling() {
   try {
     const chName = `miruo_room_${cleanRoom}`;
     const myPresenceKey = state.clientId || (state.clientId = 'cl_' + Math.random().toString(36).substring(2, 9) + '_' + Date.now().toString(36));
-    roomSupabaseChannel = supabaseClient.channel(chName, {
+    const thisChannel = roomSupabaseChannel = supabaseClient.channel(chName, {
       config: {
         presence: { key: myPresenceKey },
         broadcast: { ack: false, self: false }
@@ -2974,22 +2974,23 @@ function connectSupabaseRoomSignaling() {
     });
 
     const syncParticipantsFromPresence = (pState) => {
-      if (!pState) return;
+      if (roomSupabaseChannel !== thisChannel || !pState) return;
       const currentKeys = Object.keys(pState);
       const peerKeys = currentKeys.filter(k => k !== state.clientId);
+      let anyParticipantChanged = false;
       
       // Update peer status for WebRTC with multi-peer mesh connections
       if (peerKeys.length > 0) {
         if (!state.peers) state.peers = {};
         peerKeys.forEach(pk => {
           const presences = pState[pk];
-          const info = (presences && presences[0]) || {};
+          const info = (presences && presences[presences.length - 1]) || {};
           const isInitiator = String(state.clientId) < String(pk);
           if (typeof getOrCreatePeerConnection === 'function') {
-            getOrCreatePeerConnection(pk, isInitiator, { clientId: pk, userId: info.userId });
+            getOrCreatePeerConnection(pk, isInitiator, { clientId: pk, userId: info.userId, username: info.username, avatar: info.avatar });
           }
         });
-        if (!state.peerId) state.peerId = peerKeys[0];
+        if (!state.peerId || !peerKeys.includes(state.peerId)) state.peerId = peerKeys[0];
         updatePeerStatus(true);
       } else {
         if (!state.peerId) updatePeerStatus(false);
@@ -2999,7 +3000,7 @@ function connectSupabaseRoomSignaling() {
       peerKeys.forEach(pk => {
         const presences = pState[pk];
         if (presences && presences.length > 0) {
-          const info = presences[0];
+          const info = presences[presences.length - 1];
           const existingKey = pk;
 
           let displayUsername = info.username || 'Misafir';
@@ -3008,14 +3009,14 @@ function connectSupabaseRoomSignaling() {
           }
 
           const existing = state.participants[existingKey] || {};
-          const peerHasLiveCamTrack = (existing.stream && existing.stream.getVideoTracks().some(t => t.readyState === 'live')) ||
-                                      (state.peers && state.peers[pk] && state.peers[pk].stream && state.peers[pk].stream.getVideoTracks().some(t => t.readyState === 'live'));
-          const peerHasLiveMicTrack = (existing.stream && existing.stream.getAudioTracks().some(t => t.readyState === 'live')) ||
-                                      (state.peers && state.peers[pk] && state.peers[pk].stream && state.peers[pk].stream.getAudioTracks().some(t => t.readyState === 'live'));
-
-          // Retain live status if confirmed by WebRTC track or recent media_status broadcast
-          const finalCam = peerHasLiveCamTrack || (existing.isCamOn === true) || (info.isCamOn === true);
-          const finalMic = peerHasLiveMicTrack || (existing.isMicOn === true) || (info.isMicOn === true);
+          const prevSnap = existing.clientId ? `${existing.username}|${existing.isMicOn}|${existing.isCamOn}|${existing.avatar}` : '';
+          const hasRecentMediaStatus = existing.mediaStatusAt && (Date.now() - existing.mediaStatusAt < 15000);
+          const finalCam = hasRecentMediaStatus
+            ? Boolean(existing.isCamOn)
+            : (typeof info.isCamOn === 'boolean' ? info.isCamOn : Boolean(existing.isCamOn));
+          const finalMic = hasRecentMediaStatus
+            ? Boolean(existing.isMicOn)
+            : (typeof info.isMicOn === 'boolean' ? info.isMicOn : Boolean(existing.isMicOn));
 
           state.participants[existingKey] = {
             ...existing,
@@ -3032,10 +3033,13 @@ function connectSupabaseRoomSignaling() {
             isSelf: false,
             lastSeen: Date.now()
           };
+          const nextSnap = `${displayUsername}|${finalMic}|${finalCam}|${state.participants[existingKey].avatar}`;
+          if (prevSnap !== nextSnap) anyParticipantChanged = true;
+
           if (info.isHost && info.username) {
             state.hostName = info.username;
           }
-          if (finalCam) {
+          if (finalCam && !existing.isCamOn) {
             state.dismissedPips = state.dismissedPips || {};
             state.dismissedPips[pk] = false;
             if (info.userId) state.dismissedPips[info.userId] = false;
@@ -3052,15 +3056,15 @@ function connectSupabaseRoomSignaling() {
                           activePresenceClientIds.has(pid) ||
                           (p.userId && activePresenceClientIds.has(p.userId));
         const hasLivePeerConn = state.peers && (
-          (p.clientId && state.peers[p.clientId] && state.peers[p.clientId].pc && state.peers[p.clientId].pc.signalingState !== 'closed') ||
-          (p.userId && state.peers[p.userId] && state.peers[p.userId].pc && state.peers[p.userId].pc.signalingState !== 'closed') ||
-          (state.peers[pid] && state.peers[pid].pc && state.peers[pid].pc.signalingState !== 'closed')
+          (p.clientId && state.peers[p.clientId] && state.peers[p.clientId].pc && state.peers[p.clientId].pc.signalingState !== 'closed' && state.peers[p.clientId].pc.connectionState !== 'failed' && state.peers[p.clientId].pc.connectionState !== 'closed') ||
+          (state.peers[pid] && state.peers[pid].pc && state.peers[pid].pc.signalingState !== 'closed' && state.peers[pid].pc.connectionState !== 'failed' && state.peers[pid].pc.connectionState !== 'closed')
         );
         if (!hasClient && !hasLivePeerConn) {
           if (!p.vanishedSince) {
             p.vanishedSince = Date.now();
           } else if (Date.now() - p.vanishedSince > 30000) {
             delete state.participants[pid];
+            anyParticipantChanged = true;
             if (typeof closePeerConnection === 'function') closePeerConnection(pid);
           }
         } else {
@@ -3069,27 +3073,36 @@ function connectSupabaseRoomSignaling() {
       });
 
       renderParticipantsList();
-      renderVideoGrid();
-      if (typeof renderStagePipCards === 'function') renderStagePipCards();
+      const expectedGridCount = 1 + Object.keys(state.participants).filter(k => k !== state.clientId && !k.startsWith('bot_')).length;
+      const currentGridCount = dom.roomVideoGrid ? dom.roomVideoGrid.children.length : 0;
+      if (anyParticipantChanged || currentGridCount !== expectedGridCount) {
+        renderVideoGrid();
+        if (typeof renderStagePipCards === 'function') renderStagePipCards();
+      }
     };
 
-    roomSupabaseChannel
+    thisChannel
       .on('broadcast', { event: 'signal' }, ({ payload }) => {
+        if (roomSupabaseChannel !== thisChannel) return;
         if (!payload || payload.clientId === state.clientId) return;
         handleSignalMessage(payload);
       })
       .on('broadcast', { event: 'playback_sync' }, ({ payload }) => {
+        if (roomSupabaseChannel !== thisChannel) return;
         if (!payload || payload.clientId === state.clientId) return;
         handleRemoteSync(payload);
       })
       .on('presence', { event: 'sync' }, () => {
-        const pState = roomSupabaseChannel.presenceState();
+        if (roomSupabaseChannel !== thisChannel) return;
+        const pState = thisChannel.presenceState();
         syncParticipantsFromPresence(pState);
       })
-      .on('presence', { event: 'join' }, ({ key, newPresences }) => {
-        const pState = roomSupabaseChannel.presenceState();
+      .on('presence', { event: 'join' }, ({ key, currentPresences, newPresences }) => {
+        if (roomSupabaseChannel !== thisChannel) return;
+        const wasAlreadyKnown = Boolean(key && state.participants && state.participants[key]);
+        const pState = thisChannel.presenceState();
         syncParticipantsFromPresence(pState);
-        if (key && key !== state.clientId) {
+        if (key && key !== state.clientId && !wasAlreadyKnown) {
           showToast('Katılımcı odaya katıldı');
           if (state.isHost) {
             const hostUserObj = JSON.parse(localStorage.getItem('miruo_user') || '{}');
@@ -3125,24 +3138,31 @@ function connectSupabaseRoomSignaling() {
                 sentAt: Date.now()
               };
               sendP2PData('sync', syncPayload);
-              if (roomSupabaseChannel) {
-                roomSupabaseChannel.send({ type: 'broadcast', event: 'playback_sync', payload: syncPayload }).catch(() => {});
-              }
+              thisChannel.send({ type: 'broadcast', event: 'playback_sync', payload: syncPayload }).catch(() => {});
             }
           }
         }
       })
-      .on('presence', { event: 'leave' }, ({ key }) => {
-        const pState = roomSupabaseChannel.presenceState();
+      .on('presence', { event: 'leave' }, ({ key, currentPresences }) => {
+        if (roomSupabaseChannel !== thisChannel) return;
+        const pState = thisChannel.presenceState();
+        // If key is still present in pState (e.g. Phoenix Presence metadata update emit), ignore leave!
+        if (key && pState && pState[key] && pState[key].length > 0) {
+          syncParticipantsFromPresence(pState);
+          return;
+        }
         syncParticipantsFromPresence(pState);
         if (key && key === state.peerId) {
           const remaining = Object.keys(pState).filter(k => k !== state.clientId);
           state.peerId = remaining.length > 0 ? remaining[0] : null;
           updatePeerStatus(!!state.peerId);
         }
-        showToast('Katılımcı odadan ayrıldı');
+        if (key && key !== state.clientId) {
+          showToast('Katılımcı odadan ayrıldı');
+        }
       })
       .subscribe((status, err) => {
+        if (roomSupabaseChannel !== thisChannel) return;
         if (status === 'SUBSCRIBED') {
           const savedUserObj = JSON.parse(localStorage.getItem('miruo_user') || '{}');
           const myData = {
@@ -3156,8 +3176,17 @@ function connectSupabaseRoomSignaling() {
             isHost: !!state.isHost,
             role: state.userRole || (state.isHost ? 'owner' : 'member')
           };
-          roomSupabaseChannel.track(myData).catch(() => {});
-          sendSignal({ type: 'peer-joined', clientId: state.clientId, userId: state.userId, username: state.username, avatar: myData.avatar });
+          state._lastTrackedPresenceSnap = `${myData.username}|${myData.avatar}|${myData.isMicOn}|${myData.isCamOn}|${myData.role}`;
+          thisChannel.track(myData).catch(() => {});
+          sendSignal({
+            type: 'peer-joined',
+            clientId: state.clientId,
+            userId: state.userId,
+            username: state.username,
+            avatar: myData.avatar,
+            isMicOn: !!state.isMicOn,
+            isCamOn: !!state.isCamOn
+          });
           broadcastMyMediaStatus();
           if (!state.isHost) {
             setTimeout(() => {
@@ -3395,62 +3424,39 @@ function handleSignalMessage(msg) {
       showToast(`${joinedName} odaya katıldı`);
 
       const isInitiator = String(state.clientId) < String(remoteKey);
+      let joinedPeerEntry = null;
       if (typeof getOrCreatePeerConnection === 'function') {
-        getOrCreatePeerConnection(remoteKey, isInitiator, { clientId: msg.clientId || remoteKey, userId: msg.userId });
+        joinedPeerEntry = getOrCreatePeerConnection(remoteKey, isInitiator, {
+          clientId: msg.clientId || remoteKey,
+          userId: msg.userId,
+          username: joinedName,
+          avatar: msg.avatar || ''
+        });
       } else {
         if (isInitiator) initiateWebRTC(true);
         else setupWebRTC();
       }
       broadcastMyMediaStatus();
 
-      // If we already have camera or mic on, ensure tracks are attached and sent to the newcomer immediately
-      let peerRenegotiate = false;
-      if (state.isCamOn && state.localStream && state.pc) {
-        try {
+      // If we already have camera or mic on and the peer connection has already completed initial negotiation, attach tracks cleanly
+      if (joinedPeerEntry && joinedPeerEntry.pc && joinedPeerEntry.pc.remoteDescription && joinedPeerEntry.pc.signalingState === 'stable') {
+        let peerRenegotiate = false;
+        if (state.isCamOn && state.localStream) {
           const vTrack = state.localStream.getVideoTracks().find(t => t.readyState === 'live');
-          if (vTrack) {
-            const transceivers = state.pc.getTransceivers ? state.pc.getTransceivers() : [];
-            const vt = transceivers.find(t => 
-              (t.receiver && t.receiver.track && t.receiver.track.kind === 'video') ||
-              (t.sender && t.sender.track && t.sender.track.kind === 'video')
-            );
-            if (vt) {
-              if (vt.direction !== 'sendrecv') vt.direction = 'sendrecv';
-              if (vt.sender && typeof vt.sender.replaceTrack === 'function') {
-                vt.sender.replaceTrack(vTrack).catch(() => {});
-              }
-            } else {
-              state.pc.addTrack(vTrack, state.localStream);
-            }
-            peerRenegotiate = true;
+          if (vTrack && typeof attachTrackToPeer === 'function') {
+            attachTrackToPeer(joinedPeerEntry.pc, vTrack, state.localStream).then(r => {
+              if (r && r.needsReneg) renegotiatePeerWebRTC(remoteKey);
+            }).catch(() => {});
           }
-        } catch (_) {}
-      }
-      if (state.isMicOn && state.localStream && state.pc) {
-        try {
+        }
+        if (state.isMicOn && state.localStream) {
           const aTrack = state.localStream.getAudioTracks().find(t => t.readyState === 'live');
-          if (aTrack) {
-            const transceivers = state.pc.getTransceivers ? state.pc.getTransceivers() : [];
-            const at = transceivers.find(t => 
-              (t.receiver && t.receiver.track && t.receiver.track.kind === 'audio') ||
-              (t.sender && t.sender.track && t.sender.track.kind === 'audio')
-            );
-            if (at) {
-              if (at.direction !== 'sendrecv') at.direction = 'sendrecv';
-              if (at.sender && typeof at.sender.replaceTrack === 'function') {
-                at.sender.replaceTrack(aTrack).catch(() => {});
-              }
-            } else {
-              state.pc.addTrack(aTrack, state.localStream);
-            }
-            peerRenegotiate = true;
+          if (aTrack && typeof attachTrackToPeer === 'function') {
+            attachTrackToPeer(joinedPeerEntry.pc, aTrack, state.localStream).then(r => {
+              if (r && r.needsReneg) renegotiatePeerWebRTC(remoteKey);
+            }).catch(() => {});
           }
-        } catch (_) {}
-      }
-      if (peerRenegotiate) {
-        setTimeout(() => {
-          if (typeof renegotiateWebRTC === 'function') renegotiateWebRTC();
-        }, 300);
+        }
       }
       if (state.isHost) {
         const hostUserObj = JSON.parse(localStorage.getItem('miruo_user') || '{}');
@@ -3480,7 +3486,7 @@ function handleSignalMessage(msg) {
           sendP2PData('sync', {
             action: 'full_sync',
             videoId: state.currentVideoId,
-            time: state.currentTime,
+            time: (typeof getLivePlayerTime === 'function' ? getLivePlayerTime() : state.currentTime),
             isPlaying: state.isPlaying,
             rate: state.playbackRate || 1.0,
             sentAt: Date.now()
@@ -3498,7 +3504,9 @@ function handleSignalMessage(msg) {
         Object.keys(msg.roster).forEach(uid => {
           const entry = msg.roster[uid];
           if (!entry) return;
-          const isSelf = entry.clientId ? (entry.clientId === state.clientId) : (entry.userId === state.userId && !entry.clientId);
+          const isSelf = typeof isSelfMember === 'function'
+            ? isSelfMember(entry)
+            : (entry.clientId ? (entry.clientId === state.clientId) : (entry.userId === state.userId && !entry.clientId));
           if (isSelf) return;
 
           const existingKey = Object.keys(state.participants).find(k => {
@@ -3513,17 +3521,21 @@ function handleSignalMessage(msg) {
             displayUsername = `${state.username} (Cihaz 2)`;
           }
 
-          state.participants[existingKey] = Object.assign(state.participants[existingKey] || {}, entry, {
+          const existingPart = state.participants[existingKey] || {};
+          const keepRecentStatus = existingPart.mediaStatusAt && (Date.now() - existingPart.mediaStatusAt < 15000);
+          state.participants[existingKey] = Object.assign({}, existingPart, entry, {
             clientId: entry.clientId || existingKey,
             userId: entry.userId || existingKey,
             username: displayUsername,
+            isMicOn: keepRecentStatus ? Boolean(existingPart.isMicOn) : Boolean(entry.isMicOn),
+            isCamOn: keepRecentStatus ? Boolean(existingPart.isCamOn) : Boolean(entry.isCamOn),
             isSelf: false
           });
 
           // Ensure WebRTC peer connection exists for this roster member
           const isInitiator = String(state.clientId) < String(existingKey);
           if (typeof getOrCreatePeerConnection === 'function') {
-            getOrCreatePeerConnection(existingKey, isInitiator, { clientId: entry.clientId || existingKey, userId: entry.userId });
+            getOrCreatePeerConnection(existingKey, isInitiator, { clientId: entry.clientId || existingKey, userId: entry.userId, username: displayUsername, avatar: entry.avatar });
           }
         });
         renderParticipantsList();
@@ -3787,23 +3799,66 @@ function attachRemoteAudioStream() {
 }
 window.attachRemoteAudioStream = attachRemoteAudioStream;
 
+// Helper: Authoritative self-identification across devices (allows same-account multi-device testing)
+function isSelfMember(p) {
+  if (!p) return false;
+  if (p.isSelf === true) return true;
+  if (p.clientId && state.clientId) return String(p.clientId) === String(state.clientId);
+  if (p.peerId && state.clientId && String(p.peerId).startsWith('cl_')) return String(p.peerId) === String(state.clientId);
+  if (!p.clientId && p.userId && state.userId) return String(p.userId) === String(state.userId);
+  return false;
+}
+window.isSelfMember = isSelfMember;
+
+function getBestRemoteStream(stream) {
+  if (!stream || typeof stream.getVideoTracks !== 'function') return null;
+  const vTracks = stream.getVideoTracks();
+  const liveUnmuted = vTracks.find(t => t.readyState === 'live' && !t.muted);
+  const liveAny = liveUnmuted || vTracks.find(t => t.readyState === 'live') || vTracks[0];
+  if (!liveAny) return stream;
+  // If stream has multiple video tracks (e.g. from renegotiations), ensure the active track is first or return stream
+  if (vTracks.length > 1 && liveUnmuted && vTracks[0] !== liveUnmuted) {
+    const aTracks = typeof stream.getAudioTracks === 'function' ? stream.getAudioTracks().filter(t => t.readyState === 'live') : [];
+    return new MediaStream([liveUnmuted, ...aTracks]);
+  }
+  return stream;
+}
+window.getBestRemoteStream = getBestRemoteStream;
+
+function kickStalledVideo(v) {
+  if (!v || !v.srcObject) return;
+  try {
+    const s = v.srcObject;
+    const vt = s.getVideoTracks && (s.getVideoTracks().find(t => t.readyState === 'live' && !t.muted) || s.getVideoTracks().find(t => t.readyState === 'live'));
+    if (vt && v.videoWidth === 0) {
+      const now = Date.now();
+      if (!v._lastKickAt || (now - v._lastKickAt) > 1200) {
+        v._lastKickAt = now;
+        v.srcObject = null;
+        v.srcObject = getBestRemoteStream(s) || s;
+        v.play().catch(() => {});
+      }
+    }
+  } catch (_) {}
+}
+
 function attachRemoteStreamToPartnerVideo(preferredMember = null) {
   if (!dom.partnerVideo) return;
 
-  const targetPeerId = state.activePipPeerId || state.peerId;
+  const targetPeerId = (preferredMember && (preferredMember.clientId || preferredMember.userId)) || state.activePipPeerId || state.peerId;
   let remoteTrack = null;
   let sourceStream = (preferredMember && preferredMember.stream) || null;
 
-  if (!sourceStream && targetPeerId) {
-    const peer = (state.peers && (state.peers[targetPeerId] || Object.values(state.peers).find(p => p.clientId === targetPeerId || p.userId === targetPeerId)));
-    if (peer && peer.stream) sourceStream = peer.stream;
-  }
   if (!sourceStream && preferredMember) {
     if (preferredMember.clientId && state.peers && state.peers[preferredMember.clientId] && state.peers[preferredMember.clientId].stream) {
       sourceStream = state.peers[preferredMember.clientId].stream;
     } else if (preferredMember.userId && state.peers && state.peers[preferredMember.userId] && state.peers[preferredMember.userId].stream) {
       sourceStream = state.peers[preferredMember.userId].stream;
     }
+  }
+  if (!sourceStream && targetPeerId) {
+    const peer = (state.peers && (state.peers[targetPeerId] || Object.values(state.peers).find(p => p.clientId === targetPeerId || p.userId === targetPeerId)));
+    if (peer && peer.stream) sourceStream = peer.stream;
   }
   if (!sourceStream && targetPeerId && state.participants && state.participants[targetPeerId] && state.participants[targetPeerId].stream) {
     sourceStream = state.participants[targetPeerId].stream;
@@ -3817,13 +3872,12 @@ function attachRemoteStreamToPartnerVideo(preferredMember = null) {
   }
 
   if (sourceStream) {
-    remoteTrack = sourceStream.getVideoTracks().find(t => t.readyState === 'live') || sourceStream.getVideoTracks()[0];
+    const vTracks = sourceStream.getVideoTracks();
+    remoteTrack = vTracks.find(t => t.readyState === 'live' && !t.muted) || vTracks.find(t => t.readyState === 'live') || vTracks[0];
   }
 
   if (sourceStream && remoteTrack) {
-    if (!state.remoteStream || !state.remoteStream.getVideoTracks().includes(remoteTrack)) {
-      state.remoteStream = new MediaStream([remoteTrack]);
-    }
+    state.remoteStream = sourceStream;
     dom.partnerVideo.playsInline = true;
     dom.partnerVideo.muted = true;
     dom.partnerVideo.defaultMuted = true;
@@ -3833,14 +3887,19 @@ function attachRemoteStreamToPartnerVideo(preferredMember = null) {
     dom.partnerVideo.setAttribute('muted', '');
     dom.partnerVideo.setAttribute('autoplay', 'true');
 
-    // Video-only stream prevents WebKit autoplay policy blocks on iOS
-    const vidOnlyStream = new MediaStream([remoteTrack]);
-    dom.partnerVideo.srcObject = vidOnlyStream;
+    const bestStream = getBestRemoteStream(sourceStream) || sourceStream;
+    const currentTracks = dom.partnerVideo.srcObject && dom.partnerVideo.srcObject.getVideoTracks ? dom.partnerVideo.srcObject.getVideoTracks() : [];
+    if (dom.partnerVideo.srcObject !== bestStream && !currentTracks.includes(remoteTrack)) {
+      dom.partnerVideo.srcObject = bestStream;
+    }
 
     const p = dom.partnerVideo.play();
     if (p && p.catch) p.catch(() => {});
     remoteTrack.onunmute = () => {
-      if (dom.partnerVideo) dom.partnerVideo.play().catch(() => {});
+      if (dom.partnerVideo) {
+        dom.partnerVideo.srcObject = getBestRemoteStream(sourceStream) || sourceStream;
+        dom.partnerVideo.play().catch(() => {});
+      }
       checkPartnerVideo();
     };
     remoteTrack.onmute = () => {
@@ -3850,9 +3909,12 @@ function attachRemoteStreamToPartnerVideo(preferredMember = null) {
 
   const checkPartnerVideo = () => {
     if (!dom.partnerVideo) return;
-    const hasLiveTrack = remoteTrack && remoteTrack.readyState === 'live' && !remoteTrack.muted;
-    const hasActiveFrames = (dom.partnerVideo.videoWidth > 0 && !dom.partnerVideo.paused) || hasLiveTrack;
-    if (hasActiveFrames) {
+    if (sourceStream) {
+      const vTracks = sourceStream.getVideoTracks();
+      remoteTrack = vTracks.find(t => t.readyState === 'live' && !t.muted) || vTracks.find(t => t.readyState === 'live') || remoteTrack;
+    }
+    const hasDecodedFrames = dom.partnerVideo.videoWidth > 0 && dom.partnerVideo.readyState >= 2;
+    if (hasDecodedFrames) {
       if (dom.partnerVideoPlaceholder) {
         dom.partnerVideoPlaceholder.classList.add('hidden');
         dom.partnerVideoPlaceholder.style.display = 'none';
@@ -3862,8 +3924,9 @@ function attachRemoteStreamToPartnerVideo(preferredMember = null) {
         dom.partnerVideoPlaceholder.classList.remove('hidden');
         dom.partnerVideoPlaceholder.style.removeProperty('display');
       }
-      if (dom.partnerVideo.paused && dom.partnerVideo.srcObject) {
-        dom.partnerVideo.play().catch(() => {});
+      if (dom.partnerVideo.srcObject) {
+        if (dom.partnerVideo.paused) dom.partnerVideo.play().catch(() => {});
+        kickStalledVideo(dom.partnerVideo);
       }
     }
   };
@@ -3873,9 +3936,10 @@ function attachRemoteStreamToPartnerVideo(preferredMember = null) {
   dom.partnerVideo.oncanplay = checkPartnerVideo;
   dom.partnerVideo.onplaying = checkPartnerVideo;
   dom.partnerVideo.ontimeupdate = checkPartnerVideo;
+  dom.partnerVideo.onresize = checkPartnerVideo;
 
   if (window._partnerVideoPollInterval) clearInterval(window._partnerVideoPollInterval);
-  window._partnerVideoPollInterval = setInterval(checkPartnerVideo, 400);
+  window._partnerVideoPollInterval = setInterval(checkPartnerVideo, 350);
   checkPartnerVideo();
 }
 window.attachRemoteStreamToPartnerVideo = attachRemoteStreamToPartnerVideo;
@@ -3889,34 +3953,21 @@ function renderStagePipCards() {
   const seenCamKeys = new Set();
   if (state.clientId) seenCamKeys.add(String(state.clientId).toLowerCase());
 
-  // Ensure every active peer with a live video track is included in state.participants
+  // Link streams from state.peers onto matching state.participants entries (without falsely marking empty transceivers as isCamOn=true)
   if (state.peers) {
     Object.entries(state.peers).forEach(([pId, peerObj]) => {
       if (!peerObj || !peerObj.stream) return;
-      const vTracks = peerObj.stream.getVideoTracks().filter(t => t.readyState === 'live');
-      if (vTracks.length === 0) return;
       const pKey = peerObj.clientId || peerObj.userId || pId;
       if (state.clientId && (pKey === state.clientId || peerObj.clientId === state.clientId)) return;
-      if (state.userId && (pKey === state.userId || peerObj.userId === state.userId)) return;
 
       let p = state.participants[pKey] || Object.values(state.participants || {}).find(part => 
-        (peerObj.clientId && part.clientId === peerObj.clientId) || 
-        (peerObj.userId && part.userId === peerObj.userId) ||
-        (pId && (part.clientId === pId || part.userId === pId))
+        !isSelfMember(part) && (
+          (peerObj.clientId && part.clientId === peerObj.clientId) || 
+          (!peerObj.clientId && peerObj.userId && part.userId === peerObj.userId) ||
+          (pId && (part.clientId === pId || part.userId === pId))
+        )
       );
-      if (!p) {
-        p = {
-          userId: peerObj.userId || pId,
-          clientId: peerObj.clientId || pId,
-          username: peerObj.username || 'Katılımcı',
-          avatar: peerObj.avatar || '',
-          isMicOn: false,
-          isCamOn: true,
-          stream: peerObj.stream
-        };
-        state.participants[pKey] = p;
-      } else {
-        p.isCamOn = true;
+      if (p) {
         if (!p.stream || p.stream !== peerObj.stream) p.stream = peerObj.stream;
       }
     });
@@ -3924,18 +3975,15 @@ function renderStagePipCards() {
 
   const activeCamMembers = [];
   Object.values(state.participants || {}).forEach(p => {
-    if (!p) return;
-    const isSelf = p.clientId ? (p.clientId === state.clientId) : (p.userId === state.userId && !p.clientId);
-    if (isSelf) return;
+    if (!p || isSelfMember(p)) return;
 
     const pStream = p.stream || 
                     (p.clientId && state.peers?.[p.clientId]?.stream) ||
                     (p.userId && state.peers?.[p.userId]?.stream) ||
                     (p.userId === state.peerId || p.clientId === state.peerId ? state.remoteStream : null);
 
-    const hasLiveVideo = pStream && pStream.getVideoTracks().some(t => t.readyState === 'live');
-    if (!p.isCamOn && !hasLiveVideo) return;
-    if (hasLiveVideo && !p.isCamOn) p.isCamOn = true;
+    // Only show circular PIP bubble when participant actually has their camera ON
+    if (p.isCamOn !== true) return;
 
     const uKey = String(p.clientId || (p.userId ? p.userId + '_pip' : p.username) || '').toLowerCase();
     if (!uKey || seenCamKeys.has(uKey)) return;
@@ -3980,7 +4028,7 @@ function renderStagePipCards() {
   });
 
   remainingMembers.forEach((m, idx) => {
-    const mKey = (m.userId || m.clientId || m.username || '').toLowerCase();
+    const mKey = (m.clientId || m.userId || m.username || '').toLowerCase();
     const isDismissed = !!(state.dismissedPips[mKey] || (m.userId && state.dismissedPips[m.userId]) || (m.clientId && state.dismissedPips[m.clientId]));
     let card = existingExtraCards[mKey];
 
@@ -4049,22 +4097,24 @@ function renderStagePipCards() {
       vid.setAttribute('webkit-playsinline', 'true');
       vid.setAttribute('muted', '');
       vid.setAttribute('autoplay', 'true');
-      if (vid.srcObject !== peerStream) vid.srcObject = peerStream;
+      const bestS = getBestRemoteStream(peerStream) || peerStream;
+      if (vid.srcObject !== bestS) vid.srcObject = bestS;
       vid.play().catch(() => {});
       const checkF = () => {
-        const vTrack = peerStream && peerStream.getVideoTracks().find(t => t.readyState === 'live');
-        const hasLive = (vid.videoWidth > 0 && !vid.paused) || (vTrack && !vTrack.muted);
+        const hasLive = vid.videoWidth > 0 && vid.readyState >= 2;
         if (hasLive && ph) {
           ph.classList.add('hidden');
           ph.style.display = 'none';
-        } else if (ph && !vTrack) {
+        } else if (ph) {
           ph.classList.remove('hidden');
           ph.style.removeProperty('display');
+          kickStalledVideo(vid);
         }
       };
       vid.onloadedmetadata = checkF;
       vid.onplaying = checkF;
       vid.oncanplay = checkF;
+      vid.onresize = checkF;
       checkF();
     }
     delete existingExtraCards[mKey];
@@ -4078,27 +4128,6 @@ window.renderStagePipCards = renderStagePipCards;
 // Lay out all visible camera bubbles side by side in one row on the stage (unless the user dragged one manually)
 function arrangePipsRow() {
   return;
-  const stage = dom.stageContainer || document.getElementById('stageContainer');
-  if (!stage) return;
-  const cards = [];
-  if (dom.selfPipCard) cards.push(dom.selfPipCard);
-  if (dom.partnerPipCard) cards.push(dom.partnerPipCard);
-  document.querySelectorAll('.remote-extra-pip').forEach(el => cards.push(el));
-  const visible = cards.filter(c => c && !c.classList.contains('hidden'));
-  let x = 12;
-  const stageW = stage.clientWidth || 600;
-  let y = 12;
-  visible.forEach(c => {
-    const w = c.offsetWidth || 112;
-    const h = c.offsetHeight || 112;
-    if (c.classList.contains('pip-custom-pos')) return; // user moved it, keep their position
-    if (x + w > stageW - 8 && x > 12) { x = 12; y += h + 10; }
-    c.style.setProperty('right', 'auto', 'important');
-    c.style.setProperty('bottom', 'auto', 'important');
-    c.style.setProperty('left', x + 'px', 'important');
-    c.style.setProperty('top', y + 'px', 'important');
-    x += w + 10;
-  });
 }
 window.arrangePipsRow = arrangePipsRow;
 
@@ -4108,7 +4137,7 @@ function playPeerAudio(peerId, stream) {
   if (aTracks.length === 0) return;
 
   const peerObj = (state.peers && (state.peers[peerId] || Object.values(state.peers).find(p => p.clientId === peerId || p.userId === peerId)));
-  const canonicalId = (peerObj && (peerObj.userId || peerObj.clientId)) || peerId;
+  const canonicalId = (peerObj && (peerObj.clientId || peerObj.userId)) || peerId;
   const safeId = String(canonicalId).replace(/[^a-zA-Z0-9_-]/g, '_');
 
   let el = document.getElementById('remoteVoiceAudio_' + safeId);
@@ -4130,11 +4159,10 @@ function playPeerAudio(peerId, stream) {
     document.body.appendChild(el);
   }
 
-  // If already playing this track, don't re-create srcObject which disrupts active audio graph
+  const bestAudioTrack = aTracks.find(t => !t.muted) || aTracks[aTracks.length - 1];
   if (el.srcObject) {
     const activeTracks = el.srcObject.getAudioTracks ? el.srcObject.getAudioTracks() : [];
-    const hasLive = activeTracks.some(t => aTracks.includes(t) && t.readyState === 'live');
-    if (hasLive) {
+    if (activeTracks.includes(bestAudioTrack) && bestAudioTrack.readyState === 'live') {
       el.muted = false;
       el.volume = 1.0;
       if (el.paused) el.play().catch(() => {});
@@ -4143,7 +4171,7 @@ function playPeerAudio(peerId, stream) {
   }
 
   // Dedicated audio MediaStream forces WebKit & Chromium to build an active audio decode graph
-  const audioOnlyStream = new MediaStream(aTracks);
+  const audioOnlyStream = new MediaStream([bestAudioTrack]);
   el.srcObject = audioOnlyStream;
   el.muted = false;
   el.defaultMuted = false;
@@ -4171,7 +4199,10 @@ function playPeerAudio(peerId, stream) {
   tryPlay();
 
   aTracks.forEach(tr => {
-    tr.onunmute = tryPlay;
+    tr.onunmute = () => {
+      playPeerAudio(peerId, stream);
+      tryPlay();
+    };
   });
 
   el.onpause = () => {
@@ -4232,17 +4263,97 @@ function getPeerEntry(id) {
 }
 window.getPeerEntry = getPeerEntry;
 
+// Canonical transceiver selector: always prefers the negotiated (mid !== null) transceiver for the given kind
+function getCanonicalTransceiver(pc, kind) {
+  if (!pc || typeof pc.getTransceivers !== 'function') return null;
+  const transceivers = pc.getTransceivers().filter(tr => {
+    if (!tr || tr.stopped || tr.currentDirection === 'stopped') return false;
+    const rKind = tr.receiver && tr.receiver.track && tr.receiver.track.kind;
+    const sKind = tr.sender && tr.sender.track && tr.sender.track.kind;
+    return rKind === kind || sKind === kind;
+  });
+  if (transceivers.length === 0) return null;
+  return transceivers.find(tr => tr.mid !== null && tr.mid !== undefined) || transceivers[0];
+}
+window.getCanonicalTransceiver = getCanonicalTransceiver;
+
+// Pre-allocate audio & video sendrecv transceivers on the initiator only (per W3C Unified Plan)
+function ensureSendRecvTransceivers(pc) {
+  if (!pc || typeof pc.addTransceiver !== 'function') return;
+  try {
+    let at = getCanonicalTransceiver(pc, 'audio');
+    if (!at) {
+      at = pc.addTransceiver('audio', { direction: 'sendrecv' });
+    } else if (at.direction !== 'sendrecv') {
+      at.direction = 'sendrecv';
+    }
+    let vt = getCanonicalTransceiver(pc, 'video');
+    if (!vt) {
+      vt = pc.addTransceiver('video', { direction: 'sendrecv' });
+      try {
+        if (typeof RTCRtpSender !== 'undefined' && typeof RTCRtpSender.getCapabilities === 'function') {
+          const caps = RTCRtpSender.getCapabilities('video');
+          if (caps && caps.codecs) {
+            const h264 = caps.codecs.filter(c => (c.mimeType || '').toLowerCase() === 'video/h264');
+            const others = caps.codecs.filter(c => (c.mimeType || '').toLowerCase() !== 'video/h264');
+            if (h264.length > 0 && typeof vt.setCodecPreferences === 'function') {
+              vt.setCodecPreferences([...h264, ...others]);
+            }
+          }
+        }
+      } catch (_) {}
+    } else if (vt.direction !== 'sendrecv') {
+      vt.direction = 'sendrecv';
+    }
+  } catch (_) {}
+}
+window.ensureSendRecvTransceivers = ensureSendRecvTransceivers;
+
+async function attachTrackToPeer(pc, track, stream) {
+  if (!pc || pc.signalingState === 'closed' || !track) return { needsReneg: false };
+  let needsReneg = false;
+  try {
+    const tr = getCanonicalTransceiver(pc, track.kind);
+    if (tr) {
+      if (tr.direction !== 'sendrecv') {
+        tr.direction = 'sendrecv';
+      }
+      if (tr.currentDirection !== 'sendrecv') {
+        needsReneg = true;
+      }
+      if (tr.sender && typeof tr.sender.replaceTrack === 'function') {
+        await tr.sender.replaceTrack(track);
+      }
+      if (track.kind === 'video' && tr.sender && typeof optimizeVideoSender === 'function') {
+        optimizeVideoSender(tr.sender);
+      }
+    } else if (pc.remoteDescription || pc.localDescription) {
+      const sender = pc.addTrack(track, stream || state.localStream || new MediaStream([track]));
+      if (track.kind === 'video' && sender && typeof optimizeVideoSender === 'function') {
+        optimizeVideoSender(sender);
+      }
+      needsReneg = true;
+    }
+  } catch (err) {
+    console.warn('[Miruo] attachTrackToPeer warning:', err);
+  }
+  return { needsReneg };
+}
+window.attachTrackToPeer = attachTrackToPeer;
+
 function getOrCreatePeerConnection(peerId, isInitiator, meta = {}) {
   if (!peerId) peerId = state.peerId || 'remote_peer';
   if (!state.peers) state.peers = {};
 
-  let existing = getPeerEntry(peerId) || (meta.clientId && getPeerEntry(meta.clientId)) || (meta.userId && getPeerEntry(meta.userId));
+  let existing = getPeerEntry(peerId) || (meta.clientId && getPeerEntry(meta.clientId));
   if (existing && existing.pc && existing.pc.signalingState !== 'closed') {
     if (meta.clientId) existing.clientId = meta.clientId;
     if (meta.userId) existing.userId = meta.userId;
+    if (meta.username) existing.username = meta.username;
+    if (meta.avatar) existing.avatar = meta.avatar;
     state.peers[peerId] = existing;
     if (existing.clientId) state.peers[existing.clientId] = existing;
-    if (existing.userId) state.peers[existing.userId] = existing;
+    if (existing.userId && existing.userId !== state.userId) state.peers[existing.userId] = existing;
     return existing;
   }
 
@@ -4251,6 +4362,8 @@ function getOrCreatePeerConnection(peerId, isInitiator, meta = {}) {
     peerId,
     clientId: meta.clientId || (peerId.startsWith('cl_') ? peerId : null),
     userId: meta.userId || (!peerId.startsWith('cl_') ? peerId : null),
+    username: meta.username || null,
+    avatar: meta.avatar || '',
     pc,
     dataChannel: null,
     stream: new MediaStream(),
@@ -4258,53 +4371,21 @@ function getOrCreatePeerConnection(peerId, isInitiator, meta = {}) {
   };
   state.peers[peerId] = peerEntry;
   if (peerEntry.clientId) state.peers[peerEntry.clientId] = peerEntry;
-  if (peerEntry.userId) state.peers[peerEntry.userId] = peerEntry;
+  if (peerEntry.userId && peerEntry.userId !== state.userId) state.peers[peerEntry.userId] = peerEntry;
 
-  // Pre-allocate audio & video transceivers in sendrecv mode with H.264 hardware priority (iOS Safari <-> Desktop)
-  try {
-    if (typeof pc.addTransceiver === 'function') {
-      const trans = pc.getTransceivers ? pc.getTransceivers() : [];
-      const hasAudio = trans.some(t => (t.receiver && t.receiver.track && t.receiver.track.kind === 'audio') || (t.sender && t.sender.track && t.sender.track.kind === 'audio'));
-      const hasVideo = trans.some(t => (t.receiver && t.receiver.track && t.receiver.track.kind === 'video') || (t.sender && t.sender.track && t.sender.track.kind === 'video'));
-      if (!hasAudio) pc.addTransceiver('audio', { direction: 'sendrecv' });
-      if (!hasVideo) {
-        const vt = pc.addTransceiver('video', { direction: 'sendrecv' });
-        try {
-          if (typeof RTCRtpSender.getCapabilities === 'function') {
-            const caps = RTCRtpSender.getCapabilities('video');
-            if (caps && caps.codecs) {
-              const h264 = caps.codecs.filter(c => (c.mimeType || '').toLowerCase() === 'video/h264');
-              const others = caps.codecs.filter(c => (c.mimeType || '').toLowerCase() !== 'video/h264');
-              if (h264.length > 0 && typeof vt.setCodecPreferences === 'function') {
-                vt.setCodecPreferences([...h264, ...others]);
-              }
-            }
-          }
-        } catch (_) {}
-      }
-    }
-  } catch (_) {}
-
-  // Attach local tracks if available
-  if (state.localStream) {
-    state.localStream.getTracks().forEach(track => {
-      if (track.readyState !== 'live') return;
-      try {
-        const transceivers = pc.getTransceivers ? pc.getTransceivers() : [];
-        const t = transceivers.find(tr =>
-          (tr.receiver && tr.receiver.track && tr.receiver.track.kind === track.kind) ||
-          (tr.sender && tr.sender.track && tr.sender.track.kind === track.kind)
-        );
-        if (t) {
-          if (t.direction !== 'sendrecv') t.direction = 'sendrecv';
-          if (t.sender && typeof t.sender.replaceTrack === 'function') {
-            t.sender.replaceTrack(track).catch(() => {});
-          }
-        } else {
-          pc.addTrack(track, state.localStream);
+  // IMPORTANT (W3C Unified Plan): Only pre-allocate transceivers on the initiator!
+  // On the answerer, setRemoteDescription(offer) automatically creates associated transceivers for the offer's m= sections.
+  if (isInitiator) {
+    ensureSendRecvTransceivers(pc);
+    if (state.localStream) {
+      state.localStream.getTracks().forEach(track => {
+        if (track.readyState !== 'live') return;
+        const tr = getCanonicalTransceiver(pc, track.kind);
+        if (tr && tr.sender && typeof tr.sender.replaceTrack === 'function') {
+          tr.sender.replaceTrack(track).catch(() => {});
         }
-      } catch (_) {}
-    });
+      });
+    }
   }
 
   pc.onicecandidate = (event) => {
@@ -4324,22 +4405,23 @@ function getOrCreatePeerConnection(peerId, isInitiator, meta = {}) {
     if (track && !peerEntry.stream.getTracks().includes(track)) {
       peerEntry.stream.addTrack(track);
     }
-    let matchingP = state.participants[peerId] || 
-                    Object.values(state.participants).find(p => (peerEntry.clientId && p.clientId === peerEntry.clientId) || (peerEntry.userId && p.userId === peerEntry.userId));
+
+    const pKey = peerEntry.clientId || peerEntry.userId || peerId;
+    let matchingP = state.participants[pKey] ||
+                    state.participants[peerId] ||
+                    Object.values(state.participants || {}).find(p => !isSelfMember(p) && ((peerEntry.clientId && p.clientId === peerEntry.clientId) || (!peerEntry.clientId && peerEntry.userId && p.userId === peerEntry.userId)));
     if (!matchingP) {
-      const fallbackP = Object.values(state.participants).find(p => {
-        const isSelf = p.clientId ? (p.clientId === state.clientId) : (p.userId === state.userId && !p.clientId);
-        return !isSelf;
-      });
-      const pKey = peerEntry.clientId || peerEntry.userId || peerId;
+      const fallbackP = Object.values(state.participants || {}).find(p => !isSelfMember(p));
       matchingP = {
-        userId: peerEntry.userId || (fallbackP && fallbackP.userId) || peerId,
-        clientId: peerEntry.clientId || (fallbackP && fallbackP.clientId) || peerId,
+        peerId: pKey,
+        userId: peerEntry.userId || (fallbackP && fallbackP.userId) || pKey,
+        clientId: peerEntry.clientId || (fallbackP && fallbackP.clientId) || pKey,
         username: (fallbackP && fallbackP.username) || peerEntry.username || 'Katılımcı',
-        avatar: (fallbackP && fallbackP.avatar) || '',
+        avatar: (fallbackP && fallbackP.avatar) || peerEntry.avatar || '',
         isMicOn: false,
         isCamOn: false,
         role: 'member',
+        isSelf: false,
         stream: peerEntry.stream
       };
       state.participants[pKey] = matchingP;
@@ -4347,11 +4429,11 @@ function getOrCreatePeerConnection(peerId, isInitiator, meta = {}) {
       matchingP.stream = peerEntry.stream;
     }
 
-    if (track.kind === 'audio') {
-      matchingP.isMicOn = true;
+    if (!state.peerId || state.peerId === peerId || state.peerId === pKey) {
+      state.peerId = pKey;
+      state.remoteStream = peerEntry.stream;
     }
 
-    const hasVideo = track.kind === 'video' || peerEntry.stream.getVideoTracks().length > 0;
     const isScreenTrack = track.label.toLowerCase().includes('screen') ||
                          track.label.toLowerCase().includes('display') ||
                          track.contentHint === 'detail';
@@ -4364,60 +4446,45 @@ function getOrCreatePeerConnection(peerId, isInitiator, meta = {}) {
         dom.nativeVideoPlayer.classList.add('hidden');
         dom.emptyStatePlaceholder.classList.add('hidden');
       }
-    } else if (hasVideo) {
-      const activateCam = () => {
-        let currentP = state.participants[peerId] || 
-                       Object.values(state.participants || {}).find(p => (peerEntry.clientId && p.clientId === peerEntry.clientId) || (peerEntry.userId && p.userId === peerEntry.userId)) ||
+    } else if (track.kind === 'video') {
+      const syncVideoTrackState = (fromUnmute = false) => {
+        let currentP = state.participants[pKey] ||
+                       state.participants[peerId] ||
+                       Object.values(state.participants || {}).find(p => !isSelfMember(p) && ((peerEntry.clientId && p.clientId === peerEntry.clientId) || (!peerEntry.clientId && peerEntry.userId && p.userId === peerEntry.userId))) ||
                        matchingP;
-        if (!currentP) {
-          const fallbackP = Object.values(state.participants || {}).find(p => {
-            const isSelf = p.clientId ? (p.clientId === state.clientId) : (p.userId === state.userId && !p.clientId);
-            return !isSelf;
-          });
-          const pKey = peerEntry.clientId || peerEntry.userId || peerId;
-          currentP = {
-            userId: peerEntry.userId || (fallbackP && fallbackP.userId) || peerId,
-            clientId: peerEntry.clientId || (fallbackP && fallbackP.clientId) || peerId,
-            username: (fallbackP && fallbackP.username) || peerEntry.username || 'Katılımcı',
-            avatar: (fallbackP && fallbackP.avatar) || '',
-            isMicOn: false,
-            isCamOn: true,
-            role: 'member',
-            stream: peerEntry.stream
-          };
-          state.participants[pKey] = currentP;
-        } else {
-          currentP.isCamOn = true;
+        if (currentP) {
           currentP.stream = peerEntry.stream;
-        }
-        peerEntry.isCamOn = true;
-        state.isPartnerCamOn = true;
-        state.dismissedPips = state.dismissedPips || {};
-        if (currentP.userId) state.dismissedPips[currentP.userId] = false;
-        if (currentP.clientId) state.dismissedPips[currentP.clientId] = false;
-        state.dismissedPips[peerId] = false;
-        if (typeof attachRemoteStreamToPartnerVideo === 'function') attachRemoteStreamToPartnerVideo(currentP);
-        if (typeof renderStagePipCards === 'function') renderStagePipCards();
-
-        if (!state.peerId || state.peerId === peerId) {
-          state.peerId = peerId;
-          state.remoteStream = peerEntry.stream;
+          const explicitlyOffRecently = (currentP.isCamOn === false) && currentP.mediaStatusAt && (Date.now() - currentP.mediaStatusAt < 4000);
+          if (fromUnmute && !track.muted && !explicitlyOffRecently && !currentP.isCamOn) {
+            currentP.isCamOn = true;
+            state.dismissedPips = state.dismissedPips || {};
+            if (currentP.userId) state.dismissedPips[currentP.userId] = false;
+            if (currentP.clientId) state.dismissedPips[currentP.clientId] = false;
+            state.dismissedPips[pKey] = false;
+          }
+          if (currentP.isCamOn) {
+            if (typeof attachRemoteStreamToPartnerVideo === 'function') attachRemoteStreamToPartnerVideo(currentP);
+            if (typeof renderStagePipCards === 'function') renderStagePipCards();
+          }
         }
         if (typeof renderVideoGrid === 'function') renderVideoGrid();
         if (typeof clampPipCardsToStage === 'function') clampPipCardsToStage();
         updateBlockedMediaState();
       };
 
-      activateCam();
+      // Note: Do NOT mark isCamOn=true on initial ontrack of a muted pre-allocated transceiver!
+      // Only wire stream; when actual RTP video frames arrive, onunmute fires (or media_status arrives).
+      if (!track.muted && matchingP.isCamOn) {
+        syncVideoTrackState(false);
+      }
       track.onunmute = () => {
-        activateCam();
+        syncVideoTrackState(true);
       };
       track.onmute = () => {
         const anyLive = peerEntry.stream.getVideoTracks().some(t => t.readyState === 'live' && !t.muted);
         if (matchingP && !anyLive && !matchingP.isCamOn) {
           if (typeof renderStagePipCards === 'function') renderStagePipCards();
         }
-        if (typeof renderVideoGrid === 'function') renderVideoGrid();
       };
     }
 
@@ -4439,7 +4506,7 @@ function getOrCreatePeerConnection(peerId, isInitiator, meta = {}) {
   peerEntry.stuckTicks = 0;
   peerEntry.watchdog = setInterval(async () => {
     try {
-      if (!state.peers || state.peers[peerId] !== peerEntry || pc.signalingState === 'closed') {
+      if (!state.peers || (state.peers[peerId] !== peerEntry && (!peerEntry.clientId || state.peers[peerEntry.clientId] !== peerEntry)) || pc.signalingState === 'closed') {
         clearInterval(peerEntry.watchdog);
         return;
       }
@@ -4469,12 +4536,12 @@ function getOrCreatePeerConnection(peerId, isInitiator, meta = {}) {
     console.log(`[WebRTC Peer ${peerId}] State:`, cs);
     if (cs === 'connected') {
       try { broadcastMyMediaStatus(); } catch (_) {}
-      if (typeof renderVideoGrid === 'function') renderVideoGrid();
-      if (!state.peerId || state.peerId === peerId) {
+      if (!state.peerId || state.peerId === peerId || state.peerId === peerEntry.clientId) {
         showRoomConnectionStatus(false);
         attachRemoteStreamToPartnerVideo();
         attachRemoteAudioStream();
       }
+      if (typeof renderStagePipCards === 'function') renderStagePipCards();
     } else if (cs === 'disconnected' || cs === 'failed') {
       if (pc.restartIce) {
         try { pc.restartIce(); } catch (_) {}
@@ -4486,19 +4553,19 @@ function getOrCreatePeerConnection(peerId, isInitiator, meta = {}) {
     const ics = pc.iceConnectionState;
     console.log(`[WebRTC Peer ${peerId}] ICE:`, ics);
     if (ics === 'connected' || ics === 'completed') {
-      if (typeof renderVideoGrid === 'function') renderVideoGrid();
-      if (!state.peerId || state.peerId === peerId) {
+      if (!state.peerId || state.peerId === peerId || state.peerId === peerEntry.clientId) {
         showRoomConnectionStatus(false);
         attachRemoteStreamToPartnerVideo();
         attachRemoteAudioStream();
       }
+      if (typeof renderStagePipCards === 'function') renderStagePipCards();
     }
   };
 
   // Single-peer backward compatibility
   if (!state.pc || state.pc.signalingState === 'closed') {
     state.pc = pc;
-    state.peerId = peerId;
+    state.peerId = peerEntry.clientId || peerId;
     state.remoteStream = peerEntry.stream;
   }
 
@@ -4557,6 +4624,7 @@ async function restartPeerOffer(peerId) {
       return;
     }
     if (pc.signalingState !== 'stable') return;
+    ensureSendRecvTransceivers(pc);
     const offer = await pc.createOffer({ iceRestart: true });
     await pc.setLocalDescription(offer);
     sendSignal({
@@ -4625,26 +4693,6 @@ async function handleRtcOffer(offer, fromId, meta = {}) {
   const peer = getOrCreatePeerConnection(peerId, false, meta);
   const pc = peer.pc;
 
-  // Ensure local tracks are attached before answering
-  if (state.localStream && pc) {
-    const transceivers = pc.getTransceivers ? pc.getTransceivers() : [];
-    state.localStream.getTracks().forEach(track => {
-      if (track.readyState !== 'live') return;
-      const t = transceivers.find(tr => 
-        (tr.receiver && tr.receiver.track && tr.receiver.track.kind === track.kind) ||
-        (tr.sender && tr.sender.track && tr.sender.track.kind === track.kind)
-      );
-      if (t) {
-        if (t.direction !== 'sendrecv') t.direction = 'sendrecv';
-        if (t.sender && typeof t.sender.replaceTrack === 'function') {
-          t.sender.replaceTrack(track).catch(() => {});
-        }
-      } else {
-        try { pc.addTrack(track, state.localStream); } catch (_) {}
-      }
-    });
-  }
-
   // Symmetric polite peer collision handling
   const myId = String(state.clientId || state.userId || '');
   const remoteId = String(meta.clientId || peer.clientId || fromId || '');
@@ -4661,20 +4709,28 @@ async function handleRtcOffer(offer, fromId, meta = {}) {
   }
 
   try {
+    // 1. Apply remote offer FIRST so Unified Plan creates/associates the exact m= transceivers
     await pc.setRemoteDescription(new RTCSessionDescription(offer));
     flushPeerQueuedIceCandidates(peer.peerId);
+
+    // 2. Set associated transceivers to sendrecv and attach local tracks (if camera/mic already open)
     try {
-      pc.getTransceivers().forEach(tr => {
-        if (tr.stopped || tr.currentDirection === 'stopped' || !tr.mid) return;
-        const kind = (tr.receiver && tr.receiver.track && tr.receiver.track.kind) || null;
-        if (!kind) return;
+      const transceivers = pc.getTransceivers ? pc.getTransceivers() : [];
+      for (const tr of transceivers) {
+        if (!tr || tr.stopped || tr.currentDirection === 'stopped' || tr.mid === null || tr.mid === undefined) continue;
+        const kind = (tr.receiver && tr.receiver.track && tr.receiver.track.kind) ||
+                     (tr.sender && tr.sender.track && tr.sender.track.kind) || null;
+        if (!kind) continue;
         if (tr.direction !== 'sendrecv') tr.direction = 'sendrecv';
-        if (state.localStream && tr.sender && !tr.sender.track) {
+        if (state.localStream && tr.sender && typeof tr.sender.replaceTrack === 'function') {
           const lt = state.localStream.getTracks().find(t => t.kind === kind && t.readyState === 'live');
-          if (lt) tr.sender.replaceTrack(lt).catch(() => {});
+          if (lt && tr.sender.track !== lt) {
+            await tr.sender.replaceTrack(lt);
+          }
         }
-      });
+      }
     } catch (_) {}
+
     const answer = await pc.createAnswer();
     await pc.setLocalDescription(answer);
     sendSignal({
@@ -4684,17 +4740,21 @@ async function handleRtcOffer(offer, fromId, meta = {}) {
       answer: pc.localDescription
     });
 
-    const pKey = meta.clientId || meta.userId || peerId;
-    if (!state.participants[pKey] && pKey !== state.clientId && pKey !== state.userId) {
+    const pKey = meta.clientId || peer.clientId || meta.userId || peerId;
+    if (!state.participants[pKey] && pKey !== state.clientId) {
+      let dispName = meta.username || peer.username || (pKey.startsWith('cl_') ? 'Katılımcı' : pKey);
+      if (state.username && dispName.toLowerCase() === state.username.toLowerCase()) {
+        dispName = `${state.username} (Cihaz 2)`;
+      }
       state.participants[pKey] = {
         peerId: pKey,
-        clientId: meta.clientId || peerId,
-        userId: meta.userId || peerId,
-        username: meta.username || peer.username || (pKey.startsWith('cl_') ? 'Katılımcı' : pKey),
-        avatar: meta.avatar || '',
+        clientId: meta.clientId || peer.clientId || peerId,
+        userId: meta.userId || peer.userId || peerId,
+        username: dispName,
+        avatar: meta.avatar || peer.avatar || '',
         avatarColor: 'from-indigo-500 to-purple-600',
         isMicOn: false,
-        isCamOn: true,
+        isCamOn: false,
         role: 'member',
         isSelf: false,
         stream: peer.stream
@@ -4703,9 +4763,9 @@ async function handleRtcOffer(offer, fromId, meta = {}) {
       state.participants[pKey].stream = peer.stream;
     }
 
-    if (!state.peerId || state.peerId === peerId) {
+    if (!state.peerId || state.peerId === peerId || state.peerId === pKey) {
       state.pc = pc;
-      state.peerId = peerId;
+      state.peerId = pKey;
       state.remoteStream = peer.stream;
       if (typeof attachRemoteStreamToPartnerVideo === 'function') attachRemoteStreamToPartnerVideo();
       if (typeof attachRemoteAudioStream === 'function') attachRemoteAudioStream();
@@ -4729,23 +4789,27 @@ async function handleRtcAnswer(answer, fromId) {
       else flushQueuedIceCandidates();
 
       const pKey = (peer && (peer.clientId || peer.userId)) || peerId;
-      if (!state.participants[pKey] && pKey !== state.clientId && pKey !== state.userId) {
+      if (!state.participants[pKey] && pKey !== state.clientId) {
+        let dispName = (peer && peer.username) || (pKey.startsWith('cl_') ? 'Katılımcı' : pKey);
+        if (state.username && dispName.toLowerCase() === state.username.toLowerCase()) {
+          dispName = `${state.username} (Cihaz 2)`;
+        }
         state.participants[pKey] = {
           peerId: pKey,
           clientId: (peer && peer.clientId) || pKey,
           userId: (peer && peer.userId) || pKey,
-          username: (peer && peer.username) || (pKey.startsWith('cl_') ? 'Katılımcı' : pKey),
+          username: dispName,
           avatar: (peer && peer.avatar) || '',
           avatarColor: 'from-indigo-500 to-purple-600',
           isMicOn: false,
-          isCamOn: true,
+          isCamOn: false,
           role: 'member',
           isSelf: false,
           stream: peer ? peer.stream : null
         };
       }
 
-      if (!state.peerId || state.peerId === peerId) {
+      if (!state.peerId || state.peerId === peerId || state.peerId === pKey) {
         if (typeof attachRemoteStreamToPartnerVideo === 'function') attachRemoteStreamToPartnerVideo();
         if (typeof attachRemoteAudioStream === 'function') attachRemoteAudioStream();
       }
@@ -5283,8 +5347,16 @@ function loadYoutubeVideo(urlOrId, startPlaying = true, startTime = 0) {
             events: {
               onReady: (event) => {
                 state.ytReady = true;
+                if (typeof startTime === 'number' && startTime > 0) {
+                  try { event.target.seekTo(startTime, true); } catch (_) {}
+                }
+                if (state.playbackRate && state.playbackRate !== 1.0) {
+                  try { event.target.setPlaybackRate(state.playbackRate); } catch (_) {}
+                }
                 if (startPlaying) {
                   try { event.target.playVideo(); } catch (_) {}
+                } else {
+                  try { event.target.pauseVideo(); } catch (_) {}
                 }
               },
               onStateChange: (event) => {
@@ -5320,6 +5392,12 @@ function loadYoutubeVideo(urlOrId, startPlaying = true, startTime = 0) {
       }
 
       setTimeout(() => {
+        if (typeof startTime === 'number' && startTime > 0) {
+          sendYtCommand('seekTo', [startTime, true]);
+        }
+        if (state.playbackRate && state.playbackRate !== 1.0) {
+          sendYtCommand('setPlaybackRate', [state.playbackRate]);
+        }
         if (startPlaying) {
           sendYtCommand('playVideo');
           setTimeout(() => { if (state.isPlaying) sendYtCommand('playVideo'); }, 300);
@@ -5348,9 +5426,6 @@ function loadYoutubeVideo(urlOrId, startPlaying = true, startTime = 0) {
           }, 1800);
         } else {
           sendYtCommand('pauseVideo');
-          if (typeof startTime === 'number' && startTime > 0) {
-            sendYtCommand('seekTo', [startTime, true]);
-          }
         }
         try {
           const prefQuality = localStorage.getItem('miruo_preferred_quality') || 'auto';
@@ -5388,7 +5463,14 @@ function loadYoutubeVideo(urlOrId, startPlaying = true, startTime = 0) {
 
   // Send video change to peer with timestamp for zero-latency sync (guard against loopback)
   if (!state.isRemoteAction) {
-    sendP2PData('sync', { action: 'load_yt', videoId, sentAt: Date.now() });
+    sendP2PData('sync', {
+      action: 'load_yt',
+      videoId,
+      time: state.currentTime || 0,
+      isPlaying: state.isPlaying,
+      rate: state.playbackRate || 1.0,
+      sentAt: Date.now()
+    });
   }
   state.isRemoteAction = false;
   startPlaybackTracking();
@@ -5839,7 +5921,8 @@ function handleRemoteSync(payload) {
       else dom.nativeVideoPlayer.pause();
     }
     if (typeof payload.rate === 'number' && Math.abs((state.playbackRate || 1.0) - payload.rate) > 0.05) {
-      setPlayerPlaybackRate(payload.rate, false);
+      state.roomPlaybackRate = payload.rate;
+      if (typeof window.setPlayerPlaybackRate === 'function') window.setPlayerPlaybackRate(payload.rate, false);
     }
     return;
   }
@@ -5896,8 +5979,17 @@ function handleRemoteSync(payload) {
   }
 
   if (payload.action === 'load_yt') {
+    const startPlay = typeof payload.isPlaying === 'boolean' ? payload.isPlaying : true;
+    const startSec = typeof payload.time === 'number' ? payload.time : 0;
     if (state.currentVideoId !== payload.videoId) {
-      loadYoutubeVideo(payload.videoId);
+      loadYoutubeVideo(payload.videoId, startPlay, startSec);
+    } else if (startSec > 0) {
+      state.currentTime = startSec;
+      sendYtCommand('seekTo', [startSec, true]);
+    }
+    if (typeof payload.rate === 'number' && typeof window.setPlayerPlaybackRate === 'function') {
+      state.roomPlaybackRate = payload.rate;
+      window.setPlayerPlaybackRate(payload.rate, false);
     }
     const sender = payload.fromUser || payload.user;
     if (sender && sender !== state.username && (state.peerId || Object.keys(state.participants).length > 1)) {
@@ -5907,7 +5999,13 @@ function handleRemoteSync(payload) {
 
   if (payload.action === 'rate' || payload.action === 'speed') {
     const targetRate = typeof payload.rate === 'number' ? payload.rate : parseFloat(payload.rate) || 1.0;
-    setPlayerPlaybackRate(targetRate, false);
+    state.roomPlaybackRate = targetRate;
+    if (typeof window.setPlayerPlaybackRate === 'function') {
+      window.setPlayerPlaybackRate(targetRate, false);
+    } else {
+      state.playbackRate = targetRate;
+      sendYtCommand('setPlaybackRate', [targetRate]);
+    }
     showToast(`Oynatma Hızı: ${targetRate}x (${payload.by || 'Oda Sahibi'})`);
   }
 
@@ -6042,6 +6140,13 @@ function handleRemoteSync(payload) {
       }
 
       // Authoritative state is PLAYING (Direct zero-skew synchronization)
+      const hostRate = (typeof payload.rate === 'number' && payload.rate > 0) ? payload.rate : (state.roomPlaybackRate || state.playbackRate || 1.0);
+      if (typeof payload.rate === 'number' && payload.rate > 0) {
+        state.roomPlaybackRate = payload.rate;
+        if (Math.abs((state.playbackRate || 1.0) - hostRate) > 0.04 && typeof window.setPlayerPlaybackRate === 'function') {
+          window.setPlayerPlaybackRate(hostRate, false);
+        }
+      }
       const targetTime = typeof payload.time === 'number' ? payload.time : (state.currentTime || 0);
       const localTime = typeof getLivePlayerTime === 'function' ? getLivePlayerTime() : (state.currentTime || 0);
       const drift = targetTime - localTime; // positive: viewer behind host; negative: viewer ahead
@@ -6053,12 +6158,15 @@ function handleRemoteSync(payload) {
         updatePlayPauseUI(true);
         if (state.activeMode === 'youtube') {
           sendYtCommand('seekTo', [targetTime, true]);
+          sendYtCommand('setPlaybackRate', [hostRate]);
           sendYtCommand('playVideo');
         } else if (dom.nativeVideoPlayer) {
           dom.nativeVideoPlayer.currentTime = targetTime;
+          dom.nativeVideoPlayer.playbackRate = hostRate;
           dom.nativeVideoPlayer.play().catch(() => {});
         }
         state.currentTime = targetTime;
+        state.playbackRate = hostRate;
         return;
       }
 
@@ -6074,17 +6182,17 @@ function handleRemoteSync(payload) {
             state.lastHardSeekAt = now;
             if (state.activeMode === 'youtube') {
               sendYtCommand('seekTo', [targetTime, true]);
-              sendYtCommand('setPlaybackRate', [1.0]);
+              sendYtCommand('setPlaybackRate', [hostRate]);
             } else if (dom.nativeVideoPlayer) {
               dom.nativeVideoPlayer.currentTime = targetTime;
-              dom.nativeVideoPlayer.playbackRate = 1.0;
+              dom.nativeVideoPlayer.playbackRate = hostRate;
             }
             state.currentTime = targetTime;
-            state.playbackRate = 1.0;
+            state.playbackRate = hostRate;
           }
         }
-      } else if (absDrift > 0.20) {
-        // Micro drift (0.20s to 0.75s): speed up (1.25x) or slow down (0.75x) to seamlessly match host
+      } else if (absDrift > 0.25 && Math.abs(hostRate - 1.0) < 0.05) {
+        // Micro drift (0.25s to 0.75s) when host is at 1.0x: speed up (1.25x) or slow down (0.75x) to seamlessly match host
         const targetRate = drift > 0 ? 1.25 : 0.75;
         if (state.playbackRate !== targetRate) {
           if (state.activeMode === 'youtube') {
@@ -6095,14 +6203,14 @@ function handleRemoteSync(payload) {
           state.playbackRate = targetRate;
         }
       } else {
-        // In tight sync (< 0.20s): maintain standard 1.0x rate
-        if (state.playbackRate !== 1.0) {
+        // In tight sync (< 0.25s): maintain host's authoritative playback rate
+        if (Math.abs((state.playbackRate || 1.0) - hostRate) > 0.04) {
           if (state.activeMode === 'youtube') {
-            sendYtCommand('setPlaybackRate', [1.0]);
+            sendYtCommand('setPlaybackRate', [hostRate]);
           } else if (dom.nativeVideoPlayer) {
-            dom.nativeVideoPlayer.playbackRate = 1.0;
+            dom.nativeVideoPlayer.playbackRate = hostRate;
           }
-          state.playbackRate = 1.0;
+          state.playbackRate = hostRate;
         }
       }
     }
@@ -8592,41 +8700,17 @@ async function toggleMic() {
       const uniquePeers = getUniquePeerEntries();
       for (const peer of uniquePeers) {
         if (peer && peer.pc && peer.pc.signalingState !== 'closed') {
-          try {
-            const transceivers = peer.pc.getTransceivers ? peer.pc.getTransceivers() : [];
-            const audioTransceiver = transceivers.find(t => 
-              (t.receiver && t.receiver.track && t.receiver.track.kind === 'audio') ||
-              (t.sender && t.sender.track && t.sender.track.kind === 'audio')
-            );
-            if (audioTransceiver) {
-              if (audioTransceiver.direction !== 'sendrecv') { audioTransceiver.direction = 'sendrecv'; micNeedsReneg = true; }
-              if (audioTransceiver.sender && typeof audioTransceiver.sender.replaceTrack === 'function') {
-                await audioTransceiver.sender.replaceTrack(audioTrack);
-              }
-            } else {
-              peer.pc.addTrack(audioTrack, state.localStream);
-              micNeedsReneg = true;
-            }
-          } catch (_) {}
-        }
-      }
-      if (state.pc && state.pc.signalingState !== 'closed') {
-        const transceivers = state.pc.getTransceivers ? state.pc.getTransceivers() : [];
-        const audioTransceiver = transceivers.find(t => 
-          (t.receiver && t.receiver.track && t.receiver.track.kind === 'audio') ||
-          (t.sender && t.sender.track && t.sender.track.kind === 'audio')
-        );
-        if (audioTransceiver) {
-          if (audioTransceiver.direction !== 'sendrecv') { audioTransceiver.direction = 'sendrecv'; micNeedsReneg = true; }
-          if (audioTransceiver.sender && typeof audioTransceiver.sender.replaceTrack === 'function') {
-            await audioTransceiver.sender.replaceTrack(audioTrack);
+          const { needsReneg } = await attachTrackToPeer(peer.pc, audioTrack, state.localStream);
+          if (needsReneg) {
+            await renegotiatePeerWebRTC(peer.peerId);
           }
-        } else {
-          try { state.pc.addTrack(audioTrack, state.localStream); } catch (_) {}
         }
       }
-      if (typeof renegotiateWebRTC === 'function') {
-        try { await renegotiateWebRTC(); } catch (_) {}
+      if (uniquePeers.length === 0 && state.pc && state.pc.signalingState !== 'closed') {
+        const { needsReneg } = await attachTrackToPeer(state.pc, audioTrack, state.localStream);
+        if (needsReneg && typeof renegotiateWebRTC === 'function') {
+          try { await renegotiateWebRTC(); } catch (_) {}
+        }
       }
       showToast('Mikrofon Açık (Canlı)');
     } catch (e) {
@@ -8645,9 +8729,6 @@ async function toggleMic() {
       restoreAudioDucking();
     }
     showToast('Mikrofon Kapatıldı');
-    if (typeof renegotiateWebRTC === 'function') {
-      try { renegotiateWebRTC(); } catch (_) {}
-    }
   }
 
   updateAVToolbarUI();
@@ -8783,31 +8864,11 @@ async function switchCamera() {
       const uniquePeers = getUniquePeerEntries();
       for (const peer of uniquePeers) {
         if (peer && peer.pc && peer.pc.signalingState !== 'closed') {
-          try {
-            const transceivers = peer.pc.getTransceivers ? peer.pc.getTransceivers() : [];
-            const vt = transceivers.find(t => 
-              (t.receiver && t.receiver.track && t.receiver.track.kind === 'video') ||
-              (t.sender && t.sender.track && t.sender.track.kind === 'video')
-            );
-            if (vt && vt.sender && typeof vt.sender.replaceTrack === 'function') {
-              await vt.sender.replaceTrack(freshTrack);
-            }
-            if (vt && vt.sender) optimizeVideoSender(vt.sender);
-          } catch (_) {}
+          await attachTrackToPeer(peer.pc, freshTrack, state.localStream);
         }
       }
-      if (state.pc && state.pc.signalingState !== 'closed') {
-        try {
-          const transceivers = state.pc.getTransceivers ? state.pc.getTransceivers() : [];
-          const vt = transceivers.find(t => 
-            (t.receiver && t.receiver.track && t.receiver.track.kind === 'video') ||
-            (t.sender && t.sender.track && t.sender.track.kind === 'video')
-          );
-          if (vt && vt.sender && typeof vt.sender.replaceTrack === 'function') {
-            await vt.sender.replaceTrack(freshTrack);
-          }
-          if (vt && vt.sender) optimizeVideoSender(vt.sender);
-        } catch (_) {}
+      if (uniquePeers.length === 0 && state.pc && state.pc.signalingState !== 'closed') {
+        await attachTrackToPeer(state.pc, freshTrack, state.localStream);
       }
 
       showToast(dictS.switch_cam_success || 'Kamera değiştirildi');
@@ -8836,24 +8897,16 @@ async function toggleCam() {
     for (const peer of uniquePeers) {
       if (peer && peer.pc && peer.pc.signalingState !== 'closed') {
         try {
-          const transceivers = peer.pc.getTransceivers ? peer.pc.getTransceivers() : [];
-          const vt = transceivers.find(t => 
-            (t.receiver && t.receiver.track && t.receiver.track.kind === 'video') ||
-            (t.sender && t.sender.track && t.sender.track.kind === 'video')
-          );
+          const vt = getCanonicalTransceiver(peer.pc, 'video');
           if (vt && vt.sender && typeof vt.sender.replaceTrack === 'function') {
             vt.sender.replaceTrack(null).catch(() => {});
           }
         } catch (_) {}
       }
     }
-    if (state.pc) {
+    if (uniquePeers.length === 0 && state.pc && state.pc.signalingState !== 'closed') {
       try {
-        const transceivers = state.pc.getTransceivers ? state.pc.getTransceivers() : [];
-        const vt = transceivers.find(t => 
-          (t.receiver && t.receiver.track && t.receiver.track.kind === 'video') ||
-          (t.sender && t.sender.track && t.sender.track.kind === 'video')
-        );
+        const vt = getCanonicalTransceiver(state.pc, 'video');
         if (vt && vt.sender && typeof vt.sender.replaceTrack === 'function') {
           vt.sender.replaceTrack(null).catch(() => {});
         }
@@ -8864,9 +8917,6 @@ async function toggleCam() {
     }
     if (dom.selfPipCard) {
       dom.selfPipCard.classList.add('hidden');
-    }
-    if (typeof renegotiateWebRTC === 'function') {
-      try { await renegotiateWebRTC(); } catch (_) {}
     }
     updateAVToolbarUI();
     broadcastMyMediaStatus();
@@ -8961,54 +9011,20 @@ async function toggleCam() {
       updateCamButtonUI(true);
       try { arrangePipsRow(); } catch (_) {}
 
-      let camNeedsReneg = false;
       const uniquePeers = getUniquePeerEntries();
       for (const peer of uniquePeers) {
         if (peer && peer.pc && peer.pc.signalingState !== 'closed') {
-          try {
-            const transceivers = peer.pc.getTransceivers ? peer.pc.getTransceivers() : [];
-            const vt = transceivers.find(t => 
-              (t.receiver && t.receiver.track && t.receiver.track.kind === 'video') ||
-              (t.sender && t.sender.track && t.sender.track.kind === 'video')
-            );
-            if (vt) {
-              if (vt.direction !== 'sendrecv') { vt.direction = 'sendrecv'; camNeedsReneg = true; }
-              if (vt.sender && typeof vt.sender.replaceTrack === 'function') {
-                await vt.sender.replaceTrack(videoTrack);
-              }
-              if (vt.sender) optimizeVideoSender(vt.sender);
-            } else {
-              const sender = peer.pc.addTrack(videoTrack, state.localStream);
-              if (sender) optimizeVideoSender(sender);
-              camNeedsReneg = true;
-            }
-          } catch (_) {}
-        }
-      }
-      if (state.pc && state.pc.signalingState !== 'closed') {
-        try {
-          const transceivers = state.pc.getTransceivers ? state.pc.getTransceivers() : [];
-          const vt = transceivers.find(t => 
-            (t.receiver && t.receiver.track && t.receiver.track.kind === 'video') ||
-            (t.sender && t.sender.track && t.sender.track.kind === 'video')
-          );
-          if (vt) {
-            if (vt.direction !== 'sendrecv') { vt.direction = 'sendrecv'; camNeedsReneg = true; }
-            if (vt.sender && typeof vt.sender.replaceTrack === 'function') {
-              await vt.sender.replaceTrack(videoTrack);
-            }
-            if (vt.sender) optimizeVideoSender(vt.sender);
-          } else {
-            const sender = state.pc.addTrack(videoTrack, state.localStream);
-            if (sender) optimizeVideoSender(sender);
-            camNeedsReneg = true;
+          const { needsReneg } = await attachTrackToPeer(peer.pc, videoTrack, state.localStream);
+          if (needsReneg) {
+            await renegotiatePeerWebRTC(peer.peerId);
           }
-        } catch (err) {
-          console.warn('WebRTC cam track error:', err);
         }
       }
-      if (typeof renegotiateWebRTC === 'function') {
-        try { await renegotiateWebRTC(); } catch (_) {}
+      if (uniquePeers.length === 0 && state.pc && state.pc.signalingState !== 'closed') {
+        const { needsReneg } = await attachTrackToPeer(state.pc, videoTrack, state.localStream);
+        if (needsReneg && typeof renegotiateWebRTC === 'function') {
+          try { await renegotiateWebRTC(); } catch (_) {}
+        }
       }
 
       broadcastMyMediaStatus();
@@ -9204,12 +9220,10 @@ function renderVideoGrid() {
   // 2. Remote / Partner Tiles (Strict client distinction: exactly 1 tile per unique remote device/user)
   const otherMembers = [];
   const seenMemberKeys = new Set();
-  if (state.clientId) seenMemberKeys.add(String(state.clientId));
+  if (state.clientId) seenMemberKeys.add(String(state.clientId).toLowerCase());
 
   Object.values(state.participants || {}).forEach(p => {
-    if (!p) return;
-    const isSelf = p.clientId ? (p.clientId === state.clientId) : (p.userId === state.userId && !p.clientId);
-    if (isSelf) return;
+    if (!p || isSelfMember(p)) return;
 
     const uKey = String(p.clientId || (p.userId ? p.userId + '_tile' : p.username) || '').toLowerCase();
     if (!uKey || seenMemberKeys.has(uKey)) return;
@@ -9222,25 +9236,33 @@ function renderVideoGrid() {
     Object.entries(state.peers).forEach(([pId, peerObj]) => {
       if (!peerObj) return;
       if (state.clientId && (pId === state.clientId || peerObj.clientId === state.clientId)) return;
-      if (state.userId && (pId === state.userId || peerObj.userId === state.userId)) return;
+      if (!peerObj.clientId && state.userId && (pId === state.userId || peerObj.userId === state.userId)) return;
       const uKey = String(peerObj.clientId || peerObj.userId || pId || '').toLowerCase();
       if (!uKey || seenMemberKeys.has(uKey)) return;
 
       let p = state.participants[pId] || Object.values(state.participants || {}).find(part =>
-        (peerObj.clientId && part.clientId === peerObj.clientId) ||
-        (peerObj.userId && part.userId === peerObj.userId) ||
-        (part.clientId === pId || part.userId === pId)
+        !isSelfMember(part) && (
+          (peerObj.clientId && part.clientId === peerObj.clientId) ||
+          (!peerObj.clientId && peerObj.userId && part.userId === peerObj.userId) ||
+          (part.clientId === pId || part.userId === pId)
+        )
       );
       if (!p) {
+        let dispName = peerObj.username || (pId.startsWith('cl_') ? 'Katılımcı' : pId);
+        if (state.username && dispName.toLowerCase() === state.username.toLowerCase()) {
+          dispName = `${state.username} (Cihaz 2)`;
+        }
         p = {
+          peerId: pId,
           userId: peerObj.userId || pId,
           clientId: peerObj.clientId || pId,
-          username: peerObj.username || (pId.startsWith('cl_') ? 'Katılımcı' : pId),
+          username: dispName,
           avatar: peerObj.avatar || '',
           avatarColor: 'from-indigo-500 to-purple-600',
           isMicOn: false,
-          isCamOn: peerObj.stream ? peerObj.stream.getVideoTracks().some(t => t.readyState === 'live') : false,
+          isCamOn: false,
           role: 'member',
+          isSelf: false,
           stream: peerObj.stream
         };
         state.participants[pId] = p;
@@ -9261,10 +9283,9 @@ function renderVideoGrid() {
     tile.title = `${m.username} kamerasını ana ekrana getir`;
 
     const peerStream = (m.clientId && state.peers && state.peers[m.clientId] && state.peers[m.clientId].stream) ||
-                       (state.peers && state.peers[m.userId] && state.peers[m.userId].stream) || 
-                       m.stream || (m.userId === state.peerId ? state.remoteStream : null);
-    const hasLiveVideo = peerStream && peerStream.getVideoTracks && peerStream.getVideoTracks().some(t => t.readyState === 'live');
-    const isCamActive = !!(hasLiveVideo || m.isCamOn === true || (peerStream && peerStream.getVideoTracks && peerStream.getVideoTracks().length > 0));
+                       (m.userId && state.peers && state.peers[m.userId] && state.peers[m.userId].stream) || 
+                       m.stream || (m.userId === state.peerId || m.clientId === state.peerId ? state.remoteStream : null);
+    const isCamActive = Boolean(m.isCamOn === true);
 
     if (isCamActive && peerStream) {
       const v = document.createElement('video');
@@ -9272,7 +9293,11 @@ function renderVideoGrid() {
       v.autoplay = true;
       v.playsInline = true;
       v.muted = true; // MUST be muted for mobile autoplay
-      v.srcObject = peerStream;
+      v.setAttribute('playsinline', 'true');
+      v.setAttribute('webkit-playsinline', 'true');
+      v.setAttribute('muted', '');
+      v.setAttribute('autoplay', 'true');
+      v.srcObject = getBestRemoteStream(peerStream) || peerStream;
       const playP = v.play();
       if (playP && playP.catch) playP.catch(() => {});
       tile.appendChild(v);
@@ -9291,7 +9316,7 @@ function renderVideoGrid() {
       tile.appendChild(placeholder);
 
       const checkFrames = () => {
-        if (v && v.videoWidth > 0) {
+        if (v && v.videoWidth > 0 && v.readyState >= 2) {
           placeholder.classList.add('hidden');
           placeholder.style.display = 'none';
         } else {
@@ -9302,12 +9327,14 @@ function renderVideoGrid() {
       v.onloadedmetadata = checkFrames;
       v.onplaying = checkFrames;
       v.onloadeddata = checkFrames;
+      v.onresize = checkFrames;
       let nFr = 0;
       const frTimer = setInterval(() => {
         checkFrames();
         if (v.paused && v.srcObject) v.play().catch(() => {});
+        kickStalledVideo(v);
         if (++nFr > 40 || !document.body.contains(v)) clearInterval(frTimer);
-      }, 500);
+      }, 450);
     } else {
       const pulseRing = m.isMicOn ? 'ring-1.5 ring-emerald-400 ring-offset-1 ring-offset-black animate-pulse' : '';
       const avHtml = m.avatar
@@ -14721,7 +14748,7 @@ function updatePartnerPipIdentity(name, avatar) {
     finalName = state.participants[targetId].username;
   }
   if (!finalName) {
-    const other = Object.values(state.participants).find(p => p.userId !== state.userId);
+    const other = Object.values(state.participants).find(p => !isSelfMember(p));
     if (other) finalName = other.username;
   }
   if (!finalName || finalName === 'Partner') finalName = 'Katılımcı';
@@ -14741,7 +14768,7 @@ window.updatePartnerPipIdentity = updatePartnerPipIdentity;
 function updateRemoteParticipantStatus(userId, username, isMicOn, isCamOn, avatar, avatarColor, clientId) {
   if (!userId && !clientId) return;
   // Prevent tracking self as a remote participant
-  const isSelf = clientId ? (clientId === state.clientId) : (userId === state.userId && !clientId);
+  const isSelf = clientId ? (String(clientId) === String(state.clientId)) : (userId === state.userId && !clientId);
   if (isSelf) return;
 
   // Find if already exists by clientId to eliminate duplicate participants
@@ -14753,7 +14780,8 @@ function updateRemoteParticipantStatus(userId, username, isMicOn, isCamOn, avata
   }) || clientId || userId;
 
   const existing = state.participants[existingKey] || {};
-  const prevSnapshot = existing.userId ? [existing.isMicOn, existing.isCamOn, existing.username, existing.avatar].join('|') : null;
+  const isNewParticipant = !state.participants[existingKey];
+  const prevSnapshot = !isNewParticipant ? [existing.isMicOn, existing.isCamOn, existing.username, existing.avatar].join('|') : null;
   let finalUName = username || existing.username || 'Katılımcı';
   if (state.username && finalUName.toLowerCase() === state.username.toLowerCase()) {
     finalUName = `${state.username} (Cihaz 2)`;
@@ -14762,6 +14790,10 @@ function updateRemoteParticipantStatus(userId, username, isMicOn, isCamOn, avata
   const finalColor = avatarColor || existing.avatarColor || 'from-indigo-500 to-purple-600';
   const effectiveCam = typeof isCamOn === 'boolean' ? isCamOn : !!existing.isCamOn;
   const effectiveMic = typeof isMicOn === 'boolean' ? isMicOn : !!existing.isMicOn;
+
+  const peerStream = existing.stream ||
+                     (clientId && state.peers && state.peers[clientId] && state.peers[clientId].stream) ||
+                     (userId && state.peers && state.peers[userId] && state.peers[userId].stream) || null;
 
   state.participants[existingKey] = {
     ...existing,
@@ -14775,6 +14807,8 @@ function updateRemoteParticipantStatus(userId, username, isMicOn, isCamOn, avata
     isCamOn: effectiveCam,
     role: existing.role || (existing.isHost ? 'owner' : 'member'),
     isSelf: false,
+    stream: peerStream || existing.stream,
+    mediaStatusAt: Date.now(),
     lastSeen: Date.now()
   };
 
@@ -14788,20 +14822,20 @@ function updateRemoteParticipantStatus(userId, username, isMicOn, isCamOn, avata
     }
   });
 
-  if (effectiveCam) {
+  if (effectiveCam && !existing.isCamOn) {
     state.dismissedPips = state.dismissedPips || {};
     state.dismissedPips[existingKey] = false;
     if (userId) state.dismissedPips[userId] = false;
     if (clientId) state.dismissedPips[clientId] = false;
   }
-  state.isPartnerCamOn = Object.values(state.participants).some(p => p.clientId !== state.clientId && p.isCamOn);
+  state.isPartnerCamOn = Object.values(state.participants).some(p => !isSelfMember(p) && p.isCamOn);
 
   // If we hear from someone we have no connection with (missed join/presence), connect to them now
   try {
     const connTarget = clientId || userId;
     if (state.isInRoom && String(connTarget) !== String(state.clientId) && (!state.peers || !state.peers[connTarget]) &&
         typeof getOrCreatePeerConnection === 'function') {
-      getOrCreatePeerConnection(connTarget, String(state.clientId) < String(connTarget), { clientId: clientId || connTarget, userId });
+      getOrCreatePeerConnection(connTarget, String(state.clientId) < String(connTarget), { clientId: clientId || connTarget, userId, username: finalUName, avatar: finalAvatar });
       if (!state.peerId) state.peerId = connTarget;
       if (typeof updatePeerStatus === 'function') updatePeerStatus(true);
     }
@@ -14809,7 +14843,10 @@ function updateRemoteParticipantStatus(userId, username, isMicOn, isCamOn, avata
 
   const nowP = state.participants[existingKey];
   const newSnapshot = [nowP.isMicOn, nowP.isCamOn, nowP.username, nowP.avatar].join('|');
-  if (prevSnapshot === newSnapshot) return;
+  const expectedGridCount = 1 + Object.keys(state.participants).filter(k => k !== state.clientId && !k.startsWith('bot_')).length;
+  const currentGridCount = dom.roomVideoGrid ? dom.roomVideoGrid.children.length : 0;
+  if (prevSnapshot === newSnapshot && !isNewParticipant && currentGridCount === expectedGridCount) return;
+
   if (typeof renderStagePipCards === 'function') {
     renderStagePipCards();
   }
@@ -14842,7 +14879,11 @@ function broadcastMyMediaStatus() {
   sendP2PData('media_status', payload);
   sendSignal({ type: 'media_status', ...payload });
   if (roomSupabaseChannel && roomSupabaseChannel.track) {
-    roomSupabaseChannel.track(payload).catch(() => {});
+    const trackSnap = `${payload.username}|${payload.avatar}|${payload.isMicOn}|${payload.isCamOn}|${payload.role}`;
+    if (trackSnap !== state._lastTrackedPresenceSnap) {
+      state._lastTrackedPresenceSnap = trackSnap;
+      roomSupabaseChannel.track(payload).catch(() => {});
+    }
   }
   renderParticipantsList();
 }
@@ -15074,8 +15115,7 @@ function renderParticipantsList() {
 
   // Add active partner or remote participants
   Object.values(state.participants).forEach(p => {
-    const isSelf = p.clientId ? (p.clientId === state.clientId) : (p.userId === state.userId && !p.clientId);
-    if (!isSelf) {
+    if (!isSelfMember(p)) {
       if (!p.role) p.role = p.isHost ? 'owner' : 'member';
       allMembers.push(p);
     }
@@ -15086,17 +15126,21 @@ function renderParticipantsList() {
     Object.entries(state.peers).forEach(([pId, peerObj]) => {
       if (!peerObj) return;
       if (state.clientId && (pId === state.clientId || peerObj.clientId === state.clientId)) return;
-      if (state.userId && (pId === state.userId || peerObj.userId === state.userId)) return;
-      if (allMembers.some(m => m.clientId === pId || m.userId === pId || (peerObj.clientId && m.clientId === peerObj.clientId) || (peerObj.userId && m.userId === peerObj.userId))) return;
+      if (!peerObj.clientId && state.userId && (pId === state.userId || peerObj.userId === state.userId)) return;
+      if (allMembers.some(m => !m.isSelf && (m.clientId === pId || (peerObj.clientId && m.clientId === peerObj.clientId) || (!peerObj.clientId && peerObj.userId && m.userId === peerObj.userId)))) return;
 
+      let dispName = peerObj.username || (pId.startsWith('cl_') ? 'Katılımcı' : pId);
+      if (state.username && dispName.toLowerCase() === state.username.toLowerCase()) {
+        dispName = `${state.username} (Cihaz 2)`;
+      }
       allMembers.push({
         clientId: peerObj.clientId || pId,
         userId: peerObj.userId || pId,
-        username: peerObj.username || (pId.startsWith('cl_') ? 'Katılımcı' : pId),
+        username: dispName,
         avatar: peerObj.avatar || '',
         avatarColor: 'from-indigo-500 to-purple-600',
         isMicOn: false,
-        isCamOn: peerObj.stream ? peerObj.stream.getVideoTracks().some(t => t.readyState === 'live') : false,
+        isCamOn: false,
         isHost: false,
         role: 'member',
         isSelf: false
@@ -22324,6 +22368,10 @@ window.recordUsernameChange = recordUsernameChange;
     if (dom.playerSpeedVal) {
       dom.playerSpeedVal.textContent = `${rate}x`;
     }
+    const quickSpeedLabel = document.getElementById('quickPlaybackSpeedLabel');
+    if (quickSpeedLabel) {
+      quickSpeedLabel.textContent = `${rate}x`;
+    }
     document.querySelectorAll('.playback-speed-btn, .player-speed-btn').forEach(btn => {
       const bSpeed = parseFloat(btn.dataset.speed);
       if (Math.abs(bSpeed - rate) < 0.05) {
@@ -22334,6 +22382,7 @@ window.recordUsernameChange = recordUsernameChange;
     });
 
     if (broadcast) {
+      state.roomPlaybackRate = rate;
       sendP2PData('sync', {
         action: 'rate',
         rate: rate,
@@ -22342,6 +22391,20 @@ window.recordUsernameChange = recordUsernameChange;
       });
       showToast(`Oynatma Hızı: ${rate}x (Tüm odaya uygulandı)`);
     }
+  }
+  window.setPlayerPlaybackRate = setPlayerPlaybackRate;
+
+  const quickPlaybackSpeedBtn = document.getElementById('quickPlaybackSpeedBtn');
+  if (quickPlaybackSpeedBtn && !quickPlaybackSpeedBtn._boundSpeedClick) {
+    quickPlaybackSpeedBtn._boundSpeedClick = true;
+    quickPlaybackSpeedBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const speeds = [0.5, 0.75, 1.0, 1.25, 1.5, 2.0];
+      const cur = state.playbackRate || 1.0;
+      const idx = speeds.findIndex(s => Math.abs(s - cur) < 0.05);
+      const next = speeds[(idx + 1) % speeds.length];
+      setPlayerPlaybackRate(next, true);
+    });
   }
 
   // Clean up any legacy video zoom/fit preferences so video is clean and authentic

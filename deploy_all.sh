@@ -71,6 +71,14 @@ xcodebuild -project ios/Miruo.xcodeproj \
 mkdir -p "$XCODE_ORGANIZER_DIR"
 cp -R "$ARCHIVE_PATH" "$XCODE_ORGANIZER_DIR/"
 
+echo "📲 App Store Connect / TestFlight'a yükleniyor (Build $NEXT_BUILD)..."
+xcodebuild -exportArchive \
+  -archivePath "$ARCHIVE_PATH" \
+  -exportOptionsPlist "/Users/mehmetkarabul7tt/.gemini/antigravity/brain/990d40d1-50cd-4fee-bac5-5e499a7dd65e/scratch/ExportOptions.plist" \
+  -exportPath "/tmp/miruo_tf_export_${NEXT_BUILD}" \
+  -allowProvisioningUpdates
+echo "✅ iOS Build $NEXT_BUILD App Store Connect / TestFlight'a başarıyla yüklendi."
+
 # IPA oluştur
 TEMP_PAYLOAD="/tmp/miruo_ipa_payload_${NEXT_BUILD}"
 rm -rf "$TEMP_PAYLOAD"
@@ -83,7 +91,7 @@ rm -rf "$TEMP_PAYLOAD"
 echo "✅ iOS Build $NEXT_BUILD Xcode Organizer'a ve IPA indirme dosyalarına eklendi."
 
 echo "🌐 [5/6] Git değişiklikleri kaydediliyor ve Vercel/GitHub'a gönderiliyor..."
-git add android/ app/ desktop-app/public/ downloads/ ios/ website/ deploy_all.sh
+git add android/ app/ desktop-app/public/ downloads/ ios/ website/ site.js deploy_all.sh
 git commit -m "build(release): deploy macOS DMG, Windows ZIP, iOS Build ${NEXT_BUILD} and web updates" || true
 
 echo "☁️ [6/6] Uzak sunucuya aktarılıyor..."
