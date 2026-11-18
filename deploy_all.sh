@@ -10,6 +10,8 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$ROOT_DIR"
 
 echo "🚀 [1/6] Dosyalar tüm platformlara senkronize ediliyor..."
+cp -f site.js website/site.js
+cp -f index.html website/index.html
 for target in desktop-app/public ios/Miruo/public android/app/src/main/assets/public website/app; do
   mkdir -p "$target"
   cp -f app/app.js "$target/app.js"
