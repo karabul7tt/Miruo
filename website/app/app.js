@@ -4635,6 +4635,35 @@ function getOrCreatePeerConnection(peerId, isInitiator, meta = {}) {
     } catch (_) {}
   }, 4000);
 
+  // Frozen / black remote camera watchdog: if inbound video frames stop advancing, re-attach and renegotiate
+  peerEntry.frozenTicks = 0;
+  peerEntry.lastFramesDecoded = -1;
+  peerEntry.frameWatchdog = setInterval(async () => {
+    try {
+      if (!state.peers || pc.signalingState === 'closed') { clearInterval(peerEntry.frameWatchdog); return; }
+      const hasLiveVideo = peerEntry.stream && peerEntry.stream.getVideoTracks().some(t => t.readyState === 'live');
+      if (!hasLiveVideo || pc.connectionState !== 'connected') { peerEntry.frozenTicks = 0; return; }
+      const pk = peerEntry.clientId || peerEntry.userId || peerId;
+      const part = state.participants[pk] || state.participants[peerId];
+      if (!part || !part.isCamOn) { peerEntry.frozenTicks = 0; peerEntry.lastFramesDecoded = -1; return; }
+      const stats = await pc.getStats();
+      let frames = -1;
+      stats.forEach(r => { if (r.type === 'inbound-rtp' && (r.kind === 'video' || r.mediaType === 'video')) frames = r.framesDecoded || 0; });
+      if (frames < 0) return;
+      if (frames === peerEntry.lastFramesDecoded) peerEntry.frozenTicks++; else peerEntry.frozenTicks = 0;
+      peerEntry.lastFramesDecoded = frames;
+      if (peerEntry.frozenTicks === 2) {
+        // Soft fix: re-bind stream to the video element(s)
+        try { attachRemoteStreamToPartnerVideo(part); renderStagePipCards(); } catch (_) {}
+        document.querySelectorAll('video.peer-cam-video, #partnerVideo').forEach(v => { try { v.play().catch(() => {}); } catch (_) {} });
+      } else if (peerEntry.frozenTicks >= 4) {
+        peerEntry.frozenTicks = 0;
+        if (peerEntry.isInitiator) await restartPeerOffer(peerId);
+        else sendSignal({ type: 'rtc-need-offer', targetUserId: peerEntry.userId || peerId, targetClientId: peerEntry.clientId || peerId, sentAt: Date.now() });
+      }
+    } catch (_) {}
+  }, 3000);
+
   pc.onconnectionstatechange = () => {
     const cs = pc.connectionState;
     console.log(`[WebRTC Peer ${peerId}] State:`, cs);
@@ -6344,13 +6373,25 @@ function handleRemoteSync(payload) {
 
       // If drift is noticeable (> 0.8s), snap to host time with hard seek and safety cooldown
       const now = Date.now();
-      const isInitialBuffering = state.ytLoadingAt && (now - state.ytLoadingAt < 2000) && (!state.lastReportedYtTime || state.lastReportedYtTime === 0);
-      if (absDrift > 0.8 && !isInitialBuffering) {
-        if (!state.lastHardSeekAt || (now - state.lastHardSeekAt) > 1200) {
+      const isInitialBuffering = state.ytLoadingAt && (now - state.ytLoadingAt < 4000) && (!state.lastReportedYtTime || state.lastReportedYtTime === 0);
+      // Is our own position reading trustworthy? (if the player stopped reporting, never "correct" against a stale value → that caused endless rewinds)
+      const localReliable = state.activeMode !== 'youtube' || (state.lastReportedYtAt && (now - state.lastReportedYtAt) < 2500);
+      // Ignore out-of-order/stale heartbeats (late signaling delivery)
+      const hbSent = payload.sentAt || 0;
+      const staleHb = hbSent && state.lastHbSentAt && hbSent < state.lastHbSentAt;
+      if (hbSent && !staleHb) state.lastHbSentAt = hbSent;
+      if (staleHb) return;
+      // Require 2 consecutive drifting heartbeats before seeking, high threshold, long cooldown
+      if (absDrift > 2.5 && localReliable) state.driftStrikes = (state.driftStrikes || 0) + 1; else state.driftStrikes = 0;
+      if (absDrift > 2.5 && localReliable && state.driftStrikes >= 2 && !isInitialBuffering) {
+        if (!state.lastHardSeekAt || (now - state.lastHardSeekAt) > 5000) {
           if (targetTime < 1.0 && localTime < 1.0) {
             // Already near start, avoid seek churn
           } else {
             state.lastHardSeekAt = now;
+            state.driftStrikes = 0;
+            state.lastReportedYtTime = targetTime;
+            state.lastReportedYtAt = now;
             if (state.activeMode === 'youtube') {
               sendYtCommand('seekTo', [targetTime, true]);
               sendYtCommand('setPlaybackRate', [hostRate]);
@@ -9083,12 +9124,14 @@ async function optimizeVideoSender(sender) {
       params.encodings = [{}];
     }
     params.encodings.forEach(enc => {
-      enc.maxBitrate = 2500000; // 2.5 Mbps crisp 720p/1080p HD stream
-      enc.minBitrate = 500000;  // 500 kbps floor
-      delete enc.scaleResolutionDownBy; // Keep full sensor resolution
+      enc.maxBitrate = 1200000; // 1.2 Mbps: smooth on mobile/cellular, no stalls
+      delete enc.minBitrate;    // never force a floor (causes freezes on weak links)
+      enc.maxFramerate = 30;
+      delete enc.scaleResolutionDownBy;
     });
     if ('degradationPreference' in params) {
-      params.degradationPreference = 'maintain-resolution';
+      // Under bad bandwidth, drop resolution instead of freezing frames
+      params.degradationPreference = 'balanced';
     }
     await sender.setParameters(params);
   } catch (err) {
