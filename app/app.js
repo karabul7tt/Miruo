@@ -5451,6 +5451,9 @@ function loadYoutubeVideo(urlOrId, startPlaying = true, startTime = 0) {
   state.lastReportedYtTime = 0;
   state.lastReportedYtAt = null;
   state.lastHardSeekAt = 0;
+  state._lastInfoT = undefined;
+  state._lastInfoAt = 0;
+  state.lastProgSeekAt = Date.now();
   state.lastSyncSentAt = 0;
   state.ytLoadingAt = Date.now();
   state.ytReady = false;
@@ -6000,6 +6003,8 @@ function onYtStateChange(event) {
 }
 
 function sendYtCommand(func, args = []) {
+  // Any programmatic seek (sync, load, resync) must never be mistaken for a user scrub
+  if (func === 'seekTo') state.lastProgSeekAt = Date.now();
   if (state.ytPlayer && typeof state.ytPlayer[func] === 'function') {
     try { state.ytPlayer[func](...args); } catch (_) {}
   }
@@ -6742,10 +6747,22 @@ window.addEventListener('message', (event) => {
       if (dom.durationDisplay) dom.durationDisplay.textContent = formatTime(state.duration);
     }
     if (typeof data.info.currentTime === 'number') {
-      const prevTime = state.currentTime;
+      const nowTs = Date.now();
+      // Scrub detection compares against where the iframe itself SHOULD be (previous report + elapsed), not against state.currentTime (which sync code overwrites)
+      const prevInfoT = state._lastInfoT;
+      const prevInfoAt = state._lastInfoAt;
+      let expectedT = prevInfoT;
+      if (typeof prevInfoT === 'number' && prevInfoAt && state.isPlaying) {
+        expectedT = prevInfoT + ((nowTs - prevInfoAt) / 1000) * (state.playbackRate || 1);
+      }
+      state._lastInfoT = data.info.currentTime;
+      state._lastInfoAt = nowTs;
+      const prevTime = expectedT;
       state.currentTime = data.info.currentTime;
       state.lastReportedYtTime = data.info.currentTime;
-      state.lastReportedYtAt = Date.now();
+      state.lastReportedYtAt = nowTs;
+      const progSeekRecent = (nowTs - (state.lastProgSeekAt || 0)) < 4000;
+      const loadingRecent = state.ytLoadingAt && (nowTs - state.ytLoadingAt) < 6000;
 
       if (dom.currentTimeDisplay) dom.currentTimeDisplay.textContent = formatTime(state.currentTime);
       if (state.duration > 0) {
@@ -6764,9 +6781,9 @@ window.addEventListener('message', (event) => {
       }
 
       // Check if user scrubbed inside YouTube iframe progress bar directly
-      if (typeof prevTime === 'number' && Math.abs(data.info.currentTime - prevTime) > 1.8) {
+      if (typeof prevTime === 'number' && Math.abs(data.info.currentTime - prevTime) > 2.5 && !progSeekRecent && !loadingRecent) {
         if (!state.isRemoteAction && !state.isUserDraggingSeek && (Date.now() - (state.lastSyncSentAt || 0) > 800)) {
-          if (canUserControlPlayback()) {
+          if (canUserControlPlayback() && (state.isHost || state.controlMode === 'everyone' || state.controlMode === 'free')) {
             state.lastSyncSentAt = Date.now();
             sendP2PData('sync', {
               action: 'seek',
