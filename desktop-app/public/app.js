@@ -2103,9 +2103,11 @@ const state = {
   isHost: false,
   hostName: '',
   userRole: 'member', // 'owner' | 'admin' | 'video_control' | 'dj' | 'member'
-  controlMode: 'host_only', // 'host_only' | 'everyone'
-  hasDjPermission: false,   // Whether current user can control media
+  controlMode: 'everyone', // 'everyone' | 'host_only'
+  hasDjPermission: true,   // In friendly watch party rooms, all peers can control media
   isPrivateRoom: false,
+  isLiveStream: false,
+  isAtLiveEdge: true,
 
   // Friends & Invite
   friendCode: '',
@@ -2287,6 +2289,9 @@ const dom = {
   currentTimeDisplay: document.getElementById('currentTimeDisplay'),
   durationDisplay: document.getElementById('durationDisplay'),
   seekSlider: document.getElementById('seekSlider'),
+  stageLiveBadgeBtn: document.getElementById('stageLiveBadgeBtn'),
+  stageLiveDot: document.getElementById('stageLiveDot'),
+  stageLiveText: document.getElementById('stageLiveText'),
   toggleMicBtn: document.getElementById('toggleMicBtn'),
   micBtnText: document.getElementById('micBtnText'),
   micIcon: document.getElementById('micIcon'),
@@ -2306,6 +2311,9 @@ const dom = {
   nowPlayingCurrentTime: document.getElementById('nowPlayingCurrentTime'),
   nowPlayingSeekSlider: document.getElementById('nowPlayingSeekSlider'),
   nowPlayingDuration: document.getElementById('nowPlayingDuration'),
+  nowPlayingLiveBadgeBtn: document.getElementById('nowPlayingLiveBadgeBtn'),
+  nowPlayingLiveDot: document.getElementById('nowPlayingLiveDot'),
+  nowPlayingLiveText: document.getElementById('nowPlayingLiveText'),
   playerQualityVal: document.getElementById('playerQualityVal'),
   playerSpeedVal: document.getElementById('playerSpeedVal'),
   raveResyncBtn: document.getElementById('raveResyncBtn'),
@@ -2973,10 +2981,86 @@ function connectSupabaseRoomSignaling() {
       }
     });
 
+    state.departedClients = state.departedClients || new Set();
+    const removeParticipantImmediately = (targetKey) => {
+      if (!targetKey) return;
+      let removed = false;
+      let removedName = '';
+      const cleanTarget = String(targetKey).toLowerCase();
+      state.departedClients.add(cleanTarget);
+
+      Object.entries(state.participants || {}).forEach(([pId, p]) => {
+        if (!p) return;
+        const cId = String(p.clientId || '').toLowerCase();
+        const kId = String(pId).toLowerCase();
+        const uId = String(p.userId || '').toLowerCase();
+        // Strict client-level matching so same user on computer & phone is never cross-deleted!
+        if (kId === cleanTarget || cId === cleanTarget || (uId && uId === cleanTarget)) {
+          removedName = p.username || removedName;
+          if (cId) state.departedClients.add(cId);
+          if (kId) state.departedClients.add(kId);
+          if (uId) state.departedClients.add(uId);
+          delete state.participants[pId];
+          removed = true;
+        }
+      });
+
+      if (state.peers) {
+        Object.keys(state.peers).forEach(pid => {
+          const peer = state.peers[pid];
+          const cId = String((peer && peer.clientId) || pid).toLowerCase();
+          const uId = String((peer && peer.userId) || '').toLowerCase();
+          const pName = String((peer && peer.username) || '').toLowerCase();
+          const kId = String(pid).toLowerCase();
+          if (cId === cleanTarget || kId === cleanTarget || (uId && uId === cleanTarget) || (pName && pName === cleanTarget) || (peer && peer.pc && (peer.pc.signalingState === 'closed' || peer.pc.connectionState === 'closed' || peer.pc.connectionState === 'failed'))) {
+            try { peer.pc.close(); } catch (_) {}
+            delete state.peers[pid];
+            if (peer && peer.clientId) delete state.peers[peer.clientId];
+            if (peer && peer.userId) delete state.peers[peer.userId];
+            removed = true;
+          }
+        });
+      }
+
+      document.querySelectorAll(`audio[id*="${targetKey}"]`).forEach(aud => {
+        try { aud.pause(); aud.srcObject = null; aud.remove(); } catch (_) {}
+      });
+
+      document.querySelectorAll(`.remote-extra-pip[id*="${targetKey}"]`).forEach(el => el.remove());
+      if (dom.partnerPipCard) {
+        if (!state.peerId || state.activePipPeerId === targetKey || String(state.activePipPeerId).toLowerCase() === cleanTarget) {
+          dom.partnerPipCard.classList.add('hidden');
+          state.activePipPeerId = null;
+        }
+      }
+
+      const remainingPeers = Object.keys(state.participants || {}).filter(k => k !== state.clientId && !k.startsWith('bot_') && (!state.departedClients || !state.departedClients.has(String(k).toLowerCase())));
+      state.peerId = remainingPeers.length > 0 ? remainingPeers[0] : null;
+      updatePeerStatus(!!state.peerId);
+
+      renderParticipantsList();
+      renderVideoGrid();
+      if (typeof renderStagePipCards === 'function') renderStagePipCards();
+      if (removed && removedName) {
+        showToast(`@${removedName} odadan ayrıldı`);
+      }
+    };
+    window.removeParticipantImmediately = removeParticipantImmediately;
+
     const syncParticipantsFromPresence = (pState) => {
       if (roomSupabaseChannel !== thisChannel || !pState) return;
       const currentKeys = Object.keys(pState);
-      const peerKeys = currentKeys.filter(k => k !== state.clientId);
+      const peerKeys = currentKeys.filter(k => {
+        if (k === state.clientId) return false;
+        if (state.departedClients && state.departedClients.has(String(k).toLowerCase())) return false;
+        const presences = pState[k];
+        const info = (presences && presences[presences.length - 1]) || {};
+        if (state.departedClients && (
+          (info.clientId && state.departedClients.has(String(info.clientId).toLowerCase())) ||
+          (info.userId && state.departedClients.has(String(info.userId).toLowerCase()))
+        )) return false;
+        return true;
+      });
       let anyParticipantChanged = false;
       
       // Update peer status for WebRTC with multi-peer mesh connections
@@ -3047,25 +3131,26 @@ function connectSupabaseRoomSignaling() {
         }
       });
 
-      // Clean up vanished peers (grace period 30s; never drop if active WebRTC connection exists)
+      // Clean up vanished peers (grace period: 3.5s if no active WebRTC, or 12s if WebRTC still active)
       const activePresenceClientIds = new Set(Object.keys(pState));
       Object.keys(state.participants).forEach(pid => {
         if (pid.startsWith('bot_') || pid === state.clientId) return;
         const p = state.participants[pid];
         const hasClient = (p.clientId && activePresenceClientIds.has(p.clientId)) ||
-                          activePresenceClientIds.has(pid) ||
-                          (p.userId && activePresenceClientIds.has(p.userId));
+                          activePresenceClientIds.has(pid);
         const hasLivePeerConn = state.peers && (
           (p.clientId && state.peers[p.clientId] && state.peers[p.clientId].pc && state.peers[p.clientId].pc.signalingState !== 'closed' && state.peers[p.clientId].pc.connectionState !== 'failed' && state.peers[p.clientId].pc.connectionState !== 'closed') ||
           (state.peers[pid] && state.peers[pid].pc && state.peers[pid].pc.signalingState !== 'closed' && state.peers[pid].pc.connectionState !== 'failed' && state.peers[pid].pc.connectionState !== 'closed')
         );
-        if (!hasClient && !hasLivePeerConn) {
+        if (!hasClient) {
           if (!p.vanishedSince) {
             p.vanishedSince = Date.now();
-          } else if (Date.now() - p.vanishedSince > 30000) {
-            delete state.participants[pid];
-            anyParticipantChanged = true;
-            if (typeof closePeerConnection === 'function') closePeerConnection(pid);
+          } else {
+            const maxWait = hasLivePeerConn ? 12000 : 3500;
+            if (Date.now() - p.vanishedSince > maxWait) {
+              removeParticipantImmediately(p.clientId || pid);
+              anyParticipantChanged = true;
+            }
           }
         } else {
           delete p.vanishedSince;
@@ -3092,6 +3177,11 @@ function connectSupabaseRoomSignaling() {
         if (!payload || payload.clientId === state.clientId) return;
         handleRemoteSync(payload);
       })
+      .on('broadcast', { event: 'user_left' }, ({ payload }) => {
+        if (roomSupabaseChannel !== thisChannel) return;
+        if (!payload || payload.clientId === state.clientId) return;
+        removeParticipantImmediately(payload.clientId || payload.userId || payload.peerId);
+      })
       .on('presence', { event: 'sync' }, () => {
         if (roomSupabaseChannel !== thisChannel) return;
         const pState = thisChannel.presenceState();
@@ -3099,6 +3189,9 @@ function connectSupabaseRoomSignaling() {
       })
       .on('presence', { event: 'join' }, ({ key, currentPresences, newPresences }) => {
         if (roomSupabaseChannel !== thisChannel) return;
+        if (key && state.departedClients) {
+          state.departedClients.delete(String(key).toLowerCase());
+        }
         const wasAlreadyKnown = Boolean(key && state.participants && state.participants[key]);
         const pState = thisChannel.presenceState();
         syncParticipantsFromPresence(pState);
@@ -3146,20 +3239,7 @@ function connectSupabaseRoomSignaling() {
       .on('presence', { event: 'leave' }, ({ key, currentPresences }) => {
         if (roomSupabaseChannel !== thisChannel) return;
         const pState = thisChannel.presenceState();
-        // If key is still present in pState (e.g. Phoenix Presence metadata update emit), ignore leave!
-        if (key && pState && pState[key] && pState[key].length > 0) {
-          syncParticipantsFromPresence(pState);
-          return;
-        }
         syncParticipantsFromPresence(pState);
-        if (key && key === state.peerId) {
-          const remaining = Object.keys(pState).filter(k => k !== state.clientId);
-          state.peerId = remaining.length > 0 ? remaining[0] : null;
-          updatePeerStatus(!!state.peerId);
-        }
-        if (key && key !== state.clientId) {
-          showToast('Katılımcı odadan ayrıldı');
-        }
       })
       .subscribe((status, err) => {
         if (roomSupabaseChannel !== thisChannel) return;
@@ -3545,25 +3625,31 @@ function handleSignalMessage(msg) {
       break;
 
     case 'peer-left':
-      const leftKey = Object.keys(state.participants).find(k => {
-        const p = state.participants[k];
-        return (msg.userId && p.userId === msg.userId) || (msg.clientId && p.clientId === msg.clientId) || k === msg.userId;
-      }) || msg.userId;
-      if (leftKey) {
-        delete state.participants[leftKey];
-        if (typeof closePeerConnection === 'function') {
-          closePeerConnection(leftKey);
+    case 'user_left':
+      const targetLeaveKey = (msg.payload && (msg.payload.clientId || msg.payload.userId)) || msg.clientId || msg.userId;
+      if (typeof removeParticipantImmediately === 'function') {
+        removeParticipantImmediately(targetLeaveKey);
+      } else {
+        const leftKey = Object.keys(state.participants).find(k => {
+          const p = state.participants[k];
+          return (msg.userId && p.userId === msg.userId) || (msg.clientId && p.clientId === msg.clientId) || k === msg.userId;
+        }) || msg.userId;
+        if (leftKey) {
+          delete state.participants[leftKey];
+          if (typeof closePeerConnection === 'function') {
+            closePeerConnection(leftKey);
+          }
         }
+        if (state.peerId === msg.userId || state.peerId === msg.clientId) {
+          const remaining = Object.keys(state.participants).filter(k => k !== state.clientId);
+          state.peerId = remaining.length > 0 ? remaining[0] : null;
+        }
+        updatePeerStatus(Object.keys(state.participants).length > 0);
+        renderParticipantsList();
+        renderVideoGrid();
+        if (typeof renderStagePipCards === 'function') renderStagePipCards();
+        showToast('Katılımcı odadan ayrıldı');
       }
-      if (state.peerId === msg.userId || state.peerId === msg.clientId) {
-        const remaining = Object.keys(state.participants).filter(k => k !== state.clientId);
-        state.peerId = remaining.length > 0 ? remaining[0] : null;
-      }
-      updatePeerStatus(Object.keys(state.participants).length > 0);
-      renderParticipantsList();
-      renderVideoGrid();
-      if (typeof renderStagePipCards === 'function') renderStagePipCards();
-      showToast('Katılımcı odadan ayrıldı');
       break;
 
     case 'offer':
@@ -4343,6 +4429,13 @@ window.attachTrackToPeer = attachTrackToPeer;
 
 function getOrCreatePeerConnection(peerId, isInitiator, meta = {}) {
   if (!peerId) peerId = state.peerId || 'remote_peer';
+  if (state.departedClients && (
+    state.departedClients.has(String(peerId).toLowerCase()) ||
+    (meta.clientId && state.departedClients.has(String(meta.clientId).toLowerCase())) ||
+    (meta.userId && state.departedClients.has(String(meta.userId).toLowerCase()))
+  )) {
+    return null;
+  }
   if (!state.peers) state.peers = {};
 
   let existing = getPeerEntry(peerId) || (meta.clientId && getPeerEntry(meta.clientId));
@@ -4542,10 +4635,17 @@ function getOrCreatePeerConnection(peerId, isInitiator, meta = {}) {
         attachRemoteAudioStream();
       }
       if (typeof renderStagePipCards === 'function') renderStagePipCards();
-    } else if (cs === 'disconnected' || cs === 'failed') {
+    } else if (cs === 'disconnected' || cs === 'failed' || cs === 'closed') {
       if (pc.restartIce) {
         try { pc.restartIce(); } catch (_) {}
       }
+      setTimeout(() => {
+        if (pc.connectionState === 'disconnected' || pc.connectionState === 'failed' || pc.connectionState === 'closed') {
+          if (typeof removeParticipantImmediately === 'function') {
+            removeParticipantImmediately(peerEntry.clientId || peerId);
+          }
+        }
+      }, 1000);
     }
   };
 
@@ -4559,6 +4659,14 @@ function getOrCreatePeerConnection(peerId, isInitiator, meta = {}) {
         attachRemoteAudioStream();
       }
       if (typeof renderStagePipCards === 'function') renderStagePipCards();
+    } else if (ics === 'disconnected' || ics === 'failed' || ics === 'closed') {
+      setTimeout(() => {
+        if (pc.iceConnectionState === 'disconnected' || pc.iceConnectionState === 'failed' || pc.iceConnectionState === 'closed') {
+          if (typeof removeParticipantImmediately === 'function') {
+            removeParticipantImmediately(peerEntry.clientId || peerId);
+          }
+        }
+      }, 1000);
     }
   };
 
@@ -5295,6 +5403,9 @@ function loadYoutubeVideo(urlOrId, startPlaying = true, startTime = 0) {
   state.ytLoadingAt = Date.now();
   state.ytReady = false;
   state.ytPlayer = null;
+  state.isLiveStream = false;
+  state.isAtLiveEdge = true;
+  if (typeof updateLiveBadgeUI === 'function') updateLiveBadgeUI();
 
   if (dom.currentTimeDisplay) dom.currentTimeDisplay.textContent = formatTime(state.currentTime);
   if (dom.durationDisplay) dom.durationDisplay.textContent = '00:00';
@@ -6170,14 +6281,23 @@ function handleRemoteSync(payload) {
         return;
       }
 
-      // Continuous, sub-second precision synchronization:
-      // If drift is noticeable (> 0.75s), snap instantly to host's exact second with hard seek
+      // Continuous, drift-free synchronization:
+      // In live stream: keep playing smoothly at live edge without seeking backwards
+      if (state.isLiveStream) {
+        if (Math.abs((state.playbackRate || 1.0) - hostRate) > 0.04) {
+          sendYtCommand('setPlaybackRate', [hostRate]);
+          state.playbackRate = hostRate;
+        }
+        return;
+      }
+
+      // If drift is noticeable (> 1.2s), snap to host time with hard seek and safety cooldown
       const now = Date.now();
-      const isLoadingGrace = state.ytLoadingAt && (now - state.ytLoadingAt < 3500);
-      if (absDrift > 0.75 && !isLoadingGrace) {
-        if (!state.lastHardSeekAt || (now - state.lastHardSeekAt) > 1000) {
-          if (targetTime < 1.5 && localTime < 1.5) {
-            // Already at origin, avoid seek loop
+      const isInitialBuffering = state.ytLoadingAt && (now - state.ytLoadingAt < 2000) && (!state.lastReportedYtTime || state.lastReportedYtTime === 0);
+      if (absDrift > 1.2 && !isInitialBuffering) {
+        if (!state.lastHardSeekAt || (now - state.lastHardSeekAt) > 1500) {
+          if (targetTime < 1.0 && localTime < 1.0) {
+            // Already near start, avoid seek churn
           } else {
             state.lastHardSeekAt = now;
             if (state.activeMode === 'youtube') {
@@ -6191,19 +6311,8 @@ function handleRemoteSync(payload) {
             state.playbackRate = hostRate;
           }
         }
-      } else if (absDrift > 0.25 && Math.abs(hostRate - 1.0) < 0.05) {
-        // Micro drift (0.25s to 0.75s) when host is at 1.0x: speed up (1.25x) or slow down (0.75x) to seamlessly match host
-        const targetRate = drift > 0 ? 1.25 : 0.75;
-        if (state.playbackRate !== targetRate) {
-          if (state.activeMode === 'youtube') {
-            sendYtCommand('setPlaybackRate', [targetRate]);
-          } else if (dom.nativeVideoPlayer) {
-            dom.nativeVideoPlayer.playbackRate = targetRate;
-          }
-          state.playbackRate = targetRate;
-        }
       } else {
-        // In tight sync (< 0.25s): maintain host's authoritative playback rate
+        // When within close sync (<= 1.8s): maintain steady authoritative playback rate without jitter
         if (Math.abs((state.playbackRate || 1.0) - hostRate) > 0.04) {
           if (state.activeMode === 'youtube') {
             sendYtCommand('setPlaybackRate', [hostRate]);
@@ -6354,6 +6463,71 @@ function updateDurationUI(dur) {
   dom.durationDisplay.textContent = formatTime(dur);
 }
 
+function updateLiveBadgeUI() {
+  const isLive = Boolean(state.isLiveStream);
+  const isAtEdge = !state.isLiveStream || state.isAtLiveEdge !== false;
+
+  [dom.stageLiveBadgeBtn, dom.nowPlayingLiveBadgeBtn].forEach(btn => {
+    if (!btn) return;
+    if (isLive) {
+      btn.classList.remove('hidden');
+      btn.classList.add('flex');
+      if (isAtEdge) {
+        btn.className = 'flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-red-600/95 text-white font-sans text-[10px] font-bold tracking-wider shadow-sm hover:bg-red-700 active:scale-95 transition-all cursor-pointer shrink-0';
+        btn.title = 'Canlı yayındasınız';
+      } else {
+        btn.className = 'flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-white/10 hover:bg-red-600/70 text-gray-300 hover:text-white font-sans text-[10px] font-bold tracking-wider shadow-sm active:scale-95 transition-all cursor-pointer shrink-0';
+        btn.title = 'Canlı yayına geçmek için tıklayın';
+      }
+    } else {
+      btn.classList.add('hidden');
+      btn.classList.remove('flex');
+    }
+  });
+
+  [dom.stageLiveDot, dom.nowPlayingLiveDot].forEach(dot => {
+    if (!dot) return;
+    if (isAtEdge) {
+      dot.className = 'w-1.5 h-1.5 sm:w-2 sm:h-2 rounded-full bg-white animate-pulse';
+    } else {
+      dot.className = 'w-1.5 h-1.5 sm:w-2 sm:h-2 rounded-full bg-gray-400';
+    }
+  });
+
+  if (isLive) {
+    if (dom.durationDisplay) dom.durationDisplay.textContent = 'CANLI';
+    if (dom.nowPlayingDuration) dom.nowPlayingDuration.textContent = 'CANLI';
+  }
+}
+window.updateLiveBadgeUI = updateLiveBadgeUI;
+
+function jumpToLiveEdge() {
+  if (state.activeMode === 'youtube') {
+    sendYtCommand('seekTo', [9999999, true]);
+    sendYtCommand('playVideo');
+    if (state.ytPlayer && typeof state.ytPlayer.seekTo === 'function') {
+      try {
+        state.ytPlayer.seekTo(9999999, true);
+        state.ytPlayer.playVideo();
+      } catch (_) {}
+    }
+  } else if (dom.nativeVideoPlayer) {
+    if (dom.nativeVideoPlayer.duration && isFinite(dom.nativeVideoPlayer.duration)) {
+      dom.nativeVideoPlayer.currentTime = dom.nativeVideoPlayer.duration;
+    }
+    dom.nativeVideoPlayer.play().catch(() => {});
+  }
+  state.isAtLiveEdge = true;
+  state.isPlaying = true;
+  updatePlayPauseUI(true);
+  updateLiveBadgeUI();
+  showToast('Canlı yayına geçildi (En Güncel)');
+  if (canUserControlPlayback()) {
+    sendP2PData('sync', { action: 'seek', time: 9999999, isPlaying: true, isLive: true, sentAt: Date.now() });
+  }
+}
+window.jumpToLiveEdge = jumpToLiveEdge;
+
 function togglePlayPause() {
   if (!canUserControlPlayback()) {
     showToast('Oynatma ve durdurma yetkisi sadece Oda Sahibi ve Yöneticilere aittir.');
@@ -6433,7 +6607,18 @@ window.addEventListener('message', (event) => {
   if (!data || typeof data !== 'object') return;
 
   if (data.event === 'infoDelivery' && data.info) {
-    if (typeof data.info.duration === 'number' && data.info.duration > 0) {
+    const isLiveDetected = Boolean(
+      data.info.isLive || 
+      (data.info.videoData && data.info.videoData.isLive) ||
+      (typeof data.info.duration === 'number' && (data.info.duration === 0 || data.info.duration > 86400) && state.isPlaying)
+    );
+    if (isLiveDetected && !state.isLiveStream) {
+      state.isLiveStream = true;
+      state.isAtLiveEdge = true;
+      if (typeof updateLiveBadgeUI === 'function') updateLiveBadgeUI();
+    }
+
+    if (typeof data.info.duration === 'number' && data.info.duration > 0 && !state.isLiveStream) {
       state.duration = data.info.duration;
       if (dom.durationDisplay) dom.durationDisplay.textContent = formatTime(state.duration);
     }
@@ -7454,20 +7639,62 @@ function leaveRoom() {
   if (state.isScreenSharing) {
     stopScreenSharing();
   }
-  if (state.isCamOn) {
-    toggleCam();
-  }
-  if (state.isMicOn) {
-    toggleMic();
-  }
 
-  // Stop local hardware tracks and clean up extra PIP bubbles
+  // Notify other room participants immediately of departure
+  try {
+    const leavePayload = {
+      clientId: state.clientId,
+      userId: state.userId,
+      username: state.username,
+      isHost: !!state.isHost
+    };
+    if (typeof sendSignal === 'function') {
+      sendSignal({ type: 'user_left', ...leavePayload, payload: leavePayload });
+      sendSignal({ type: 'peer-left', ...leavePayload, payload: leavePayload });
+    }
+    if (typeof sendP2PData === 'function') {
+      sendP2PData('user_left', leavePayload);
+    }
+    if (roomSupabaseChannel) {
+      roomSupabaseChannel.send({
+        type: 'broadcast',
+        event: 'user_left',
+        payload: leavePayload
+      }).catch(() => {});
+      roomSupabaseChannel.untrack().catch(() => {});
+    }
+  } catch (_) {}
+
+  // Stop all local hardware camera and microphone tracks immediately
+  state.isCamOn = false;
+  state.isMicOn = false;
+  updateAVToolbarUI();
+
   if (state.localStream) {
     state.localStream.getTracks().forEach(t => {
-      try { t.stop(); } catch (_) {}
+      try { t.enabled = false; t.stop(); } catch (_) {}
     });
     state.localStream = null;
   }
+  if (dom.selfVideo && dom.selfVideo.srcObject) {
+    try {
+      dom.selfVideo.srcObject.getTracks().forEach(t => {
+        try { t.enabled = false; t.stop(); } catch (_) {}
+      });
+    } catch (_) {}
+    dom.selfVideo.srcObject = null;
+  }
+  document.querySelectorAll('video, audio').forEach(el => {
+    if (el.srcObject) {
+      try {
+        el.srcObject.getTracks().forEach(t => {
+          try { t.enabled = false; t.stop(); } catch (_) {}
+        });
+      } catch (_) {}
+      el.srcObject = null;
+    }
+  });
+
   document.querySelectorAll('.remote-extra-pip').forEach(el => el.remove());
   state.dismissedPips = {};
   state.isPartnerPipDismissed = false;
@@ -7527,11 +7754,17 @@ function leaveRoom() {
     } catch (_) {}
   }
   if (roomSupabaseChannel) {
-    try {
-      roomSupabaseChannel.untrack().catch(() => {});
-      roomSupabaseChannel.unsubscribe();
-    } catch (_) {}
+    const ch = roomSupabaseChannel;
     roomSupabaseChannel = null;
+    try { ch.untrack().catch(() => {}); } catch (_) {}
+    setTimeout(() => {
+      try {
+        ch.unsubscribe();
+        if (supabaseClient && typeof supabaseClient.removeChannel === 'function') {
+          supabaseClient.removeChannel(ch);
+        }
+      } catch (_) {}
+    }, 150);
   }
 
   // Clear local room state so closed room never lingers in Explore
@@ -8741,10 +8974,26 @@ async function toggleMic() {
   syncMicSettingsValues();
 }
 
-function optimizeVideoSender(sender) {
-  // WebKit / Safari camera capture encoder freezes if setParameters is mutated with custom framerates.
-  // Standard browser WebRTC automatically handles optimal bitrate adaptation.
-  return;
+async function optimizeVideoSender(sender) {
+  if (!sender || typeof sender.getParameters !== 'function' || typeof sender.setParameters !== 'function') return;
+  try {
+    const params = sender.getParameters();
+    if (!params) return;
+    if (!params.encodings || params.encodings.length === 0) {
+      params.encodings = [{}];
+    }
+    params.encodings.forEach(enc => {
+      enc.maxBitrate = 2500000; // 2.5 Mbps crisp 720p/1080p HD stream
+      enc.minBitrate = 500000;  // 500 kbps floor
+      delete enc.scaleResolutionDownBy; // Keep full sensor resolution
+    });
+    if ('degradationPreference' in params) {
+      params.degradationPreference = 'maintain-resolution';
+    }
+    await sender.setParameters(params);
+  } catch (err) {
+    console.warn('[WebRTC] optimizeVideoSender error:', err);
+  }
 }
 
 async function getLiveCameraStream(targetFacingMode = null, targetDeviceId = null) {
@@ -8761,8 +9010,8 @@ async function getLiveCameraStream(targetFacingMode = null, targetDeviceId = nul
     tryConstraints.push({
       video: {
         deviceId: { exact: deviceId },
-        width: { ideal: 1280, max: 1920 },
-        height: { ideal: 720, max: 1080 },
+        width: { ideal: 1280 },
+        height: { ideal: 720 },
         frameRate: { ideal: 30 }
       },
       audio: false
@@ -8770,8 +9019,9 @@ async function getLiveCameraStream(targetFacingMode = null, targetDeviceId = nul
     tryConstraints.push({
       video: {
         deviceId: { exact: deviceId },
-        width: { ideal: 640 },
-        height: { ideal: 480 }
+        width: { ideal: 720 },
+        height: { ideal: 1280 },
+        frameRate: { ideal: 30 }
       },
       audio: false
     });
@@ -8781,28 +9031,35 @@ async function getLiveCameraStream(targetFacingMode = null, targetDeviceId = nul
     });
   }
 
-  // 2. Facing mode prioritized (720p 30fps real-time fluid video call)
+  // 2. Facing mode prioritized (Full HD / HD, portrait & landscape friendly for phones & desktop)
   tryConstraints.push({
     video: {
       facingMode: { ideal: facing },
-      width: { ideal: 1280, max: 1920 },
-      height: { ideal: 720, max: 1080 },
-      frameRate: { ideal: 30 }
+      width: { ideal: 1280 },
+      height: { ideal: 720 },
+      frameRate: { ideal: 30, min: 24 }
     },
     audio: false
   });
   tryConstraints.push({
     video: {
       facingMode: { ideal: facing },
-      width: { ideal: 640 },
-      height: { ideal: 480 }
+      width: { ideal: 720 },
+      height: { ideal: 1280 },
+      frameRate: { ideal: 30, min: 24 }
     },
     audio: false
   });
   tryConstraints.push({
     video: {
-      width: { ideal: 640 },
-      height: { ideal: 480 }
+      facingMode: { ideal: facing },
+      aspectRatio: { ideal: 1.7777777778 }
+    },
+    audio: false
+  });
+  tryConstraints.push({
+    video: {
+      facingMode: { ideal: facing }
     },
     audio: false
   });
@@ -8821,7 +9078,7 @@ async function getLiveCameraStream(targetFacingMode = null, targetDeviceId = nul
       lastErr = err;
     }
   }
-  throw lastErr || new Error('No camera stream');
+  throw lastErr || new Error('Kamera akışı alınamadı');
 }
 
 async function switchCamera() {
@@ -9235,6 +9492,10 @@ function renderVideoGrid() {
   if (state.peers) {
     Object.entries(state.peers).forEach(([pId, peerObj]) => {
       if (!peerObj) return;
+      if (peerObj.pc && (peerObj.pc.signalingState === 'closed' || peerObj.pc.connectionState === 'closed' || peerObj.pc.connectionState === 'failed')) return;
+      const cId = String(peerObj.clientId || pId).toLowerCase();
+      const uId = String(peerObj.userId || '').toLowerCase();
+      if (state.departedClients && (state.departedClients.has(cId) || (uId && state.departedClients.has(uId)) || state.departedClients.has(String(pId).toLowerCase()))) return;
       if (state.clientId && (pId === state.clientId || peerObj.clientId === state.clientId)) return;
       if (!peerObj.clientId && state.userId && (pId === state.userId || peerObj.userId === state.userId)) return;
       const uKey = String(peerObj.clientId || peerObj.userId || pId || '').toLowerCase();
@@ -9720,7 +9981,7 @@ function createAndJoinRoom(title, isPrivate = false, category = 'YouTube', video
   state.isHost = true;
   state.hostName = state.username;
   state.userRole = 'owner';
-  state.controlMode = 'host_only';
+  state.controlMode = 'everyone';
   state.hasDjPermission = true;
 
   const accounts = typeof getConnectedAccounts === 'function' ? getConnectedAccounts() : {};
@@ -10047,8 +10308,8 @@ function renderRoomList(roomsToRender) {
       state.hostName = r.host || 'Yönetici';
       state.isHost = (r.host === state.username);
       state.userRole = state.isHost ? 'owner' : 'member';
-      state.controlMode = 'host_only';
-      state.hasDjPermission = state.isHost;
+      state.controlMode = r.controlMode || 'everyone';
+      state.hasDjPermission = true;
       state.isInRoom = true;
       state.roomName = r.name || 'Canlı Oda';
       state.roomCategory = r.category || 'YouTube';
@@ -10477,7 +10738,8 @@ window.canUserManageRoom = canUserManageRoom;
 function canUserControlPlayback() {
   if (!state.isInRoom) return true;
   if (state.isHost) return true;
-  if (state.controlMode === 'everyone') return true;
+  if (state.username && state.hostName && state.username.toLowerCase().replace(/^@/, '') === state.hostName.toLowerCase().replace(/^@/, '')) return true;
+  if (state.controlMode === 'everyone' || !state.controlMode || state.controlMode === 'free') return true;
   const role = state.userRole || 'member';
   return role === 'owner' || role === 'admin' || role === 'video_control' || role === 'dj' || !!state.hasDjPermission;
 }
@@ -10486,7 +10748,8 @@ window.canUserControlPlayback = canUserControlPlayback;
 function canUserChooseVideo() {
   if (!state.isInRoom) return true;
   if (state.isHost) return true;
-  if (state.controlMode === 'everyone') return true;
+  if (state.username && state.hostName && state.username.toLowerCase().replace(/^@/, '') === state.hostName.toLowerCase().replace(/^@/, '')) return true;
+  if (state.controlMode === 'everyone' || !state.controlMode || state.controlMode === 'free') return true;
   const role = state.userRole || 'member';
   return role === 'owner' || role === 'admin' || role === 'video_control' || role === 'dj' || !!state.hasDjPermission;
 }
@@ -15125,6 +15388,10 @@ function renderParticipantsList() {
   if (state.peers) {
     Object.entries(state.peers).forEach(([pId, peerObj]) => {
       if (!peerObj) return;
+      if (peerObj.pc && (peerObj.pc.signalingState === 'closed' || peerObj.pc.connectionState === 'closed' || peerObj.pc.connectionState === 'failed')) return;
+      const cId = String(peerObj.clientId || pId).toLowerCase();
+      const uId = String(peerObj.userId || '').toLowerCase();
+      if (state.departedClients && (state.departedClients.has(cId) || (uId && state.departedClients.has(uId)) || state.departedClients.has(String(pId).toLowerCase()))) return;
       if (state.clientId && (pId === state.clientId || peerObj.clientId === state.clientId)) return;
       if (!peerObj.clientId && state.userId && (pId === state.userId || peerObj.userId === state.userId)) return;
       if (allMembers.some(m => !m.isSelf && (m.clientId === pId || (peerObj.clientId && m.clientId === peerObj.clientId) || (!peerObj.clientId && peerObj.userId && m.userId === peerObj.userId)))) return;
@@ -15148,8 +15415,14 @@ function renderParticipantsList() {
     });
   }
 
-  // If in room with a peer but participant object not yet sent, seed standard partner
-  if (state.peerId && state.peerId !== state.clientId && !allMembers.some(m => m.clientId === state.peerId || (m.userId && m.userId === state.peerId))) {
+  // If in room with a peer but participant object not yet sent, seed standard partner ONLY if there is an active live WebRTC peer connection that is connected
+  const hasLiveWebRTCPeer = Boolean(
+    state.peers && state.peerId && state.peers[state.peerId] &&
+    (!state.departedClients || !state.departedClients.has(String(state.peerId).toLowerCase())) &&
+    state.peers[state.peerId].pc &&
+    (state.peers[state.peerId].pc.connectionState === 'connected' || state.peers[state.peerId].pc.iceConnectionState === 'connected')
+  );
+  if (hasLiveWebRTCPeer && state.peerId !== state.clientId && !allMembers.some(m => m.clientId === state.peerId || (m.userId && m.userId === state.peerId))) {
     let pName = state.hostName && state.hostName !== 'Sen' ? state.hostName : 'Katılımcı';
     if (state.username && pName.toLowerCase() === state.username.toLowerCase()) {
       pName = `${state.username} (Cihaz 2)`;
@@ -22116,6 +22389,20 @@ window.recordUsernameChange = recordUsernameChange;
     });
   }
 
+  if (dom.stageLiveBadgeBtn) {
+    addInstantTap(dom.stageLiveBadgeBtn, (e) => {
+      if (e && e.stopPropagation) e.stopPropagation();
+      jumpToLiveEdge();
+    });
+  }
+
+  if (dom.nowPlayingLiveBadgeBtn) {
+    addInstantTap(dom.nowPlayingLiveBadgeBtn, (e) => {
+      if (e && e.stopPropagation) e.stopPropagation();
+      jumpToLiveEdge();
+    });
+  }
+
   // Native Video Player (Direct Streams & Screen Share) Event Bindings
   if (dom.nativeVideoPlayer) {
     dom.nativeVideoPlayer.addEventListener('timeupdate', () => {
@@ -23554,7 +23841,7 @@ function generateUniqueRoomCode(isPrivate = false) {
       // Creator is always Host
       state.isHost = true;
       state.hostName = state.username;
-      state.controlMode = 'host_only';
+      state.controlMode = 'everyone';
       state.hasDjPermission = true;
       state.isPrivateRoom = !!newRoomIsPrivate;
       state.isInRoom = true;
@@ -24435,8 +24722,8 @@ window.extractRoomIdFromInput = extractRoomIdFromInput;
         state.roomId = finalRoomId;
         state.isHost = false;
         state.userRole = 'member';
-        state.hasDjPermission = false;
-        state.controlMode = 'host_only';
+        state.hasDjPermission = true;
+        state.controlMode = 'everyone';
         if (dom.activeRoomTitle) dom.activeRoomTitle.textContent = finalRoomId;
         if (dom.currentRoomDisplay) dom.currentRoomDisplay.textContent = finalRoomId;
         switchToMyRoom();
