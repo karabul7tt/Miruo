@@ -2103,8 +2103,8 @@ const state = {
   isHost: false,
   hostName: '',
   userRole: 'member', // 'owner' | 'admin' | 'video_control' | 'dj' | 'member'
-  controlMode: 'everyone', // 'everyone' | 'host_only'
-  hasDjPermission: true,   // In friendly watch party rooms, all peers can control media
+  controlMode: 'host_only', // 'host_only' (Owner & authorized admins/DJs) | 'everyone'
+  hasDjPermission: false,   // Default to false for guests; granted by host or for host
   isPrivateRoom: false,
   isLiveStream: false,
   isAtLiveEdge: true,
@@ -2143,6 +2143,7 @@ const rtcConfig = {
   bundlePolicy: 'max-bundle',
   iceTransportPolicy: 'all'
 };
+window.state = state;
 (function setupTurnServers() {
   try {
     if (Array.isArray(window.MIRUO_TURN_SERVERS)) {
@@ -3271,7 +3272,17 @@ function connectSupabaseRoomSignaling() {
           if (!state.isHost) {
             setTimeout(() => {
               sendP2PData('sync', { action: 'request_sync', sentAt: Date.now() });
-            }, 300);
+            }, 250);
+            setTimeout(() => {
+              if (!state.currentVideoId) {
+                sendP2PData('sync', { action: 'request_sync', sentAt: Date.now() });
+              }
+            }, 1000);
+            setTimeout(() => {
+              if (!state.currentVideoId) {
+                sendP2PData('sync', { action: 'request_sync', sentAt: Date.now() });
+              }
+            }, 2200);
           }
         }
       });
@@ -5098,6 +5109,12 @@ function sendP2PData(type, payload = {}) {
 
   // Always send via signaling to ensure reliable delivery across all peers, mobile/desktop cross-NAT
   if (type === 'sync') {
+    const isHb = enrichedPayload.action === 'heartbeat';
+    if (isHb) {
+      // Heartbeats are strictly direct P2P dataChannel frames (0ms latency).
+      // Never route high-frequency heartbeats through signaling or REST API.
+      return;
+    }
     sendSignal({ type: 'sync-event', payload: enrichedPayload });
     if (roomSupabaseChannel) {
       try {
@@ -5338,7 +5355,7 @@ window.showAutoplayUnblockPrompt = showAutoplayUnblockPrompt;
 
 function dismissAutoplayUnblockPrompt() {
   const p = document.getElementById('miruoAutoplayUnblockBtn');
-  if (p) p.remove();
+  if (p && typeof p.remove === 'function') p.remove();
 }
 window.dismissAutoplayUnblockPrompt = dismissAutoplayUnblockPrompt;
 
@@ -5502,7 +5519,7 @@ function loadYoutubeVideo(urlOrId, startPlaying = true, startTime = 0) {
         } catch (_) {}
       }
 
-      setTimeout(() => {
+      const enforceInitialLoadSync = () => {
         if (typeof startTime === 'number' && startTime > 0) {
           sendYtCommand('seekTo', [startTime, true]);
         }
@@ -5511,9 +5528,17 @@ function loadYoutubeVideo(urlOrId, startPlaying = true, startTime = 0) {
         }
         if (startPlaying) {
           sendYtCommand('playVideo');
-          setTimeout(() => { if (state.isPlaying) sendYtCommand('playVideo'); }, 300);
-          setTimeout(() => { if (state.isPlaying) sendYtCommand('playVideo'); }, 800);
+        } else {
+          sendYtCommand('pauseVideo');
+        }
+      };
+      setTimeout(enforceInitialLoadSync, 120);
+      setTimeout(enforceInitialLoadSync, 450);
+      setTimeout(enforceInitialLoadSync, 950);
+      setTimeout(enforceInitialLoadSync, 1800);
 
+      setTimeout(() => {
+        if (startPlaying) {
           // Watchdog: ensures video never stays locked in black/buffering screen
           clearInterval(state.ytPlayWatchdog);
           let watchdogAttempts = 0;
@@ -5992,10 +6017,11 @@ function handleRemoteSync(payload) {
       return;
     }
     if (state.currentVideoId) {
+      const liveTime = (typeof getLivePlayerTime === 'function' ? getLivePlayerTime() : state.currentTime) || 0;
       sendP2PData('sync', {
         action: 'full_sync',
         videoId: state.currentVideoId,
-        time: state.currentTime,
+        time: liveTime,
         isPlaying: state.isPlaying,
         rate: state.playbackRate || 1.0,
         sentAt: Date.now()
@@ -6008,29 +6034,35 @@ function handleRemoteSync(payload) {
   if (payload.action === 'full_sync') {
     const shouldPlay = typeof payload.isPlaying === 'boolean' ? payload.isPlaying : false;
     const targetTime = typeof payload.time === 'number' ? payload.time : state.currentTime;
-    if (payload.videoId && payload.videoId !== state.currentVideoId) {
+    const isNewVideo = payload.videoId && payload.videoId !== state.currentVideoId;
+    if (isNewVideo) {
       if (typeof window.loadRemoteContentBridge === 'function') window.loadRemoteContentBridge(payload.videoId, payload.title, shouldPlay, targetTime);
       else loadYoutubeVideo(payload.videoId, shouldPlay, targetTime);
     }
     state.currentTime = targetTime;
     state.isPlaying = shouldPlay;
     updatePlayPauseUI(shouldPlay);
-    if (state.activeMode === 'youtube') {
-      sendYtCommand('seekTo', [targetTime, true]);
-      if (shouldPlay) {
-        sendYtCommand('playVideo');
-      } else {
-        sendYtCommand('pauseVideo');
-        setTimeout(() => { if (!state.isPlaying) sendYtCommand('pauseVideo'); }, 100);
-        setTimeout(() => { if (!state.isPlaying) sendYtCommand('pauseVideo'); }, 300);
-        setTimeout(() => { if (!state.isPlaying) sendYtCommand('pauseVideo'); }, 800);
-        setTimeout(() => { if (!state.isPlaying) sendYtCommand('pauseVideo'); }, 1600);
+
+    const enforceYtTimeAndState = () => {
+      if (state.activeMode === 'youtube') {
+        sendYtCommand('seekTo', [targetTime, true]);
+        if (shouldPlay) {
+          sendYtCommand('playVideo');
+        } else {
+          sendYtCommand('pauseVideo');
+        }
+      } else if (dom.nativeVideoPlayer) {
+        dom.nativeVideoPlayer.currentTime = targetTime;
+        if (shouldPlay) dom.nativeVideoPlayer.play().catch(() => {});
+        else dom.nativeVideoPlayer.pause();
       }
-    } else if (dom.nativeVideoPlayer) {
-      dom.nativeVideoPlayer.currentTime = targetTime;
-      if (shouldPlay) dom.nativeVideoPlayer.play().catch(() => {});
-      else dom.nativeVideoPlayer.pause();
-    }
+    };
+    enforceYtTimeAndState();
+    setTimeout(enforceYtTimeAndState, 150);
+    setTimeout(enforceYtTimeAndState, 500);
+    setTimeout(enforceYtTimeAndState, 1100);
+    setTimeout(enforceYtTimeAndState, 2200);
+
     if (typeof payload.rate === 'number' && Math.abs((state.playbackRate || 1.0) - payload.rate) > 0.05) {
       state.roomPlaybackRate = payload.rate;
       if (typeof window.setPlayerPlaybackRate === 'function') window.setPlayerPlaybackRate(payload.rate, false);
@@ -6063,11 +6095,12 @@ function handleRemoteSync(payload) {
     }
     const role = (isFromHost ? 'owner' : (participant && participant.role)) || (payload.userRole || 'member');
 
-    // In active watch party rooms, all connected peers can seamlessly play, pause and sync video together
-    let isAuthorized = true;
-    if (state.controlMode === 'host_only' && !isFromHost && role !== 'owner' && role !== 'admin' && role !== 'dj' && role !== 'video_control' && cleanUser(sender) !== cleanUser(state.username)) {
-      // Only strictly locked rooms restrict control
-      isAuthorized = false;
+    // Strict watch party control authorization: only Host and authorized users (owner, admin, video_control, dj)
+    let isAuthorized = false;
+    if (state.controlMode === 'everyone' || state.controlMode === 'free') {
+      isAuthorized = true;
+    } else {
+      isAuthorized = isFromHost || role === 'owner' || role === 'admin' || role === 'dj' || role === 'video_control' || (cleanUser(sender) === cleanUser(state.username));
     }
 
     if (!isAuthorized) {
@@ -6078,7 +6111,7 @@ function handleRemoteSync(payload) {
           sendP2PData('sync', {
             action: 'full_sync',
             videoId: state.currentVideoId,
-            time: state.currentTime,
+            time: (typeof getLivePlayerTime === 'function' ? getLivePlayerTime() : state.currentTime),
             isPlaying: state.isPlaying,
             rate: state.playbackRate || 1.0,
             sentAt: Date.now()
@@ -6158,8 +6191,8 @@ function handleRemoteSync(payload) {
       }
     }
     state.currentTime = targetTime;
-    if (dom.nativeVideoPlayer) {
-      dom.nativeVideoPlayer.pause();
+    if (dom.nativeVideoPlayer && typeof dom.nativeVideoPlayer.pause === 'function') {
+      try { dom.nativeVideoPlayer.pause(); } catch (_) {}
       if (typeof payload.time === 'number') {
         try { dom.nativeVideoPlayer.currentTime = targetTime; } catch (_) {}
       }
@@ -6291,11 +6324,11 @@ function handleRemoteSync(payload) {
         return;
       }
 
-      // If drift is noticeable (> 1.2s), snap to host time with hard seek and safety cooldown
+      // If drift is noticeable (> 0.8s), snap to host time with hard seek and safety cooldown
       const now = Date.now();
       const isInitialBuffering = state.ytLoadingAt && (now - state.ytLoadingAt < 2000) && (!state.lastReportedYtTime || state.lastReportedYtTime === 0);
-      if (absDrift > 1.2 && !isInitialBuffering) {
-        if (!state.lastHardSeekAt || (now - state.lastHardSeekAt) > 1500) {
+      if (absDrift > 0.8 && !isInitialBuffering) {
+        if (!state.lastHardSeekAt || (now - state.lastHardSeekAt) > 1200) {
           if (targetTime < 1.0 && localTime < 1.0) {
             // Already near start, avoid seek churn
           } else {
@@ -6312,7 +6345,7 @@ function handleRemoteSync(payload) {
           }
         }
       } else {
-        // When within close sync (<= 1.8s): maintain steady authoritative playback rate without jitter
+        // When within close sync (<= 0.8s): maintain steady authoritative playback rate without jitter
         if (Math.abs((state.playbackRate || 1.0) - hostRate) > 0.04) {
           if (state.activeMode === 'youtube') {
             sendYtCommand('setPlaybackRate', [hostRate]);
@@ -6325,6 +6358,7 @@ function handleRemoteSync(payload) {
     }
   }
 }
+window.handleRemoteSync = handleRemoteSync;
 
 function getLivePlayerTime() {
   if (state.activeMode === 'youtube') {
@@ -6352,9 +6386,16 @@ let syncHeartbeatInterval = null;
 function startSyncHeartbeat() {
   if (syncHeartbeatInterval) clearInterval(syncHeartbeatInterval);
   syncHeartbeatInterval = setInterval(() => {
-    // Only the room Host (or authorized controller when host delegates) broadcasts the heartbeat
-    const canBroadcastHeartbeat = state.isInRoom && (state.isHost || (!state.host && state.hasDjPermission)) && (state.activeMode === 'youtube' || state.activeMode === 'direct');
+    // Only the room Host (or same-user second device) broadcasts the authoritative heartbeat
+    const cleanHost = String(state.hostName || state.host || '').toLowerCase().replace(/^@/, '').trim();
+    const cleanMe = String(state.username || '').toLowerCase().replace(/^@/, '').trim();
+    const isSameHostAccount = cleanHost && cleanMe && cleanHost === cleanMe;
+    const canBroadcastHeartbeat = state.isInRoom && (state.isHost || isSameHostAccount) && (state.activeMode === 'youtube' || state.activeMode === 'direct');
     if (canBroadcastHeartbeat) {
+      const hasOpenDataChannel = (state.peers && Object.values(state.peers).some(p => p.dataChannel && p.dataChannel.readyState === 'open')) ||
+                                 (state.dataChannel && state.dataChannel.readyState === 'open');
+      if (!hasOpenDataChannel) return;
+
       const liveTime = getLivePlayerTime();
       state.currentTime = liveTime;
       sendP2PData('sync', {
@@ -6362,8 +6403,8 @@ function startSyncHeartbeat() {
         time: liveTime,
         isPlaying: !!state.isPlaying,
         rate: state.playbackRate || 1.0,
-        isHost: !!state.isHost,
-        userRole: state.userRole || 'owner',
+        isHost: true,
+        userRole: 'owner',
         sentAt: Date.now()
       });
     }
@@ -6440,18 +6481,18 @@ function formatTime(seconds) {
 
 function updatePlayPauseUI(playing) {
   if (playing) {
-    if (dom.playIcon) dom.playIcon.classList.add('hidden');
-    if (dom.pauseIcon) dom.pauseIcon.classList.remove('hidden');
-    if (dom.nowPlayingPlayIcon) dom.nowPlayingPlayIcon.classList.add('hidden');
-    if (dom.nowPlayingPauseIcon) dom.nowPlayingPauseIcon.classList.remove('hidden');
+    if (dom.playIcon && dom.playIcon.classList) dom.playIcon.classList.add('hidden');
+    if (dom.pauseIcon && dom.pauseIcon.classList) dom.pauseIcon.classList.remove('hidden');
+    if (dom.nowPlayingPlayIcon && dom.nowPlayingPlayIcon.classList) dom.nowPlayingPlayIcon.classList.add('hidden');
+    if (dom.nowPlayingPauseIcon && dom.nowPlayingPauseIcon.classList) dom.nowPlayingPauseIcon.classList.remove('hidden');
     if (typeof resetControlsHideTimer === 'function') {
       resetControlsHideTimer();
     }
   } else {
-    if (dom.playIcon) dom.playIcon.classList.remove('hidden');
-    if (dom.pauseIcon) dom.pauseIcon.classList.add('hidden');
-    if (dom.nowPlayingPlayIcon) dom.nowPlayingPlayIcon.classList.remove('hidden');
-    if (dom.nowPlayingPauseIcon) dom.nowPlayingPauseIcon.classList.add('hidden');
+    if (dom.playIcon && dom.playIcon.classList) dom.playIcon.classList.remove('hidden');
+    if (dom.pauseIcon && dom.pauseIcon.classList) dom.pauseIcon.classList.add('hidden');
+    if (dom.nowPlayingPlayIcon && dom.nowPlayingPlayIcon.classList) dom.nowPlayingPlayIcon.classList.remove('hidden');
+    if (dom.nowPlayingPauseIcon && dom.nowPlayingPauseIcon.classList) dom.nowPlayingPauseIcon.classList.add('hidden');
     if (typeof showStageControls === 'function') {
       showStageControls();
     }
@@ -7558,12 +7599,12 @@ function applyVideoDisplay() {
   const overlayVideoBtn = document.getElementById('toggleVideoDisplayBtn');
   const videoIcon = document.getElementById('videoDisplayIcon');
 
-  if (ytCont) ytCont.classList.toggle('video-display-hidden', !show);
-  if (nativeVid) nativeVid.classList.toggle('video-display-hidden', !show);
-  if (webFrame) webFrame.classList.toggle('video-display-hidden', !show);
-  if (remoteScreen) remoteScreen.classList.toggle('video-display-hidden', !show);
+  if (ytCont && ytCont.classList) ytCont.classList.toggle('video-display-hidden', !show);
+  if (nativeVid && nativeVid.classList) nativeVid.classList.toggle('video-display-hidden', !show);
+  if (webFrame && webFrame.classList) webFrame.classList.toggle('video-display-hidden', !show);
+  if (remoteScreen && remoteScreen.classList) remoteScreen.classList.toggle('video-display-hidden', !show);
 
-  if (audioOnlyEl) {
+  if (audioOnlyEl && audioOnlyEl.classList) {
     audioOnlyEl.classList.toggle('hidden', show);
     if (!show) {
       const playingTitle = dom.nowPlayingTitle ? dom.nowPlayingTitle.textContent : '';
@@ -8587,12 +8628,12 @@ function makeDraggable(el) {
 }
 
 function showToast(msg) {
-  if (!dom.syncToast || !dom.syncToastMsg) return;
+  if (!dom.syncToast || !dom.syncToast.style || !dom.syncToastMsg) return;
   dom.syncToastMsg.textContent = msg;
   dom.syncToast.style.opacity = '1';
   if (state.toastTimeout) clearTimeout(state.toastTimeout);
   state.toastTimeout = setTimeout(() => {
-    if (dom.syncToast) dom.syncToast.style.opacity = '0';
+    if (dom.syncToast && dom.syncToast.style) dom.syncToast.style.opacity = '0';
   }, 2500);
 }
 
@@ -9981,7 +10022,7 @@ function createAndJoinRoom(title, isPrivate = false, category = 'YouTube', video
   state.isHost = true;
   state.hostName = state.username;
   state.userRole = 'owner';
-  state.controlMode = 'everyone';
+  state.controlMode = 'host_only';
   state.hasDjPermission = true;
 
   const accounts = typeof getConnectedAccounts === 'function' ? getConnectedAccounts() : {};
@@ -10308,8 +10349,8 @@ function renderRoomList(roomsToRender) {
       state.hostName = r.host || 'Yönetici';
       state.isHost = (r.host === state.username);
       state.userRole = state.isHost ? 'owner' : 'member';
-      state.controlMode = r.controlMode || 'everyone';
-      state.hasDjPermission = true;
+      state.controlMode = r.controlMode || 'host_only';
+      state.hasDjPermission = state.isHost;
       state.isInRoom = true;
       state.roomName = r.name || 'Canlı Oda';
       state.roomCategory = r.category || 'YouTube';
@@ -10738,8 +10779,10 @@ window.canUserManageRoom = canUserManageRoom;
 function canUserControlPlayback() {
   if (!state.isInRoom) return true;
   if (state.isHost) return true;
-  if (state.username && state.hostName && state.username.toLowerCase().replace(/^@/, '') === state.hostName.toLowerCase().replace(/^@/, '')) return true;
-  if (state.controlMode === 'everyone' || !state.controlMode || state.controlMode === 'free') return true;
+  const cleanHost = String(state.hostName || state.host || '').toLowerCase().replace(/^@/, '').trim();
+  const cleanMe = String(state.username || '').toLowerCase().replace(/^@/, '').trim();
+  if (cleanHost && cleanMe && cleanHost === cleanMe) return true;
+  if (state.controlMode === 'everyone' || state.controlMode === 'free') return true;
   const role = state.userRole || 'member';
   return role === 'owner' || role === 'admin' || role === 'video_control' || role === 'dj' || !!state.hasDjPermission;
 }
@@ -10748,8 +10791,10 @@ window.canUserControlPlayback = canUserControlPlayback;
 function canUserChooseVideo() {
   if (!state.isInRoom) return true;
   if (state.isHost) return true;
-  if (state.username && state.hostName && state.username.toLowerCase().replace(/^@/, '') === state.hostName.toLowerCase().replace(/^@/, '')) return true;
-  if (state.controlMode === 'everyone' || !state.controlMode || state.controlMode === 'free') return true;
+  const cleanHost = String(state.hostName || state.host || '').toLowerCase().replace(/^@/, '').trim();
+  const cleanMe = String(state.username || '').toLowerCase().replace(/^@/, '').trim();
+  if (cleanHost && cleanMe && cleanHost === cleanMe) return true;
+  if (state.controlMode === 'everyone' || state.controlMode === 'free') return true;
   const role = state.userRole || 'member';
   return role === 'owner' || role === 'admin' || role === 'video_control' || role === 'dj' || !!state.hasDjPermission;
 }
@@ -11011,7 +11056,7 @@ function updatePermissionUI() {
   }
 
   // Determine whether current user has rights to control media
-  const canControl = state.isHost || state.controlMode === 'everyone' || state.hasDjPermission || state.userRole === 'owner' || state.userRole === 'admin' || state.userRole === 'dj';
+  const canControl = canUserChooseVideo();
 
   if (dom.roomQuickSearchBtnText) {
     dom.roomQuickSearchBtnText.textContent = canControl ? (dict.room_change_video || 'Değiştir') : (currentLang === 'en' ? 'Suggest' : (currentLang === 'de' ? 'Vorschlagen' : 'Öner'));
@@ -15343,6 +15388,8 @@ function handleRemoteRoleUpdate(targetUserId, newRole, targetUsername) {
   renderParticipantsList();
   renderChatMessage('Sistem', `${targetUsername || 'Bir kullanıcı'} artık ${roleName} yetkisine sahip.`, false, null);
 }
+window.handleRemoteRoleUpdate = handleRemoteRoleUpdate;
+window.setParticipantRole = setParticipantRole;
 
 function renderParticipantsList() {
   if (!dom.participantsListContainer) return;
@@ -15496,8 +15543,19 @@ function renderParticipantsList() {
 
     let actionsHtml = '';
     if (canUserManageRoom() && !m.isSelf && !isTargetOwner) {
+      const isAuthorized = currentRole === 'admin' || currentRole === 'video_control' || currentRole === 'dj';
       actionsHtml = `
         <div class="flex items-center gap-1.5 shrink-0">
+          <button type="button" class="quick-toggle-role-btn px-2 py-1 rounded-xl text-[10px] font-bold transition-all active:scale-95 cursor-pointer flex items-center gap-1 border shadow-sm ${
+            isAuthorized
+              ? 'bg-amber-500/20 text-amber-300 border-amber-500/40 hover:bg-amber-500/30'
+              : 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40 hover:bg-emerald-500/30'
+          }" data-user-id="${m.userId}" data-username="${cleanTargetName}" data-current-role="${currentRole}" title="${
+            isAuthorized ? 'Video yetkisini kaldır' : 'Video açma ve kontrol yetkisi ver'
+          }">
+            <span>${isAuthorized ? '✓ Yetkili' : '+ Yetki Ver'}</span>
+          </button>
+
           <select class="role-selector-dropdown bg-[#141824] hover:bg-[#1a2030] text-gray-200 text-[11px] font-semibold py-1.5 px-2 rounded-xl border border-white/15 focus:outline-none focus:border-rose-500 transition-all cursor-pointer" data-user-id="${m.userId}" data-username="${cleanTargetName}">
             <option value="admin" ${currentRole === 'admin' ? 'selected' : ''}>${dictPart.role_admin || 'Yönetici'}</option>
             <option value="video_control" ${currentRole === 'video_control' || currentRole === 'dj' ? 'selected' : ''}>${dictPart.role_video_control || 'Video Açabilir'}</option>
@@ -15645,6 +15703,18 @@ function renderParticipantsList() {
         if (e && e.stopPropagation) e.stopPropagation();
         const uName = unblkBtn.getAttribute('data-username');
         unblockUser(uName);
+      });
+    }
+
+    const quickRoleBtn = card.querySelector('.quick-toggle-role-btn');
+    if (quickRoleBtn) {
+      addInstantTap(quickRoleBtn, (e) => {
+        if (e && e.stopPropagation) e.stopPropagation();
+        const uId = quickRoleBtn.getAttribute('data-user-id');
+        const uName = quickRoleBtn.getAttribute('data-username');
+        const cRole = quickRoleBtn.getAttribute('data-current-role');
+        const isAuth = cRole === 'admin' || cRole === 'video_control' || cRole === 'dj';
+        setParticipantRole(uId, uName, isAuth ? 'member' : 'video_control');
       });
     }
 
@@ -16580,8 +16650,8 @@ window.restoreRoomFromMiniPlayer = restoreRoomFromMiniPlayer;
 function updateMiniPlayerPlayPauseUI(isPlaying) {
   const playIcon = document.getElementById('miniPlayerPlayIcon');
   const pauseIcon = document.getElementById('miniPlayerPauseIcon');
-  if (playIcon) playIcon.classList.toggle('hidden', isPlaying);
-  if (pauseIcon) pauseIcon.classList.toggle('hidden', !isPlaying);
+  if (playIcon && playIcon.classList) playIcon.classList.toggle('hidden', isPlaying);
+  if (pauseIcon && pauseIcon.classList) pauseIcon.classList.toggle('hidden', !isPlaying);
 }
 window.updateMiniPlayerPlayPauseUI = updateMiniPlayerPlayPauseUI;
 
@@ -23841,7 +23911,7 @@ function generateUniqueRoomCode(isPrivate = false) {
       // Creator is always Host
       state.isHost = true;
       state.hostName = state.username;
-      state.controlMode = 'everyone';
+      state.controlMode = 'host_only';
       state.hasDjPermission = true;
       state.isPrivateRoom = !!newRoomIsPrivate;
       state.isInRoom = true;
@@ -24722,8 +24792,8 @@ window.extractRoomIdFromInput = extractRoomIdFromInput;
         state.roomId = finalRoomId;
         state.isHost = false;
         state.userRole = 'member';
-        state.hasDjPermission = true;
-        state.controlMode = 'everyone';
+        state.hasDjPermission = false;
+        state.controlMode = 'host_only';
         if (dom.activeRoomTitle) dom.activeRoomTitle.textContent = finalRoomId;
         if (dom.currentRoomDisplay) dom.currentRoomDisplay.textContent = finalRoomId;
         switchToMyRoom();
@@ -24963,13 +25033,13 @@ function areStageControlsVisible() {
 function showStageControls() {
   const elements = getStageControlElements();
   elements.forEach(el => {
-    el.classList.remove('fs-controls-hidden');
+    if (el && el.classList) el.classList.remove('fs-controls-hidden');
   });
-  if (dom.ravePlayerOverlay) {
+  if (dom.ravePlayerOverlay && dom.ravePlayerOverlay.classList) {
     dom.ravePlayerOverlay.classList.remove('opacity-0', 'pointer-events-none');
     dom.ravePlayerOverlay.classList.add('opacity-100');
   }
-  if (dom.stageContainer) {
+  if (dom.stageContainer && dom.stageContainer.style) {
     dom.stageContainer.style.cursor = 'default';
   }
 }
@@ -24978,18 +25048,18 @@ function hideStageControls() {
   // Do NOT hide if video is paused, if 3-dots settings menu is open, or while touching/dragging
   const isPaused = state.isPlaying === false;
   const menu = document.getElementById('raveRoomSettingsMenu');
-  const isMenuOpen = menu && !menu.classList.contains('hidden');
+  const isMenuOpen = menu && menu.classList && !menu.classList.contains('hidden');
   if (isPaused || isMenuOpen || isTouchingStage) return;
 
   const elements = getStageControlElements();
   elements.forEach(el => {
-    el.classList.add('fs-controls-hidden');
+    if (el && el.classList) el.classList.add('fs-controls-hidden');
   });
-  if (dom.ravePlayerOverlay) {
+  if (dom.ravePlayerOverlay && dom.ravePlayerOverlay.classList) {
     dom.ravePlayerOverlay.classList.add('opacity-0', 'pointer-events-none');
     dom.ravePlayerOverlay.classList.remove('opacity-100');
   }
-  if (isStageFullscreen() && dom.stageContainer) {
+  if (isStageFullscreen() && dom.stageContainer && dom.stageContainer.style) {
     dom.stageContainer.style.cursor = 'none';
   }
 }
@@ -25003,7 +25073,7 @@ function resetControlsHideTimer(delay = 2500) {
 
   const isPaused = state.isPlaying === false;
   const menu = document.getElementById('raveRoomSettingsMenu');
-  const isMenuOpen = menu && !menu.classList.contains('hidden');
+  const isMenuOpen = menu && menu.classList && !menu.classList.contains('hidden');
 
   // Auto-hide after 2.5 seconds of inactivity when playing
   if (!isPaused && !isMenuOpen && !isTouchingStage) {
