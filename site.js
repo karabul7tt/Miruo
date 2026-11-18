@@ -333,7 +333,7 @@
 
       if (platform === 'mac') {
         const dlLink = document.createElement('a');
-        dlLink.href = '/downloads/Miruo.dmg?v=73';
+        dlLink.href = '/downloads/Miruo.dmg?v=74';
         dlLink.download = 'Miruo.dmg';
         document.body.appendChild(dlLink);
         dlLink.click();
@@ -343,7 +343,7 @@
 
       if (platform === 'windows') {
         const dlLink = document.createElement('a');
-        dlLink.href = '/downloads/Miruo-Windows.zip?v=73';
+        dlLink.href = '/downloads/Miruo-Windows.zip?v=74';
         dlLink.download = 'Miruo-Windows.zip';
         document.body.appendChild(dlLink);
         dlLink.click();

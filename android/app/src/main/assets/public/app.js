@@ -5111,8 +5111,14 @@ function sendP2PData(type, payload = {}) {
   if (type === 'sync') {
     const isHb = enrichedPayload.action === 'heartbeat';
     if (isHb) {
-      // Heartbeats are strictly direct P2P dataChannel frames (0ms latency).
-      // Never route high-frequency heartbeats through signaling or REST API.
+      // Heartbeats go over P2P DataChannel (0ms). Only if NO channel is open do we fall back
+      // to the signaling rail, throttled to 1 per 1.5s so REST never floods.
+      const dcOpen = (state.peers && Object.values(state.peers).some(p => p.dataChannel && p.dataChannel.readyState === 'open')) ||
+                     (state.dataChannel && state.dataChannel.readyState === 'open');
+      if (dcOpen) return;
+      if (Date.now() - (state._lastHbFallbackAt || 0) < 1500) return;
+      state._lastHbFallbackAt = Date.now();
+      sendSignal({ type: 'sync-event', payload: enrichedPayload });
       return;
     }
     sendSignal({ type: 'sync-event', payload: enrichedPayload });
@@ -6257,6 +6263,18 @@ function handleRemoteSync(payload) {
     ));
     const hbAuthorized = isFromHost || (payload.canControl === true && state.controlMode === 'everyone');
     if (!state.isHost && hbAuthorized) {
+      state.lastHeartbeatAt = Date.now();
+      // Different video than the host? Jump straight to the host's video + position.
+      if (payload.videoId && payload.videoId !== state.currentVideoId &&
+          (!state.lastVideoMismatchFixAt || Date.now() - state.lastVideoMismatchFixAt > 4000)) {
+        state.lastVideoMismatchFixAt = Date.now();
+        const tgt = typeof payload.time === 'number' ? payload.time : 0;
+        if (typeof window.loadRemoteContentBridge === 'function') window.loadRemoteContentBridge(payload.videoId, payload.title, !!payload.isPlaying, tgt);
+        else loadYoutubeVideo(payload.videoId, !!payload.isPlaying, tgt);
+        return;
+      }
+    }
+    if (!state.isHost && hbAuthorized) {
       if (!payload.isPlaying) {
         // Protect initial load grace period (first 6 seconds) so a delayed pause heartbeat doesn't kill newly started videos
         const isStartupGrace = state.ytLoadingAt && (Date.now() - state.ytLoadingAt < 6000);
@@ -6385,6 +6403,28 @@ window.getLivePlayerTime = getLivePlayerTime;
 let syncHeartbeatInterval = null;
 function startSyncHeartbeat() {
   if (syncHeartbeatInterval) clearInterval(syncHeartbeatInterval);
+  // Guest watchdog: if the host's heartbeat went silent (or the player never reports time), ask for a full sync + re-arm the YouTube iframe bridge.
+  if (window._guestSyncWatchdog) clearInterval(window._guestSyncWatchdog);
+  window._guestSyncWatchdog = setInterval(() => {
+    if (!state.isInRoom || state.isHost) return;
+    const silentFor = Date.now() - (state.lastHeartbeatAt || 0);
+    if (silentFor > 3500 && (Date.now() - (state._lastWatchdogReqAt || 0) > 3000)) {
+      state._lastWatchdogReqAt = Date.now();
+      sendP2PData('sync', { action: 'request_sync', sentAt: Date.now() });
+    }
+    if (state.activeMode === 'youtube') {
+      const ytSilent = Date.now() - (state.lastReportedYtAt || 0) > 3000;
+      if (ytSilent) {
+        const f = document.getElementById('miruoYtIframe');
+        if (f && f.contentWindow) {
+          try { f.contentWindow.postMessage(JSON.stringify({ event: 'listening' }), '*'); } catch (_) {}
+        }
+        if (!state.ytPlayer && window.YT && window.YT.Player && f) {
+          try { state.ytPlayer = new YT.Player('miruoYtIframe', { events: { onReady: () => { state.ytReady = true; } } }); } catch (_) {}
+        }
+      }
+    }
+  }, 2000);
   syncHeartbeatInterval = setInterval(() => {
     // Only the room Host (or same-user second device) broadcasts the authoritative heartbeat
     const cleanHost = String(state.hostName || state.host || '').toLowerCase().replace(/^@/, '').trim();
@@ -6392,14 +6432,11 @@ function startSyncHeartbeat() {
     const isSameHostAccount = cleanHost && cleanMe && cleanHost === cleanMe;
     const canBroadcastHeartbeat = state.isInRoom && (state.isHost || isSameHostAccount) && (state.activeMode === 'youtube' || state.activeMode === 'direct');
     if (canBroadcastHeartbeat) {
-      const hasOpenDataChannel = (state.peers && Object.values(state.peers).some(p => p.dataChannel && p.dataChannel.readyState === 'open')) ||
-                                 (state.dataChannel && state.dataChannel.readyState === 'open');
-      if (!hasOpenDataChannel) return;
-
       const liveTime = getLivePlayerTime();
       state.currentTime = liveTime;
       sendP2PData('sync', {
         action: 'heartbeat',
+        videoId: state.currentVideoId || null,
         time: liveTime,
         isPlaying: !!state.isPlaying,
         rate: state.playbackRate || 1.0,
@@ -8936,7 +8973,22 @@ function describeMediaError(e, kind) {
 }
 
 async function toggleMic() {
+  // Re-entrancy guard: ignore taps while a permission prompt / stream request is in flight
+  if (state._micBusy && (Date.now() - (state._micBusyAt || 0) < 6000)) return;
+  state._micBusy = true;
+  state._micBusyAt = Date.now();
+  try {
+    await _toggleMicImpl();
+  } finally {
+    state._micBusy = false;
+  }
+}
+window.toggleMic = toggleMic;
+
+async function _toggleMicImpl() {
   state.isMicOn = !state.isMicOn;
+  // Reflect the new state on the button immediately
+  try { updateAVToolbarUI(); } catch (_) {}
 
   if (state.isMicOn) {
     try {
@@ -8971,22 +9023,29 @@ async function toggleMic() {
         triggerAudioDucking(true);
       }
 
-      const uniquePeers = getUniquePeerEntries();
-      for (const peer of uniquePeers) {
-        if (peer && peer.pc && peer.pc.signalingState !== 'closed') {
-          const { needsReneg } = await attachTrackToPeer(peer.pc, audioTrack, state.localStream);
-          if (needsReneg) {
-            await renegotiatePeerWebRTC(peer.peerId);
-          }
-        }
-      }
-      if (uniquePeers.length === 0 && state.pc && state.pc.signalingState !== 'closed') {
-        const { needsReneg } = await attachTrackToPeer(state.pc, audioTrack, state.localStream);
-        if (needsReneg && typeof renegotiateWebRTC === 'function') {
-          try { await renegotiateWebRTC(); } catch (_) {}
-        }
-      }
+      // UI updates instantly; WebRTC attach/renegotiation runs in the background (no more "press 20 times")
+      updateAVToolbarUI();
+      broadcastMyMediaStatus();
       showToast('Mikrofon Açık (Canlı)');
+      (async () => {
+        try {
+          const uniquePeers = getUniquePeerEntries();
+          for (const peer of uniquePeers) {
+            if (peer && peer.pc && peer.pc.signalingState !== 'closed') {
+              try {
+                const { needsReneg } = await attachTrackToPeer(peer.pc, audioTrack, state.localStream);
+                if (needsReneg) await renegotiatePeerWebRTC(peer.peerId);
+              } catch (e) { console.warn('[Miruo] mic attach peer failed:', e); }
+            }
+          }
+          if (uniquePeers.length === 0 && state.pc && state.pc.signalingState !== 'closed') {
+            const { needsReneg } = await attachTrackToPeer(state.pc, audioTrack, state.localStream);
+            if (needsReneg && typeof renegotiateWebRTC === 'function') {
+              try { await renegotiateWebRTC(); } catch (_) {}
+            }
+          }
+        } catch (e) { console.warn('[Miruo] mic background attach error:', e); }
+      })();
     } catch (e) {
       console.warn('Microphone hardware error:', e);
       state.isMicOn = false;
@@ -9182,6 +9241,17 @@ async function switchCamera() {
 window.switchCamera = switchCamera;
 
 async function toggleCam() {
+  if (state._camBusy && (Date.now() - (state._camBusyAt || 0) < 8000)) return;
+  state._camBusy = true;
+  state._camBusyAt = Date.now();
+  try {
+    await _toggleCamImpl();
+  } finally {
+    state._camBusy = false;
+  }
+}
+
+async function _toggleCamImpl() {
   if (state.isCamOn) {
     state.isCamOn = false;
     if (state.localStream) {
@@ -9309,28 +9379,35 @@ async function toggleCam() {
       updateCamButtonUI(true);
       try { arrangePipsRow(); } catch (_) {}
 
-      const uniquePeers = getUniquePeerEntries();
-      for (const peer of uniquePeers) {
-        if (peer && peer.pc && peer.pc.signalingState !== 'closed') {
-          const { needsReneg } = await attachTrackToPeer(peer.pc, videoTrack, state.localStream);
-          if (needsReneg) {
-            await renegotiatePeerWebRTC(peer.peerId);
-          }
-        }
-      }
-      if (uniquePeers.length === 0 && state.pc && state.pc.signalingState !== 'closed') {
-        const { needsReneg } = await attachTrackToPeer(state.pc, videoTrack, state.localStream);
-        if (needsReneg && typeof renegotiateWebRTC === 'function') {
-          try { await renegotiateWebRTC(); } catch (_) {}
-        }
-      }
-
+      // Announce + render immediately; push the track to peers in the background with retries.
       broadcastMyMediaStatus();
       renderParticipantsList();
       renderVideoGrid();
       syncMicSettingsValues();
       const dictCam = I18N[currentLang] || I18N.tr;
       showToast(dictCam.toast_cam_opened || 'Canlı Kamera Açıldı (Sürüklenebilir)');
+
+      const pushCamToPeers = async () => {
+        const uniquePeers = getUniquePeerEntries();
+        for (const peer of uniquePeers) {
+          if (peer && peer.pc && peer.pc.signalingState !== 'closed') {
+            try {
+              const { needsReneg } = await attachTrackToPeer(peer.pc, videoTrack, state.localStream);
+              if (needsReneg) await renegotiatePeerWebRTC(peer.peerId);
+            } catch (err) { console.warn('[Miruo] cam attach peer failed:', err); }
+          }
+        }
+        if (uniquePeers.length === 0 && state.pc && state.pc.signalingState !== 'closed') {
+          try {
+            const { needsReneg } = await attachTrackToPeer(state.pc, videoTrack, state.localStream);
+            if (needsReneg && typeof renegotiateWebRTC === 'function') await renegotiateWebRTC();
+          } catch (_) {}
+        }
+      };
+      pushCamToPeers();
+      // Safety re-push for peers that connected / glared during the first negotiation
+      setTimeout(() => { if (state.isCamOn) pushCamToPeers(); }, 2500);
+      setTimeout(() => { if (state.isCamOn) pushCamToPeers(); }, 6000);
     } else {
       throw new Error('Video track not available');
     }
