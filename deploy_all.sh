@@ -25,11 +25,26 @@ echo "🍏 [2/6] macOS Masaüstü Uygulaması derleniyor ve Apple Noter Onayı a
   cd desktop-app
   npm run dist:mac
 )
-# DMG imzalama
+
+echo "🍏 Miruo.app Apple Noter Sunucusuna gönderiliyor..."
+xcrun notarytool submit desktop-app/dist/Miruo-1.0.0-arm64-mac.zip \
+  --apple-id "dythin.app@gmail.com" \
+  --password "bjnl-emth-buct-zzxb" \
+  --team-id "VR7K23PNPM" \
+  --wait
+
+echo "🍏 Apple Onay Bileti doğrudan Miruo.app paketine zımbalanıyor (Staple)..."
+xcrun stapler staple desktop-app/dist/mac-arm64/Miruo.app
+
+echo "🍏 Mühürlü Miruo.app ile DMG yeniden paketleniyor ve imzalanıyor..."
+(
+  cd desktop-app
+  npx electron-builder --mac dmg --prepackaged dist/mac-arm64/Miruo.app
+)
 codesign --force --sign "Developer ID Application: MEHMET KARABULUT (VR7K23PNPM)" desktop-app/dist/Miruo-1.0.0-arm64.dmg
 cp -f desktop-app/dist/Miruo-1.0.0-arm64.dmg downloads/Miruo.dmg
 
-echo "🍏 Apple Noter Sunucusuna gönderiliyor..."
+echo "🍏 DMG Apple Noter Sunucusuna gönderiliyor..."
 xcrun notarytool submit downloads/Miruo.dmg \
   --apple-id "dythin.app@gmail.com" \
   --password "bjnl-emth-buct-zzxb" \
@@ -39,7 +54,7 @@ xcrun notarytool submit downloads/Miruo.dmg \
 echo "🍏 Apple Onay Bileti DMG'ye zımbalanıyor (Staple)..."
 xcrun stapler staple downloads/Miruo.dmg
 cp -f downloads/Miruo.dmg website/downloads/Miruo.dmg
-echo "✅ macOS DMG resmi Apple noter onayıyla hazırlandı."
+echo "✅ macOS Miruo.app + DMG resmi Apple noter onayıyla hazırlandı."
 
 echo "🪟 [3/6] Windows Uygulaması paketleniyor..."
 cp -f desktop-app/dist/mac-arm64/Miruo.app/Contents/Resources/app.asar desktop-app/dist/win-unpacked/resources/app.asar
@@ -93,7 +108,7 @@ rm -rf "$TEMP_PAYLOAD"
 echo "✅ iOS Build $NEXT_BUILD Xcode Organizer'a ve IPA indirme dosyalarına eklendi."
 
 echo "🌐 [5/6] Git değişiklikleri kaydediliyor ve Vercel/GitHub'a gönderiliyor..."
-git add android/ app/ desktop-app/public/ downloads/ ios/ website/ site.js index.html deploy_all.sh
+git add android/ app/ desktop-app/public/ desktop-app/build/entitlements.mac.plist downloads/ ios/ website/ site.js index.html deploy_all.sh
 git commit -m "build(release): deploy macOS DMG, Windows ZIP, iOS Build ${NEXT_BUILD} and web updates" || true
 
 echo "☁️ [6/6] Uzak sunucuya aktarılıyor..."

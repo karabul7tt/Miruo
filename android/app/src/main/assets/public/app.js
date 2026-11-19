@@ -6497,10 +6497,10 @@ function handleRemoteSync(payload) {
         return;
       }
 
-      // Tight zero-lag drift correction:
-      // - > 2.0s drift -> snap immediately (1 strike)
-      // - 1.2s..2.0s drift -> snap after 2 consecutive heartbeats
-      // - 2.5s cooldown so we never cause seek churn
+      // Sub-second zero-lag drift correction (never lags 2s behind, never alters YouTube speed):
+      // - > 1.3s drift -> snap immediately (1 strike)
+      // - 0.85s..1.3s drift -> snap on 2nd consecutive heartbeat
+      // - 2.0s cooldown so we never cause seek churn
       const now = Date.now();
       const isInitialBuffering = state.ytLoadingAt && (now - state.ytLoadingAt < 3000) && (!state.lastReportedYtTime || state.lastReportedYtTime === 0);
       const localReliable = state.activeMode !== 'youtube' || (state.lastReportedYtAt && (now - state.lastReportedYtAt) < 3500);
@@ -6509,10 +6509,10 @@ function handleRemoteSync(payload) {
       const staleHb = hbSent && state.lastHbSentAt && hbSent < state.lastHbSentAt;
       if (hbSent && !staleHb) state.lastHbSentAt = hbSent;
       if (staleHb) return;
-      if (absDrift > 1.2 && localReliable) state.driftStrikes = (state.driftStrikes || 0) + 1; else state.driftStrikes = 0;
-      const shouldSnap = localReliable && !isInitialBuffering && (absDrift > 2.0 || (absDrift > 1.2 && state.driftStrikes >= 2));
+      if (absDrift > 0.85 && localReliable) state.driftStrikes = (state.driftStrikes || 0) + 1; else state.driftStrikes = 0;
+      const shouldSnap = localReliable && !isInitialBuffering && (absDrift > 1.3 || (absDrift > 0.85 && state.driftStrikes >= 2));
       if (shouldSnap) {
-        if (!state.lastHardSeekAt || (now - state.lastHardSeekAt) > 2500) {
+        if (!state.lastHardSeekAt || (now - state.lastHardSeekAt) > 2000) {
           if (targetTime < 1.0 && localTime < 1.0) {
             // Already near start, avoid seek churn
           } else {
@@ -6534,14 +6534,18 @@ function handleRemoteSync(payload) {
           }
         }
       } else {
-        // When within close sync (<= 0.8s): maintain steady authoritative playback rate without jitter
-        if (Math.abs((state.playbackRate || 1.0) - hostRate) > 0.04) {
+        // Keep YouTube strictly at hostRate (never 1.25x); for direct HTML5 video allow smooth ±5% micro-catchup
+        let desiredRate = hostRate;
+        if (state.activeMode !== 'youtube' && dom.nativeVideoPlayer && absDrift > 0.3) {
+          desiredRate = drift > 0 ? Math.min(2.0, hostRate * 1.05) : Math.max(0.5, hostRate * 0.95);
+        }
+        if (Math.abs((state.playbackRate || 1.0) - desiredRate) > 0.03) {
           if (state.activeMode === 'youtube') {
             sendYtCommand('setPlaybackRate', [hostRate]);
           } else if (dom.nativeVideoPlayer) {
-            dom.nativeVideoPlayer.playbackRate = hostRate;
+            dom.nativeVideoPlayer.playbackRate = desiredRate;
           }
-          state.playbackRate = hostRate;
+          state.playbackRate = desiredRate;
         }
       }
     }
