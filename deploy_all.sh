@@ -93,7 +93,7 @@ rm -rf "$TEMP_PAYLOAD"
 echo "✅ iOS Build $NEXT_BUILD Xcode Organizer'a ve IPA indirme dosyalarına eklendi."
 
 echo "🌐 [5/6] Git değişiklikleri kaydediliyor ve Vercel/GitHub'a gönderiliyor..."
-git add android/ app/ desktop-app/public/ downloads/ ios/ website/ site.js deploy_all.sh
+git add android/ app/ desktop-app/public/ downloads/ ios/ website/ site.js index.html deploy_all.sh
 git commit -m "build(release): deploy macOS DMG, Windows ZIP, iOS Build ${NEXT_BUILD} and web updates" || true
 
 echo "☁️ [6/6] Uzak sunucuya aktarılıyor..."
