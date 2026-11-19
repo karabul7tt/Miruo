@@ -139,6 +139,36 @@
 }
 
 /* ========================================================
+   UNIFIED FULL-BLEED STAGE MEDIA (ALL PLATFORMS & FULLSCREEN)
+   ======================================================== */
+#stageContainer > #ytPlayerContainer,
+#stageContainer > #nativeVideoPlayer,
+#stageContainer > #webPlayerFrame,
+#stageContainer > #miruoStageWebview,
+#stageContainer > #remoteScreenPlayer {
+  position: absolute !important;
+  inset: 0 !important;
+  top: 0 !important;
+  left: 0 !important;
+  right: 0 !important;
+  bottom: 0 !important;
+  width: 100% !important;
+  height: 100% !important;
+  max-width: none !important;
+  max-height: none !important;
+  margin: 0 !important;
+  padding: 0 !important;
+}
+
+#ytPlayerContainer > iframe,
+#miruoYtIframe,
+#miruoStageWebview {
+  width: 100% !important;
+  height: 100% !important;
+  border: 0 !important;
+}
+
+/* ========================================================
    FULLSCREEN STAGE & RAVE-STYLE FLOATING PiP WEBCAM
    ======================================================== */
 #stageContainer:fullscreen,
