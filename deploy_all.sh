@@ -54,7 +54,26 @@ xcrun notarytool submit downloads/Miruo.dmg \
 echo "🍏 Apple Onay Bileti DMG'ye zımbalanıyor (Staple)..."
 xcrun stapler staple downloads/Miruo.dmg
 cp -f downloads/Miruo.dmg website/downloads/Miruo.dmg
-echo "✅ macOS Miruo.app + DMG resmi Apple noter onayıyla hazırlandı."
+echo "✅ macOS (Apple Silicon) Miruo.app + DMG resmi Apple noter onayıyla hazırlandı."
+
+echo "🍏 [2b/6] macOS (Intel x64) Uygulaması derleniyor ve Apple Noter Onayı alınıyor..."
+(
+  cd desktop-app
+  npx electron-builder --mac zip --x64
+)
+xcrun notarytool submit desktop-app/dist/Miruo-1.0.0-mac.zip \
+  --apple-id "dythin.app@gmail.com" \
+  --password "bjnl-emth-buct-zzxb" \
+  --team-id "VR7K23PNPM" \
+  --wait
+xcrun stapler staple desktop-app/dist/mac/Miruo.app
+rm -f downloads/Miruo-Intel.zip website/downloads/Miruo-Intel.zip
+(
+  cd desktop-app/dist/mac
+  ../../node_modules/7zip-bin/mac/arm64/7za a -tzip -mx=9 -snl "$ROOT_DIR/downloads/Miruo-Intel.zip" Miruo.app > /dev/null
+)
+cp -f downloads/Miruo-Intel.zip website/downloads/Miruo-Intel.zip
+echo "✅ macOS (Intel x64) Miruo-Intel.zip resmi Apple noter onayıyla hazırlandı."
 
 echo "🪟 [3/6] Windows Uygulaması paketleniyor..."
 cp -f desktop-app/dist/mac-arm64/Miruo.app/Contents/Resources/app.asar desktop-app/dist/win-unpacked/resources/app.asar
@@ -108,7 +127,7 @@ rm -rf "$TEMP_PAYLOAD"
 echo "✅ iOS Build $NEXT_BUILD Xcode Organizer'a ve IPA indirme dosyalarına eklendi."
 
 echo "🌐 [5/6] Git değişiklikleri kaydediliyor ve Vercel/GitHub'a gönderiliyor..."
-git add android/ app/ desktop-app/public/ desktop-app/build/entitlements.mac.plist downloads/ ios/ website/ site.js index.html deploy_all.sh
+git add android/ app/ desktop-app/public/ desktop-app/build/entitlements.mac.plist downloads/ ios/ website/ site.js index.html vercel.json deploy_all.sh
 git commit -m "build(release): deploy macOS DMG, Windows ZIP, iOS Build ${NEXT_BUILD} and web updates" || true
 
 echo "☁️ [6/6] Uzak sunucuya aktarılıyor..."

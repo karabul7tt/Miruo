@@ -10545,40 +10545,63 @@ function createAndJoinRoom(title, isPrivate = false, category = 'YouTube', video
   });
 }
 
-// Join an existing room by its code. Typos are rejected instead of silently creating an empty room.
+// Join an existing room by its code (works on Supabase Realtime across Web, Mac, Windows & iOS without requiring /api/room-exists)
 function joinRoomByCode(rawCode) {
   const code = (rawCode || '').trim().toUpperCase().replace(/\s+/g, '');
-  if (code.length < 4) { showToast('Oda kodunu gir (örn. KODA-47)'); return; }
-  fetch('/api/room-exists?code=' + encodeURIComponent(code))
-    .then(r => r.json())
-    .then(d => {
-      if (!d.exists) { showToast('Bu kodla bir oda bulunamadı'); return; }
-      state.isHost = false;
-      state.userRole = 'member';
-      state.hasDjPermission = false;
-      state.controlMode = 'host_only';
-      state.roomId = d.room.id;
-      state.isInRoom = true;
-      state.participants = {};
-      if (dom.roomMemberCountBadge) dom.roomMemberCountBadge.textContent = '1';
-      if (dom.participantsCountHeader) dom.participantsCountHeader.textContent = '1';
-      state.hostName = d.room.host;
-      state.host = d.room.host;
-      state.connectedAccount = d.room.connectedAccount || '';
-      if (dom.activeRoomTitle) dom.activeRoomTitle.textContent = state.roomId;
-      if (dom.currentRoomDisplay) dom.currentRoomDisplay.textContent = state.roomId;
-      switchToMyRoom();
-      connectSignaling();
-      if (state.connectedAccount) {
-        setTimeout(() => {
-          if (typeof updateNowPlayingAccountBadge === 'function') updateNowPlayingAccountBadge(state.connectedAccount);
-          const ann = `🎬 Bu oda ev sahibinin (${state.connectedAccount}) hesabı üzerinden birlikte izleniyor.`;
-          if (typeof renderChatMessage === 'function') renderChatMessage('SİSTEM', ann, true);
-        }, 300);
-      }
-      showToast(`${d.room.name || state.roomId} odasına katıldın`);
-    })
-    .catch(() => showToast('Sunucuya ulaşılamadı, bağlantını kontrol et'));
+  if (code.length < 4) { showToast('Oda kodunu gir (örn. ODA-4729)'); return; }
+
+  const enterByRoomMeta = (roomMeta) => {
+    const cleanHostKey = String((roomMeta && roomMeta.host) || '').toLowerCase().replace(/^@/, '').trim();
+    const cleanMyKey = String(state.username || '').toLowerCase().replace(/^@/, '').trim();
+    state.isHost = Boolean(cleanHostKey && cleanMyKey && cleanHostKey === cleanMyKey);
+    state.userRole = state.isHost ? 'owner' : 'member';
+    state.hasDjPermission = state.isHost;
+    state.controlMode = (roomMeta && roomMeta.controlMode) || 'host_only';
+    state.roomId = (roomMeta && roomMeta.id) || code;
+    state.isInRoom = true;
+    state.participants = {};
+    if (dom.roomMemberCountBadge) dom.roomMemberCountBadge.textContent = '1';
+    if (dom.participantsCountHeader) dom.participantsCountHeader.textContent = '1';
+    state.hostName = (roomMeta && roomMeta.host) || '';
+    state.host = state.hostName;
+    state.connectedAccount = (roomMeta && roomMeta.connectedAccount) || '';
+    if (dom.activeRoomTitle) dom.activeRoomTitle.textContent = state.roomId;
+    if (dom.currentRoomDisplay) dom.currentRoomDisplay.textContent = state.roomId;
+    switchToMyRoom();
+    connectSignaling();
+    if (roomMeta && roomMeta.videoId) {
+      setTimeout(() => { loadYoutubeVideo(roomMeta.videoId); }, 300);
+    }
+    if (state.connectedAccount) {
+      setTimeout(() => {
+        if (typeof updateNowPlayingAccountBadge === 'function') updateNowPlayingAccountBadge(state.connectedAccount);
+        const ann = `🎬 Bu oda ev sahibinin (${state.connectedAccount}) hesabı üzerinden birlikte izleniyor.`;
+        if (typeof renderChatMessage === 'function') renderChatMessage('SİSTEM', ann, true);
+      }, 300);
+    }
+    showToast(`${(roomMeta && roomMeta.name) || state.roomId} odasına katıldın`);
+  };
+
+  // 1. Check live Supabase global rooms list first
+  const allLive = (typeof mergeAllPublicRooms === 'function') ? mergeAllPublicRooms([]) : [];
+  const matchedRoom = allLive.find(r => r && String(r.id || '').toUpperCase() === code);
+  if (matchedRoom) {
+    enterByRoomMeta(matchedRoom);
+    return;
+  }
+
+  // 2. If a dedicated backend API base is configured, verify there; otherwise connect directly via Supabase Realtime room channel
+  if (MIRUO_API_BASE) {
+    fetch(`${MIRUO_API_BASE}/api/room-exists?code=${encodeURIComponent(code)}`)
+      .then(r => r.json())
+      .then(d => {
+        if (d && d.exists && d.room) enterByRoomMeta(d.room);
+        else enterByRoomMeta({ id: code, name: code, host: '' });
+      })
+      .catch(() => enterByRoomMeta({ id: code, name: code, host: '' }));
+  } else {
+    enterByRoomMeta({ id: code, name: code, host: '' });
+  }
 }
 
 
@@ -14988,7 +15011,7 @@ function initPublicProfileStarCanvas() {
   if (!canvas) return;
   publicProfileStarCanvasCtx = canvas.getContext('2d');
 
-  function resizeCanvas() {
+  function resizePublicProfileStarCanvas() {
     const parent = canvas.parentElement || document.body;
     const rect = parent.getBoundingClientRect();
     publicProfileStarWidth = rect.width || window.innerWidth;
@@ -15001,7 +15024,7 @@ function initPublicProfileStarCanvas() {
     }
   }
 
-  resizeCanvas();
+  resizePublicProfileStarCanvas();
 
   const starColors = ['#FFFFFF', '#FFE2F1', '#FF9CD1', '#E882B2', '#D8B4E2', '#A64D79'];
   publicProfileStars = [];
@@ -15149,7 +15172,7 @@ function initAuthStarCanvas() {
   if (!canvas) return;
   authStarCanvasCtx = canvas.getContext('2d');
 
-  function resizeCanvas() {
+  function resizeAuthStarCanvas() {
     authStarWidth = window.innerWidth;
     authStarHeight = window.innerHeight;
     const dpr = window.devicePixelRatio || 1;
@@ -15160,7 +15183,7 @@ function initAuthStarCanvas() {
     }
   }
 
-  resizeCanvas();
+  resizeAuthStarCanvas();
 
   const starColors = ['#FFFFFF', '#FFE2F1', '#FF9CD1', '#E882B2', '#D8B4E2', '#A64D79'];
   authStars = [];
@@ -15795,7 +15818,7 @@ function setParticipantRole(userId, username, newRole) {
 
 function handleRemoteUserKicked(targetUserId, targetUsername) {
   if (targetUserId === state.userId) {
-    alert('Oda sahibi tarafından odadan çıkarıldınız.');
+    showToast('Oda sahibi tarafından odadan çıkarıldınız.');
     if (state.localStream) {
       state.localStream.getTracks().forEach(t => t.stop());
       state.localStream = null;
@@ -18271,30 +18294,32 @@ function initEvents() {
       dom.resetSendCodeBtn.innerHTML = '<span>Kod Gönderiliyor...</span>';
     }
 
-    // Call backend API for forgot-password
+    // Call backend API for forgot-password only if dedicated API server is configured
     let generatedCode = Math.floor(100000 + Math.random() * 900000).toString();
     resetState.code = generatedCode;
 
-    try {
-      const resp = await fetch('/api/auth/forgot-password', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: emailVal })
-      });
-      const data = await resp.json();
-      if (data.code) {
-        generatedCode = data.code;
-        resetState.code = generatedCode;
+    if (MIRUO_API_BASE) {
+      try {
+        const resp = await fetch(`${MIRUO_API_BASE}/api/auth/forgot-password`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email: emailVal })
+        });
+        const data = await resp.json();
+        if (data.code) {
+          generatedCode = data.code;
+          resetState.code = generatedCode;
+        }
+      } catch (err) {
+        console.warn('Backend forgot-password error:', err);
       }
-    } catch (err) {
-      console.warn('Backend forgot-password error:', err);
     }
 
     // Trigger Supabase password recovery if connected
     if (supabaseClient && supabaseClient.auth) {
       try {
         await supabaseClient.auth.resetPasswordForEmail(emailVal, {
-          redirectTo: window.location.href.split('#')[0]
+          redirectTo: 'https://miruo.app/app/?modal=reset'
         });
       } catch (err) {
         console.warn('[Miruo] Supabase resetPasswordForEmail info:', err);
@@ -18651,16 +18676,45 @@ function initEvents() {
     }
 
     // Supabase Phone OTP dispatch
+    let supaOtpSent = false;
+    let supaOtpErr = '';
     if (supabaseClient && supabaseClient.auth) {
       try {
-        await supabaseClient.auth.signInWithOtp({ phone: fullPhone });
+        const { error } = await supabaseClient.auth.signInWithOtp({ phone: fullPhone });
+        if (!error) supaOtpSent = true;
+        else supaOtpErr = error.message || '';
       } catch (e) {
-        console.warn('[Supabase Phone signInWithOtp]:', e);
+        supaOtpErr = e.message || '';
       }
     }
 
+    if (supaOtpSent) {
+      if (dom.authSubmitBtn) {
+        dom.authSubmitBtn.disabled = false;
+        dom.authSubmitBtn.textContent = "Doğrula & Giriş Yap";
+      }
+      if (dom.authPhoneOtpField) dom.authPhoneOtpField.classList.remove('hidden');
+      startPhoneOtpTimer();
+      showAuthAlert(`${fullPhone} numarasına onay kodu iletildi!`, true);
+      const digitInputs = document.querySelectorAll('.phone-digit-box');
+      if (digitInputs.length > 0) {
+        digitInputs.forEach(inp => inp.value = '');
+        setTimeout(() => digitInputs[0].focus(), 150);
+      }
+      return;
+    }
+
+    if (!MIRUO_API_BASE) {
+      if (dom.authSubmitBtn) {
+        dom.authSubmitBtn.disabled = false;
+        dom.authSubmitBtn.textContent = "Doğrulama Kodu Gönder";
+      }
+      showAuthAlert("SMS doğrulaması şu an aktif değil. Lütfen E-posta, Google veya Apple ile giriş yapın.");
+      return;
+    }
+
     try {
-      const resp = await fetch('/api/auth/phone-otp', {
+      const resp = await fetch(`${MIRUO_API_BASE}/api/auth/phone-otp`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ phone: fullPhone })
@@ -18976,9 +19030,9 @@ function initEvents() {
         }
       } catch (_) {}
 
-      if (!regOk && window.location.port !== '3000') {
+      if (!regOk && MIRUO_API_BASE) {
         try {
-          await fetch('http://127.0.0.1:3000/api/auth/register', {
+          await fetch(`${MIRUO_API_BASE}/api/auth/register`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(regPayload)
@@ -19274,9 +19328,9 @@ function initEvents() {
             const ct = resp.headers.get('content-type') || '';
             if (ct.includes('application/json')) data = await resp.json();
           }
-          if ((!data || !data.success) && window.location.port !== '3000') {
+          if ((!data || !data.success) && MIRUO_API_BASE) {
             try {
-              const fallbackResp = await fetch('http://127.0.0.1:3000/api/auth/login', {
+              const fallbackResp = await fetch(`${MIRUO_API_BASE}/api/auth/login`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(loginPayload)
@@ -20036,23 +20090,78 @@ function initEvents() {
     ];
 
     let items = [];
-    try {
-      const res = await fetch(`/api/search-media?q=${encodeURIComponent(query)}&cat=${encodeURIComponent(tag)}`);
-      if (res.ok) {
-        const data = await res.json();
-        items = (data && data.results) || [];
-      } else {
-        throw new Error('Fallback to local catalog');
+    const directYtId = query ? extractYtId(query.trim()) : null;
+    if (directYtId) {
+      let ytTitle = 'YouTube Videosu';
+      let ytAuthor = 'YouTube';
+      try {
+        const oRes = await fetch(`https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v=${directYtId}&format=json`);
+        if (oRes.ok) {
+          const oData = await oRes.json();
+          if (oData && oData.title) ytTitle = oData.title;
+          if (oData && oData.author_name) ytAuthor = oData.author_name;
+        }
+      } catch (_) {}
+      items = [{
+        id: directYtId,
+        title: ytTitle,
+        channel: ytAuthor,
+        duration: 'YouTube',
+        category: 'all',
+        views: '',
+        thumb: `https://img.youtube.com/vi/${directYtId}/hqdefault.jpg`
+      }];
+    } else {
+      try {
+        if (MIRUO_API_BASE) {
+          const res = await fetch(`${MIRUO_API_BASE}/api/search-media?q=${encodeURIComponent(query)}&cat=${encodeURIComponent(tag)}`);
+          if (res.ok) {
+            const data = await res.json();
+            items = (data && data.results) || [];
+          }
+        }
+        // Client-side live YouTube search via public Piped API when no backend API is hosted (Vercel/static Web)
+        if (items.length === 0 && query && query.trim().length > 1) {
+          const pipedHosts = ['https://pipedapi.kavin.rocks', 'https://pipedapi.adminforge.de'];
+          for (const host of pipedHosts) {
+            try {
+              const ctrl = new AbortController();
+              const tId = setTimeout(() => ctrl.abort(), 3500);
+              const pRes = await fetch(`${host}/search?q=${encodeURIComponent(query.trim())}&filter=videos`, { signal: ctrl.signal });
+              clearTimeout(tId);
+              if (pRes.ok) {
+                const pData = await pRes.json();
+                const rawList = Array.isArray(pData && pData.items) ? pData.items : [];
+                items = rawList.filter(v => v && v.url && v.url.includes('v=')).slice(0, 16).map(v => {
+                  const vid = (v.url.split('v=')[1] || '').split('&')[0];
+                  const sec = Number(v.duration || 0);
+                  const durStr = sec > 0 ? `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, '0')}` : liveText;
+                  return {
+                    id: vid,
+                    title: v.title || 'YouTube Videosu',
+                    channel: v.uploaderName || 'YouTube',
+                    duration: durStr,
+                    category: 'all',
+                    views: v.views ? `${Number(v.views).toLocaleString()} ${viewsSuffix}` : '',
+                    thumb: v.thumbnail || `https://img.youtube.com/vi/${vid}/hqdefault.jpg`
+                  };
+                });
+                if (items.length > 0) break;
+              }
+            } catch (_) {}
+          }
+        }
+      } catch (_) {}
+      if (items.length === 0) {
+        const q = (query || '').toLowerCase().trim();
+        const t = (tag || 'all').toLowerCase();
+        items = FALLBACK_CATALOG.filter(v => {
+          const matchesQuery = !q || v.title.toLowerCase().includes(q) || v.channel.toLowerCase().includes(q);
+          const matchesTag = t === 'all' || t === 'trending' || v.category === t;
+          return matchesQuery && matchesTag;
+        });
+        if (items.length === 0 && !q) items = FALLBACK_CATALOG;
       }
-    } catch (e) {
-      const q = (query || '').toLowerCase().trim();
-      const t = (tag || 'all').toLowerCase();
-      items = FALLBACK_CATALOG.filter(v => {
-        const matchesQuery = !q || v.title.toLowerCase().includes(q) || v.channel.toLowerCase().includes(q);
-        const matchesTag = t === 'all' || v.category === t;
-        return matchesQuery && matchesTag;
-      });
-      if (items.length === 0 && !q) items = FALLBACK_CATALOG;
     }
 
     if (items.length === 0) {
@@ -21032,14 +21141,16 @@ function initEvents() {
       if (dom.profileEmailDisplay) dom.profileEmailDisplay.textContent = newEmail;
       if (dom.changeEmailNewInput) dom.changeEmailNewInput.value = '';
 
-      // 3. Backend Sunucusuna Bildirim (Varsa)
-      try {
-        await fetch('/api/auth/change-email', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ userId: savedUser.id, newEmail })
-        });
-      } catch (_) {}
+      // 3. Backend Sunucusuna Bildirim (Yalnızca MIRUO_API_BASE varsa)
+      if (MIRUO_API_BASE) {
+        try {
+          await fetch(`${MIRUO_API_BASE}/api/auth/change-email`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ userId: savedUser.id, newEmail })
+          });
+        } catch (_) {}
+      }
 
       dom.changeEmailSubmitBtn.disabled = false;
       dom.changeEmailSubmitBtn.textContent = 'Güncelle';
@@ -21073,8 +21184,15 @@ function initEvents() {
           const { error } = await supabaseClient.auth.updateUser({ password: newPass });
           if (error) supaPassError = error.message || '';
         } catch (supaErr) {
-          console.warn('[Supabase Change Password]:', supaErr);
+          supaPassError = (supaErr && supaErr.message) || '';
         }
+      }
+
+      if (supaPassError && !supaPassError.toLowerCase().includes('session missing')) {
+        dom.changePasswordSubmitBtn.disabled = false;
+        dom.changePasswordSubmitBtn.textContent = 'Şifreyi Güncelle';
+        showChangePassAlert('Şifre güncellenemedi: ' + supaPassError, false);
+        return;
       }
 
       // Yerel hesap kaydını güncelle
@@ -21090,19 +21208,21 @@ function initEvents() {
         }
       } catch (_) {}
 
-      // Backend API'ye bildirme (varsa)
-      try {
-        await fetch('/api/auth/change-password', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            userId: savedUser.id,
-            email: savedUser.email,
-            currentPassword: currentPass,
-            newPassword: newPass
-          })
-        });
-      } catch (_) {}
+      // Backend API'ye bildirme (yalnızca MIRUO_API_BASE varsa)
+      if (MIRUO_API_BASE) {
+        try {
+          await fetch(`${MIRUO_API_BASE}/api/auth/change-password`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              userId: savedUser.id,
+              email: savedUser.email,
+              currentPassword: currentPass,
+              newPassword: newPass
+            })
+          });
+        } catch (_) {}
+      }
 
       dom.changePasswordSubmitBtn.disabled = false;
       dom.changePasswordSubmitBtn.textContent = 'Şifreyi Güncelle';
@@ -21214,8 +21334,8 @@ function initEvents() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(profilePayload)
       }).catch(async () => {
-        if (window.location.port !== '3000') {
-          fetch('http://127.0.0.1:3000/api/auth/update-profile', {
+        if (MIRUO_API_BASE) {
+          fetch(`${MIRUO_API_BASE}/api/auth/update-profile`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(profilePayload)
@@ -21625,8 +21745,8 @@ window.recordUsernameChange = recordUsernameChange;
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(updatePayload)
         }).catch(async () => {
-          if (window.location.port !== '3000') {
-            fetch('http://127.0.0.1:3000/api/auth/update-profile', {
+          if (MIRUO_API_BASE) {
+            fetch(`${MIRUO_API_BASE}/api/auth/update-profile`, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify(updatePayload)
@@ -22316,6 +22436,13 @@ window.recordUsernameChange = recordUsernameChange;
     }
   }
   window.toggleMute = toggleMute;
+  const stageVolBtnEl = document.getElementById('stageVolumeBtn');
+  if (stageVolBtnEl) {
+    stageVolBtnEl.addEventListener('click', (e) => {
+      e.stopPropagation();
+      toggleMute();
+    });
+  }
 
   function seekToPercent(pct) {
     if (!canUserControlPlayback()) {

@@ -332,9 +332,21 @@
       }
 
       if (platform === 'mac') {
+        let isIntelMac = false;
+        try {
+          const glCanvas = document.createElement('canvas');
+          const gl = glCanvas.getContext('webgl') || glCanvas.getContext('experimental-webgl');
+          if (gl) {
+            const dbg = gl.getExtension('WEBGL_debug_renderer_info');
+            const renderer = dbg ? String(gl.getParameter(dbg.UNMASKED_RENDERER_WEBGL) || '') : '';
+            if (/intel|amd|radeon|nvidia|geforce/i.test(renderer) && !/apple/i.test(renderer)) {
+              isIntelMac = true;
+            }
+          }
+        } catch (_) {}
         const dlLink = document.createElement('a');
-        dlLink.href = '/downloads/Miruo.dmg?v=79';
-        dlLink.download = 'Miruo.dmg';
+        dlLink.href = isIntelMac ? '/downloads/Miruo-Intel.zip?v=80' : '/downloads/Miruo.dmg?v=80';
+        dlLink.download = isIntelMac ? 'Miruo-Intel.zip' : 'Miruo.dmg';
         document.body.appendChild(dlLink);
         dlLink.click();
         document.body.removeChild(dlLink);
@@ -343,7 +355,7 @@
 
       if (platform === 'windows') {
         const dlLink = document.createElement('a');
-        dlLink.href = '/downloads/Miruo-Windows.zip?v=79';
+        dlLink.href = '/downloads/Miruo-Windows.zip?v=80';
         dlLink.download = 'Miruo-Windows.zip';
         document.body.appendChild(dlLink);
         dlLink.click();
