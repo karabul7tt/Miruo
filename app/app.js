@@ -3819,7 +3819,7 @@ function handleSignalMessage(msg) {
       break;
 
     case 'chat-message':
-      renderChatMessage(msg.sender, msg.text, false, msg.time, msg.imageUrl, msg.avatarUrl);
+      renderChatMessage(msg.sender, msg.text, false, msg.time, msg.imageUrl, msg.avatarUrl, msg.msgId);
       break;
 
     case 'media_status':
@@ -3869,7 +3869,7 @@ function handleSignalMessage(msg) {
 
     case 'screenshare-start':
     case 'screenshare_start':
-      if (typeof handleRemoteScreenShareStarted === 'function') handleRemoteScreenShareStarted(msg.user);
+      if (typeof handleRemoteScreenShareStarted === 'function') handleRemoteScreenShareStarted(msg.user, msg);
       break;
 
     case 'screenshare-stop':
@@ -4603,17 +4603,49 @@ function getOrCreatePeerConnection(peerId, isInitiator, meta = {}) {
       state.remoteStream = peerEntry.stream;
     }
 
-    const isScreenTrack = track.label.toLowerCase().includes('screen') ||
-                         track.label.toLowerCase().includes('display') ||
-                         track.contentHint === 'detail';
+    // Screen Share (Netflix / Dizi / Browser)
+    const isScreenTrack = (track.label || '').toLowerCase().includes('screen') ||
+                         (track.label || '').toLowerCase().includes('display') ||
+                         (track.label || '').toLowerCase().includes('window') ||
+                         track.contentHint === 'detail' ||
+                         (state.remoteScreenTrackId && track.id === state.remoteScreenTrackId) ||
+                         (state.remoteScreenStreamId && event.streams && event.streams.some(s => s && s.id === state.remoteScreenStreamId));
 
-    if (isScreenTrack || state.activeMode === 'screenshare') {
-      if (dom.remoteScreenPlayer) {
-        dom.remoteScreenPlayer.srcObject = peerEntry.stream;
-        dom.remoteScreenPlayer.classList.remove('hidden');
+    if (track.kind === 'video' && (isScreenTrack || state.activeMode === 'screenshare')) {
+      peerEntry.screenVideoTrack = track;
+      if (typeof clearStageWebContent === 'function') clearStageWebContent();
+      if (dom.ytPlayerContainer) {
+        const oldYt = document.getElementById('miruoYtIframe');
+        if (oldYt) { try { oldYt.src = 'about:blank'; oldYt.remove(); } catch (_) {} }
+        dom.ytPlayerContainer.innerHTML = '';
         dom.ytPlayerContainer.classList.add('hidden');
+      }
+      if (dom.nativeVideoPlayer) {
+        try { dom.nativeVideoPlayer.pause(); } catch (_) {}
         dom.nativeVideoPlayer.classList.add('hidden');
-        dom.emptyStatePlaceholder.classList.add('hidden');
+      }
+      if (dom.emptyStatePlaceholder) dom.emptyStatePlaceholder.classList.add('hidden');
+      if (dom.sleepModePlaceholder) dom.sleepModePlaceholder.classList.add('hidden');
+      const photoStageEl = document.getElementById('photoStageContainer');
+      if (photoStageEl) photoStageEl.classList.add('hidden');
+      if (dom.remoteScreenPlayer) {
+        dom.remoteScreenPlayer.playsInline = true;
+        dom.remoteScreenPlayer.muted = true;
+        dom.remoteScreenPlayer.defaultMuted = true;
+        dom.remoteScreenPlayer.autoplay = true;
+        dom.remoteScreenPlayer.setAttribute('playsinline', 'true');
+        dom.remoteScreenPlayer.setAttribute('webkit-playsinline', 'true');
+        // Bind ONLY the screen video track so the pre-allocated webcam track (index 0) never hides it!
+        dom.remoteScreenPlayer.srcObject = new MediaStream([track]);
+        dom.remoteScreenPlayer.classList.remove('hidden');
+        dom.remoteScreenPlayer.play().catch(() => {});
+        track.onunmute = () => {
+          if (dom.remoteScreenPlayer && state.activeMode === 'screenshare') {
+            dom.remoteScreenPlayer.srcObject = new MediaStream([track]);
+            dom.remoteScreenPlayer.classList.remove('hidden');
+            dom.remoteScreenPlayer.play().catch(() => {});
+          }
+        };
       }
     } else if (track.kind === 'video') {
       const syncVideoTrackState = (fromUnmute = false) => {
@@ -5191,7 +5223,7 @@ function setupDataChannelEvents(channel) {
       if (data.type === 'room_invite') {
         if (typeof handleIncomingRoomInvite === 'function') handleIncomingRoomInvite(payload);
       }
-      if (data.type === 'chat') renderChatMessage(data.sender || payload.sender, data.text || payload.text, false, data.time || payload.time, data.imageUrl || payload.imageUrl, data.avatarUrl || payload.avatarUrl);
+      if (data.type === 'chat') renderChatMessage(data.sender || payload.sender, data.text || payload.text, false, data.time || payload.time, data.imageUrl || payload.imageUrl, data.avatarUrl || payload.avatarUrl, data.msgId || payload.msgId);
       if (data.type === 'media_status') updateRemoteParticipantStatus(data.userId || payload.userId, data.username || payload.username, data.isMicOn !== undefined ? data.isMicOn : payload.isMicOn, data.isCamOn !== undefined ? data.isCamOn : payload.isCamOn, data.avatar || payload.avatar, data.avatarColor || payload.avatarColor, data.clientId || payload.clientId);
       if (data.type === 'platform_switch') {
         switchRoomPlatform(data.platform || payload.platform);
@@ -5217,7 +5249,7 @@ function setupDataChannelEvents(channel) {
         if (typeof handleRemotePrivacyChange === 'function') handleRemotePrivacyChange(data.isPrivate !== undefined ? data.isPrivate : payload.isPrivate);
       }
       if (data.type === 'screenshare_start' || data.type === 'screenshare-start') {
-        if (typeof handleRemoteScreenShareStarted === 'function') handleRemoteScreenShareStarted(data.user || payload.user);
+        if (typeof handleRemoteScreenShareStarted === 'function') handleRemoteScreenShareStarted(data.user || payload.user, payload || data);
       }
       if (data.type === 'screenshare_stop' || data.type === 'screenshare-stop') {
         if (typeof handleRemoteScreenShareStopped === 'function') handleRemoteScreenShareStopped();
@@ -5239,9 +5271,10 @@ function sendP2PData(type, payload = {}) {
   };
   const data = JSON.stringify({ type, payload: enrichedPayload, ...enrichedPayload });
 
-  if (state.peers && Object.keys(state.peers).length > 0) {
-    Object.values(state.peers).forEach(p => {
-      if (p.dataChannel && p.dataChannel.readyState === 'open') {
+  const uniqueDcPeers = (typeof getUniquePeerEntries === 'function') ? getUniquePeerEntries() : Array.from(new Set(Object.values(state.peers || {})));
+  if (uniqueDcPeers.length > 0) {
+    uniqueDcPeers.forEach(p => {
+      if (p && p.dataChannel && p.dataChannel.readyState === 'open') {
         try { p.dataChannel.send(data); } catch (_) {}
       }
     });
@@ -5292,7 +5325,7 @@ function sendP2PData(type, payload = {}) {
   else if (type === 'sleep') sendSignal({ type: 'sleep-mode', enabled: enrichedPayload.enabled, authorized: enrichedPayload.authorized, isHost: enrichedPayload.isHost, from: enrichedPayload.fromUser });
   else if (type === 'photo_share') sendSignal({ type: 'photo-share', dataUrl: enrichedPayload.dataUrl, title: enrichedPayload.title, sender: enrichedPayload.sender });
   else if (type === 'photo_close') sendSignal({ type: 'photo-close' });
-  else if (type === 'screenshare_start') sendSignal({ type: 'screenshare-start', user: enrichedPayload.user || state.username });
+  else if (type === 'screenshare_start') sendSignal({ type: 'screenshare-start', user: enrichedPayload.user || state.username, streamId: enrichedPayload.streamId || '', trackId: enrichedPayload.trackId || '' });
   else if (type === 'screenshare_stop') sendSignal({ type: 'screenshare-stop', user: enrichedPayload.user || state.username });
   else if (type === 'perm_change') sendSignal({ type: 'perm-change', mode: enrichedPayload.mode, hostName: enrichedPayload.hostName });
   else if (type === 'privacy_change') sendSignal({ type: 'privacy-change', isPrivate: enrichedPayload.isPrivate });
@@ -5307,7 +5340,7 @@ function sendP2PData(type, payload = {}) {
   else if (type === 'affinity_breakup_accepted') sendSignal({ type: 'affinity-breakup-accepted', payload: enrichedPayload });
   else if (type === 'affinity_breakup_declined') sendSignal({ type: 'affinity-breakup-declined', payload: enrichedPayload });
   else if (type === 'room_invite') sendSignal({ type: 'room-invite', payload: enrichedPayload });
-  else if (type === 'chat') sendSignal({ type: 'chat-message', sender: enrichedPayload.sender, text: enrichedPayload.text, time: enrichedPayload.time, imageUrl: enrichedPayload.imageUrl, avatarUrl: enrichedPayload.avatarUrl });
+  else if (type === 'chat') sendSignal({ type: 'chat-message', msgId: enrichedPayload.msgId, sender: enrichedPayload.sender, text: enrichedPayload.text, time: enrichedPayload.time, imageUrl: enrichedPayload.imageUrl, avatarUrl: enrichedPayload.avatarUrl });
   else if (type === 'media_status') sendSignal({
     type: 'media-status',
     userId: enrichedPayload.userId,
@@ -5546,7 +5579,8 @@ function loadYoutubeVideo(urlOrId, startPlaying = true, startTime = 0) {
   dom.ytPlayerContainer.classList.remove('hidden');
   dom.nativeVideoPlayer.classList.add('hidden');
   dom.remoteScreenPlayer.classList.add('hidden');
-  if (dom.webPlayerFrame) dom.webPlayerFrame.classList.add('hidden');
+  if (typeof clearStageWebContent === 'function') clearStageWebContent();
+  else if (dom.webPlayerFrame) dom.webPlayerFrame.classList.add('hidden');
   if (dom.sleepModePlaceholder) dom.sleepModePlaceholder.classList.add('hidden');
   if (dom.audioOnlyPlaceholder) dom.audioOnlyPlaceholder.classList.add('hidden');
   const photoStage = document.getElementById('photoStageContainer');
@@ -5809,6 +5843,87 @@ function extractKickChannel(val) {
 }
 window.extractKickChannel = extractKickChannel;
 
+function clearStageWebContent() {
+  const existingWv = document.getElementById('miruoStageWebview');
+  if (existingWv) {
+    try { existingWv.remove(); } catch (_) {}
+  }
+  if (dom.webPlayerFrame) {
+    try { dom.webPlayerFrame.src = 'about:blank'; } catch (_) {}
+    dom.webPlayerFrame.classList.add('hidden');
+  }
+  if (typeof hideIframeFallback === 'function') hideIframeFallback();
+}
+window.clearStageWebContent = clearStageWebContent;
+
+function mountStageWebContent(embedUrl, rawUrl, provider) {
+  const isDesktopElectron = !!(window.miruoDesktop && window.miruoDesktop.isDesktop);
+  if (isDesktopElectron && dom.webPlayerFrame && dom.webPlayerFrame.parentNode) {
+    // On Electron Desktop: use <webview partition="persist:miruo-browser"> so Netflix, Prime, Disney+,
+    // Kick, Twitch, Drive, Spotify & all websites play natively inside the stage with logged-in cookies!
+    dom.webPlayerFrame.classList.add('hidden');
+    try { dom.webPlayerFrame.src = 'about:blank'; } catch (_) {}
+    if (typeof hideIframeFallback === 'function') hideIframeFallback();
+    let wv = document.getElementById('miruoStageWebview');
+    const targetSrc = rawUrl || embedUrl;
+    const ua = navigator.userAgent.replace(/\s(Electron|Miruo)[^\s]*/g, '');
+    if (!wv) {
+      wv = document.createElement('webview');
+      wv.id = 'miruoStageWebview';
+      wv.setAttribute('partition', 'persist:miruo-browser');
+      wv.setAttribute('useragent', ua);
+      wv.setAttribute('allowpopups', '');
+      wv.className = 'w-full h-full border-0 bg-black';
+      wv.style.cssText = 'width:100%;height:100%;border:0;background:#000;position:relative;z-index:5;';
+      dom.webPlayerFrame.parentNode.insertBefore(wv, dom.webPlayerFrame);
+    }
+    wv.classList.remove('hidden');
+    wv.setAttribute('src', targetSrc);
+    return;
+  }
+
+  // On Web / iOS: remove any webview and load official embed URL in iframe
+  const oldWv = document.getElementById('miruoStageWebview');
+  if (oldWv) { try { oldWv.remove(); } catch (_) {} }
+
+  const isStrictlyBlocked = (rawUrl && (rawUrl.includes('photos.google.com') || rawUrl.includes('netflix.com') || rawUrl.includes('primevideo.com') || rawUrl.includes('disneyplus.com')));
+  if (isStrictlyBlocked) {
+    if (dom.webPlayerFrame) dom.webPlayerFrame.classList.add('hidden');
+    showIframeFallback(embedUrl, provider);
+  } else if (dom.webPlayerFrame) {
+    dom.webPlayerFrame.classList.remove('hidden');
+    dom.webPlayerFrame.src = embedUrl;
+    dom.webPlayerFrame.onerror = () => showIframeFallback(embedUrl, provider);
+  }
+}
+window.mountStageWebContent = mountStageWebContent;
+
+function stopOtherStagePlayersForWeb() {
+  try { sendYtCommand('pauseVideo'); } catch (_) {}
+  const oldYtFrame = document.getElementById('miruoYtIframe');
+  if (oldYtFrame) {
+    try { oldYtFrame.src = 'about:blank'; oldYtFrame.remove(); } catch (_) {}
+  }
+  if (dom.ytPlayerContainer) {
+    dom.ytPlayerContainer.innerHTML = '';
+    dom.ytPlayerContainer.classList.add('hidden');
+  }
+  if (dom.nativeVideoPlayer) {
+    try { dom.nativeVideoPlayer.pause(); dom.nativeVideoPlayer.srcObject = null; dom.nativeVideoPlayer.removeAttribute('src'); } catch (_) {}
+    dom.nativeVideoPlayer.classList.add('hidden');
+  }
+  if (dom.remoteScreenPlayer) {
+    try { dom.remoteScreenPlayer.pause(); dom.remoteScreenPlayer.srcObject = null; } catch (_) {}
+    dom.remoteScreenPlayer.classList.add('hidden');
+  }
+  if (dom.emptyStatePlaceholder) dom.emptyStatePlaceholder.classList.add('hidden');
+  if (dom.sleepModePlaceholder) dom.sleepModePlaceholder.classList.add('hidden');
+  if (dom.audioOnlyPlaceholder) dom.audioOnlyPlaceholder.classList.add('hidden');
+  const photoStage = document.getElementById('photoStageContainer');
+  if (photoStage) photoStage.classList.add('hidden');
+  if (typeof hideIframeFallback === 'function') hideIframeFallback();
+}
+
 function loadKickStream(channelOrUrl, title) {
   let channel = extractKickChannel(channelOrUrl);
   if (!channel) {
@@ -5829,15 +5944,9 @@ function loadKickStream(channelOrUrl, title) {
   if (dom.stageSubtitleText) dom.stageSubtitleText.textContent = `${channel} (Kick)`;
   if (typeof updateNowPlayingLikeState === 'function') updateNowPlayingLikeState();
 
-  dom.emptyStatePlaceholder.classList.add('hidden');
-  dom.ytPlayerContainer.classList.add('hidden');
-  dom.nativeVideoPlayer.classList.add('hidden');
-  if (typeof hideIframeFallback === 'function') hideIframeFallback();
-
-  if (dom.webPlayerFrame) {
-    dom.webPlayerFrame.classList.remove('hidden');
-    dom.webPlayerFrame.src = `https://player.kick.com/${encodeURIComponent(channel)}?autoplay=true&muted=false`;
-  }
+  stopOtherStagePlayersForWeb();
+  const embedUrl = `https://player.kick.com/${encodeURIComponent(channel)}?autoplay=true&muted=false`;
+  mountStageWebContent(embedUrl, embedUrl, 'Kick');
 
   if (dom.ravePlayerOverlay) {
     dom.ravePlayerOverlay.classList.add('opacity-0', 'pointer-events-none');
@@ -5870,21 +5979,16 @@ function loadTwitchStream(channelOrUrl, title) {
   if (dom.raveOverlayTitle) dom.raveOverlayTitle.textContent = state.currentVideoTitle;
   if (dom.stageSubtitleText) dom.stageSubtitleText.textContent = `${channel} (Twitch)`;
   if (typeof updateNowPlayingLikeState === 'function') updateNowPlayingLikeState();
-  
-  dom.emptyStatePlaceholder.classList.add('hidden');
-  dom.ytPlayerContainer.classList.add('hidden');
-  dom.nativeVideoPlayer.classList.add('hidden');
-  if (typeof hideIframeFallback === 'function') hideIframeFallback();
 
-  if (dom.webPlayerFrame) {
-    dom.webPlayerFrame.classList.remove('hidden');
-    const hostnames = new Set(['localhost', '127.0.0.1', 'miruo.app', 'www.miruo.app', 'miruo.com.tr', 'www.miruo.com.tr']);
-    if (window.location.hostname && !hostnames.has(window.location.hostname)) {
-      hostnames.add(window.location.hostname);
-    }
-    const parentParams = Array.from(hostnames).map(h => `parent=${encodeURIComponent(h)}`).join('&');
-    dom.webPlayerFrame.src = `https://player.twitch.tv/?channel=${encodeURIComponent(channel)}&${parentParams}&autoplay=true&muted=false`;
+  stopOtherStagePlayersForWeb();
+  const hostnames = new Set(['localhost', '127.0.0.1', 'miruo.app', 'www.miruo.app', 'miruo.com.tr', 'www.miruo.com.tr']);
+  if (window.location.hostname && !hostnames.has(window.location.hostname)) {
+    hostnames.add(window.location.hostname);
   }
+  const parentParams = Array.from(hostnames).map(h => `parent=${encodeURIComponent(h)}`).join('&');
+  const embedUrl = `https://player.twitch.tv/?channel=${encodeURIComponent(channel)}&${parentParams}&autoplay=true&muted=false`;
+  const desktopUrl = `https://www.twitch.tv/${encodeURIComponent(channel)}`;
+  mountStageWebContent(embedUrl, desktopUrl, 'Twitch');
 
   // Hide the custom VOD overlay so user can interact directly with Twitch player controls
   if (dom.ravePlayerOverlay) {
@@ -5922,8 +6026,11 @@ function loadDirectVideo(url, title, startPlaying = true, startTime = 0) {
   
   dom.emptyStatePlaceholder.classList.add('hidden');
   dom.ytPlayerContainer.classList.add('hidden');
-  if (dom.webPlayerFrame) dom.webPlayerFrame.classList.add('hidden');
-  hideIframeFallback();
+  if (typeof clearStageWebContent === 'function') clearStageWebContent();
+  else {
+    if (dom.webPlayerFrame) dom.webPlayerFrame.classList.add('hidden');
+    hideIframeFallback();
+  }
   
   dom.nativeVideoPlayer.classList.remove('hidden');
   dom.nativeVideoPlayer.setAttribute('playsinline', 'true');
@@ -6021,6 +6128,21 @@ function normalizeEmbedUrl(url) {
       return `https://player.twitch.tv/?channel=${encodeURIComponent(ch)}&${parentParams}&autoplay=true&muted=false`;
     }
   }
+  // 4. Vimeo auto-transform
+  const vimeoMatch = url.match(/vimeo\.com\/(?:video\/)?(\d+)/i);
+  if (vimeoMatch && vimeoMatch[1]) {
+    return `https://player.vimeo.com/video/${vimeoMatch[1]}?autoplay=1`;
+  }
+  // 5. Dailymotion auto-transform
+  const dmMatch = url.match(/(?:dailymotion\.com\/video\/|dai\.ly\/)([a-zA-Z0-9]+)/i);
+  if (dmMatch && dmMatch[1]) {
+    return `https://www.dailymotion.com/embed/video/${dmMatch[1]}?autoplay=1`;
+  }
+  // 6. Spotify embed auto-transform
+  const spMatch = url.match(/open\.spotify\.com\/(track|album|playlist|episode|show)\/([a-zA-Z0-9]+)/i);
+  if (spMatch && spMatch[1] && spMatch[2]) {
+    return `https://open.spotify.com/embed/${spMatch[1]}/${spMatch[2]}?utm_source=generator`;
+  }
   return url;
 }
 
@@ -6049,26 +6171,19 @@ function loadWebStream(url, title, provider = 'Web') {
   state.currentProvider = provider;
   state.currentVideoId = url;
   state.currentVideoTitle = title || `${provider} İçeriği`;
+  state.isPlaying = true;
+  if (typeof updatePlayPauseUI === 'function') updatePlayPauseUI(true);
   if (typeof syncCurrentRoomToGlobalPresence === 'function') syncCurrentRoomToGlobalPresence();
   if (dom.nowPlayingProviderBadge) dom.nowPlayingProviderBadge.textContent = provider;
-  if (dom.nowPlayingTitle) dom.nowPlayingTitle.textContent = title || `${provider} İçeriği`;
-  
-  dom.emptyStatePlaceholder.classList.add('hidden');
-  dom.ytPlayerContainer.classList.add('hidden');
-  dom.nativeVideoPlayer.classList.add('hidden');
-  hideIframeFallback();
+  if (dom.nowPlayingTitle) dom.nowPlayingTitle.textContent = state.currentVideoTitle;
 
+  stopOtherStagePlayersForWeb();
   const finalUrl = normalizeEmbedUrl(url);
+  mountStageWebContent(finalUrl, url, provider);
 
-  // Check if provider is known to strictly block iframes on Web
-  const isStrictlyBlocked = (url && (url.includes('photos.google.com') || url.includes('netflix.com') || url.includes('primevideo.com') || url.includes('disneyplus.com')));
-
-  if (isStrictlyBlocked) {
-    showIframeFallback(finalUrl, provider);
-  } else if (dom.webPlayerFrame) {
-    dom.webPlayerFrame.classList.remove('hidden');
-    dom.webPlayerFrame.src = finalUrl;
-    dom.webPlayerFrame.onerror = () => showIframeFallback(finalUrl, provider);
+  if (dom.ravePlayerOverlay) {
+    dom.ravePlayerOverlay.classList.add('opacity-0', 'pointer-events-none');
+    dom.ravePlayerOverlay.classList.remove('opacity-90');
   }
 
   sendP2PData('video_changed', { user: state.username, title: state.currentVideoTitle, videoId: url });
@@ -7425,38 +7540,72 @@ async function startScreenSharing() {
     state.screenStream = stream;
     state.isScreenSharing = true;
     state.activeMode = 'screenshare';
+    state.currentVideoId = null;
 
-    // Stop and pause any playing YouTube or background media
-    sendYtCommand('pauseVideo');
+    // Stop and completely clear any playing YouTube / Web / background media so old paused frame never shows
+    try { sendYtCommand('pauseVideo'); } catch (_) {}
+    const oldYtFrame = document.getElementById('miruoYtIframe');
+    if (oldYtFrame) { try { oldYtFrame.src = 'about:blank'; oldYtFrame.remove(); } catch (_) {} }
+    if (dom.ytPlayerContainer) {
+      dom.ytPlayerContainer.innerHTML = '';
+      dom.ytPlayerContainer.classList.add('hidden');
+    }
+    if (typeof clearStageWebContent === 'function') clearStageWebContent();
+    if (dom.remoteScreenPlayer) {
+      try { dom.remoteScreenPlayer.pause(); dom.remoteScreenPlayer.srcObject = null; } catch (_) {}
+      dom.remoteScreenPlayer.classList.add('hidden');
+    }
+    if (dom.emptyStatePlaceholder) dom.emptyStatePlaceholder.classList.add('hidden');
+    if (dom.sleepModePlaceholder) dom.sleepModePlaceholder.classList.add('hidden');
+    if (dom.audioOnlyPlaceholder) dom.audioOnlyPlaceholder.classList.add('hidden');
+    const photoStage = document.getElementById('photoStageContainer');
+    if (photoStage) photoStage.classList.add('hidden');
     state.isPlaying = false;
     updatePlayPauseUI(false);
 
-    dom.nativeVideoPlayer.srcObject = stream;
-    dom.nativeVideoPlayer.play().catch(() => {});
-    dom.nativeVideoPlayer.classList.remove('hidden');
-    dom.ytPlayerContainer.classList.add('hidden');
-    dom.emptyStatePlaceholder.classList.add('hidden');
-    const photoStage = document.getElementById('photoStageContainer');
-    if (photoStage) photoStage.classList.add('hidden');
+    const vTrack = stream.getVideoTracks()[0];
+    if (vTrack) {
+      try { vTrack.contentHint = 'detail'; } catch (_) {}
+    }
+
+    if (dom.nativeVideoPlayer) {
+      try { dom.nativeVideoPlayer.removeAttribute('src'); } catch (_) {}
+      dom.nativeVideoPlayer.muted = true;
+      dom.nativeVideoPlayer.defaultMuted = true;
+      dom.nativeVideoPlayer.playsInline = true;
+      dom.nativeVideoPlayer.autoplay = true;
+      dom.nativeVideoPlayer.setAttribute('playsinline', 'true');
+      dom.nativeVideoPlayer.setAttribute('webkit-playsinline', 'true');
+      dom.nativeVideoPlayer.srcObject = stream;
+      dom.nativeVideoPlayer.classList.remove('hidden');
+      dom.nativeVideoPlayer.play().catch(() => {});
+    }
 
     if (dom.startScreenShareBtn) dom.startScreenShareBtn.classList.add('hidden');
     if (dom.stopScreenShareBtn) dom.stopScreenShareBtn.classList.remove('hidden');
 
-    // Add track to ALL active WebRTC peers in the mesh
+    // Broadcast screen share start BEFORE renegotiating so viewers know streamId/trackId before ontrack fires!
+    const ssMeta = { user: state.username, streamId: stream.id, trackId: vTrack ? vTrack.id : '' };
+    sendP2PData('screenshare_start', ssMeta);
+    sendSignal({ type: 'screenshare-start', ...ssMeta });
+
+    // Add track ONCE per unique WebRTC peer (avoid duplicate addTrack on aliased peer keys!)
     state.screenSenders = [];
-    if (state.peers && Object.keys(state.peers).length > 0) {
-      Object.values(state.peers).forEach(peer => {
-        if (peer && peer.pc && peer.pc.signalingState !== 'closed') {
-          stream.getTracks().forEach(track => {
-            try {
-              const sender = peer.pc.addTrack(track, stream);
-              state.screenSenders.push({ pc: peer.pc, sender });
-            } catch (_) {}
-          });
-        }
-      });
-    }
-    if (state.pc && state.pc.signalingState !== 'closed') {
+    const uniquePeers = (typeof getUniquePeerEntries === 'function') ? getUniquePeerEntries() : Array.from(new Set(Object.values(state.peers || {})));
+    const addedPcs = new Set();
+    uniquePeers.forEach(peer => {
+      if (peer && peer.pc && peer.pc.signalingState !== 'closed' && !addedPcs.has(peer.pc)) {
+        addedPcs.add(peer.pc);
+        stream.getTracks().forEach(track => {
+          try {
+            const sender = peer.pc.addTrack(track, stream);
+            state.screenSenders.push({ pc: peer.pc, sender });
+          } catch (_) {}
+        });
+      }
+    });
+    if (state.pc && state.pc.signalingState !== 'closed' && !addedPcs.has(state.pc)) {
+      addedPcs.add(state.pc);
       stream.getTracks().forEach(track => {
         try {
           const sender = state.pc.addTrack(track, stream);
@@ -7466,14 +7615,9 @@ async function startScreenSharing() {
     }
     await renegotiateWebRTC();
 
-    // Broadcast screen share event to room
-    sendP2PData('screenshare_start', { user: state.username });
-    sendSignal({ type: 'screenshare-start', user: state.username });
-
     // Keep background audio active so iOS doesn't suspend capture when switching apps
     startScreenShareKeepAlive();
 
-    const vTrack = stream.getVideoTracks()[0];
     if (vTrack) {
       vTrack.onended = () => {
         if (state.isScreenSharing) {
@@ -7525,22 +7669,60 @@ function stopScreenSharing() {
   showToast('Ekran yayını sonlandırıldı.');
 }
 
-function handleRemoteScreenShareStarted(user) {
+function handleRemoteScreenShareStarted(user, meta = {}) {
   state.activeMode = 'screenshare';
-  sendYtCommand('pauseVideo');
+  state.currentVideoId = null;
+  state.remoteScreenStreamId = (meta && meta.streamId) || null;
+  state.remoteScreenTrackId = (meta && meta.trackId) || null;
+  try { sendYtCommand('pauseVideo'); } catch (_) {}
+  const oldYtFrame = document.getElementById('miruoYtIframe');
+  if (oldYtFrame) { try { oldYtFrame.src = 'about:blank'; oldYtFrame.remove(); } catch (_) {} }
+  if (dom.ytPlayerContainer) {
+    dom.ytPlayerContainer.innerHTML = '';
+    dom.ytPlayerContainer.classList.add('hidden');
+  }
+  if (typeof clearStageWebContent === 'function') clearStageWebContent();
+  if (dom.nativeVideoPlayer) {
+    try { dom.nativeVideoPlayer.pause(); dom.nativeVideoPlayer.srcObject = null; } catch (_) {}
+    dom.nativeVideoPlayer.classList.add('hidden');
+  }
   state.isPlaying = false;
   updatePlayPauseUI(false);
 
-  if (dom.ytPlayerContainer) dom.ytPlayerContainer.classList.add('hidden');
   if (dom.emptyStatePlaceholder) dom.emptyStatePlaceholder.classList.add('hidden');
+  if (dom.sleepModePlaceholder) dom.sleepModePlaceholder.classList.add('hidden');
   const photoStage = document.getElementById('photoStageContainer');
   if (photoStage) photoStage.classList.add('hidden');
 
   if (dom.remoteScreenPlayer) {
+    dom.remoteScreenPlayer.playsInline = true;
+    dom.remoteScreenPlayer.muted = true;
+    dom.remoteScreenPlayer.defaultMuted = true;
+    dom.remoteScreenPlayer.autoplay = true;
+    dom.remoteScreenPlayer.setAttribute('playsinline', 'true');
+    dom.remoteScreenPlayer.setAttribute('webkit-playsinline', 'true');
     dom.remoteScreenPlayer.classList.remove('hidden');
-    const screenPeer = Object.values(state.peers || {}).find(p => p.stream && p.stream.getVideoTracks().length > 0) || (state.remoteStream ? { stream: state.remoteStream } : null);
-    if (screenPeer && screenPeer.stream) {
-      dom.remoteScreenPlayer.srcObject = screenPeer.stream;
+
+    const uniquePeers = (typeof getUniquePeerEntries === 'function') ? getUniquePeerEntries() : Array.from(new Set(Object.values(state.peers || {})));
+    let screenTrack = null;
+    for (const p of uniquePeers) {
+      if (p && p.screenVideoTrack && p.screenVideoTrack.readyState === 'live') {
+        screenTrack = p.screenVideoTrack;
+        break;
+      }
+      if (p && p.stream) {
+        const vt = p.stream.getVideoTracks().filter(t => t.readyState === 'live');
+        if (state.remoteScreenTrackId) {
+          const exact = vt.find(t => t.id === state.remoteScreenTrackId);
+          if (exact) { screenTrack = exact; break; }
+        }
+        const detail = vt.find(t => t.contentHint === 'detail' || /screen|display|window/i.test(t.label || ''));
+        if (detail) { screenTrack = detail; break; }
+        if (vt.length > 1) { screenTrack = vt[vt.length - 1]; break; }
+      }
+    }
+    if (screenTrack) {
+      dom.remoteScreenPlayer.srcObject = new MediaStream([screenTrack]);
       dom.remoteScreenPlayer.play().catch(() => {});
     }
   }
@@ -7892,7 +8074,8 @@ function leaveRoom() {
     } catch (e) {}
     dom.nativeVideoPlayer.classList.add('hidden');
   }
-  if (dom.webPlayerFrame) {
+  if (typeof clearStageWebContent === 'function') clearStageWebContent();
+  else if (dom.webPlayerFrame) {
     try { dom.webPlayerFrame.src = 'about:blank'; } catch (e) {}
     dom.webPlayerFrame.classList.add('hidden');
   }
@@ -16048,12 +16231,14 @@ function sendChatMessage(text, imageUrl = null) {
 
   const timeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   const senderName = state.username || 'Sen';
+  const msgId = 'chat_' + (state.clientId || 'u') + '_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6);
 
   // Render locally immediately
-  renderChatMessage(senderName, content, true, timeStr, imageUrl, state.avatarUrl);
+  renderChatMessage(senderName, content, true, timeStr, imageUrl, state.avatarUrl, msgId);
 
   // Send via P2P / signaling to room members
   sendP2PData('chat', {
+    msgId: msgId,
     sender: senderName,
     text: content,
     time: timeStr,
@@ -16067,10 +16252,33 @@ function sendChatMessage(text, imageUrl = null) {
   }
 }
 
-function renderChatMessage(sender, text, isSelf, timeStr, imageUrl = null, avatarUrl = null) {
+function renderChatMessage(sender, text, isSelf, timeStr, imageUrl = null, avatarUrl = null, msgId = null) {
   if (!dom.chatMessagesContainer) return;
   if (!isSelf && sender && typeof isUserBlocked === 'function' && isUserBlocked(sender)) {
     return; // Blocked user chat message suppressed
+  }
+
+  // Strict chat deduplication (prevents 2x/3x duplicates across DataChannel + Room Channel + Global Channel)
+  state._renderedChatIds = state._renderedChatIds || new Set();
+  state._renderedChatFingerprints = state._renderedChatFingerprints || new Map();
+  if (msgId) {
+    if (state._renderedChatIds.has(msgId)) return;
+    state._renderedChatIds.add(msgId);
+    if (state._renderedChatIds.size > 250) {
+      const firstId = state._renderedChatIds.values().next().value;
+      state._renderedChatIds.delete(firstId);
+    }
+  }
+  const fp = `${String(sender || '').toLowerCase()}|${String(text || '')}|${String(imageUrl || '').slice(0, 64)}`;
+  const nowChatTs = Date.now();
+  const prevFpAt = state._renderedChatFingerprints.get(fp);
+  if (!isSelf && prevFpAt && (nowChatTs - prevFpAt) < 2500) {
+    return;
+  }
+  state._renderedChatFingerprints.set(fp, nowChatTs);
+  if (state._renderedChatFingerprints.size > 200) {
+    const firstKey = state._renderedChatFingerprints.keys().next().value;
+    state._renderedChatFingerprints.delete(firstKey);
   }
 
   const time = timeStr || new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
@@ -19483,16 +19691,26 @@ function initEvents() {
       let cur = '', t = '';
       try { cur = wv.getURL(); t = (wv.getTitle() || '').replace(/\s*-\s*YouTube$/i, ''); } catch (e) {}
       close();
-      if (isKick || cur.includes('kick.com')) {
-        const ch = extractKickChannel(cur);
-        loadKickStream(cur, t || `${ch} - Kick`);
-      } else if (isTwitch || cur.includes('twitch.tv')) {
-        const ch = extractTwitchChannel(cur);
-        loadTwitchStream(cur, t || `${ch} - Twitch`);
-      } else if (isYt || extractYtId(cur)) {
-        selectAndPlayYoutubeVideo(cur, t || platformTitle, platformTitle);
+      const startSelectedContent = () => {
+        if (isKick || cur.includes('kick.com')) {
+          const ch = extractKickChannel(cur);
+          loadKickStream(cur, t || `${ch} - Kick`);
+        } else if (isTwitch || cur.includes('twitch.tv')) {
+          const ch = extractTwitchChannel(cur);
+          loadTwitchStream(cur, t || `${ch} - Twitch`);
+        } else if (isYt || extractYtId(cur)) {
+          selectAndPlayYoutubeVideo(cur, t || platformTitle, platformTitle);
+        } else {
+          loadWebStream(cur, t || platformTitle, platformTitle);
+        }
+      };
+      const alreadyInRoom = !!(state.isInRoom && state.roomId && dom.roomWorkspaceSection && !dom.roomWorkspaceSection.classList.contains('hidden'));
+      if (alreadyInRoom || isYt || extractYtId(cur)) {
+        startSelectedContent();
       } else {
-        loadWebStream(cur, t || platformTitle, platformTitle);
+        const roomTitle = t ? `${t.substring(0, 24)} Partisi` : `${platformTitle} Partisi`;
+        createAndJoinRoom(roomTitle, state.isPrivateRoom, platformTitle);
+        setTimeout(startSelectedContent, 450);
       }
     });
 
