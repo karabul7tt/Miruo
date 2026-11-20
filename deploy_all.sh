@@ -18,6 +18,8 @@ for target in desktop-app/public ios/Miruo/public android/app/src/main/assets/pu
   cp -f app/config.js "$target/config.js"
   cp -f app/index.html "$target/index.html"
   cp -f app/style.css "$target/style.css"
+  cp -f app/livekit-client.umd.js "$target/livekit-client.umd.js"
+  cp -f app/miruo-live.js "$target/miruo-live.js"
 done
 echo "✅ Dosyalar eşitlendi."
 
@@ -128,7 +130,7 @@ rm -rf "$TEMP_PAYLOAD"
 echo "✅ iOS Build $NEXT_BUILD Xcode Organizer'a ve IPA indirme dosyalarına eklendi."
 
 echo "🌐 [5/6] Git değişiklikleri kaydediliyor ve Vercel/GitHub'a gönderiliyor..."
-git add android/ app/ desktop-app/public/ desktop-app/build/entitlements.mac.plist downloads/ ios/ website/ site.js index.html vercel.json deploy_all.sh
+git add api/ android/ app/ desktop-app/public/ desktop-app/build/entitlements.mac.plist downloads/ ios/ website/ site.js index.html vercel.json deploy_all.sh
 git commit -m "build(release): deploy macOS DMG, Windows ZIP, iOS Build ${NEXT_BUILD} and web updates" || true
 
 echo "☁️ [6/6] Uzak sunucuya aktarılıyor..."

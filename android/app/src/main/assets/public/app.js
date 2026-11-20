@@ -4121,6 +4121,7 @@ function _bindTrackEventOnce(track, eventName, key, handler) {
 }
 
 function _harvestPeerReceiverTracks(peerObj) {
+  if (window.MiruoLive && window.MiruoLive.isEnabled()) return; // remote cam/mic arrive via LiveKit, not P2P receivers
   if (!peerObj || !peerObj.pc || peerObj.pc.signalingState === 'closed' || typeof peerObj.pc.getTransceivers !== 'function') return;
   if (!peerObj.stream) peerObj.stream = new MediaStream();
   const screenId = peerObj.screenVideoTrack ? peerObj.screenVideoTrack.id : null;
@@ -4687,6 +4688,7 @@ window.getCanonicalTransceiver = getCanonicalTransceiver;
 // Pre-allocate bidirectional audio & video sendrecv transceivers on the initiator so m=audio and m=video exist from initial connect
 function ensureSendRecvTransceivers(pc, peerEntry = null) {
   if (!pc || typeof pc.addTransceiver !== 'function') return;
+  if (window.MiruoLive && window.MiruoLive.isEnabled()) return; // cam/mic travel through the LiveKit SFU
   try {
     let at = getCanonicalTransceiver(pc, 'audio', 'screen');
     if (!at) {
@@ -4792,6 +4794,7 @@ window.attachTrackToPeer = attachTrackToPeer;
 async function syncLocalMediaToPeer(peerEntry, allowReneg = true) {
   if (!peerEntry || !peerEntry.pc || peerEntry.pc.signalingState === 'closed') return { needsReneg: false };
   if (!state.localStream) return { needsReneg: false };
+  if (window.MiruoLive && window.MiruoLive.isEnabled()) return { needsReneg: false }; // media handled by LiveKit SFU
 
   let anyReneg = false;
   const prevSuppress = !!peerEntry._suppressNegNeeded;
@@ -4953,7 +4956,7 @@ function getOrCreatePeerConnection(peerId, isInitiator, meta = {}) {
     avatar: meta.avatar || '',
     pc,
     dataChannel: null,
-    stream: new MediaStream(),
+    stream: (window.MiruoLive && window.MiruoLive.isEnabled() && window.MiruoLive.streamFor(remoteClientKey || peerId)) || new MediaStream(),
     iceCandidateQueue: [],
     isInitiator: !!isInitiator,
     polite: String(state.clientId || state.userId || '') > String(remoteClientKey || peerId),
@@ -5735,6 +5738,11 @@ function sendP2PData(type, payload = {}) {
     sentAt: payload.sentAt || Date.now()
   };
   const data = JSON.stringify({ type, payload: enrichedPayload, ...enrichedPayload });
+
+  // Fastest rail: LiveKit SFU data channel (playback sync commands + heartbeats)
+  if (type === 'sync' && window.MiruoLive && window.MiruoLive.isConnected()) {
+    try { window.MiruoLive.sendSync(enrichedPayload); } catch (_) {}
+  }
 
   const uniqueDcPeers = (typeof getUniquePeerEntries === 'function') ? getUniquePeerEntries() : Array.from(new Set(Object.values(state.peers || {})));
   if (uniqueDcPeers.length > 0) {
@@ -6803,10 +6811,19 @@ function sendYtCommand(func, args = []) {
 
 function recordHostSyncRef(payload) {
   if (!payload || typeof payload.time !== 'number') return;
+  // Exact clock maths: age of the host's packet = (my clock + offset to host clock) - host's send time.
+  // Independent of transport delay (SFU data channel, P2P, Supabase fallback all give the same answer).
+  let ageMs = 0;
+  let exact = false;
+  if (typeof state.hostClockOffsetMs === 'number' && typeof payload.sentAt === 'number' && payload.isHost === true) {
+    ageMs = Math.min(8000, Math.max(0, Date.now() + state.hostClockOffsetMs - payload.sentAt));
+    exact = true;
+  }
   state.hostSyncRef = {
     videoId: payload.videoId || state.currentVideoId || null,
     hostTime: payload.time,
-    receivedAt: performance.now(),
+    receivedAt: performance.now() - ageMs,
+    exact,
     isPlaying: typeof payload.isPlaying === 'boolean' ? payload.isPlaying : true,
     rate: (typeof payload.rate === 'number' && payload.rate > 0) ? payload.rate : (state.roomPlaybackRate || 1.0),
     isLive: !!payload.isLive,
@@ -6819,7 +6836,7 @@ function getExpectedHostTimeNow() {
   if (!ref) return state.currentTime || 0;
   if (!ref.isPlaying) return ref.hostTime;
   const elapsed = Math.max(0, (performance.now() - ref.receivedAt) / 1000);
-  const oneWaySec = Math.min(0.6, Math.max(0.01, (state.syncOneWayMs || 80) / 1000));
+  const oneWaySec = ref.exact ? 0 : Math.min(0.6, Math.max(0.01, (state.syncOneWayMs || 80) / 1000));
   return ref.hostTime + (elapsed * ref.rate) + oneWaySec;
 }
 window.getExpectedHostTimeNow = getExpectedHostTimeNow;
@@ -7386,10 +7403,13 @@ function handleRemoteSync(payload) {
       }
 
       // VOD synchronization: dynamic seek compensation + zero-spinner smooth rate catchup
-      if (absDrift > 1.5 && localReliable) state.driftStrikes = (state.driftStrikes || 0) + 1; else state.driftStrikes = 0;
-      const shouldSnap = localReliable && !isInitialBuffering && (absDrift > 2.2 || (absDrift > 1.5 && state.driftStrikes >= 2));
+      // Tight VOD lock: with exact clock maths the target is trustworthy, so snap at >1.0s (twice >0.7s) instead of 2.2s
+      const snapHard = state.hostSyncRef && state.hostSyncRef.exact ? 1.0 : 2.2;
+      const snapSoft = state.hostSyncRef && state.hostSyncRef.exact ? 0.7 : 1.5;
+      if (absDrift > snapSoft && localReliable) state.driftStrikes = (state.driftStrikes || 0) + 1; else state.driftStrikes = 0;
+      const shouldSnap = localReliable && !isInitialBuffering && (absDrift > snapHard || (absDrift > snapSoft && state.driftStrikes >= 2));
       if (shouldSnap) {
-        if (!state.lastHardSeekAt || (now - state.lastHardSeekAt) > 3500) {
+        if (!state.lastHardSeekAt || (now - state.lastHardSeekAt) > (state.hostSyncRef && state.hostSyncRef.exact ? 2000 : 3500)) {
           if (targetLocalTime < 1.0 && localTime < 1.0) {
             // Already near start
           } else {
@@ -10286,12 +10306,14 @@ async function _toggleMicImpl() {
       (async () => {
         try {
           const uniquePeers = getUniquePeerEntries();
+          const lkOn = !!(window.MiruoLive && window.MiruoLive.isEnabled());
+          if (lkOn) { try { await window.MiruoLive.syncLocal(); } catch (_) {} }
           for (const peer of uniquePeers) {
             if (peer && peer.pc && peer.pc.signalingState !== 'closed') {
               await syncLocalMediaToPeer(peer, true);
             }
           }
-          if (uniquePeers.length === 0 && state.pc && state.pc.signalingState !== 'closed') {
+          if (!lkOn && uniquePeers.length === 0 && state.pc && state.pc.signalingState !== 'closed') {
             const { needsReneg } = await attachTrackToPeer(state.pc, audioTrack, state.localStream, 'mic');
             if (needsReneg && typeof renegotiateWebRTC === 'function') {
               try { await renegotiateWebRTC(); } catch (_) {}
@@ -10328,6 +10350,7 @@ async function _toggleMicImpl() {
     dom.micBtnText.textContent = state.isMicOn ? 'Mikrofon Kapat' : 'Mikrofon Aç';
   }
   broadcastMyMediaStatus();
+  if (window.MiruoLive) { try { window.MiruoLive.syncLocal(); } catch (_) {} }
   renderParticipantsList();
   if (typeof renderVideoGrid === 'function') renderVideoGrid();
   syncMicSettingsValues();
@@ -10520,6 +10543,7 @@ async function _toggleCamImpl() {
     }
     updateAVToolbarUI();
     broadcastMyMediaStatus();
+    if (window.MiruoLive) { try { window.MiruoLive.syncLocal(); } catch (_) {} }
     renderParticipantsList();
     renderVideoGrid();
     syncMicSettingsValues();
@@ -10649,12 +10673,14 @@ async function _toggleCamImpl() {
       (async () => {
         try {
           const uniquePeers = getUniquePeerEntries();
+          const lkOnCam = !!(window.MiruoLive && window.MiruoLive.isEnabled());
+          if (lkOnCam) { try { await window.MiruoLive.syncLocal(); } catch (_) {} }
           for (const peer of uniquePeers) {
             if (peer && peer.pc && peer.pc.signalingState !== 'closed') {
               await syncLocalMediaToPeer(peer, true);
             }
           }
-          if (uniquePeers.length === 0 && state.pc && state.pc.signalingState !== 'closed') {
+          if (!lkOnCam && uniquePeers.length === 0 && state.pc && state.pc.signalingState !== 'closed') {
             const { needsReneg } = await attachTrackToPeer(state.pc, videoTrack, state.localStream, 'cam');
             if (needsReneg && typeof renegotiateWebRTC === 'function') await renegotiateWebRTC();
           }
