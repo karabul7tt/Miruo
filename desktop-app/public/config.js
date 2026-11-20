@@ -7,11 +7,9 @@
 // Boş bırakılırsa uygulama "tek cihaz" modunda çalışır (odalar yalnızca bu cihazda).
 window.MIRUO_API_BASE = '';
 
-// Miruo TURN & STUN relays (Cloudflare Global Anycast + Metered TURN).
+// Miruo TURN & STUN relays (Cloudflare STUN + Google STUN + Metered Global TURN).
 window.MIRUO_TURN_SERVERS = [
-  { urls: 'stun:stun.cloudflare.com:3478' },
-  { urls: 'stun:turn.cloudflare.com:3478' },
-  { urls: 'stun:stun.relay.metered.ca:80' },
+  { urls: ['stun:stun.cloudflare.com:3478', 'stun:stun.l.google.com:19302'] },
   {
     urls: [
       'turn:global.relay.metered.ca:80',

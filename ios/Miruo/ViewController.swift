@@ -51,9 +51,8 @@ class ViewController: UIViewController, WKNavigationDelegate, WKUIDelegate, WKSc
     private func setupAudioSession() {
         do {
             let session = AVAudioSession.sharedInstance()
-            try session.setCategory(.playAndRecord, mode: .default, options: [.defaultToSpeaker, .allowBluetooth, .allowBluetoothA2DP, .mixWithOthers])
+            try session.setCategory(.playAndRecord, mode: .videoChat, options: [.defaultToSpeaker, .allowBluetooth, .allowBluetoothA2DP, .mixWithOthers])
             try session.setActive(true, options: .notifyOthersOnDeactivation)
-            try session.overrideOutputAudioPort(.speaker)
             NotificationCenter.default.removeObserver(self, name: AVAudioSession.interruptionNotification, object: session)
             NotificationCenter.default.addObserver(self, selector: #selector(handleAudioInterruption(_:)), name: AVAudioSession.interruptionNotification, object: session)
             NotificationCenter.default.removeObserver(self, name: AVAudioSession.routeChangeNotification, object: session)
@@ -70,9 +69,8 @@ class ViewController: UIViewController, WKNavigationDelegate, WKUIDelegate, WKSc
         if type == .ended {
             do {
                 let session = AVAudioSession.sharedInstance()
-                try session.setCategory(.playAndRecord, mode: .default, options: [.defaultToSpeaker, .allowBluetooth, .allowBluetoothA2DP, .mixWithOthers])
-                try session.setActive(true)
-                try session.overrideOutputAudioPort(.speaker)
+                try session.setCategory(.playAndRecord, mode: .videoChat, options: [.defaultToSpeaker, .allowBluetooth, .allowBluetoothA2DP, .mixWithOthers])
+                try session.setActive(true, options: .notifyOthersOnDeactivation)
             } catch {
                 print("AVAudioSession resume error: \(error)")
             }
@@ -80,22 +78,7 @@ class ViewController: UIViewController, WKNavigationDelegate, WKUIDelegate, WKSc
     }
 
     @objc private func handleRouteChange(_ notification: Notification) {
-        guard let userInfo = notification.userInfo,
-              let _ = userInfo[AVAudioSessionRouteChangeReasonKey] as? UInt else { return }
-        let session = AVAudioSession.sharedInstance()
-        let hasHeadphones = session.currentRoute.outputs.contains { output in
-            output.portType == .headphones || 
-            output.portType == .bluetoothA2DP || 
-            output.portType == .bluetoothHFP || 
-            output.portType == .bluetoothLE
-        }
-        if !hasHeadphones {
-            do {
-                try session.overrideOutputAudioPort(.speaker)
-            } catch {
-                print("AVAudioSession speaker override error: \(error)")
-            }
-        }
+        // Keep WebKit CoreAudio VPIO & Bluetooth HFP/A2DP routing undisturbed
     }
     
     override func viewDidAppear(_ animated: Bool) {
@@ -650,6 +633,11 @@ class ViewController: UIViewController, WKNavigationDelegate, WKUIDelegate, WKSc
     }
 
     func handleAppForeground() {
+        do {
+            try AVAudioSession.sharedInstance().setActive(true)
+        } catch {
+            print("AVAudioSession foreground reactivate error: \(error)")
+        }
         let js = "if (typeof handleNativeAppBackgroundState === 'function') { handleNativeAppBackgroundState(false); }"
         DispatchQueue.main.async { [weak self] in
             self?.webView.evaluateJavaScript(js, completionHandler: nil)

@@ -15,6 +15,7 @@ cp -f index.html website/index.html
 for target in desktop-app/public ios/Miruo/public android/app/src/main/assets/public website/app; do
   mkdir -p "$target"
   cp -f app/app.js "$target/app.js"
+  cp -f app/config.js "$target/config.js"
   cp -f app/index.html "$target/index.html"
   cp -f app/style.css "$target/style.css"
 done
