@@ -3256,7 +3256,7 @@ function connectSupabaseRoomSignaling() {
           if (!p.vanishedSince) {
             p.vanishedSince = Date.now();
           } else {
-            const maxWait = hasLivePeerConn ? 12000 : 3500;
+            const maxWait = hasLivePeerConn ? 5000 : 2000;
             if (Date.now() - p.vanishedSince > maxWait) {
               removeParticipantImmediately(p.clientId || pid);
               anyParticipantChanged = true;
@@ -3353,11 +3353,29 @@ function connectSupabaseRoomSignaling() {
       .on('presence', { event: 'leave' }, ({ key, currentPresences }) => {
         if (roomSupabaseChannel !== thisChannel) return;
         const pState = thisChannel.presenceState();
+        if (key && key !== state.clientId && (!pState || !pState[key] || pState[key].length === 0)) {
+          removeParticipantImmediately(key);
+        }
         syncParticipantsFromPresence(pState);
       })
       .subscribe((status, err) => {
         if (roomSupabaseChannel !== thisChannel) return;
         if (status === 'SUBSCRIBED') {
+          if (window._roomPresenceSyncTimer) clearInterval(window._roomPresenceSyncTimer);
+          window._roomPresenceSyncTimer = setInterval(() => {
+            if (!state.isInRoom || roomSupabaseChannel !== thisChannel) {
+              clearInterval(window._roomPresenceSyncTimer);
+              window._roomPresenceSyncTimer = null;
+              return;
+            }
+            try {
+              if (thisChannel.state === 'joined') {
+                syncParticipantsFromPresence(thisChannel.presenceState());
+              }
+              renderParticipantsList();
+              renderVideoGrid();
+            } catch (_) {}
+          }, 2500);
           const savedUserObj = JSON.parse(localStorage.getItem('miruo_user') || '{}');
           const myData = {
             clientId: state.clientId,
@@ -3524,6 +3542,7 @@ function sendSignal(msg) {
   }
 
   // 2. Room Dedicated Channel Rail
+  const roomChJoined = Boolean(roomSupabaseChannel && roomSupabaseChannel.state === 'joined');
   if (roomSupabaseChannel) {
     try {
       roomSupabaseChannel.send({
@@ -3534,8 +3553,8 @@ function sendSignal(msg) {
     } catch (_) {}
   }
 
-  // 3. Global Dual-Rail (Always online across all peers, 0% packet drop)
-  if (globalUsersChannel) {
+  // 3. Global Dual-Rail (Skip duplicating high-frequency ice-candidate packets when room channel is already joined to avoid Supabase rate limits)
+  if (globalUsersChannel && !(msg && msg.type === 'ice-candidate' && roomChJoined)) {
     try {
       globalUsersChannel.send({
         type: 'broadcast',
@@ -3692,9 +3711,13 @@ function handleSignalMessage(msg) {
       broadcastMyMediaStatus();
 
       // If we already have camera or mic on and the peer connection has already completed initial negotiation, attach tracks cleanly
-      if (joinedPeerEntry && joinedPeerEntry.pc && joinedPeerEntry.pc.remoteDescription && joinedPeerEntry.pc.signalingState === 'stable') {
-        if (typeof syncLocalMediaToPeer === 'function') {
-          syncLocalMediaToPeer(joinedPeerEntry, true).catch(() => {});
+      if (joinedPeerEntry && joinedPeerEntry.pc && joinedPeerEntry.pc.signalingState !== 'closed') {
+        if (joinedPeerEntry.pc.remoteDescription && joinedPeerEntry.pc.signalingState === 'stable') {
+          if (typeof syncLocalMediaToPeer === 'function') {
+            syncLocalMediaToPeer(joinedPeerEntry, true).catch(() => {});
+          }
+        } else if (joinedPeerEntry.isInitiator && typeof negotiatePeer === 'function') {
+          negotiatePeer(joinedPeerEntry, { resendIfPending: true });
         }
       }
       if (state.isHost) {
@@ -4097,14 +4120,42 @@ function _bindTrackEventOnce(track, eventName, key, handler) {
   track.addEventListener(eventName, handler);
 }
 
+function _harvestPeerReceiverTracks(peerObj) {
+  if (!peerObj || !peerObj.pc || peerObj.pc.signalingState === 'closed' || typeof peerObj.pc.getTransceivers !== 'function') return;
+  if (!peerObj.stream) peerObj.stream = new MediaStream();
+  const screenId = peerObj.screenVideoTrack ? peerObj.screenVideoTrack.id : null;
+  peerObj.pc.getTransceivers().forEach(tr => {
+    if (!tr || tr.stopped || tr.currentDirection === 'stopped') return;
+    if (tr.sender && tr.sender._miruoRole === 'screen') return;
+    const rTrack = tr.receiver && tr.receiver.track;
+    if (!rTrack || rTrack.readyState !== 'live' || rTrack.id === screenId) return;
+    if (!peerObj.stream.getTracks().includes(rTrack)) {
+      try { peerObj.stream.addTrack(rTrack); } catch (_) {}
+    }
+    if (rTrack.kind === 'video') {
+      if (!peerObj.camVideoTrack || peerObj.camVideoTrack.readyState !== 'live' || !rTrack.muted) {
+        peerObj.camVideoTrack = rTrack;
+      }
+    } else if (rTrack.kind === 'audio') {
+      if (!peerObj.audioTrack || peerObj.audioTrack.readyState !== 'live' || !rTrack.muted) {
+        peerObj.audioTrack = rTrack;
+      }
+    }
+  });
+}
+
 function _getLiveCamVideoTrack(stream, peerObj = null) {
-  if (peerObj && peerObj.camVideoTrack && peerObj.camVideoTrack.readyState === 'live') {
+  if (peerObj) _harvestPeerReceiverTracks(peerObj);
+  if (peerObj && peerObj.camVideoTrack && peerObj.camVideoTrack.readyState === 'live' && !peerObj.camVideoTrack.muted) {
     return peerObj.camVideoTrack;
   }
-  if (!stream || typeof stream.getVideoTracks !== 'function') return null;
+  const useStream = stream || (peerObj && peerObj.stream) || null;
   const excludeId = peerObj && peerObj.screenVideoTrack ? peerObj.screenVideoTrack.id : null;
-  const vTracks = stream.getVideoTracks().filter(t => t.id !== excludeId);
+  const vTracks = (useStream && typeof useStream.getVideoTracks === 'function')
+    ? useStream.getVideoTracks().filter(t => t.id !== excludeId)
+    : [];
   return vTracks.find(t => t.readyState === 'live' && !t.muted) ||
+         (peerObj && peerObj.camVideoTrack && peerObj.camVideoTrack.readyState === 'live' ? peerObj.camVideoTrack : null) ||
          vTracks.find(t => t.readyState === 'live') ||
          vTracks[0] ||
          null;
@@ -4166,15 +4217,29 @@ function attachRemoteStreamToPartnerVideo(preferredMember = null) {
 
   let remoteTrack = _getLiveCamVideoTrack(sourceStream, peerObj);
 
+  const resolveCurrentTrack = () => {
+    if (!peerObj && targetPeerId && state.peers) {
+      peerObj = state.peers[targetPeerId] || Object.values(state.peers).find(p => p.clientId === targetPeerId || p.userId === targetPeerId) || null;
+    }
+    if (!peerObj && state.peers) {
+      peerObj = Object.values(state.peers).find(p => p && p.pc && p.pc.signalingState !== 'closed') || null;
+    }
+    if (!sourceStream && peerObj && peerObj.stream) {
+      sourceStream = peerObj.stream;
+    }
+    return _getLiveCamVideoTrack(sourceStream, peerObj);
+  };
+
   const checkPartnerVideo = () => {
     if (!dom.partnerVideo) return;
-    const latestTrack = _getLiveCamVideoTrack(sourceStream, peerObj);
+    const latestTrack = resolveCurrentTrack();
     if (latestTrack && (!dom.partnerVideo.srcObject || dom.partnerVideo.dataset.trackId !== latestTrack.id)) {
       dom.partnerVideo.dataset.trackId = latestTrack.id;
       dom.partnerVideo.srcObject = new MediaStream([latestTrack]);
       dom.partnerVideo.play().catch(() => {});
     }
-    const hasDecodedFrames = dom.partnerVideo.videoWidth > 0 && dom.partnerVideo.readyState >= 2;
+    const hasDecodedFrames = (dom.partnerVideo.videoWidth > 0 && dom.partnerVideo.readyState >= 2) ||
+                             (dom.partnerVideo.readyState >= 2 && dom.partnerVideo.currentTime > 0 && latestTrack && !latestTrack.muted);
     if (hasDecodedFrames) {
       if (dom.partnerVideoPlaceholder) {
         dom.partnerVideoPlaceholder.classList.add('hidden');
@@ -4188,6 +4253,21 @@ function attachRemoteStreamToPartnerVideo(preferredMember = null) {
       if (dom.partnerVideo.srcObject && dom.partnerVideo.paused) {
         dom.partnerVideo.play().catch(() => {});
       }
+    }
+    // Also reconcile any grid tile & extra PIP video placeholders that finished decoding their first keyframe
+    if (dom.roomVideoGrid) {
+      dom.roomVideoGrid.querySelectorAll('.tile-body').forEach(tb => {
+        const v = tb.querySelector('video');
+        const ph = tb.querySelector('.tile-placeholder');
+        if (v && ph) {
+          if ((v.videoWidth > 0 && v.readyState >= 2) || (v.readyState >= 2 && v.currentTime > 0)) {
+            ph.classList.add('hidden');
+            ph.style.display = 'none';
+          } else if (v.paused && v.srcObject) {
+            v.play().catch(() => {});
+          }
+        }
+      });
     }
   };
 
@@ -4411,7 +4491,7 @@ function renderStagePipCards() {
       }
       vid.play().catch(() => {});
       const checkF = () => {
-        const hasLive = vid.videoWidth > 0 && vid.readyState >= 2;
+        const hasLive = (vid.videoWidth > 0 && vid.readyState >= 2) || (vid.readyState >= 2 && vid.currentTime > 0 && !camTrack.muted);
         if (hasLive && ph) {
           ph.classList.add('hidden');
           ph.style.display = 'none';
@@ -4425,6 +4505,7 @@ function renderStagePipCards() {
       vid.onloadedmetadata = checkF;
       vid.onplaying = checkF;
       vid.oncanplay = checkF;
+      vid.ontimeupdate = checkF;
       vid.onresize = checkF;
       checkF();
     }
@@ -4603,9 +4684,31 @@ function getCanonicalTransceiver(pc, kind, excludeRole = 'screen') {
 }
 window.getCanonicalTransceiver = getCanonicalTransceiver;
 
-// Legacy compatibility shim (Perfect Negotiation uses addTrack / transceiver reuse without trackless pre-allocation)
-function ensureSendRecvTransceivers(_pc) {
-  return;
+// Pre-allocate bidirectional audio & video sendrecv transceivers on the initiator so m=audio and m=video exist from initial connect
+function ensureSendRecvTransceivers(pc, peerEntry = null) {
+  if (!pc || typeof pc.addTransceiver !== 'function') return;
+  try {
+    let at = getCanonicalTransceiver(pc, 'audio', 'screen');
+    if (!at) {
+      at = pc.addTransceiver('audio', { direction: 'sendrecv' });
+    } else if (at.direction !== 'sendrecv') {
+      at.direction = 'sendrecv';
+    }
+    if (at && at.sender) {
+      at.sender._miruoRole = 'mic';
+      if (peerEntry) peerEntry.micSender = at.sender;
+    }
+    let vt = getCanonicalTransceiver(pc, 'video', 'screen');
+    if (!vt) {
+      vt = pc.addTransceiver('video', { direction: 'sendrecv' });
+    } else if (vt.direction !== 'sendrecv') {
+      vt.direction = 'sendrecv';
+    }
+    if (vt && vt.sender) {
+      vt.sender._miruoRole = 'cam';
+      if (peerEntry) peerEntry.camSender = vt.sender;
+    }
+  } catch (_) {}
 }
 window.ensureSendRecvTransceivers = ensureSendRecvTransceivers;
 
@@ -4644,18 +4747,20 @@ async function attachTrackToPeer(pcOrPeer, track, stream, role = null) {
         else if (targetRole === 'mic') peerEntry.micSender = sender;
       }
 
-      const hadTrackBefore = Boolean(sender.track);
+      const prevTrack = sender.track;
+      const hadTrackBefore = Boolean(prevTrack);
       const isAlreadyNegotiatedSend = (tr.currentDirection === 'sendrecv' || tr.currentDirection === 'sendonly');
 
       if (tr.direction !== 'sendrecv') {
         tr.direction = 'sendrecv';
         needsReneg = true;
       }
-      if (sender.track !== track && typeof sender.replaceTrack === 'function') {
+      if (prevTrack !== track && typeof sender.replaceTrack === 'function') {
         await sender.replaceTrack(track);
-        if (typeof sender.setStreams === 'function' && (stream || state.localStream)) {
-          try { sender.setStreams(stream || state.localStream); } catch (_) {}
-        }
+        needsReneg = true;
+      }
+      if (pc.signalingState === 'stable' && typeof sender.setStreams === 'function' && (stream || state.localStream)) {
+        try { sender.setStreams(stream || state.localStream); } catch (_) {}
       }
       if (!hadTrackBefore || !isAlreadyNegotiatedSend) {
         needsReneg = true;
@@ -4724,8 +4829,44 @@ async function negotiatePeer(peerOrId, options = {}) {
   if (!peerEntry || !peerEntry.pc || peerEntry.pc.signalingState === 'closed') return;
   const pc = peerEntry.pc;
   const iceRestart = !!(options && options.iceRestart);
+  const resendIfPending = !!(options && options.resendIfPending);
 
-  if (peerEntry.makingOffer || pc.signalingState !== 'stable') {
+  if (peerEntry.makingOffer) {
+    peerEntry.pendingRenegotiate = true;
+    if (iceRestart) peerEntry.pendingIceRestart = true;
+    return;
+  }
+
+  // Break 'have-local-offer' deadlock when a previous offer was lost before remote peer subscribed
+  if (pc.signalingState === 'have-local-offer') {
+    const offerAge = Date.now() - (peerEntry.lastOfferSentAt || 0);
+    if (iceRestart || resendIfPending || offerAge > 1500) {
+      let rolledBack = false;
+      try {
+        await pc.setLocalDescription({ type: 'rollback' });
+        rolledBack = (pc.signalingState === 'stable');
+      } catch (_) {}
+      if (!rolledBack) {
+        if (pc.localDescription) {
+          peerEntry.lastOfferSentAt = Date.now();
+          sendSignal({
+            type: 'offer',
+            targetUserId: peerEntry.userId || peerEntry.peerId,
+            targetClientId: peerEntry.clientId || peerEntry.peerId,
+            offer: { type: pc.localDescription.type, sdp: pc.localDescription.sdp },
+            sentAt: Date.now()
+          });
+        }
+        peerEntry.pendingRenegotiate = true;
+        if (iceRestart) peerEntry.pendingIceRestart = true;
+        return;
+      }
+    } else {
+      peerEntry.pendingRenegotiate = true;
+      if (iceRestart) peerEntry.pendingIceRestart = true;
+      return;
+    }
+  } else if (pc.signalingState !== 'stable') {
     peerEntry.pendingRenegotiate = true;
     if (iceRestart) peerEntry.pendingIceRestart = true;
     return;
@@ -4738,6 +4879,7 @@ async function negotiatePeer(peerOrId, options = {}) {
     const offer = await pc.createOffer(iceRestart ? { iceRestart: true } : undefined);
     if (pc.signalingState !== 'stable' && pc.signalingState !== 'have-local-offer') return;
     await pc.setLocalDescription(offer);
+    peerEntry.lastOfferSentAt = Date.now();
     sendSignal({
       type: 'offer',
       targetUserId: peerEntry.userId || peerEntry.peerId,
@@ -4745,6 +4887,13 @@ async function negotiatePeer(peerOrId, options = {}) {
       offer: pc.localDescription ? { type: pc.localDescription.type, sdp: pc.localDescription.sdp } : offer,
       sentAt: Date.now()
     });
+    // Auto-retry unanswered offer after 2.2s so initial join race never stalls media
+    if (peerEntry._offerRetryTimer) clearTimeout(peerEntry._offerRetryTimer);
+    peerEntry._offerRetryTimer = setTimeout(() => {
+      if (peerEntry.pc && peerEntry.pc.signalingState === 'have-local-offer' && !peerEntry.makingOffer) {
+        negotiatePeer(peerEntry, { resendIfPending: true });
+      }
+    }, 2200);
   } catch (err) {
     console.warn(`[Miruo] negotiatePeer error for ${peerEntry.peerId}:`, err);
   } finally {
@@ -4774,9 +4923,17 @@ function getOrCreatePeerConnection(peerId, isInitiator, meta = {}) {
   }
   if (!state.peers) state.peers = {};
 
-  let existing = getPeerEntry(peerId) || (meta.clientId && getPeerEntry(meta.clientId));
+  const remoteClientKey = meta.clientId || (peerId.startsWith('cl_') ? peerId : null);
+  let existing = getPeerEntry(peerId) || (remoteClientKey && getPeerEntry(remoteClientKey));
   if (existing && existing.pc && existing.pc.signalingState !== 'closed') {
-    if (meta.clientId) existing.clientId = meta.clientId;
+    // If the same user rejoined with a brand-new clientId, close the stale session's PeerConnection first!
+    if (existing.clientId && remoteClientKey && existing.clientId !== remoteClientKey) {
+      closePeerConnection(existing.peerId);
+      existing = null;
+    }
+  }
+  if (existing && existing.pc && existing.pc.signalingState !== 'closed') {
+    if (remoteClientKey) existing.clientId = remoteClientKey;
     if (meta.userId) existing.userId = meta.userId;
     if (meta.username) existing.username = meta.username;
     if (meta.avatar) existing.avatar = meta.avatar;
@@ -4788,7 +4945,6 @@ function getOrCreatePeerConnection(peerId, isInitiator, meta = {}) {
   }
 
   const pc = new RTCPeerConnection(rtcConfig);
-  const remoteClientKey = meta.clientId || (peerId.startsWith('cl_') ? peerId : null);
   const peerEntry = {
     peerId,
     clientId: remoteClientKey,
@@ -5148,6 +5304,7 @@ function getOrCreatePeerConnection(peerId, isInitiator, meta = {}) {
       peerEntry.dataChannel = pc.createDataChannel('couchSyncChannel');
       setupDataChannelEvents(peerEntry.dataChannel);
       if (state.pc === pc) state.dataChannel = peerEntry.dataChannel;
+      ensureSendRecvTransceivers(pc, peerEntry);
       syncLocalMediaToPeer(peerEntry, false).then(() => {
         peerEntry._suppressNegNeeded = false;
         negotiatePeer(peerEntry);
@@ -5239,9 +5396,25 @@ async function handleRtcOffer(offer, fromId, meta = {}) {
     await pc.setRemoteDescription(new RTCSessionDescription(offer));
     flushPeerQueuedIceCandidates(peer.peerId);
 
-    // 2. Attach active local mic/cam tracks BEFORE createAnswer (reuses negotiated m= sections or prepares follow-up offer)
+    // 2. Ensure associated audio/video transceivers are bidirectional sendrecv & attach active local mic/cam tracks BEFORE createAnswer
     peer._suppressNegNeeded = true;
     try {
+      if (typeof pc.getTransceivers === 'function') {
+        pc.getTransceivers().forEach(tr => {
+          if (!tr || tr.stopped || tr.currentDirection === 'stopped') return;
+          if (tr.sender && tr.sender._miruoRole === 'screen') return;
+          const kind = (tr.receiver && tr.receiver.track && tr.receiver.track.kind) ||
+                       (tr.sender && tr.sender.track && tr.sender.track.kind) || null;
+          if (kind === 'audio' || kind === 'video') {
+            if (tr.direction !== 'sendrecv') tr.direction = 'sendrecv';
+            if (tr.sender && !tr.sender._miruoRole) {
+              tr.sender._miruoRole = kind === 'video' ? 'cam' : 'mic';
+            }
+            if (kind === 'video' && !peer.camSender) peer.camSender = tr.sender;
+            if (kind === 'audio' && !peer.micSender) peer.micSender = tr.sender;
+          }
+        });
+      }
       await syncLocalMediaToPeer(peer, false);
     } finally {
       peer._suppressNegNeeded = false;
@@ -5255,6 +5428,8 @@ async function handleRtcOffer(offer, fromId, meta = {}) {
       targetClientId: peer.clientId || peerId,
       answer: pc.localDescription ? { type: pc.localDescription.type, sdp: pc.localDescription.sdp } : answer
     });
+
+    _harvestPeerReceiverTracks(peer);
 
     // Follow up ONLY if any active local sender still has an unnegotiated or non-sending transceiver
     let needsFollowUp = false;
@@ -5304,6 +5479,9 @@ async function handleRtcOffer(offer, fromId, meta = {}) {
       state.participants[pKey].stream = peer.stream;
     }
 
+    if (peer.stream && peer.stream.getAudioTracks().length > 0) {
+      playPeerAudio(pKey, peer.stream);
+    }
     if (!state.peerId || state.peerId === peerId || state.peerId === pKey) {
       state.pc = pc;
       state.peerId = pKey;
@@ -5326,9 +5504,17 @@ async function handleRtcAnswer(answer, fromId) {
   if (!pc || !answer || pc.signalingState !== 'have-local-offer') return;
 
   try {
+    if (peer && peer._offerRetryTimer) {
+      clearTimeout(peer._offerRetryTimer);
+      peer._offerRetryTimer = null;
+    }
     await pc.setRemoteDescription(new RTCSessionDescription(answer));
-    if (peer) flushPeerQueuedIceCandidates(peer.peerId);
-    else flushQueuedIceCandidates();
+    if (peer) {
+      flushPeerQueuedIceCandidates(peer.peerId);
+      _harvestPeerReceiverTracks(peer);
+    } else {
+      flushQueuedIceCandidates();
+    }
 
     const pKey = (peer && (peer.clientId || peer.userId)) || peerId;
     if (!state.participants[pKey] && pKey !== state.clientId) {
@@ -5349,8 +5535,13 @@ async function handleRtcAnswer(answer, fromId) {
         isSelf: false,
         stream: peer ? peer.stream : null
       };
+    } else if (state.participants[pKey] && peer) {
+      state.participants[pKey].stream = peer.stream;
     }
 
+    if (peer && peer.stream && peer.stream.getAudioTracks().length > 0) {
+      playPeerAudio(pKey, peer.stream);
+    }
     if (!state.peerId || state.peerId === peerId || state.peerId === pKey) {
       if (typeof attachRemoteStreamToPartnerVideo === 'function') attachRemoteStreamToPartnerVideo();
       if (typeof attachRemoteAudioStream === 'function') attachRemoteAudioStream();
@@ -5971,35 +6162,10 @@ function loadYoutubeVideo(urlOrId, startPlaying = true, startTime = 0) {
             events: {
               onReady: (event) => {
                 state.ytReady = true;
-                let initSeekTarget = (typeof startTime === 'number' && startTime > 0) ? startTime : 0;
-                if (!state.isHost && state.hostSyncRef && state.hostSyncRef.videoId === videoId) {
-                  const expectedNow = typeof getExpectedHostTimeNow === 'function' ? getExpectedHostTimeNow() : state.hostSyncRef.hostTime;
-                  if (state.hostSyncRef.isLive && state.hostSyncRef.liveDuration > 0) {
-                    let localDur = 0;
-                    try { localDur = Number(event.target.getDuration && event.target.getDuration()) || 0; } catch (_) {}
-                    if (localDur > 0 && Math.abs(state.hostSyncRef.liveDuration - localDur) >= 30) {
-                      const behind = Math.max(0, state.hostSyncRef.liveDuration - expectedNow);
-                      initSeekTarget = Math.max(0, localDur - behind);
-                    } else if (expectedNow > 0) {
-                      initSeekTarget = expectedNow;
-                    }
-                  } else if (expectedNow > 0) {
-                    initSeekTarget = expectedNow;
-                  }
-                  if (state.hostSyncRef.isPlaying && initSeekTarget > 0) {
-                    initSeekTarget += (state.measuredSeekLatency || 0.5);
-                  }
-                }
-                if (initSeekTarget > 0.4) {
-                  state.lastHardSeekAt = Date.now();
-                  state.lastProgSeekAt = Date.now();
-                  state._pendingSeekMeasure = { issuedAt: performance.now(), target: initSeekTarget };
-                  try { event.target.seekTo(initSeekTarget, true); } catch (_) {}
-                }
                 if (state.playbackRate && state.playbackRate !== 1.0) {
                   try { event.target.setPlaybackRate(state.playbackRate); } catch (_) {}
                 }
-                if (startPlaying) {
+                if (state.isPlaying) {
                   try { event.target.playVideo(); } catch (_) {}
                 } else {
                   try { event.target.pauseVideo(); } catch (_) {}
@@ -6008,32 +6174,16 @@ function loadYoutubeVideo(urlOrId, startPlaying = true, startTime = 0) {
               onStateChange: (event) => {
                 const s = event && event.data;
                 state.ytPlayerState = s;
-                if (s === 1) { // Playing
+                if (s === 1) {
                   dismissAutoplayUnblockPrompt();
-                  const pausedExplicitly = !state.isPlaying && (
-                    !canUserControlPlayback() ||
-                    (state._explicitRemotePauseAt && Date.now() - state._explicitRemotePauseAt < 10000)
-                  );
-                  if (pausedExplicitly) {
-                    try { event.target.pauseVideo(); } catch (_) {}
-                    return;
-                  }
                   if (!state.isPlaying) {
-                    state.isPlaying = true;
-                    updatePlayPauseUI(true);
+                    try { event.target.pauseVideo(); } catch (_) {}
+                    sendYtCommand('pauseVideo');
                   }
-                } else if (s === 2) { // Paused
-                  // Suppress stall/autoplay-guard pause during initial startup
-                  const isStartup = (Date.now() - (state.ytLoadingAt || 0) < 8000) || !state.currentTime || state.currentTime < 2.0;
-                  if (state.isPlaying && isStartup) {
-                    console.log('[Miruo] Suppressing initial YouTube stall pause');
+                } else if (s === 2) {
+                  if (state.isPlaying && (Date.now() - (state._explicitPauseAt || 0) > 1200) && (Date.now() - (state._explicitRemotePauseAt || 0) > 1200)) {
                     try { event.target.playVideo(); } catch (_) {}
-                    return;
-                  }
-                  if (state.isPlaying && canUserControlPlayback() && !state.isRemoteAction) {
-                    state.isPlaying = false;
-                    updatePlayPauseUI(false);
-                    sendP2PData('sync', { action: 'pause', time: state.currentTime, isHost: state.isHost, userRole: state.userRole || (state.isHost ? 'owner' : 'member'), sentAt: Date.now() });
+                    sendYtCommand('playVideo');
                   }
                 }
               },
@@ -6121,8 +6271,8 @@ function loadYoutubeVideo(urlOrId, startPlaying = true, startTime = 0) {
       if (miniTitle) miniTitle.textContent = vTitle;
     }).catch(() => {});
 
-  // Send video change to peer with timestamp for zero-latency sync (guard against loopback)
-  if (!state.isRemoteAction) {
+  // Send video change to peer with timestamp for zero-latency sync (only when authorized user explicitly loads a video)
+  if (!state.isRemoteAction && canUserControlPlayback()) {
     sendP2PData('sync', {
       action: 'load_yt',
       videoId,
@@ -6132,7 +6282,10 @@ function loadYoutubeVideo(urlOrId, startPlaying = true, startTime = 0) {
       sentAt: Date.now()
     });
   }
-  state.isRemoteAction = false;
+  if (state.isRemoteAction) {
+    clearTimeout(state.remoteActionTimer);
+    state.remoteActionTimer = setTimeout(() => { state.isRemoteAction = false; }, 1200);
+  }
   startPlaybackTracking();
   startSyncHeartbeat();
   showToast('Video başlatıldı');
@@ -6622,25 +6775,23 @@ function onYtStateChange(event) {
 function sendYtCommand(func, args = []) {
   // Any programmatic seek (sync, load, resync) must never be mistaken for a user scrub
   if (func === 'seekTo') state.lastProgSeekAt = Date.now();
-  // Fire ONCE via YT.Player API if ready, otherwise fallback to postMessage (never double-fire seekTo!)
-  let sentViaApi = false;
-  if (state.ytReady && state.ytPlayer && typeof state.ytPlayer[func] === 'function') {
+  // Always deliver via direct iframe postMessage so a stale YT.Player wrapper can never swallow pauseVideo/playVideo/seekTo
+  const ytFrame = document.getElementById('miruoYtIframe');
+  let sentPostMessage = false;
+  if (ytFrame && ytFrame.contentWindow) {
     try {
-      state.ytPlayer[func](...args);
-      sentViaApi = true;
+      ytFrame.contentWindow.postMessage(JSON.stringify({
+        event: 'command',
+        func: func,
+        args: args
+      }), '*');
+      sentPostMessage = true;
     } catch (_) {}
   }
-  if (!sentViaApi) {
-    const ytFrame = document.getElementById('miruoYtIframe');
-    if (ytFrame && ytFrame.contentWindow) {
-      try {
-        ytFrame.contentWindow.postMessage(JSON.stringify({
-          event: 'command',
-          func: func,
-          args: args
-        }), '*');
-      } catch (_) {}
-    }
+  if (!sentPostMessage && state.ytReady && state.ytPlayer && typeof state.ytPlayer[func] === 'function') {
+    try {
+      state.ytPlayer[func](...args);
+    } catch (_) {}
   }
   if (dom.nativeVideoPlayer) {
     try {
@@ -6945,17 +7096,25 @@ function handleRemoteSync(payload) {
   }
 
   if (payload.action === 'pause') {
+    const curLocalBeforePause = (typeof getLivePlayerTime === 'function') ? getLivePlayerTime() : state.currentTime;
     const targetTime = typeof payload.time === 'number' ? payload.time : state.currentTime;
     recordHostSyncRef({ ...payload, time: targetTime, isPlaying: false });
     state.isPlaying = false;
+    state._explicitPauseAt = Date.now();
     state._explicitRemotePauseAt = Date.now();
     state.currentTime = targetTime;
     state.lastReportedYtTime = targetTime;
     state.lastReportedYtAt = Date.now();
     updatePlayPauseUI(false);
 
-    // CRITICAL: NEVER call seekTo AFTER pauseVideo on YouTube (YouTube auto-plays after seekTo!)
-    sendYtCommand('pauseVideo');
+    if (state.activeMode === 'youtube') {
+      if (typeof payload.time === 'number' && !state.isLiveStream && Math.abs(curLocalBeforePause - targetTime) > 0.8) {
+        state._lastInfoT = targetTime;
+        state._lastInfoAt = Date.now();
+        sendYtCommand('seekTo', [targetTime, true]);
+      }
+      sendYtCommand('pauseVideo');
+    }
     if (state.activeMode === 'direct' && dom.nativeVideoPlayer && typeof dom.nativeVideoPlayer.pause === 'function') {
       try { dom.nativeVideoPlayer.pause(); } catch (_) {}
       if (typeof payload.time === 'number') {
@@ -6980,7 +7139,8 @@ function handleRemoteSync(payload) {
         });
       }
     };
-    setTimeout(enforceRemotePause, 120);
+    setTimeout(enforceRemotePause, 60);
+    setTimeout(enforceRemotePause, 180);
     setTimeout(enforceRemotePause, 450);
     setTimeout(enforceRemotePause, 1000);
   }
@@ -7058,26 +7218,34 @@ function handleRemoteSync(payload) {
       recordHostSyncRef(payload);
 
       if (!payload.isPlaying) {
-        const isStartupGrace = state.ytLoadingAt && (Date.now() - state.ytLoadingAt < 2500) && !(state._explicitRemotePauseAt && Date.now() - state._explicitRemotePauseAt < 5000);
-        if (isStartupGrace && state.isPlaying) {
-          return;
-        }
-        const wasPlaying = state.isPlaying || state.ytPlayerState === 1;
+        const curLocal = (typeof getLivePlayerTime === 'function') ? getLivePlayerTime() : (state.currentTime || 0);
         state.isPlaying = false;
+        state._explicitPauseAt = Date.now();
         state._explicitRemotePauseAt = Date.now();
         updatePlayPauseUI(false);
-        if (wasPlaying) {
-          if (state.activeMode === 'youtube') sendYtCommand('pauseVideo');
-          if (dom.nativeVideoPlayer) {
-            try { dom.nativeVideoPlayer.pause(); } catch (_) {}
+        if (state.activeMode === 'youtube') {
+          if (typeof payload.time === 'number' && !state.isLiveStream && Math.abs(curLocal - payload.time) > 1.0 &&
+              (!state._lastPausedAlignSeekAt || Date.now() - state._lastPausedAlignSeekAt > 2500)) {
+            state._lastPausedAlignSeekAt = Date.now();
+            state._lastInfoT = payload.time;
+            state._lastInfoAt = Date.now();
+            sendYtCommand('seekTo', [payload.time, true]);
+            setTimeout(() => { if (!state.isPlaying) sendYtCommand('pauseVideo'); }, 60);
+            setTimeout(() => { if (!state.isPlaying) sendYtCommand('pauseVideo'); }, 220);
           }
-          if (typeof controlStageWebviewVideo === 'function') controlStageWebviewVideo('pause');
-          document.querySelectorAll('video:not(.peer-cam-video):not(#localVideo):not(#partnerVideo):not([data-webrtc-stream])').forEach(v => {
-            try { v.pause(); } catch (_) {}
-          });
+          sendYtCommand('pauseVideo');
         }
+        if (dom.nativeVideoPlayer) {
+          try { dom.nativeVideoPlayer.pause(); } catch (_) {}
+        }
+        if (typeof controlStageWebviewVideo === 'function') controlStageWebviewVideo('pause');
+        document.querySelectorAll('video:not(.peer-cam-video):not(#localVideo):not(#partnerVideo):not([data-webrtc-stream])').forEach(v => {
+          try { v.pause(); } catch (_) {}
+        });
         if (typeof payload.time === 'number') {
           state.currentTime = payload.time;
+          state.lastReportedYtTime = payload.time;
+          state.lastReportedYtAt = Date.now();
           if (state.activeMode === 'direct' && dom.nativeVideoPlayer && Math.abs((dom.nativeVideoPlayer.currentTime || 0) - payload.time) > 0.6) {
             try { dom.nativeVideoPlayer.currentTime = payload.time; } catch (_) {}
           }
@@ -7525,12 +7693,21 @@ function togglePlayPause() {
     showToast('Oynatma ve durdurma yetkisi sadece Oda Sahibi ve Yöneticilere aittir.');
     return;
   }
+  const curTime = (typeof getLivePlayerTime === 'function') ? getLivePlayerTime() : (state.currentTime || 0);
   const nextPlayingState = !state.isPlaying;
   state.isPlaying = nextPlayingState;
-  updatePlayPauseUI(state.isPlaying);
-
-  const curTime = (typeof getLivePlayerTime === 'function') ? getLivePlayerTime() : (state.currentTime || 0);
   state.currentTime = curTime;
+  state.lastReportedYtTime = curTime;
+  state.lastReportedYtAt = Date.now();
+  state._lastAuthoritativeToggleAt = Date.now();
+  if (!nextPlayingState) {
+    state._explicitPauseAt = Date.now();
+    state._explicitRemotePauseAt = Date.now();
+  } else {
+    state._explicitPauseAt = 0;
+    state._explicitRemotePauseAt = 0;
+  }
+  updatePlayPauseUI(state.isPlaying);
 
   // 1. YouTube Player
   if (state.activeMode === 'youtube') {
@@ -7689,59 +7866,23 @@ window.addEventListener('message', (event) => {
       state.ytPlayerState = data.info.playerState;
       // 1: playing, 2: paused, 0: ended
       if (data.info.playerState === 0) {
-        // Video finished! Auto-advance to next track if queue has items
         if (state.roomQueue && state.roomQueue.length > 0 && canUserControlPlayback()) {
           handleNextTrack();
         }
       }
-      const isNowPlaying = data.info.playerState === 1;
-      const hadExplicitRemotePause = !!(state._explicitRemotePauseAt && (Date.now() - state._explicitRemotePauseAt < 10000));
-      if (isNowPlaying) {
+      // Authoritative state enforcement: iframe is a slave to state.isPlaying (which is only toggled by Host UI or Host sync)
+      if (data.info.playerState === 1) {
         if (typeof dismissAutoplayUnblockPrompt === 'function') dismissAutoplayUnblockPrompt();
-        if (!state.isPlaying && !hadExplicitRemotePause && (state.ytLoadingAt && Date.now() - state.ytLoadingAt < 5000)) {
-          state.isPlaying = true;
-          updatePlayPauseUI(true);
+        if (!state.isPlaying) {
+          sendYtCommand('pauseVideo');
+          return;
         }
-      }
-      // Buffering(3)/unstarted(-1)/cued(5) are NOT pauses; treating them as pause stopped the whole room
-      const isLoadingGrace = state.ytLoadingAt && (Date.now() - state.ytLoadingAt < 8000);
-      const isRealPlayPause = data.info.playerState === 1 || data.info.playerState === 2;
-      if (isRealPlayPause) {
-        if (!state.isPlaying && isNowPlaying) {
-          if (!isLoadingGrace || hadExplicitRemotePause || !canUserControlPlayback()) {
-            // Room state is paused: kill any rogue autoplay from iframe immediately!
-            sendYtCommand('pauseVideo');
-            return;
-          }
-        }
-        if (isNowPlaying !== state.isPlaying && !state.isRemoteAction) {
-          // If video was blocked by browser autoplay or in initial buffering (during loading grace or currentTime < 2.0s)
-          if (!isNowPlaying && state.isPlaying) {
-            if (isLoadingGrace || !state.currentTime || state.currentTime < 2.0) {
-              console.log('[Miruo] Initial buffering/autoplay guard: suppressing premature pause');
-              sendYtCommand('playVideo');
-              return;
-            }
-          }
-          if (!canUserControlPlayback()) {
-            // Unauthorized peer state divergence: lock back to room playback state!
-            if (state.isPlaying) sendYtCommand('playVideo');
-            else sendYtCommand('pauseVideo');
-            return;
-          }
-          state.isPlaying = isNowPlaying;
-          updatePlayPauseUI(isNowPlaying);
-          state.lastSyncSentAt = Date.now();
-          const syncActionPayload = {
-            action: isNowPlaying ? 'play' : 'pause',
-            time: state.currentTime,
-            isHost: state.isHost,
-            userRole: state.userRole || 'owner',
-            canControl: true,
-            sentAt: Date.now()
-          };
-          sendP2PData('sync', syncActionPayload);
-          sendSignal({ type: 'sync', ...syncActionPayload });
+      } else if (data.info.playerState === 2) {
+        if (state.isPlaying &&
+            (Date.now() - (state._explicitPauseAt || 0) > 1200) &&
+            (Date.now() - (state._explicitRemotePauseAt || 0) > 1200)) {
+          sendYtCommand('playVideo');
+          return;
         }
       }
     }
@@ -8716,6 +8857,10 @@ function leaveRoom() {
     clearInterval(window._partnerVideoPollInterval);
     window._partnerVideoPollInterval = null;
   }
+  if (window._roomPresenceSyncTimer) {
+    clearInterval(window._roomPresenceSyncTimer);
+    window._roomPresenceSyncTimer = null;
+  }
   if (state._ytListenTimer) {
     clearInterval(state._ytListenTimer);
     state._ytListenTimer = null;
@@ -8883,6 +9028,7 @@ function leaveRoom() {
   if (roomSupabaseChannel) {
     const ch = roomSupabaseChannel;
     roomSupabaseChannel = null;
+    currentRoomSubscribed = null;
     try { ch.untrack().catch(() => {}); } catch (_) {}
     setTimeout(() => {
       try {
@@ -8892,7 +9038,13 @@ function leaveRoom() {
         }
       } catch (_) {}
     }, 150);
+  } else {
+    currentRoomSubscribed = null;
   }
+
+  // Rotate clientId on room exit so re-entering never collides with departedClients or delayed leave events
+  state.clientId = 'cl_' + Math.random().toString(36).substring(2, 9) + '_' + Date.now().toString(36);
+  try { sessionStorage.setItem('miruo_client_id', state.clientId); } catch (_) {}
 
   // Clear local room state so closed room never lingers in Explore
   try {
@@ -10145,6 +10297,8 @@ async function _toggleMicImpl() {
               try { await renegotiateWebRTC(); } catch (_) {}
             }
           }
+          broadcastMyMediaStatus();
+          setTimeout(() => { if (state.isInRoom) broadcastMyMediaStatus(); }, 400);
         } catch (e) {
           console.warn('[Miruo] mic attach error:', e);
         } finally {
@@ -10504,6 +10658,8 @@ async function _toggleCamImpl() {
             const { needsReneg } = await attachTrackToPeer(state.pc, videoTrack, state.localStream, 'cam');
             if (needsReneg && typeof renegotiateWebRTC === 'function') await renegotiateWebRTC();
           }
+          broadcastMyMediaStatus();
+          setTimeout(() => { if (state.isInRoom) broadcastMyMediaStatus(); }, 400);
         } catch (err) {
           console.warn('[Miruo] cam attach peer failed:', err);
         } finally {
@@ -10853,7 +11009,7 @@ function renderVideoGrid() {
         tileBody.appendChild(placeholder);
 
         const checkFrames = () => {
-          if (v && v.videoWidth > 0 && v.readyState >= 2) {
+          if (v && ((v.videoWidth > 0 && v.readyState >= 2) || (v.readyState >= 2 && v.currentTime > 0 && !camTrack.muted))) {
             placeholder.classList.add('hidden');
             placeholder.style.display = 'none';
           } else {
@@ -10866,6 +11022,7 @@ function renderVideoGrid() {
         v.onloadeddata = checkFrames;
         v.oncanplay = checkFrames;
         v.onresize = checkFrames;
+        v.ontimeupdate = checkFrames;
       }
       const phSnap = `${m.avatar || ''}|${m.avatarColor || ''}|${m.username || ''}`;
       if (placeholder && placeholder.dataset.phSnap !== phSnap) {
@@ -11369,8 +11526,19 @@ function joinRoomByCode(rawCode) {
     if (dom.currentRoomDisplay) dom.currentRoomDisplay.textContent = state.roomId;
     switchToMyRoom();
     connectSignaling();
+    setTimeout(() => {
+      if (state.isInRoom) sendP2PData('sync', { action: 'request_sync', sentAt: Date.now() });
+    }, 150);
+    setTimeout(() => {
+      if (state.isInRoom && !state.currentVideoId) sendP2PData('sync', { action: 'request_sync', sentAt: Date.now() });
+    }, 600);
     if (roomMeta && roomMeta.videoId) {
-      setTimeout(() => { loadYoutubeVideo(roomMeta.videoId); }, 300);
+      setTimeout(() => {
+        if (state.isInRoom && !state.currentVideoId) {
+          if (!state.isHost) state.isRemoteAction = true;
+          loadYoutubeVideo(roomMeta.videoId);
+        }
+      }, 1600);
     }
     if (state.connectedAccount) {
       setTimeout(() => {
@@ -11654,8 +11822,19 @@ function renderRoomList(roomsToRender) {
       if (typeof applyPlatformToActiveRoom === 'function') {
         applyPlatformToActiveRoom(r.category || 'YouTube');
       }
+      setTimeout(() => {
+        if (state.isInRoom) sendP2PData('sync', { action: 'request_sync', sentAt: Date.now() });
+      }, 150);
+      setTimeout(() => {
+        if (state.isInRoom && !state.currentVideoId) sendP2PData('sync', { action: 'request_sync', sentAt: Date.now() });
+      }, 600);
       if (r.videoId) {
-        setTimeout(() => { loadYoutubeVideo(r.videoId); }, 300);
+        setTimeout(() => {
+          if (state.isInRoom && !state.currentVideoId) {
+            if (!state.isHost) state.isRemoteAction = true;
+            loadYoutubeVideo(r.videoId);
+          }
+        }, 1600);
       }
       showToast(`${r.name} odasına katıldınız!`);
     };
@@ -11884,7 +12063,7 @@ function syncCurrentRoomToGlobalPresence() {
     mediaTitle: state.currentVideoTitle || (state.roomCategory === 'Galeri' ? 'Fotoğraf & Galeri' : state.roomCategory === 'Ekran Paylaş' ? 'Canlı Ekran Yayını' : state.roomCategory === 'Uyku Modu' ? 'Birlikte Uyku' : (state.activeMode === 'youtube' ? 'YouTube Yayını' : 'Canlı Sohbet Odası')),
     videoId: state.currentVideoId || '',
     thumb: state.currentVideoThumb || (state.currentVideoId ? `https://img.youtube.com/vi/${state.currentVideoId}/mqdefault.jpg` : ''),
-    viewers: Math.max(1, (state.remotePeers ? Object.keys(state.remotePeers).length + 1 : 1)),
+    viewers: Math.max(1, 1 + Object.values(state.participants || {}).filter(p => p && !isSelfMember(p)).length),
     isPublic: true,
     avatars: myAvatar ? [myAvatar] : [{ initial: (state.username || 'U').charAt(0).toUpperCase(), bg: 'from-purple-500 to-indigo-600' }],
     updatedAt: Date.now()
@@ -11940,7 +12119,7 @@ function mergeAllPublicRooms(serverRooms = []) {
       mediaTitle: state.currentVideoTitle || (state.roomCategory === 'Galeri' ? 'Fotoğraf & Galeri' : state.roomCategory === 'Ekran Paylaş' ? 'Canlı Ekran Yayını' : state.roomCategory === 'Uyku Modu' ? 'Birlikte Uyku' : (state.activeMode === 'youtube' ? 'YouTube Yayını' : 'Canlı Sohbet Odası')),
       videoId: state.currentVideoId || '',
       thumb: state.currentVideoThumb || (state.currentVideoId ? `https://img.youtube.com/vi/${state.currentVideoId}/mqdefault.jpg` : ''),
-      viewers: Math.max(1, (state.remotePeers ? Object.keys(state.remotePeers).length + 1 : 1)),
+      viewers: Math.max(1, 1 + Object.values(state.participants || {}).filter(p => p && !isSelfMember(p)).length),
       avatars: myAvatar ? [myAvatar] : [{ initial: (state.username || 'U').charAt(0).toUpperCase(), bg: 'from-purple-500 to-indigo-600' }],
       ts: Date.now()
     };
@@ -16402,7 +16581,15 @@ function updateRemoteParticipantStatus(userId, username, isMicOn, isCamOn, avata
   const effectiveCam = typeof isCamOn === 'boolean' ? isCamOn : !!existing.isCamOn;
   const effectiveMic = typeof isMicOn === 'boolean' ? isMicOn : !!existing.isMicOn;
 
-  const peerStream = existing.stream ||
+  const peerObj = (typeof getPeerEntry === 'function')
+    ? (getPeerEntry(clientId) || getPeerEntry(userId) || getPeerEntry(existingKey))
+    : null;
+  if (peerObj && typeof _harvestPeerReceiverTracks === 'function') {
+    _harvestPeerReceiverTracks(peerObj);
+  }
+
+  const peerStream = (peerObj && peerObj.stream) ||
+                     existing.stream ||
                      (clientId && state.peers && state.peers[clientId] && state.peers[clientId].stream) ||
                      (userId && state.peers && state.peers[userId] && state.peers[userId].stream) || null;
 
@@ -16422,6 +16609,10 @@ function updateRemoteParticipantStatus(userId, username, isMicOn, isCamOn, avata
     mediaStatusAt: Date.now(),
     lastSeen: Date.now()
   };
+
+  if (peerObj && peerObj.stream && (effectiveMic || peerObj.audioTrack) && typeof playPeerAudio === 'function') {
+    playPeerAudio(existingKey, peerObj.stream);
+  }
 
   // Clean up any other duplicate keys in state.participants referencing the same client
   Object.keys(state.participants).forEach(k => {
@@ -16456,7 +16647,8 @@ function updateRemoteParticipantStatus(userId, username, isMicOn, isCamOn, avata
   const newSnapshot = [nowP.isMicOn, nowP.isCamOn, nowP.username, nowP.avatar].join('|');
   const expectedGridCount = 1 + Object.keys(state.participants).filter(k => k !== state.clientId && !k.startsWith('bot_')).length;
   const currentGridCount = dom.roomVideoGrid ? dom.roomVideoGrid.children.length : 0;
-  if (prevSnapshot === newSnapshot && !isNewParticipant && currentGridCount === expectedGridCount) return;
+  const needsCamAttachRetry = effectiveCam && (!dom.partnerVideo || !dom.partnerVideo.srcObject || dom.partnerVideo.videoWidth === 0);
+  if (prevSnapshot === newSnapshot && !isNewParticipant && currentGridCount === expectedGridCount && !needsCamAttachRetry) return;
 
   if (typeof renderStagePipCards === 'function') {
     renderStagePipCards();
@@ -17826,10 +18018,21 @@ function loadUserSession() {
     state.controlMode = 'host_only';
     switchToMyRoom();
     connectSignaling();
+    setTimeout(() => {
+      if (state.isInRoom) sendP2PData('sync', { action: 'request_sync', sentAt: Date.now() });
+    }, 150);
+    setTimeout(() => {
+      if (state.isInRoom && !state.currentVideoId) sendP2PData('sync', { action: 'request_sync', sentAt: Date.now() });
+    }, 600);
     if (typeof DEFAULT_COMMUNITY_ROOMS !== 'undefined') {
       const matched = DEFAULT_COMMUNITY_ROOMS.find(r => r.id.toUpperCase() === state.roomId);
       if (matched && matched.videoId) {
-        setTimeout(() => { loadYoutubeVideo(matched.videoId); }, 350);
+        setTimeout(() => {
+          if (state.isInRoom && !state.currentVideoId) {
+            state.isRemoteAction = true;
+            loadYoutubeVideo(matched.videoId);
+          }
+        }, 1600);
       }
     }
   } else {
@@ -27153,10 +27356,21 @@ window.loadRoomFromDeepLink = function(roomId) {
   state.controlMode = 'host_only';
   switchToMyRoom();
   connectSignaling();
+  setTimeout(() => {
+    if (state.isInRoom) sendP2PData('sync', { action: 'request_sync', sentAt: Date.now() });
+  }, 150);
+  setTimeout(() => {
+    if (state.isInRoom && !state.currentVideoId) sendP2PData('sync', { action: 'request_sync', sentAt: Date.now() });
+  }, 600);
   if (typeof DEFAULT_COMMUNITY_ROOMS !== 'undefined') {
     const matched = DEFAULT_COMMUNITY_ROOMS.find(r => r.id.toUpperCase() === state.roomId);
     if (matched && matched.videoId) {
-      setTimeout(() => { loadYoutubeVideo(matched.videoId); }, 350);
+      setTimeout(() => {
+        if (state.isInRoom && !state.currentVideoId) {
+          state.isRemoteAction = true;
+          loadYoutubeVideo(matched.videoId);
+        }
+      }, 1600);
     }
   }
 };
