@@ -30,12 +30,19 @@
   function tokenUrl() {
     if (window.MIRUO_LIVE_TOKEN_URL) return window.MIRUO_LIVE_TOKEN_URL;
     const h = (location && location.hostname) || '';
-    if (/(^|\.)miruo\.com\.tr$/.test(h) || h === 'localhost' || h === '127.0.0.1') return '/api/livekit-token';
+    if (/(^|\.)miruo\.com\.tr$/.test(h)) return '/api/livekit-token';
     return 'https://www.miruo.com.tr/api/livekit-token';
   }
 
   function isEnabled() { return !!LK() && !failed; }
   function isConnected() { return !!room && room.state === 'connected'; }
+  function getVideoTrack(identity) {
+    if (!identity) return null;
+    const r = remote.get(identity);
+    if (r && r.video && r.video.readyState === 'live') return r.video;
+    return null;
+  }
+  function hasVideo(identity) { return !!getVideoTrack(identity); }
 
   async function fetchToken(roomId) {
     const st = S();
@@ -94,6 +101,7 @@
       el.autoplay = true;
       el.playsInline = true;
       el.setAttribute('playsinline', 'true');
+      el.setAttribute('webkit-playsinline', 'true');
       el.style.cssText = 'position:fixed;left:0;top:0;width:1px;height:1px;opacity:0.01;pointer-events:none;z-index:-1';
       document.body.appendChild(el);
       audioEls.set(identity, el);
@@ -103,12 +111,27 @@
       el.srcObject = new MediaStream([track]);
     }
     el.muted = false;
+    el.defaultMuted = false;
     el.volume = 1;
+    el.onpause = () => {
+      if (S() && S().isInRoom && el.srcObject && !el.muted) el.play().catch(() => {});
+    };
+    if (!track._lkAudioBound && typeof track.addEventListener === 'function') {
+      track._lkAudioBound = true;
+      track.addEventListener('unmute', () => {
+        if (el && el.srcObject) {
+          el.muted = false;
+          el.volume = 1;
+          el.play().catch(() => {});
+        }
+      });
+    }
     const p = el.play();
     if (p && p.catch) p.catch(() => { _needGesture = true; });
   }
   let _needGesture = false;
   ['click', 'touchstart', 'keydown'].forEach(evt => window.addEventListener(evt, () => {
+    if (room && typeof room.startAudio === 'function') room.startAudio().catch(() => {});
     audioEls.forEach(el => { if (el.srcObject && el.paused) el.play().catch(() => {}); });
     _needGesture = false;
   }, { passive: true }));
@@ -159,7 +182,12 @@
     const id = participant.identity;
     setAudio(id, null);
     const r = remote.get(id);
-    if (r) { r.video = null; applyVideo(id); }
+    if (r) {
+      r.audio = null;
+      r.video = null;
+      applyVideo(id);
+    }
+    notifyStatus(id);
     remote.delete(id);
     ownStreams.delete(id);
     repaint();
@@ -272,6 +300,13 @@
       const E = L.RoomEvent;
       r.on(E.TrackSubscribed, onTrackSubscribed);
       r.on(E.TrackUnsubscribed, onTrackUnsubscribed);
+      r.on(E.ParticipantConnected, (p) => {
+        if (p && p.identity) {
+          remote.set(p.identity, remote.get(p.identity) || { name: p.name });
+          notifyStatus(p.identity);
+          repaint();
+        }
+      });
       r.on(E.ParticipantDisconnected, onParticipantGone);
       r.on(E.DataReceived, onData);
       r.on(E.Reconnected, () => syncLocal());
@@ -284,11 +319,15 @@
       roomKey = key;
       failCount = 0;
       console.log('[MiruoLive] connected', t.room);
+      if (typeof r.startAudio === 'function') r.startAudio().catch(() => {});
       // pick up anyone already publishing
       r.remoteParticipants.forEach(p => {
         p.trackPublications.forEach(pub => { if (pub.track) onTrackSubscribed(pub.track, pub, p); });
       });
       startClockSync();
+      if (!st.isHost) {
+        sendSync({ action: 'request_sync', clientId: st.clientId, sentAt: Date.now() });
+      }
       await syncLocal();
     } catch (e) {
       failCount++;
@@ -320,6 +359,9 @@
     const r = room;
     room = null;
     roomKey = null;
+    failCount = 0;
+    failed = false;
+    nextAttemptAt = 0;
     pubs.audio = null; pubs.video = null;
     clock.samples = [];
     if (S()) { S().hostClockOffsetMs = null; }
@@ -341,17 +383,17 @@
     }
     // keep late-created peer entries / participants wired to LiveKit video
     remote.forEach((v, id) => applyVideo(id));
-    // if the local stream changed outside the toggles (device change, interruption), re-sync
+    // if the local stream changed outside the toggles (device change, camera flip, interruption), re-sync
     if (isConnected()) {
-      const needA = !!(st.isMicOn && st.localStream && st.localStream.getAudioTracks().some(t => t.readyState === 'live'));
-      const needV = !!(st.isCamOn && st.localStream && st.localStream.getVideoTracks().some(t => t.readyState === 'live'));
-      if (needA !== !!pubs.audio || needV !== !!pubs.video) syncLocal();
+      const curA = (st.isMicOn && st.localStream) ? (st.localStream.getAudioTracks().find(t => t.readyState === 'live') || null) : null;
+      const curV = (st.isCamOn && st.localStream) ? (st.localStream.getVideoTracks().find(t => t.readyState === 'live') || null) : null;
+      if ((pubs.audio ? pubs.audio.mst : null) !== curA || (pubs.video ? pubs.video.mst : null) !== curV) syncLocal();
     }
   }
   setInterval(watch, 1000);
 
   window.MiruoLive = {
-    isEnabled, isConnected, syncLocal, sendSync, streamFor,
+    isEnabled, isConnected, syncLocal, sendSync, streamFor, getVideoTrack, hasVideo, tokenUrl,
     debug() {
       return {
         connected: isConnected(), failed, failCount, offset: S() && S().hostClockOffsetMs, rtt: S() && S().hostClockRttMs,

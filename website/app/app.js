@@ -4216,9 +4216,33 @@ function attachRemoteStreamToPartnerVideo(preferredMember = null) {
     }
   }
 
-  let remoteTrack = _getLiveCamVideoTrack(sourceStream, peerObj);
+  let remoteTrack = null;
+  if (window.MiruoLive && window.MiruoLive.isEnabled()) {
+    const lkCandidates = [targetPeerId, preferredMember && preferredMember.clientId, preferredMember && preferredMember.userId].filter(Boolean);
+    for (const cid of lkCandidates) {
+      const lkTrack = window.MiruoLive.getVideoTrack(cid);
+      if (lkTrack) {
+        remoteTrack = lkTrack;
+        sourceStream = window.MiruoLive.streamFor(cid);
+        break;
+      }
+    }
+  }
+  if (!remoteTrack) {
+    remoteTrack = _getLiveCamVideoTrack(sourceStream, peerObj);
+  }
 
   const resolveCurrentTrack = () => {
+    if (window.MiruoLive && window.MiruoLive.isEnabled()) {
+      const lkCandidates = [targetPeerId, preferredMember && preferredMember.clientId, preferredMember && preferredMember.userId].filter(Boolean);
+      for (const cid of lkCandidates) {
+        const lkTrack = window.MiruoLive.getVideoTrack(cid);
+        if (lkTrack) {
+          sourceStream = window.MiruoLive.streamFor(cid);
+          return lkTrack;
+        }
+      }
+    }
     if (!peerObj && targetPeerId && state.peers) {
       peerObj = state.peers[targetPeerId] || Object.values(state.peers).find(p => p.clientId === targetPeerId || p.userId === targetPeerId) || null;
     }
@@ -4358,7 +4382,12 @@ function renderStagePipCards() {
   Object.values(state.participants || {}).forEach(p => {
     if (!p || isSelfMember(p)) return;
 
-    const pStream = p.stream || 
+    const lkKey = p.clientId || p.userId;
+    const lkStream = (window.MiruoLive && window.MiruoLive.isEnabled() && lkKey && window.MiruoLive.hasVideo(lkKey))
+      ? window.MiruoLive.streamFor(lkKey)
+      : null;
+    const pStream = lkStream ||
+                    p.stream ||
                     (p.clientId && state.peers?.[p.clientId]?.stream) ||
                     (p.userId && state.peers?.[p.userId]?.stream) ||
                     (p.userId === state.peerId || p.clientId === state.peerId ? state.remoteStream : null);
@@ -4475,8 +4504,10 @@ function renderStagePipCards() {
     const vid = card.querySelector('.extra-partner-video');
     const ph = card.querySelector('.extra-partner-placeholder');
     const peerObj = (m.clientId && state.peers?.[m.clientId]) || (m.userId && state.peers?.[m.userId]) || null;
-    const peerStream = m.stream || (peerObj && peerObj.stream);
-    const camTrack = _getLiveCamVideoTrack(peerStream, peerObj);
+    const lkKey = m.clientId || m.userId;
+    const lkTrack = (window.MiruoLive && window.MiruoLive.isEnabled() && lkKey) ? window.MiruoLive.getVideoTrack(lkKey) : null;
+    const peerStream = lkTrack ? window.MiruoLive.streamFor(lkKey) : (m.stream || (peerObj && peerObj.stream));
+    const camTrack = lkTrack || _getLiveCamVideoTrack(peerStream, peerObj);
     if (vid && camTrack) {
       vid.playsInline = true;
       vid.muted = true;
@@ -5727,12 +5758,15 @@ function setupDataChannelEvents(channel) {
 }
 
 function sendP2PData(type, payload = {}) {
+  const effectiveRole = state.isHost
+    ? 'owner'
+    : ((state.userRole && state.userRole !== 'member') ? state.userRole : (state.hasDjPermission ? 'dj' : 'member'));
   const enrichedPayload = {
     ...payload,
     clientId: state.clientId,
     userId: state.userId,
     fromUser: payload.fromUser || state.username,
-    userRole: payload.userRole || state.userRole || (state.isHost ? 'owner' : 'member'),
+    userRole: payload.userRole || effectiveRole,
     isHost: !!state.isHost,
     canControl: typeof canUserControlPlayback === 'function' ? canUserControlPlayback() : !!state.isHost,
     sentAt: payload.sentAt || Date.now()
@@ -5762,11 +5796,14 @@ function sendP2PData(type, payload = {}) {
     const isHb = enrichedPayload.action === 'heartbeat';
     const isPingPong = enrichedPayload.action === 'ping' || enrichedPayload.action === 'pong';
     if (isHb || isPingPong) {
+      const lkConn = !!(window.MiruoLive && window.MiruoLive.isConnected());
+      if (isPingPong && lkConn) return;
       const dcOpen = (state.peers && Object.values(state.peers).some(p => p.dataChannel && p.dataChannel.readyState === 'open')) ||
                      (state.dataChannel && state.dataChannel.readyState === 'open');
       if (dcOpen) return;
       if (isHb) {
-        if (Date.now() - (state._lastHbFallbackAt || 0) < 700) return;
+        const minGap = lkConn ? 2000 : 700;
+        if (Date.now() - (state._lastHbFallbackAt || 0) < minGap) return;
         state._lastHbFallbackAt = Date.now();
       }
       if (roomSupabaseChannel) {
@@ -7006,10 +7043,12 @@ function handleRemoteSync(payload) {
     }
     let participant = null;
     if (state.participants) {
-      if (sender && state.participants[sender]) {
+      if (payload.clientId && state.participants[payload.clientId]) {
+        participant = state.participants[payload.clientId];
+      } else if (sender && state.participants[sender]) {
         participant = state.participants[sender];
       } else {
-        participant = Object.values(state.participants).find(p => cleanUser(p.userId) === cleanUser(sender) || cleanUser(p.username) === cleanUser(sender) || (payload.userId && cleanUser(p.userId) === cleanUser(payload.userId)));
+        participant = Object.values(state.participants).find(p => (payload.clientId && p.clientId === payload.clientId) || cleanUser(p.userId) === cleanUser(sender) || cleanUser(p.username) === cleanUser(sender) || (payload.userId && cleanUser(p.userId) === cleanUser(payload.userId)));
       }
     }
     const role = (isFromHost ? 'owner' : (participant && participant.role)) || (payload.userRole || 'member');
@@ -7775,13 +7814,16 @@ function togglePlayPause() {
   }
 
   // 4. Send authoritative playback sync broadcast across all peers
+  const effectiveRole = state.isHost
+    ? 'owner'
+    : ((state.userRole && state.userRole !== 'member') ? state.userRole : (state.hasDjPermission ? 'dj' : 'member'));
   const toggleSyncPayload = {
     action: state.isPlaying ? 'play' : 'pause',
     time: curTime,
     isPlaying: state.isPlaying,
     activeMode: state.activeMode,
     isHost: state.isHost,
-    userRole: state.userRole || 'owner',
+    userRole: effectiveRole,
     canControl: true,
     sentAt: Date.now()
   };
@@ -8892,6 +8934,9 @@ function leaveRoom() {
   state.hostSyncRef = null;
   state.pendingIceByPeer = {};
   state.liveDuration = 0;
+  if (window.MiruoLive && typeof window.MiruoLive._disconnect === 'function') {
+    try { window.MiruoLive._disconnect(); } catch (_) {}
+  }
 
   // Clear YouTube player / iframe immediately
   const ytFrame = document.getElementById('miruoYtIframe');
@@ -11006,10 +11051,14 @@ function renderVideoGrid() {
     tile.title = `${m.username} kamerasını ana ekrana getir`;
 
     const peerObj = (m.clientId && state.peers && state.peers[m.clientId]) || (m.userId && state.peers && state.peers[m.userId]) || null;
-    const peerStream = (peerObj && peerObj.stream) ||
-                       m.stream ||
-                       (m.userId === state.peerId || m.clientId === state.peerId ? state.remoteStream : null);
-    const camTrack = (m.isCamOn === true) ? _getLiveCamVideoTrack(peerStream, peerObj) : null;
+    const lkKey = m.clientId || m.userId;
+    const lkTrack = (m.isCamOn === true && window.MiruoLive && window.MiruoLive.isEnabled() && lkKey) ? window.MiruoLive.getVideoTrack(lkKey) : null;
+    const peerStream = lkTrack
+      ? window.MiruoLive.streamFor(lkKey)
+      : ((peerObj && peerObj.stream) ||
+         m.stream ||
+         (m.userId === state.peerId || m.clientId === state.peerId ? state.remoteStream : null));
+    const camTrack = lkTrack || ((m.isCamOn === true) ? _getLiveCamVideoTrack(peerStream, peerObj) : null);
     const tileBody = tile.querySelector('.tile-body');
     const tileBadge = tile.querySelector('.tile-badge');
 
@@ -12619,9 +12668,15 @@ function handleDjPermissionRequested(fromUser) {
 }
 
 function handleDjPermissionGranted(toUser) {
-  state.hasDjPermission = true;
-  updatePermissionUI();
-  showToast('Tebrikler! Oda yöneticisi size video açma yetkisi verdi.');
+  const cleanName = (u) => String(u || '').toLowerCase().replace(/^@/, '').trim();
+  const targetClean = cleanName(toUser);
+  const myClean = cleanName(state.username);
+  if (!targetClean || targetClean === 'partner' || (myClean && targetClean === myClean)) {
+    state.hasDjPermission = true;
+    if (!state.userRole || state.userRole === 'member') state.userRole = 'dj';
+    updatePermissionUI();
+    showToast('Tebrikler! Oda yöneticisi size video açma yetkisi verdi.');
+  }
 }
 
 // Default seed friends (With unique usernames, activity timestamps and watch minutes)
@@ -16872,6 +16927,7 @@ function handleRemoteRoleUpdate(targetUserId, newRole, targetUsername) {
   const myClean = (state.username || '').toLowerCase().replace(/^@/, '').trim();
   const targetClean = (targetUsername || '').toLowerCase().replace(/^@/, '').trim();
   const isMe = (targetUserId && String(targetUserId) === String(state.userId)) ||
+               (targetUserId && state.clientId && String(targetUserId) === String(state.clientId)) ||
                (targetClean && myClean && targetClean === myClean);
 
   if (isMe) {
@@ -16884,6 +16940,7 @@ function handleRemoteRoleUpdate(targetUserId, newRole, targetUsername) {
       try {
         const savedUserObj = JSON.parse(localStorage.getItem('miruo_user') || '{}');
         roomSupabaseChannel.track({
+          clientId: state.clientId,
           userId: state.userId,
           username: state.username,
           avatar: state.avatarUrl || savedUserObj.avatarUrl || '',
@@ -25843,7 +25900,14 @@ function generateUniqueRoomCode(isPrivate = false) {
   // Host Grants DJ Permission
   if (dom.grantDjPermissionBtn) {
     dom.grantDjPermissionBtn.addEventListener('click', () => {
-      sendP2PData('grant_dj', { toUser: dom.requestingUserName ? dom.requestingUserName.textContent : 'Partner' });
+      const targetName = dom.requestingUserName ? dom.requestingUserName.textContent : 'Partner';
+      const cleanTgt = String(targetName || '').toLowerCase().replace(/^@/, '').trim();
+      const targetP = state.participants && Object.values(state.participants).find(p => p && !isSelfMember(p) && String(p.username || '').toLowerCase().replace(/^@/, '').trim() === cleanTgt);
+      if (targetP && typeof setParticipantRole === 'function') {
+        targetP.role = 'dj';
+        setParticipantRole(targetP.userId || targetP.clientId, targetP.username, 'dj');
+      }
+      sendP2PData('grant_dj', { toUser: targetName });
       if (dom.hostPermissionRequestToast) {
         dom.hostPermissionRequestToast.classList.add('hidden');
         dom.hostPermissionRequestToast.classList.remove('flex');
