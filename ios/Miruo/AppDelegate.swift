@@ -9,12 +9,19 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?) -> Bool {
         do {
             let audioSession = AVAudioSession.sharedInstance()
-            try audioSession.setCategory(.playAndRecord, mode: .moviePlayback, options: [.mixWithOthers, .defaultToSpeaker, .allowBluetooth, .allowAirPlay])
+            try audioSession.setCategory(.playAndRecord, mode: .default, options: [.defaultToSpeaker, .allowBluetooth, .mixWithOthers])
             try audioSession.setActive(true)
         } catch {
             print("AppDelegate AVAudioSession error: \(error)")
         }
         return true
+    }
+
+    func applicationWillTerminate(_ application: UIApplication) {
+        if let scene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
+           let vc = scene.windows.first?.rootViewController as? ViewController {
+            vc.handleAppTerminate()
+        }
     }
 
     func applicationDidEnterBackground(_ application: UIApplication) {

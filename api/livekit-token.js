@@ -58,7 +58,11 @@ module.exports = async function handler(req, res) {
     nbf: now - 10,
     exp: now + 6 * 3600,
     jti: identity,
-    metadata: JSON.stringify({ userId: String(body.userId || '').slice(0, 80) }),
+    metadata: JSON.stringify({
+      userId: String(body.userId || '').slice(0, 80),
+      deviceId: String(body.deviceId || '').slice(0, 80),
+      singleInstance: Boolean(body.singleInstance)
+    }),
     video: {
       room: `miruo-${room}`,
       roomJoin: true,

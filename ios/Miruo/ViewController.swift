@@ -51,8 +51,8 @@ class ViewController: UIViewController, WKNavigationDelegate, WKUIDelegate, WKSc
     private func setupAudioSession() {
         do {
             let session = AVAudioSession.sharedInstance()
-            try session.setCategory(.playAndRecord, mode: .videoChat, options: [.defaultToSpeaker, .allowBluetooth, .allowBluetoothA2DP, .mixWithOthers])
-            try session.setActive(true, options: .notifyOthersOnDeactivation)
+            try session.setCategory(.playAndRecord, mode: .default, options: [.defaultToSpeaker, .allowBluetooth, .mixWithOthers])
+            try session.setActive(true)
             NotificationCenter.default.removeObserver(self, name: AVAudioSession.interruptionNotification, object: session)
             NotificationCenter.default.addObserver(self, selector: #selector(handleAudioInterruption(_:)), name: AVAudioSession.interruptionNotification, object: session)
             NotificationCenter.default.removeObserver(self, name: AVAudioSession.routeChangeNotification, object: session)
@@ -69,8 +69,8 @@ class ViewController: UIViewController, WKNavigationDelegate, WKUIDelegate, WKSc
         if type == .ended {
             do {
                 let session = AVAudioSession.sharedInstance()
-                try session.setCategory(.playAndRecord, mode: .videoChat, options: [.defaultToSpeaker, .allowBluetooth, .allowBluetoothA2DP, .mixWithOthers])
-                try session.setActive(true, options: .notifyOthersOnDeactivation)
+                try session.setCategory(.playAndRecord, mode: .default, options: [.defaultToSpeaker, .allowBluetooth, .mixWithOthers])
+                try session.setActive(true)
             } catch {
                 print("AVAudioSession resume error: \(error)")
             }
@@ -632,9 +632,22 @@ class ViewController: UIViewController, WKNavigationDelegate, WKUIDelegate, WKSc
         }
     }
 
+    func handleAppTerminate() {
+        let js = "if (typeof window.notifyAppClosing === 'function') { window.notifyAppClosing(); }"
+        if Thread.isMainThread {
+            self.webView?.evaluateJavaScript(js, completionHandler: nil)
+        } else {
+            DispatchQueue.main.async { [weak self] in
+                self?.webView?.evaluateJavaScript(js, completionHandler: nil)
+            }
+        }
+    }
+
     func handleAppForeground() {
         do {
-            try AVAudioSession.sharedInstance().setActive(true)
+            let session = AVAudioSession.sharedInstance()
+            try session.setCategory(.playAndRecord, mode: .default, options: [.defaultToSpeaker, .allowBluetooth, .mixWithOthers])
+            try session.setActive(true)
         } catch {
             print("AVAudioSession foreground reactivate error: \(error)")
         }

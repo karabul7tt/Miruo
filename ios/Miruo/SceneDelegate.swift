@@ -14,7 +14,11 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
 
     private var backgroundTask: UIBackgroundTaskIdentifier = .invalid
 
-    func sceneDidDisconnect(_ scene: UIScene) {}
+    func sceneDidDisconnect(_ scene: UIScene) {
+        if let vc = window?.rootViewController as? ViewController {
+            vc.handleAppTerminate()
+        }
+    }
     func sceneDidBecomeActive(_ scene: UIScene) {}
     func sceneWillResignActive(_ scene: UIScene) {}
 

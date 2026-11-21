@@ -5,9 +5,7 @@
   "installCommand": "",
   "outputDirectory": "website",
   "cleanUrls": true,
-  "trailingSlash": false,
   "rewrites": [
-    { "source": "/app", "destination": "/app/index.html" },
     { "source": "/app/", "destination": "/app/index.html" },
     { "source": "/download/mac", "destination": "/downloads/Miruo.dmg" },
     { "source": "/download/mac-intel", "destination": "/downloads/Miruo-Intel.zip" },
@@ -15,6 +13,7 @@
     { "source": "/download/android", "destination": "/downloads/Miruo.apk" }
   ],
   "redirects": [
+    { "source": "/app", "destination": "/app/", "permanent": false },
     { "source": "/oda/:code", "destination": "/app/?room=:code", "permanent": false },
     { "source": "/download/ios", "destination": "https://apps.apple.com/app/miruo/id6738928411", "permanent": false },
     { "source": "/privacy", "destination": "/gizlilik", "permanent": false },

@@ -884,6 +884,9 @@ window.handleNativeAppBackgroundState = function(isInBackground) {
               await syncLocalMediaToPeer(peer, true);
             }
           }
+          if (window.MiruoLive) {
+            try { window.MiruoLive.unlockAudio(); window.MiruoLive.syncLocal(); } catch (_) {}
+          }
         } catch (_) {}
       }, 350);
     }
@@ -2143,6 +2146,22 @@ function getMiruoRoomUrl(roomId) {
 const state = {
   roomId: '',
   clientId: 'cl_' + Math.random().toString(36).substring(2, 9) + '_' + Date.now().toString(36),
+  deviceId: (() => {
+    try {
+      let d = localStorage.getItem('miruo_device_id');
+      if (!d) {
+        d = 'dev_' + Math.random().toString(36).substring(2, 10) + '_' + Date.now().toString(36);
+        localStorage.setItem('miruo_device_id', d);
+      }
+      return d;
+    } catch (_) {
+      return 'dev_' + Math.random().toString(36).substring(2, 10);
+    }
+  })(),
+  isSingleInstanceDevice: Boolean(
+    (typeof navigator !== 'undefined' && (/iPad|iPhone|iPod|Android|Electron/i.test(navigator.userAgent || '') || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1))) ||
+    (typeof window !== 'undefined' && window.webkit && window.webkit.messageHandlers)
+  ),
   userId: 'user_' + Math.random().toString(36).substring(2, 8),
   username: 'Kullanıcı',
   peerId: null,
@@ -3084,7 +3103,7 @@ function connectSupabaseRoomSignaling() {
     });
 
     state.departedClients = new Set();
-    const removeParticipantImmediately = (targetKey) => {
+    const removeParticipantImmediately = (targetKey, options = {}) => {
       if (!targetKey) return;
       let removed = false;
       let removedName = '';
@@ -3151,7 +3170,7 @@ function connectSupabaseRoomSignaling() {
       renderParticipantsList();
       renderVideoGrid();
       if (typeof renderStagePipCards === 'function') renderStagePipCards();
-      if (removed && removedName) {
+      if (removed && removedName && !(options && options.silent)) {
         showToast(`@${removedName} odadan ayrıldı`);
       }
     };
@@ -3196,6 +3215,9 @@ function connectSupabaseRoomSignaling() {
         if (presences && presences.length > 0) {
           const info = presences[presences.length - 1];
           const existingKey = pk;
+          if (info.deviceId && typeof evictDuplicateDeviceSessions === 'function') {
+            evictDuplicateDeviceSessions(info.clientId || pk, info.deviceId, !!info.singleInstance);
+          }
 
           let displayUsername = info.username || 'Misafir';
           if (state.username && displayUsername.toLowerCase() === state.username.toLowerCase()) {
@@ -3216,6 +3238,8 @@ function connectSupabaseRoomSignaling() {
             ...existing,
             peerId: pk,
             clientId: info.clientId || pk,
+            deviceId: info.deviceId || existing.deviceId || '',
+            singleInstance: Boolean(info.singleInstance || existing.singleInstance),
             userId: info.userId || existing.userId || pk,
             username: displayUsername,
             avatar: info.avatar || existing.avatar || '',
@@ -3256,7 +3280,7 @@ function connectSupabaseRoomSignaling() {
           if (!p.vanishedSince) {
             p.vanishedSince = Date.now();
           } else {
-            const maxWait = hasLivePeerConn ? 5000 : 2000;
+            const maxWait = 1500;
             if (Date.now() - p.vanishedSince > maxWait) {
               removeParticipantImmediately(p.clientId || pid);
               anyParticipantChanged = true;
@@ -3372,13 +3396,27 @@ function connectSupabaseRoomSignaling() {
               if (thisChannel.state === 'joined') {
                 syncParticipantsFromPresence(thisChannel.presenceState());
               }
+              const lkUpMs = (window.MiruoLive && typeof window.MiruoLive.connectedDurationMs === 'function')
+                ? window.MiruoLive.connectedDurationMs()
+                : 0;
+              Object.entries(state.participants || {}).forEach(([pid, p]) => {
+                if (!p || pid.startsWith('bot_') || pid === state.clientId) return;
+                const silentMs = Date.now() - (p.lastSeen || 0);
+                const cid = p.clientId || pid;
+                const missingInLk = lkUpMs > 4000 && window.MiruoLive && typeof window.MiruoLive.hasRemoteParticipant === 'function' && !window.MiruoLive.hasRemoteParticipant(cid);
+                if ((missingInLk && silentMs > 5000) || silentMs > 6500) {
+                  removeParticipantImmediately(cid);
+                }
+              });
               renderParticipantsList();
               renderVideoGrid();
             } catch (_) {}
-          }, 2500);
+          }, 1500);
           const savedUserObj = JSON.parse(localStorage.getItem('miruo_user') || '{}');
           const myData = {
             clientId: state.clientId,
+            deviceId: state.deviceId,
+            singleInstance: !!state.isSingleInstanceDevice,
             userId: state.userId,
             username: state.username,
             avatar: state.avatarUrl || savedUserObj.avatarUrl || '',
@@ -3399,6 +3437,8 @@ function connectSupabaseRoomSignaling() {
           sendSignal({
             type: 'peer-joined',
             clientId: state.clientId,
+            deviceId: state.deviceId,
+            singleInstance: !!state.isSingleInstanceDevice,
             userId: state.userId,
             username: state.username,
             avatar: myData.avatar,
@@ -3430,6 +3470,8 @@ function connectSupabaseRoomSignaling() {
     sendSignal({
       type: 'peer-joined',
       clientId: state.clientId,
+      deviceId: state.deviceId,
+      singleInstance: !!state.isSingleInstanceDevice,
       userId: state.userId,
       username: state.username,
       avatar: myData.avatar,
@@ -3456,6 +3498,9 @@ function connectSignaling() {
   }
   // Connect to Supabase Room Channel for instant cross-device broadcast & signaling
   connectSupabaseRoomSignaling();
+  if (window.MiruoLive && typeof window.MiruoLive._watch === 'function') {
+    try { window.MiruoLive._watch(); } catch (_) {}
+  }
 
   const hostName = (window.location && window.location.hostname) || '';
   const isStaticVercelHost = !MIRUO_API_BASE && (hostName.endsWith('miruo.app') || hostName.endsWith('vercel.app'));
@@ -3648,6 +3693,9 @@ function handleSignalMessage(msg) {
     case 'peer-joined':
       const remoteKey = msg.clientId || msg.userId;
       if (!remoteKey) break;
+      if (msg.deviceId && typeof evictDuplicateDeviceSessions === 'function') {
+        evictDuplicateDeviceSessions(msg.clientId || remoteKey, msg.deviceId, !!msg.singleInstance);
+      }
       if (state.departedClients) {
         state.departedClients.delete(String(remoteKey).toLowerCase());
         if (msg.clientId) state.departedClients.delete(String(msg.clientId).toLowerCase());
@@ -3678,6 +3726,8 @@ function handleSignalMessage(msg) {
         ...existingP,
         peerId: remoteKey,
         clientId: msg.clientId || remoteKey,
+        deviceId: msg.deviceId || existingP.deviceId || '',
+        singleInstance: Boolean(msg.singleInstance || existingP.singleInstance),
         userId: msg.userId || existingP.userId || remoteKey,
         username: joinedName,
         avatar: msg.avatar || existingP.avatar || '',
@@ -3785,6 +3835,9 @@ function handleSignalMessage(msg) {
             if (entry.clientId && p.clientId === entry.clientId) return true;
             return false;
           }) || (entry.clientId || entry.userId || uid);
+          if (entry.deviceId && typeof evictDuplicateDeviceSessions === 'function') {
+            evictDuplicateDeviceSessions(entry.clientId || existingKey, entry.deviceId, !!entry.singleInstance);
+          }
 
           let displayUsername = entry.username || 'Katılımcı';
           if (state.username && displayUsername.toLowerCase() === state.username.toLowerCase()) {
@@ -3955,7 +4008,7 @@ function handleSignalMessage(msg) {
 
     case 'media_status':
     case 'media-status':
-      updateRemoteParticipantStatus(msg.userId, msg.username, msg.isMicOn, msg.isCamOn, msg.avatar, msg.avatarColor, msg.clientId);
+      updateRemoteParticipantStatus(msg.userId, msg.username, msg.isMicOn, msg.isCamOn, msg.avatar, msg.avatarColor, msg.clientId, msg.deviceId, msg.singleInstance);
       break;
 
     case 'platform-switch':
@@ -5718,7 +5771,7 @@ function setupDataChannelEvents(channel) {
         if (typeof handleIncomingRoomInvite === 'function') handleIncomingRoomInvite(payload);
       }
       if (data.type === 'chat') renderChatMessage(data.sender || payload.sender, data.text || payload.text, false, data.time || payload.time, data.imageUrl || payload.imageUrl, data.avatarUrl || payload.avatarUrl, data.msgId || payload.msgId);
-      if (data.type === 'media_status') updateRemoteParticipantStatus(data.userId || payload.userId, data.username || payload.username, data.isMicOn !== undefined ? data.isMicOn : payload.isMicOn, data.isCamOn !== undefined ? data.isCamOn : payload.isCamOn, data.avatar || payload.avatar, data.avatarColor || payload.avatarColor, data.clientId || payload.clientId);
+      if (data.type === 'media_status') updateRemoteParticipantStatus(data.userId || payload.userId, data.username || payload.username, data.isMicOn !== undefined ? data.isMicOn : payload.isMicOn, data.isCamOn !== undefined ? data.isCamOn : payload.isCamOn, data.avatar || payload.avatar, data.avatarColor || payload.avatarColor, data.clientId || payload.clientId, data.deviceId || payload.deviceId, data.singleInstance !== undefined ? data.singleInstance : payload.singleInstance);
       if (data.type === 'platform_switch') {
         switchRoomPlatform(data.platform || payload.platform);
         const sender = payload.user || payload.fromUser || data.user;
@@ -5856,6 +5909,8 @@ function sendP2PData(type, payload = {}) {
     type: 'media-status',
     userId: enrichedPayload.userId,
     clientId: enrichedPayload.clientId,
+    deviceId: enrichedPayload.deviceId || state.deviceId || '',
+    singleInstance: enrichedPayload.singleInstance !== undefined ? enrichedPayload.singleInstance : !!state.isSingleInstanceDevice,
     username: enrichedPayload.username,
     avatar: enrichedPayload.avatar,
     avatarColor: enrichedPayload.avatarColor,
@@ -7748,6 +7803,9 @@ function jumpToLiveEdge() {
 window.jumpToLiveEdge = jumpToLiveEdge;
 
 function togglePlayPause() {
+  if (window.MiruoLive && typeof window.MiruoLive.unlockAudio === 'function') {
+    try { window.MiruoLive.unlockAudio(); } catch (_) {}
+  }
   if (!canUserControlPlayback()) {
     showToast('Oynatma ve durdurma yetkisi sadece Oda Sahibi ve Yöneticilere aittir.');
     return;
@@ -10282,6 +10340,9 @@ async function toggleMic() {
 window.toggleMic = toggleMic;
 
 async function _toggleMicImpl() {
+  if (window.MiruoLive && typeof window.MiruoLive.unlockAudio === 'function') {
+    try { window.MiruoLive.unlockAudio(); } catch (_) {}
+  }
   state.isMicOn = !state.isMicOn;
   // Reflect the new state on the button immediately
   try { updateAVToolbarUI(); } catch (_) {}
@@ -10378,14 +10439,19 @@ async function _toggleMicImpl() {
       showToast(describeMediaError(e, 'mic'));
     }
   } else {
-    // Mute: Simply disable live audio tracks & restore video volume
+    // Mute: stop & remove audio tracks so iOS/WebKit releases hardware cleanly and gets a fresh track on unmute
     if (state.localStream) {
       state.localStream.getAudioTracks().forEach(t => {
         t.enabled = false;
+        try { state.localStream.removeTrack(t); } catch (_) {}
+        try { t.stop(); } catch (_) {}
       });
     }
     if (typeof restoreAudioDucking === 'function') {
       restoreAudioDucking();
+    }
+    if (window.MiruoLive && typeof window.MiruoLive.syncLocal === 'function') {
+      try { window.MiruoLive.syncLocal(); } catch (_) {}
     }
     showToast('Mikrofon Kapatıldı');
   }
@@ -10395,7 +10461,6 @@ async function _toggleMicImpl() {
     dom.micBtnText.textContent = state.isMicOn ? 'Mikrofon Kapat' : 'Mikrofon Aç';
   }
   broadcastMyMediaStatus();
-  if (window.MiruoLive) { try { window.MiruoLive.syncLocal(); } catch (_) {} }
   renderParticipantsList();
   if (typeof renderVideoGrid === 'function') renderVideoGrid();
   syncMicSettingsValues();
@@ -10551,6 +10616,9 @@ async function toggleCam() {
 }
 
 async function _toggleCamImpl() {
+  if (window.MiruoLive && typeof window.MiruoLive.unlockAudio === 'function') {
+    try { window.MiruoLive.unlockAudio(); } catch (_) {}
+  }
   if (state.isCamOn) {
     state.isCamOn = false;
     if (state.localStream) {
@@ -12395,8 +12463,8 @@ function saveBlockedUsers(list) {
 
 function updateBlockedMediaState() {
   try {
-    document.querySelectorAll('audio[id^="remoteVoiceAudio"]').forEach(aud => {
-      const pid = aud.id.replace('remoteVoiceAudio_', '').replace('remoteVoiceAudio', '');
+    document.querySelectorAll('audio[id^="remoteVoiceAudio"], audio[id^="lkAudio_"]').forEach(aud => {
+      const pid = aud.id.replace('remoteVoiceAudio_', '').replace('remoteVoiceAudio', '').replace('lkAudio_', '');
       const peerId = pid || state.peerId;
       const peerName = state.participants && peerId && state.participants[peerId] ? state.participants[peerId].username : '';
       const isPeerBlocked = isUserBlocked(peerId) || (peerName && isUserBlocked(peerName));
@@ -16636,11 +16704,48 @@ function updatePartnerPipIdentity(name, avatar) {
 }
 window.updatePartnerPipIdentity = updatePartnerPipIdentity;
 
-function updateRemoteParticipantStatus(userId, username, isMicOn, isCamOn, avatar, avatarColor, clientId) {
+function evictDuplicateDeviceSessions(newClientId, deviceId, singleInstance = false) {
+  if (!newClientId || !deviceId || !state.participants) return;
+  let evictedAny = false;
+  Object.entries(state.participants).forEach(([k, p]) => {
+    if (!p || isSelfMember(p)) return;
+    const pCid = p.clientId || k;
+    if (p.deviceId && p.deviceId === deviceId && String(pCid) !== String(newClientId)) {
+      if (singleInstance || p.singleInstance || (Date.now() - (p.lastSeen || 0) > 2500)) {
+        if (typeof window.removeParticipantImmediately === 'function') {
+          window.removeParticipantImmediately(pCid, { silent: true });
+        } else {
+          delete state.participants[k];
+          if (state.peers && state.peers[pCid]) {
+            try { state.peers[pCid].pc && state.peers[pCid].pc.close(); } catch (_) {}
+            delete state.peers[pCid];
+          }
+        }
+        evictedAny = true;
+      }
+    }
+  });
+  if (evictedAny && typeof window.removeParticipantImmediately !== 'function') {
+    if (typeof renderParticipantsList === 'function') renderParticipantsList();
+    if (typeof renderVideoGrid === 'function') renderVideoGrid();
+    if (typeof renderStagePipCards === 'function') renderStagePipCards();
+  }
+}
+window.evictDuplicateDeviceSessions = evictDuplicateDeviceSessions;
+
+function updateRemoteParticipantStatus(userId, username, isMicOn, isCamOn, avatar, avatarColor, clientId, deviceId = '', singleInstance = false) {
   if (!userId && !clientId) return;
   // Prevent tracking self as a remote participant
   const isSelf = clientId ? (String(clientId) === String(state.clientId)) : (userId === state.userId && !clientId);
   if (isSelf) return;
+  if (state.departedClients && (
+    (clientId && state.departedClients.has(String(clientId).toLowerCase())) ||
+    (!clientId && userId && state.departedClients.has(String(userId).toLowerCase()))
+  )) return;
+
+  if (deviceId) {
+    evictDuplicateDeviceSessions(clientId || userId, deviceId, !!singleInstance);
+  }
 
   // Find if already exists by clientId to eliminate duplicate participants
   const existingKey = Object.keys(state.participants || {}).find(k => {
@@ -16678,6 +16783,8 @@ function updateRemoteParticipantStatus(userId, username, isMicOn, isCamOn, avata
     ...existing,
     peerId: existingKey,
     clientId: clientId || existing.clientId || existingKey,
+    deviceId: deviceId || existing.deviceId || '',
+    singleInstance: Boolean(singleInstance || existing.singleInstance),
     userId: userId || existing.userId || existingKey,
     username: finalUName,
     avatar: finalAvatar,
@@ -16694,6 +16801,7 @@ function updateRemoteParticipantStatus(userId, username, isMicOn, isCamOn, avata
   if (peerObj && peerObj.stream && (effectiveMic || peerObj.audioTrack) && typeof playPeerAudio === 'function') {
     playPeerAudio(existingKey, peerObj.stream);
   }
+  if (typeof updateBlockedMediaState === 'function') updateBlockedMediaState();
 
   // Clean up any other duplicate keys in state.participants referencing the same client
   Object.keys(state.participants).forEach(k => {
@@ -16744,7 +16852,7 @@ function updateRemoteParticipantStatus(userId, username, isMicOn, isCamOn, avata
 if (!window._mediaAnnounceTimer) {
   window._mediaAnnounceTimer = setInterval(() => {
     try { if (state.isInRoom && state.roomId) broadcastMyMediaStatus(); } catch (_) {}
-  }, 3000);
+  }, 2500);
 }
 
 function broadcastMyMediaStatus() {
@@ -16752,6 +16860,8 @@ function broadcastMyMediaStatus() {
   const payload = {
     userId: state.userId,
     clientId: state.clientId,
+    deviceId: state.deviceId,
+    singleInstance: !!state.isSingleInstanceDevice,
     username: state.username,
     avatar: state.avatarUrl || savedUserObj.avatarUrl || '',
     avatarColor: state.avatarBg || savedUserObj.avatarBg || 'from-rose-500 to-indigo-600',
@@ -16941,6 +17051,8 @@ function handleRemoteRoleUpdate(targetUserId, newRole, targetUsername) {
         const savedUserObj = JSON.parse(localStorage.getItem('miruo_user') || '{}');
         roomSupabaseChannel.track({
           clientId: state.clientId,
+          deviceId: state.deviceId,
+          singleInstance: !!state.isSingleInstanceDevice,
           userId: state.userId,
           username: state.username,
           avatar: state.avatarUrl || savedUserObj.avatarUrl || '',
@@ -17066,6 +17178,8 @@ function handleRemoteOwnershipTransfer(newOwnerUserId, newOwnerUsername, newOwne
         const savedUserObj = JSON.parse(localStorage.getItem('miruo_user') || '{}');
         roomSupabaseChannel.track({
           clientId: state.clientId,
+          deviceId: state.deviceId,
+          singleInstance: !!state.isSingleInstanceDevice,
           userId: state.userId,
           username: state.username,
           avatar: state.avatarUrl || savedUserObj.avatarUrl || '',
@@ -26318,6 +26432,9 @@ function generateUniqueRoomCode(isPrivate = false) {
             }
             oldTracks.forEach(t => { try { t.stop(); } catch (_) {} });
           }
+          if (window.MiruoLive && typeof window.MiruoLive.syncLocal === 'function') {
+            try { await window.MiruoLive.syncLocal(); } catch (_) {}
+          }
           if (dom.settingsMicVuBar) startMicVuMeter(state.localStream);
           showToast('Mikrofon aygıtı değiştirildi');
         } catch (err) {
@@ -27472,38 +27589,68 @@ window.toggleCam = toggleCam;
 window.initAffinityEvents = initAffinityEvents;
 window.setChatVisibility = setChatVisibility;
 
-// Broadcast room closure on window exit / tab close
-window.addEventListener('beforeunload', () => {
-  if (state.isInRoom && state.isHost && state.roomId && globalRoomsChannel) {
+function notifyAppClosing() {
+  if (!state.isInRoom || !state.roomId) return;
+  if (state._lastClosingNotifyAt && (Date.now() - state._lastClosingNotifyAt < 1500)) return;
+  state._lastClosingNotifyAt = Date.now();
+  try {
+    if (window.MiruoLive && typeof window.MiruoLive.sendLeave === 'function') {
+      window.MiruoLive.sendLeave();
+    }
+  } catch (_) {}
+  const leavePayload = {
+    clientId: state.clientId,
+    deviceId: state.deviceId,
+    userId: state.userId,
+    username: state.username,
+    isHost: !!state.isHost
+  };
+  try {
+    if (roomSupabaseChannel) {
+      roomSupabaseChannel.send({ type: 'broadcast', event: 'user_left', payload: leavePayload }).catch(() => {});
+      roomSupabaseChannel.untrack().catch(() => {});
+    }
+  } catch (_) {}
+  try {
+    if (globalUsersChannel) {
+      const normalizedRoomId = String(state.roomId || '').trim().toUpperCase();
+      globalUsersChannel.send({
+        type: 'broadcast',
+        event: 'room_signal',
+        payload: { type: 'user_left', roomId: normalizedRoomId, ...leavePayload, payload: leavePayload }
+      }).catch(() => {});
+    }
+  } catch (_) {}
+  if (state.isHost && globalRoomsChannel) {
     try {
       globalRoomsChannel.send({
         type: 'broadcast',
         event: 'room_closed',
         payload: { id: state.roomId }
-      });
-      globalRoomsChannel.untrack();
+      }).catch(() => {});
+      globalRoomsChannel.untrack().catch(() => {});
     } catch (_) {}
   }
-});
+  try {
+    if (window.MiruoLive && typeof window.MiruoLive._disconnect === 'function') {
+      window.MiruoLive._disconnect();
+    }
+  } catch (_) {}
+}
+window.notifyAppClosing = notifyAppClosing;
 
-window.addEventListener('pagehide', () => {
-  if (state.isInRoom && state.isHost && state.roomId && globalRoomsChannel) {
-    try {
-      globalRoomsChannel.send({
-        type: 'broadcast',
-        event: 'room_closed',
-        payload: { id: state.roomId }
-      });
-      globalRoomsChannel.untrack();
-    } catch (_) {}
-  }
-});
+// Broadcast clean room departure & closure on window exit / tab close / iOS swipe-kill
+window.addEventListener('beforeunload', notifyAppClosing);
+window.addEventListener('pagehide', notifyAppClosing);
 
 // Global Audio Unlocker for Mobile Safari, WKWebView and Desktop
 const unlockAudioSystem = () => {
   try {
     if (state.audioCtx && state.audioCtx.state === 'suspended') {
       state.audioCtx.resume();
+    }
+    if (window.MiruoLive && typeof window.MiruoLive.unlockAudio === 'function') {
+      window.MiruoLive.unlockAudio();
     }
     document.querySelectorAll('audio[id^="remoteVoiceAudio"]').forEach(aud => {
       if (aud) {

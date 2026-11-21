@@ -17,14 +17,16 @@
   let room = null;
   let connectingKey = null;
   let roomKey = null;
+  let connectedAt = 0;
   let failCount = 0;
   let failed = false;
   let nextAttemptAt = 0;
   let localChain = Promise.resolve();
-  const pubs = { audio: null, video: null };            // { mst }
-  const remote = new Map();                              // identity -> { audio, video, name }
+  const pubs = { audio: null, video: null };            // { mst, pub }
+  const remote = new Map();                              // identity -> { audio, audioTrackObj, video, name }
   const ownStreams = new Map();                          // identity -> MediaStream (video only)
   const audioEls = new Map();                            // identity -> <audio>
+  const audioTrackObjs = new Map();                      // identity -> RemoteAudioTrack
   const clock = { samples: [] };
 
   function tokenUrl() {
@@ -36,6 +38,13 @@
 
   function isEnabled() { return !!LK() && !failed; }
   function isConnected() { return !!room && room.state === 'connected'; }
+  function hasRemoteParticipant(identity) {
+    if (!room || !identity || !room.remoteParticipants) return false;
+    return room.remoteParticipants.has(identity);
+  }
+  function connectedDurationMs() {
+    return (isConnected() && connectedAt > 0) ? (Date.now() - connectedAt) : 0;
+  }
   function getVideoTrack(identity) {
     if (!identity) return null;
     const r = remote.get(identity);
@@ -49,7 +58,14 @@
     const res = await fetch(tokenUrl(), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ room: roomId, identity: st.clientId, name: st.username || 'Miruo', userId: st.userId || '' })
+      body: JSON.stringify({
+        room: roomId,
+        identity: st.clientId,
+        name: st.username || 'Miruo',
+        userId: st.userId || '',
+        deviceId: st.deviceId || '',
+        singleInstance: !!st.isSingleInstanceDevice
+      })
     });
     if (!res.ok) throw new Error('token_http_' + res.status);
     const j = await res.json();
@@ -89,37 +105,59 @@
       if (vt && !ms.getVideoTracks().includes(vt)) { try { ms.addTrack(vt); } catch (_) {} }
     });
   }
-  function setAudio(identity, track) {
-    let el = audioEls.get(identity);
-    if (!track) {
-      if (el) { try { el.pause(); el.srcObject = null; el.remove(); } catch (_) {} audioEls.delete(identity); }
+  function setAudio(identity, trackObj) {
+    const safeId = String(identity).replace(/[^a-zA-Z0-9_-]/g, '_');
+    if (!trackObj) {
+      const prevTrack = audioTrackObjs.get(identity);
+      if (prevTrack && typeof prevTrack.detach === 'function') {
+        try { prevTrack.detach(); } catch (_) {}
+      }
+      audioTrackObjs.delete(identity);
+      const prevEl = audioEls.get(identity);
+      if (prevEl) { try { prevEl.pause(); prevEl.srcObject = null; prevEl.remove(); } catch (_) {} audioEls.delete(identity); }
       return;
     }
-    if (!el) {
-      el = document.createElement('audio');
-      el.id = 'lkAudio_' + String(identity).replace(/[^a-zA-Z0-9_-]/g, '_');
-      el.autoplay = true;
-      el.playsInline = true;
-      el.setAttribute('playsinline', 'true');
-      el.setAttribute('webkit-playsinline', 'true');
-      el.style.cssText = 'position:fixed;left:0;top:0;width:1px;height:1px;opacity:0.01;pointer-events:none;z-index:-1';
-      document.body.appendChild(el);
-      audioEls.set(identity, el);
+
+    const mst = trackObj.mediaStreamTrack || trackObj;
+    const prevTrack = audioTrackObjs.get(identity);
+    let el = audioEls.get(identity);
+    if (prevTrack && prevTrack !== trackObj && typeof prevTrack.detach === 'function') {
+      try { prevTrack.detach(); } catch (_) {}
     }
-    if (!el.srcObject || el.dataset.trackId !== track.id) {
-      el.dataset.trackId = track.id;
-      el.srcObject = new MediaStream([track]);
+
+    if (typeof trackObj.attach === 'function') {
+      if (!el || el.dataset.trackId !== mst.id) {
+        if (el) { try { el.pause(); el.srcObject = null; el.remove(); } catch (_) {} }
+        el = trackObj.attach();
+      }
+    } else {
+      if (!el) el = document.createElement('audio');
+      if (!el.srcObject || el.dataset.trackId !== mst.id) {
+        el.srcObject = new MediaStream([mst]);
+      }
     }
+
+    el.id = 'lkAudio_' + safeId;
+    el.dataset.trackId = mst.id;
+    el.autoplay = true;
+    el.playsInline = true;
+    el.setAttribute('playsinline', 'true');
+    el.setAttribute('webkit-playsinline', 'true');
+    el.style.cssText = 'position:fixed;left:0;top:0;width:1px;height:1px;opacity:0.01;pointer-events:none;z-index:-1';
+    if (!el.isConnected) document.body.appendChild(el);
+    audioEls.set(identity, el);
+    audioTrackObjs.set(identity, trackObj);
+
     el.muted = false;
     el.defaultMuted = false;
     el.volume = 1;
     el.onpause = () => {
       if (S() && S().isInRoom && el.srcObject && !el.muted) el.play().catch(() => {});
     };
-    if (!track._lkAudioBound && typeof track.addEventListener === 'function') {
-      track._lkAudioBound = true;
-      track.addEventListener('unmute', () => {
-        if (el && el.srcObject) {
+    if (mst && !mst._lkAudioBound && typeof mst.addEventListener === 'function') {
+      mst._lkAudioBound = true;
+      mst.addEventListener('unmute', () => {
+        if (el && (el.srcObject || typeof trackObj.attach === 'function')) {
           el.muted = false;
           el.volume = 1;
           el.play().catch(() => {});
@@ -128,13 +166,19 @@
     }
     const p = el.play();
     if (p && p.catch) p.catch(() => { _needGesture = true; });
+    try { if (typeof updateBlockedMediaState === 'function') updateBlockedMediaState(); } catch (_) {}
   }
   let _needGesture = false;
-  ['click', 'touchstart', 'keydown'].forEach(evt => window.addEventListener(evt, () => {
+  function unlockAudio() {
     if (room && typeof room.startAudio === 'function') room.startAudio().catch(() => {});
-    audioEls.forEach(el => { if (el.srcObject && el.paused) el.play().catch(() => {}); });
+    audioEls.forEach(el => {
+      if (el && el.paused && el.srcObject) {
+        el.play().catch(() => {});
+      }
+    });
     _needGesture = false;
-  }, { passive: true }));
+  }
+  ['click', 'touchstart', 'keydown'].forEach(evt => window.addEventListener(evt, unlockAudio, { passive: true }));
 
   function repaint() {
     try { if (typeof renderStagePipCards === 'function') renderStagePipCards(); } catch (_) {}
@@ -148,7 +192,7 @@
     if (!st || identity === st.clientId) return;
     try {
       if (typeof updateRemoteParticipantStatus === 'function') {
-        updateRemoteParticipantStatus(p.userId || identity, p.username || r.name || 'Katılımcı', !!r.audio, !!r.video, p.avatar, p.avatarColor, identity);
+        updateRemoteParticipantStatus(p.userId || identity, p.username || r.name || 'Katılımcı', !!r.audio, !!r.video, p.avatar, p.avatarColor, identity, r.deviceId || p.deviceId || '', Boolean(r.singleInstance || p.singleInstance));
       }
     } catch (_) {}
   }
@@ -156,11 +200,19 @@
   function onTrackSubscribed(track, pub, participant) {
     const id = participant.identity;
     const r = remote.get(id) || { name: participant.name };
+    if (participant.metadata) {
+      try {
+        const meta = JSON.parse(participant.metadata);
+        if (meta && meta.deviceId) r.deviceId = meta.deviceId;
+        if (meta && typeof meta.singleInstance === 'boolean') r.singleInstance = meta.singleInstance;
+      } catch (_) {}
+    }
     const L = LK();
     if (track.kind === 'audio') {
       r.audio = track.mediaStreamTrack;
+      r.audioTrackObj = track;
       remote.set(id, r);
-      setAudio(id, r.audio);
+      setAudio(id, track);
     } else if (track.kind === 'video' && pub.source !== L.Track.Source.ScreenShare) {
       r.video = track.mediaStreamTrack;
       remote.set(id, r);
@@ -173,7 +225,7 @@
     const id = participant.identity;
     const r = remote.get(id);
     if (!r) return;
-    if (track.kind === 'audio') { r.audio = null; setAudio(id, null); }
+    if (track.kind === 'audio') { r.audio = null; r.audioTrackObj = null; setAudio(id, null); }
     else if (track.kind === 'video') { r.video = null; applyVideo(id); }
     notifyStatus(id);
     repaint();
@@ -184,13 +236,18 @@
     const r = remote.get(id);
     if (r) {
       r.audio = null;
+      r.audioTrackObj = null;
       r.video = null;
       applyVideo(id);
     }
-    notifyStatus(id);
     remote.delete(id);
     ownStreams.delete(id);
-    repaint();
+    if (typeof window.removeParticipantImmediately === 'function') {
+      try { window.removeParticipantImmediately(id); } catch (_) {}
+    } else {
+      notifyStatus(id);
+      repaint();
+    }
   }
 
   /* ---------------- data channel ---------------- */
@@ -207,6 +264,30 @@
     const reliable = !(payload && (payload.action === 'heartbeat'));
     return sendRaw({ k: 'sync', p: payload }, reliable);
   }
+  function sendLeave() {
+    const st = S();
+    if (!isConnected() || !st || !st.clientId) return false;
+    return sendRaw({ k: 'left', id: st.clientId, uid: st.userId || '', dev: st.deviceId || '' }, true);
+  }
+  function sendAlive() {
+    const st = S();
+    if (!isConnected() || !st || !st.clientId) return false;
+    let savedAv = '';
+    try { savedAv = JSON.parse(localStorage.getItem('miruo_user') || '{}').avatarUrl || ''; } catch (_) {}
+    return sendRaw({
+      k: 'alive',
+      id: st.clientId,
+      uid: st.userId || '',
+      dev: st.deviceId || '',
+      si: !!st.isSingleInstanceDevice,
+      u: st.username || 'Katılımcı',
+      av: st.avatarUrl || savedAv || '',
+      mic: !!st.isMicOn,
+      cam: !!st.isCamOn,
+      host: !!st.isHost,
+      role: st.userRole || (st.isHost ? 'owner' : 'member')
+    }, false);
+  }
   function onData(bytes, participant, kind, topic) {
     if (topic && topic !== 'miruo') return;
     let m;
@@ -215,6 +296,32 @@
     if (!m || !st) return;
     if (m.k === 'sync' && m.p) {
       try { window.handleRemoteSync && window.handleRemoteSync(m.p); } catch (e) { console.warn('[MiruoLive] sync handler', e); }
+    } else if (m.k === 'left') {
+      if (m.id && m.id !== st.clientId) {
+        setAudio(m.id, null);
+        const r = remote.get(m.id);
+        if (r) { r.audio = null; r.audioTrackObj = null; r.video = null; applyVideo(m.id); }
+        remote.delete(m.id);
+        ownStreams.delete(m.id);
+        if (typeof window.removeParticipantImmediately === 'function') {
+          try { window.removeParticipantImmediately(m.id); } catch (_) {}
+        }
+      }
+    } else if (m.k === 'alive') {
+      if (m.id && m.id !== st.clientId) {
+        if (typeof window.evictDuplicateDeviceSessions === 'function' && m.dev) {
+          try { window.evictDuplicateDeviceSessions(m.id, m.dev, !!m.si); } catch (_) {}
+        }
+        const existingP = st.participants && (st.participants[m.id] || Object.values(st.participants).find(p => p && p.clientId === m.id));
+        if (existingP) {
+          existingP.lastSeen = Date.now();
+          if (m.dev) existingP.deviceId = m.dev;
+          if (typeof m.si === 'boolean') existingP.singleInstance = m.si;
+          delete existingP.vanishedSince;
+        } else if (typeof updateRemoteParticipantStatus === 'function') {
+          updateRemoteParticipantStatus(m.uid || m.id, m.u || 'Katılımcı', !!m.mic, !!m.cam, m.av || '', '', m.id, m.dev || '', !!m.si);
+        }
+      }
     } else if (m.k === 'ping') {
       if (st.isHost) sendRaw({ k: 'pong', w0: m.w0, p0: m.p0, to: m.from, h: Date.now() }, false);
     } else if (m.k === 'pong') {
@@ -230,13 +337,15 @@
     }
   }
   let pingTimer = null;
+  let aliveTimer = null;
   function startClockSync() {
     if (pingTimer) clearInterval(pingTimer);
-    let n = 0;
+    if (aliveTimer) clearInterval(aliveTimer);
+    sendAlive();
+    aliveTimer = setInterval(sendAlive, 1500);
     const tick = () => {
       const st = S();
       if (!isConnected() || !st || st.isHost) return;
-      n++;
       sendRaw({ k: 'ping', w0: Date.now(), p0: performance.now(), from: st.clientId }, false);
     };
     tick();
@@ -271,11 +380,11 @@
       if (mst && !pubs[kind]) {
         mst.enabled = true;
         const opts = kind === 'audio'
-          ? { source: L.Track.Source.Microphone, dtx: true, red: true, audioPreset: L.AudioPresets.speech }
+          ? { source: L.Track.Source.Microphone, dtx: false, red: false, audioPreset: { maxBitrate: 48000 } }
           : { source: L.Track.Source.Camera, simulcast: false, videoEncoding: { maxBitrate: 700000, maxFramerate: 24 }, degradationPreference: 'maintain-framerate' };
         try {
-          await lp.publishTrack(mst, opts);
-          pubs[kind] = { mst };
+          const pub = await lp.publishTrack(mst, opts);
+          pubs[kind] = { mst, pub };
         } catch (e) {
           console.warn('[MiruoLive] publish ' + kind + ' failed', e);
         }
@@ -295,31 +404,52 @@
         adaptiveStream: false,
         dynacast: true,
         stopLocalTrackOnUnpublish: false,
-        publishDefaults: { simulcast: false, dtx: true, red: true, videoCodec: 'vp8' }
+        publishDefaults: { simulcast: false, dtx: false, red: false, videoCodec: 'vp8' }
       });
       const E = L.RoomEvent;
       r.on(E.TrackSubscribed, onTrackSubscribed);
       r.on(E.TrackUnsubscribed, onTrackUnsubscribed);
       r.on(E.ParticipantConnected, (p) => {
         if (p && p.identity) {
-          remote.set(p.identity, remote.get(p.identity) || { name: p.name });
+          const entry = remote.get(p.identity) || { name: p.name };
+          if (p.metadata) {
+            try {
+              const meta = JSON.parse(p.metadata);
+              if (meta && meta.deviceId) {
+                entry.deviceId = meta.deviceId;
+                entry.singleInstance = !!meta.singleInstance;
+                if (typeof window.evictDuplicateDeviceSessions === 'function') {
+                  window.evictDuplicateDeviceSessions(p.identity, meta.deviceId, !!meta.singleInstance);
+                }
+              }
+            } catch (_) {}
+          }
+          remote.set(p.identity, entry);
           notifyStatus(p.identity);
           repaint();
         }
       });
       r.on(E.ParticipantDisconnected, onParticipantGone);
       r.on(E.DataReceived, onData);
+      if (E.AudioPlaybackStatusChanged) {
+        r.on(E.AudioPlaybackStatusChanged, () => {
+          if (r && r.canPlaybackAudio === false && typeof showToast === 'function') {
+            showToast('Sesi açmak için ekrana dokunun');
+          }
+        });
+      }
       r.on(E.Reconnected, () => syncLocal());
       r.on(E.Disconnected, () => {
-        if (room === r) { room = null; roomKey = null; pubs.audio = null; pubs.video = null; }
+        if (room === r) { room = null; roomKey = null; connectedAt = 0; pubs.audio = null; pubs.video = null; }
       });
       await r.connect(t.url, t.token, { autoSubscribe: true });
       if (connectingKey !== key || !S().isInRoom) { try { r.disconnect(); } catch (_) {} return; }
       room = r;
       roomKey = key;
+      connectedAt = Date.now();
       failCount = 0;
       console.log('[MiruoLive] connected', t.room);
-      if (typeof r.startAudio === 'function') r.startAudio().catch(() => {});
+      unlockAudio();
       // pick up anyone already publishing
       r.remoteParticipants.forEach(p => {
         p.trackPublications.forEach(pub => { if (pub.track) onTrackSubscribed(pub.track, pub, p); });
@@ -356,9 +486,11 @@
   function disconnect() {
     connectingKey = null;
     if (pingTimer) { clearInterval(pingTimer); pingTimer = null; }
+    if (aliveTimer) { clearInterval(aliveTimer); aliveTimer = null; }
     const r = room;
     room = null;
     roomKey = null;
+    connectedAt = 0;
     failCount = 0;
     failed = false;
     nextAttemptAt = 0;
@@ -366,6 +498,7 @@
     clock.samples = [];
     if (S()) { S().hostClockOffsetMs = null; }
     audioEls.forEach((el, id) => setAudio(id, null));
+    audioTrackObjs.clear();
     remote.forEach((v, id) => { v.video = null; applyVideo(id); });
     remote.clear();
     ownStreams.clear();
@@ -393,7 +526,8 @@
   setInterval(watch, 1000);
 
   window.MiruoLive = {
-    isEnabled, isConnected, syncLocal, sendSync, streamFor, getVideoTrack, hasVideo, tokenUrl,
+    isEnabled, isConnected, syncLocal, sendSync, sendLeave, unlockAudio,
+    streamFor, getVideoTrack, hasVideo, tokenUrl, hasRemoteParticipant, connectedDurationMs,
     debug() {
       return {
         connected: isConnected(), failed, failCount, offset: S() && S().hostClockOffsetMs, rtt: S() && S().hostClockRttMs,
