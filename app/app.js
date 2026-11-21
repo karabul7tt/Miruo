@@ -3276,13 +3276,16 @@ function connectSupabaseRoomSignaling() {
           (p.clientId && state.peers[p.clientId] && state.peers[p.clientId].pc && state.peers[p.clientId].pc.signalingState !== 'closed' && state.peers[p.clientId].pc.connectionState !== 'failed' && state.peers[p.clientId].pc.connectionState !== 'closed') ||
           (state.peers[pid] && state.peers[pid].pc && state.peers[pid].pc.signalingState !== 'closed' && state.peers[pid].pc.connectionState !== 'failed' && state.peers[pid].pc.connectionState !== 'closed')
         );
-        if (!hasClient) {
+        const cid = p.clientId || pid;
+        const inLiveKit = !!(window.MiruoLive && typeof window.MiruoLive.hasRemoteParticipant === 'function' && window.MiruoLive.hasRemoteParticipant(cid));
+        const recentlyAlive = (Date.now() - (p.lastSeen || 0)) < 5500;
+        if (!hasClient && !(inLiveKit && recentlyAlive)) {
           if (!p.vanishedSince) {
             p.vanishedSince = Date.now();
           } else {
             const maxWait = 1500;
             if (Date.now() - p.vanishedSince > maxWait) {
-              removeParticipantImmediately(p.clientId || pid);
+              removeParticipantImmediately(cid);
               anyParticipantChanged = true;
             }
           }
@@ -3503,7 +3506,7 @@ function connectSignaling() {
   }
 
   const hostName = (window.location && window.location.hostname) || '';
-  const isStaticVercelHost = !MIRUO_API_BASE && (hostName.endsWith('miruo.app') || hostName.endsWith('vercel.app'));
+  const isStaticVercelHost = !MIRUO_API_BASE && (hostName.endsWith('miruo.com.tr') || hostName.endsWith('miruo.app') || hostName.endsWith('vercel.app'));
   if (MIRUO_STANDALONE || isNativeApp || isStaticVercelHost || window.location.protocol === 'file:' || !window.location.host || hostName === '127.0.0.1' || hostName === 'localhost') {
     console.log('[Miruo] Running with Supabase Realtime signaling');
     return;
@@ -4915,6 +4918,7 @@ async function negotiatePeer(peerOrId, options = {}) {
   const peerEntry = (peerOrId && peerOrId.pc) ? peerOrId : getPeerEntry(peerOrId);
   if (!peerEntry || !peerEntry.pc || peerEntry.pc.signalingState === 'closed') return;
   const pc = peerEntry.pc;
+  if (window.MiruoLive && typeof window.MiruoLive.isEnabled === 'function' && window.MiruoLive.isEnabled() && typeof pc.getTransceivers === 'function' && pc.getTransceivers().length === 0) return;
   const iceRestart = !!(options && options.iceRestart);
   const resendIfPending = !!(options && options.resendIfPending);
 
@@ -12304,16 +12308,22 @@ function loadPublicRooms() {
   // 3. Render immediately from realtime rooms + local room
   renderRoomList(mergeAllPublicRooms([]));
 
-  // 4. Fallback attempt for web server if available
+  // 4. Fallback attempt for web server if available (skip on static Vercel/native hosts without MIRUO_API_BASE)
   try {
-    fetch('/api/public-rooms')
-      .then(res => res.json())
-      .then(data => {
-        if (data && data.rooms && data.rooms.length > 0) {
-          renderRoomList(mergeAllPublicRooms(data.rooms));
-        }
-      })
-      .catch(() => {});
+    const hName = (window.location && window.location.hostname) || '';
+    const isStaticOnly = typeof MIRUO_STANDALONE !== 'undefined' && MIRUO_STANDALONE ||
+                         (typeof isNativeApp !== 'undefined' && isNativeApp) ||
+                         (!MIRUO_API_BASE && (hName.endsWith('miruo.com.tr') || hName.endsWith('miruo.app') || hName.endsWith('vercel.app') || hName === '127.0.0.1' || hName === 'localhost'));
+    if (!isStaticOnly) {
+      fetch('/api/public-rooms')
+        .then(res => res.json())
+        .then(data => {
+          if (data && data.rooms && data.rooms.length > 0) {
+            renderRoomList(mergeAllPublicRooms(data.rooms));
+          }
+        })
+        .catch(() => {});
+    }
   } catch (_) {}
 }
 

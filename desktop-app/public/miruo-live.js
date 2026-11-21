@@ -514,8 +514,16 @@
     if (!room && !connectingKey && Date.now() >= nextAttemptAt) {
       connect(String(st.roomId).trim().toUpperCase(), wantKey);
     }
-    // keep late-created peer entries / participants wired to LiveKit video
-    remote.forEach((v, id) => applyVideo(id));
+    // keep late-created peer entries / participants wired to LiveKit video and self-heal removed <audio> elements
+    remote.forEach((v, id) => {
+      applyVideo(id);
+      if (v && v.audioTrackObj) {
+        const el = audioEls.get(id);
+        if (!el || !el.isConnected) {
+          setAudio(id, v.audioTrackObj);
+        }
+      }
+    });
     // if the local stream changed outside the toggles (device change, camera flip, interruption), re-sync
     if (isConnected()) {
       const curA = (st.isMicOn && st.localStream) ? (st.localStream.getAudioTracks().find(t => t.readyState === 'live') || null) : null;
