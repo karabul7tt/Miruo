@@ -22,11 +22,12 @@
   let failed = false;
   let nextAttemptAt = 0;
   let localChain = Promise.resolve();
-  const pubs = { audio: null, video: null };            // { mst, pub }
-  const remote = new Map();                              // identity -> { audio, audioTrackObj, video, name }
+  const pubs = { audio: null, video: null, screen: null, screenAudio: null }; // { mst, pub }
+  const remote = new Map();                              // identity -> { audio, audioTrackObj, video, screen, screenAudio, name }
   const ownStreams = new Map();                          // identity -> MediaStream (video only)
   const audioEls = new Map();                            // identity -> <audio>
   const audioTrackObjs = new Map();                      // identity -> RemoteAudioTrack
+  const screenAudioEls = new Map();                      // identity -> <audio>
   const clock = { samples: [] };
 
   function tokenUrl() {
@@ -197,6 +198,78 @@
     } catch (_) {}
   }
 
+  function getScreenTrack(identity) {
+    if (identity) {
+      const r = remote.get(identity);
+      return (r && r.screen && r.screen.readyState === 'live') ? r.screen : null;
+    }
+    for (const [, r] of remote.entries()) {
+      if (r && r.screen && r.screen.readyState === 'live') return r.screen;
+    }
+    return null;
+  }
+  function setScreenAudio(identity, trackObj) {
+    const safeId = String(identity).replace(/[^a-zA-Z0-9_-]/g, '_');
+    const prevEl = screenAudioEls.get(identity);
+    if (!trackObj) {
+      if (prevEl) { try { prevEl.pause(); prevEl.srcObject = null; prevEl.remove(); } catch (_) {} screenAudioEls.delete(identity); }
+      return;
+    }
+    const mst = trackObj.mediaStreamTrack || trackObj;
+    let el = prevEl;
+    if (typeof trackObj.attach === 'function') {
+      if (!el || el.dataset.trackId !== mst.id) {
+        if (el) { try { el.pause(); el.srcObject = null; el.remove(); } catch (_) {} }
+        el = trackObj.attach();
+      }
+    } else {
+      if (!el) el = document.createElement('audio');
+      el.srcObject = new MediaStream([mst]);
+    }
+    el.id = 'lkScreenAudio_' + safeId;
+    el.dataset.trackId = mst.id;
+    el.autoplay = true;
+    el.playsInline = true;
+    el.muted = false;
+    el.volume = 1;
+    el.style.cssText = 'position:fixed;left:0;top:0;width:1px;height:1px;opacity:0.01;pointer-events:none;z-index:-1';
+    if (!el.isConnected) document.body.appendChild(el);
+    screenAudioEls.set(identity, el);
+    el.play().catch(() => {});
+  }
+  function applyScreen(identity) {
+    const r = remote.get(identity) || {};
+    const st = S();
+    const peer = findPeer(identity);
+    if (peer) peer.screenVideoTrack = r.screen || null;
+    const screenPlayer = document.getElementById('remoteScreenPlayer');
+    if (r.screen && r.screen.readyState === 'live') {
+      const p = participantFor(identity) || {};
+      const sharerName = p.username || r.name || 'Oda Sahibi';
+      if (typeof window.handleRemoteScreenShareStarted === 'function' && (!st || st.activeMode !== 'screenshare')) {
+        try { window.handleRemoteScreenShareStarted(sharerName, { trackId: r.screen.id }); } catch (_) {}
+      }
+      if (screenPlayer) {
+        screenPlayer.classList.remove('hidden');
+        screenPlayer.playsInline = true;
+        screenPlayer.muted = true;
+        screenPlayer.autoplay = true;
+        if (!screenPlayer.srcObject || screenPlayer.dataset.trackId !== r.screen.id) {
+          screenPlayer.dataset.trackId = r.screen.id;
+          screenPlayer.srcObject = new MediaStream([r.screen]);
+        }
+        screenPlayer.play().catch(() => {});
+      }
+    } else {
+      const anyOtherScreen = getScreenTrack(null);
+      if (!anyOtherScreen && st && st.activeMode === 'screenshare' && !st.isScreenSharing) {
+        if (typeof window.handleRemoteScreenShareStopped === 'function') {
+          try { window.handleRemoteScreenShareStopped(); } catch (_) {}
+        }
+      }
+    }
+  }
+
   function onTrackSubscribed(track, pub, participant) {
     const id = participant.identity;
     const r = remote.get(id) || { name: participant.name };
@@ -208,12 +281,23 @@
       } catch (_) {}
     }
     const L = LK();
-    if (track.kind === 'audio') {
+    const isScreenVideo = (pub && pub.source === L.Track.Source.ScreenShare) || (pub && pub.trackName === 'screen');
+    const isScreenAudio = (pub && pub.source === L.Track.Source.ScreenShareAudio) || (pub && pub.trackName === 'screen_audio');
+    if (track.kind === 'audio' && isScreenAudio) {
+      r.screenAudio = track.mediaStreamTrack;
+      remote.set(id, r);
+      setScreenAudio(id, track);
+    } else if (track.kind === 'audio') {
       r.audio = track.mediaStreamTrack;
       r.audioTrackObj = track;
       remote.set(id, r);
       setAudio(id, track);
-    } else if (track.kind === 'video' && pub.source !== L.Track.Source.ScreenShare) {
+    } else if (track.kind === 'video' && isScreenVideo) {
+      r.screen = track.mediaStreamTrack;
+      r.screenTrackObj = track;
+      remote.set(id, r);
+      applyScreen(id);
+    } else if (track.kind === 'video') {
       r.video = track.mediaStreamTrack;
       remote.set(id, r);
       applyVideo(id);
@@ -225,20 +309,37 @@
     const id = participant.identity;
     const r = remote.get(id);
     if (!r) return;
-    if (track.kind === 'audio') { r.audio = null; r.audioTrackObj = null; setAudio(id, null); }
-    else if (track.kind === 'video') { r.video = null; applyVideo(id); }
+    const L = LK();
+    const isScreenVideo = (pub && pub.source === L.Track.Source.ScreenShare) || (pub && pub.trackName === 'screen');
+    const isScreenAudio = (pub && pub.source === L.Track.Source.ScreenShareAudio) || (pub && pub.trackName === 'screen_audio');
+    if (track.kind === 'audio' && isScreenAudio) {
+      r.screenAudio = null;
+      setScreenAudio(id, null);
+    } else if (track.kind === 'audio') {
+      r.audio = null; r.audioTrackObj = null; setAudio(id, null);
+    } else if (track.kind === 'video' && isScreenVideo) {
+      r.screen = null; r.screenTrackObj = null;
+      applyScreen(id);
+    } else if (track.kind === 'video') {
+      r.video = null; applyVideo(id);
+    }
     notifyStatus(id);
     repaint();
   }
   function onParticipantGone(participant) {
     const id = participant.identity;
     setAudio(id, null);
+    setScreenAudio(id, null);
     const r = remote.get(id);
     if (r) {
+      const hadScreen = !!r.screen;
       r.audio = null;
       r.audioTrackObj = null;
       r.video = null;
+      r.screen = null;
+      r.screenAudio = null;
       applyVideo(id);
+      if (hadScreen) applyScreen(id);
     }
     remote.delete(id);
     ownStreams.delete(id);
@@ -263,6 +364,10 @@
   function sendSync(payload) {
     const reliable = !(payload && (payload.action === 'heartbeat'));
     return sendRaw({ k: 'sync', p: payload }, reliable);
+  }
+  function sendP2P(type, payload) {
+    if (!type || type === 'sync') return false;
+    return sendRaw({ k: 'p2p', t: type, p: payload }, true);
   }
   function sendLeave() {
     const st = S();
@@ -296,6 +401,14 @@
     if (!m || !st) return;
     if (m.k === 'sync' && m.p) {
       try { window.handleRemoteSync && window.handleRemoteSync(m.p); } catch (e) { console.warn('[MiruoLive] sync handler', e); }
+    } else if (m.k === 'p2p' && m.t && m.p) {
+      try {
+        if (typeof window.handleIncomingP2PData === 'function') {
+          window.handleIncomingP2PData({ type: m.t, payload: m.p, ...m.p });
+        }
+      } catch (e) {
+        console.warn('[MiruoLive] p2p handler', e);
+      }
     } else if (m.k === 'left') {
       if (m.id && m.id !== st.clientId) {
         setAudio(m.id, null);
@@ -367,11 +480,16 @@
     const L = LK();
     const lp = room.localParticipant;
     const ls = st.localStream;
+    const ss = st.screenStream;
     const a = (st.isMicOn && ls) ? ls.getAudioTracks().find(t => t.readyState === 'live') : null;
     const v = (st.isCamOn && ls) ? ls.getVideoTracks().find(t => t.readyState === 'live') : null;
+    const sv = (st.isScreenSharing && ss) ? ss.getVideoTracks().find(t => t.readyState === 'live') : null;
+    const sa = (st.isScreenSharing && ss) ? ss.getAudioTracks().find(t => t.readyState === 'live') : null;
 
-    for (const kind of ['audio', 'video']) {
-      const mst = kind === 'audio' ? a : v;
+    const desiredMap = { audio: a, video: v, screen: sv, screenAudio: sa };
+
+    for (const kind of ['audio', 'video', 'screen', 'screenAudio']) {
+      const mst = desiredMap[kind];
       const cur = pubs[kind];
       if (cur && (!mst || cur.mst !== mst || cur.mst.readyState !== 'live')) {
         try { await lp.unpublishTrack(cur.mst, false); } catch (_) {}
@@ -379,9 +497,16 @@
       }
       if (mst && !pubs[kind]) {
         mst.enabled = true;
-        const opts = kind === 'audio'
-          ? { source: L.Track.Source.Microphone, dtx: false, red: false, audioPreset: { maxBitrate: 48000 } }
-          : { source: L.Track.Source.Camera, simulcast: false, videoEncoding: { maxBitrate: 700000, maxFramerate: 24 }, degradationPreference: 'maintain-framerate' };
+        let opts;
+        if (kind === 'audio') {
+          opts = { source: L.Track.Source.Microphone, dtx: false, red: false, audioPreset: { maxBitrate: 48000 } };
+        } else if (kind === 'video') {
+          opts = { source: L.Track.Source.Camera, simulcast: false, videoEncoding: { maxBitrate: 700000, maxFramerate: 24 }, degradationPreference: 'maintain-framerate' };
+        } else if (kind === 'screen') {
+          opts = { source: L.Track.Source.ScreenShare, name: 'screen', simulcast: false, videoEncoding: { maxBitrate: 2500000, maxFramerate: 30 }, degradationPreference: 'maintain-resolution' };
+        } else {
+          opts = { source: L.Track.Source.ScreenShareAudio, name: 'screen_audio', dtx: false, red: false, audioPreset: { maxBitrate: 64000 } };
+        }
         try {
           const pub = await lp.publishTrack(mst, opts);
           pubs[kind] = { mst, pub };
@@ -402,7 +527,7 @@
       if (connectingKey !== key || !st.isInRoom) return;
       const r = new L.Room({
         adaptiveStream: false,
-        dynacast: true,
+        dynacast: false,
         stopLocalTrackOnUnpublish: false,
         publishDefaults: { simulcast: false, dtx: false, red: false, videoCodec: 'vp8' }
       });
@@ -440,7 +565,7 @@
       }
       r.on(E.Reconnected, () => syncLocal());
       r.on(E.Disconnected, () => {
-        if (room === r) { room = null; roomKey = null; connectedAt = 0; pubs.audio = null; pubs.video = null; }
+        if (room === r) { room = null; roomKey = null; connectedAt = 0; pubs.audio = null; pubs.video = null; pubs.screen = null; pubs.screenAudio = null; }
       });
       await r.connect(t.url, t.token, { autoSubscribe: true });
       if (connectingKey !== key || !S().isInRoom) { try { r.disconnect(); } catch (_) {} return; }
@@ -494,12 +619,13 @@
     failCount = 0;
     failed = false;
     nextAttemptAt = 0;
-    pubs.audio = null; pubs.video = null;
+    pubs.audio = null; pubs.video = null; pubs.screen = null; pubs.screenAudio = null;
     clock.samples = [];
     if (S()) { S().hostClockOffsetMs = null; }
     audioEls.forEach((el, id) => setAudio(id, null));
+    screenAudioEls.forEach((el, id) => setScreenAudio(id, null));
     audioTrackObjs.clear();
-    remote.forEach((v, id) => { v.video = null; applyVideo(id); });
+    remote.forEach((v, id) => { v.video = null; v.screen = null; applyVideo(id); });
     remote.clear();
     ownStreams.clear();
     if (r) { try { r.disconnect(); } catch (_) {} }
@@ -517,6 +643,7 @@
     // keep late-created peer entries / participants wired to LiveKit video and self-heal removed <audio> elements
     remote.forEach((v, id) => {
       applyVideo(id);
+      if (v && v.screen) applyScreen(id);
       if (v && v.audioTrackObj) {
         const el = audioEls.get(id);
         if (!el || !el.isConnected) {
@@ -524,23 +651,42 @@
         }
       }
     });
+    // self-heal any paused camera or screen-share <video> elements so cameras never stay frozen
+    if (st.isInRoom && typeof document !== 'undefined') {
+      const camSelectors = '#selfVideo, #partnerVideo, .extra-partner-video, #roomVideoGrid video, #remoteScreenPlayer';
+      document.querySelectorAll(camSelectors).forEach(vid => {
+        if (vid && vid.paused && vid.srcObject) {
+          const tracks = vid.srcObject.getVideoTracks ? vid.srcObject.getVideoTracks() : [];
+          if (tracks.length > 0 && tracks[0].readyState === 'live') {
+            vid.play().catch(() => {});
+          }
+        }
+      });
+    }
     // if the local stream changed outside the toggles (device change, camera flip, interruption), re-sync
     if (isConnected()) {
       const curA = (st.isMicOn && st.localStream) ? (st.localStream.getAudioTracks().find(t => t.readyState === 'live') || null) : null;
       const curV = (st.isCamOn && st.localStream) ? (st.localStream.getVideoTracks().find(t => t.readyState === 'live') || null) : null;
-      if ((pubs.audio ? pubs.audio.mst : null) !== curA || (pubs.video ? pubs.video.mst : null) !== curV) syncLocal();
+      const curSV = (st.isScreenSharing && st.screenStream) ? (st.screenStream.getVideoTracks().find(t => t.readyState === 'live') || null) : null;
+      const curSA = (st.isScreenSharing && st.screenStream) ? (st.screenStream.getAudioTracks().find(t => t.readyState === 'live') || null) : null;
+      if ((pubs.audio ? pubs.audio.mst : null) !== curA ||
+          (pubs.video ? pubs.video.mst : null) !== curV ||
+          (pubs.screen ? pubs.screen.mst : null) !== curSV ||
+          (pubs.screenAudio ? pubs.screenAudio.mst : null) !== curSA) {
+        syncLocal();
+      }
     }
   }
   setInterval(watch, 1000);
 
   window.MiruoLive = {
-    isEnabled, isConnected, syncLocal, sendSync, sendLeave, unlockAudio,
-    streamFor, getVideoTrack, hasVideo, tokenUrl, hasRemoteParticipant, connectedDurationMs,
+    isEnabled, isConnected, syncLocal, sendSync, sendP2P, sendLeave, unlockAudio,
+    streamFor, getVideoTrack, getScreenTrack, hasVideo, tokenUrl, hasRemoteParticipant, connectedDurationMs,
     debug() {
       return {
         connected: isConnected(), failed, failCount, offset: S() && S().hostClockOffsetMs, rtt: S() && S().hostClockRttMs,
-        remote: Array.from(remote.entries()).map(([id, v]) => ({ id, audio: !!v.audio, video: !!v.video })),
-        pubs: { audio: !!pubs.audio, video: !!pubs.video }
+        remote: Array.from(remote.entries()).map(([id, v]) => ({ id, audio: !!v.audio, video: !!v.video, screen: !!v.screen })),
+        pubs: { audio: !!pubs.audio, video: !!pubs.video, screen: !!pubs.screen, screenAudio: !!pubs.screenAudio }
       };
     },
     _disconnect: disconnect,

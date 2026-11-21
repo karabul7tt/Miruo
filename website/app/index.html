@@ -2651,7 +2651,7 @@
                   <span id="ytAccountSubText" class="text-[10px] text-gray-400 block truncate" data-i18n="yt_card_sub">Google hesabı ile oturum aç</span>
                 </div>
               </div>
-              <button id="toggleYtAccountBtn" type="button" class="px-3 py-1.5 rounded-lg bg-[#A64D79]/20 hover:bg-[#A64D79]/30 border border-[#A64D79]/30 text-xs font-semibold text-rose-200 transition-all cursor-pointer shrink-0" data-i18n="platform_connect_btn">
+              <button id="toggleYtAccountBtn" data-connect-platform="youtube" type="button" class="px-3 py-1.5 rounded-lg bg-[#A64D79]/20 hover:bg-[#A64D79]/30 border border-[#A64D79]/30 text-xs font-semibold text-rose-200 transition-all cursor-pointer shrink-0" data-i18n="platform_connect_btn">
                 Hesabı Bağla
               </button>
             </div>
@@ -2670,7 +2670,7 @@
                   <span id="netflixAccountSubText" class="text-[10px] text-gray-400 block truncate" data-i18n="netflix_card_sub">Netflix hesabı ile oturum aç</span>
                 </div>
               </div>
-              <button id="toggleNetflixAccountBtn" type="button" class="px-3 py-1.5 rounded-lg bg-[#A64D79]/20 hover:bg-[#A64D79]/30 border border-[#A64D79]/30 text-xs font-semibold text-rose-200 transition-all cursor-pointer shrink-0" data-i18n="platform_connect_btn">
+              <button id="toggleNetflixAccountBtn" data-connect-platform="netflix" type="button" class="px-3 py-1.5 rounded-lg bg-[#A64D79]/20 hover:bg-[#A64D79]/30 border border-[#A64D79]/30 text-xs font-semibold text-rose-200 transition-all cursor-pointer shrink-0" data-i18n="platform_connect_btn">
                 Hesabı Bağla
               </button>
             </div>
@@ -2689,7 +2689,7 @@
                   <span id="primeAccountSubText" class="text-[10px] text-gray-400 block truncate" data-i18n="prime_card_sub">Prime hesabı ile oturum aç</span>
                 </div>
               </div>
-              <button id="togglePrimeAccountBtn" type="button" class="px-3 py-1.5 rounded-lg bg-[#A64D79]/20 hover:bg-[#A64D79]/30 border border-[#A64D79]/30 text-xs font-semibold text-rose-200 transition-all cursor-pointer shrink-0" data-i18n="platform_connect_btn">
+              <button id="togglePrimeAccountBtn" data-connect-platform="prime" type="button" class="px-3 py-1.5 rounded-lg bg-[#A64D79]/20 hover:bg-[#A64D79]/30 border border-[#A64D79]/30 text-xs font-semibold text-rose-200 transition-all cursor-pointer shrink-0" data-i18n="platform_connect_btn">
                 Hesabı Bağla
               </button>
             </div>
@@ -2708,7 +2708,45 @@
                   <span id="disneyAccountSubText" class="text-[10px] text-gray-400 block truncate" data-i18n="disney_card_sub">Disney+ hesabı ile oturum aç</span>
                 </div>
               </div>
-              <button id="toggleDisneyAccountBtn" type="button" class="px-3 py-1.5 rounded-lg bg-[#A64D79]/20 hover:bg-[#A64D79]/30 border border-[#A64D79]/30 text-xs font-semibold text-rose-200 transition-all cursor-pointer shrink-0" data-i18n="platform_connect_btn">
+              <button id="toggleDisneyAccountBtn" data-connect-platform="disney" type="button" class="px-3 py-1.5 rounded-lg bg-[#A64D79]/20 hover:bg-[#A64D79]/30 border border-[#A64D79]/30 text-xs font-semibold text-rose-200 transition-all cursor-pointer shrink-0" data-i18n="platform_connect_btn">
+                Hesabı Bağla
+              </button>
+            </div>
+
+            <!-- Kick Account Card -->
+            <div class="p-3 rounded-xl bg-black/40 border border-white/10 flex items-center justify-between gap-3">
+              <div class="flex items-center gap-2.5 min-w-0">
+                <div class="w-8 h-8 rounded-lg bg-emerald-950/60 border border-emerald-500/40 flex items-center justify-center text-emerald-400 font-black text-xs shrink-0">
+                  K
+                </div>
+                <div class="min-w-0">
+                  <div class="flex items-center gap-2">
+                    <span class="text-xs font-bold text-white block">Kick</span>
+                    <span id="kickAccountStatusBadge" class="hidden"></span>
+                  </div>
+                  <span id="kickAccountSubText" class="text-[10px] text-gray-400 block truncate">Kick hesabı ile oturum aç</span>
+                </div>
+              </div>
+              <button id="toggleKickAccountBtn" data-connect-platform="kick" type="button" class="px-3 py-1.5 rounded-lg bg-[#A64D79]/20 hover:bg-[#A64D79]/30 border border-[#A64D79]/30 text-xs font-semibold text-rose-200 transition-all cursor-pointer shrink-0" data-i18n="platform_connect_btn">
+                Hesabı Bağla
+              </button>
+            </div>
+
+            <!-- Twitch Account Card -->
+            <div class="p-3 rounded-xl bg-black/40 border border-white/10 flex items-center justify-between gap-3">
+              <div class="flex items-center gap-2.5 min-w-0">
+                <div class="w-8 h-8 rounded-lg bg-purple-950/60 border border-purple-500/40 flex items-center justify-center text-purple-300 font-black text-xs shrink-0">
+                  Tw
+                </div>
+                <div class="min-w-0">
+                  <div class="flex items-center gap-2">
+                    <span class="text-xs font-bold text-white block">Twitch</span>
+                    <span id="twitchAccountStatusBadge" class="hidden"></span>
+                  </div>
+                  <span id="twitchAccountSubText" class="text-[10px] text-gray-400 block truncate">Twitch hesabı ile oturum aç</span>
+                </div>
+              </div>
+              <button id="toggleTwitchAccountBtn" data-connect-platform="twitch" type="button" class="px-3 py-1.5 rounded-lg bg-[#A64D79]/20 hover:bg-[#A64D79]/30 border border-[#A64D79]/30 text-xs font-semibold text-rose-200 transition-all cursor-pointer shrink-0" data-i18n="platform_connect_btn">
                 Hesabı Bağla
               </button>
             </div>
@@ -3345,10 +3383,10 @@
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="https://www.youtube.com/iframe_api"></script>
   <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
-  <script src="config.js?v=87"></script>
-  <script src="livekit-client.umd.js?v=87"></script>
-  <script src="app.js?v=87"></script>
-  <script src="miruo-live.js?v=87"></script>
+  <script src="config.js?v=88"></script>
+  <script src="livekit-client.umd.js?v=88"></script>
+  <script src="app.js?v=88"></script>
+  <script src="miruo-live.js?v=88"></script>
 
 </body>
 </html>

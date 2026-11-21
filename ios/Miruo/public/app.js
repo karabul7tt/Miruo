@@ -5721,6 +5721,90 @@ function closePeerConnection(peerId) {
 }
 window.closePeerConnection = closePeerConnection;
 
+function handleIncomingP2PData(rawData) {
+  try {
+    const data = typeof rawData === 'string' ? JSON.parse(rawData) : rawData;
+    if (!data || typeof data !== 'object') return;
+    const payload = data.payload || data;
+    if (data.type === 'sync') handleRemoteSync(payload);
+    if (data.type === 'touch') renderTouchEffect(data.x || payload.x, data.y || payload.y, false);
+    if (data.type === 'reaction') spawnFloatingReaction(data.emoji || payload.emoji, false);
+    if (data.type === 'sleep') {
+      const canRemoteSleep = payload.authorized || payload.isHost || payload.canControl || (payload.from && (payload.from === state.host || payload.userRole === 'owner' || payload.userRole === 'admin' || payload.userRole === 'dj')) || state.controlMode === 'everyone';
+      if (canRemoteSleep) {
+        applySleepMode(data.enabled !== undefined ? data.enabled : payload.enabled, false);
+      }
+    }
+    if (data.type === 'perm_change') handleRemotePermissionChange(data.mode || payload.mode, data.hostName || payload.hostName);
+    if (data.type === 'request_dj') handleDjPermissionRequested(data.fromUser || payload.fromUser);
+    if (data.type === 'grant_dj') handleDjPermissionGranted(data.toUser || payload.toUser);
+    if (data.type === 'friend_request') {
+      if (typeof handleIncomingFriendRequest === 'function') handleIncomingFriendRequest(payload);
+    }
+    if (data.type === 'friend_accepted') {
+      if (typeof handleIncomingFriendAccepted === 'function') handleIncomingFriendAccepted(payload);
+    }
+    if (data.type === 'friend_declined') {
+      if (typeof handleIncomingFriendDeclined === 'function') handleIncomingFriendDeclined(payload);
+    }
+    if (data.type === 'friend_removed') {
+      if (typeof handleRemoteFriendRemoved === 'function') handleRemoteFriendRemoved(payload.fromUsername, payload.toUsername);
+    }
+    if (data.type === 'affinity_unbound') {
+      if (typeof handleRemoteAffinityUnbound === 'function') handleRemoteAffinityUnbound(payload.fromUsername, payload.toUsername);
+    }
+    if (data.type === 'affinity_breakup_request') {
+      if (typeof handleIncomingAffinityBreakupRequest === 'function') handleIncomingAffinityBreakupRequest(payload);
+    }
+    if (data.type === 'affinity_breakup_accepted') {
+      if (typeof handleIncomingAffinityBreakupAccepted === 'function') handleIncomingAffinityBreakupAccepted(payload);
+    }
+    if (data.type === 'affinity_breakup_declined') {
+      if (typeof handleIncomingAffinityBreakupDeclined === 'function') handleIncomingAffinityBreakupDeclined(payload);
+    }
+    if (data.type === 'room_invite') {
+      if (typeof handleIncomingRoomInvite === 'function') handleIncomingRoomInvite(payload);
+    }
+    if (data.type === 'chat') renderChatMessage(data.sender || payload.sender, data.text || payload.text, false, data.time || payload.time, data.imageUrl || payload.imageUrl, data.avatarUrl || payload.avatarUrl, data.msgId || payload.msgId);
+    if (data.type === 'media_status') updateRemoteParticipantStatus(data.userId || payload.userId, data.username || payload.username, data.isMicOn !== undefined ? data.isMicOn : payload.isMicOn, data.isCamOn !== undefined ? data.isCamOn : payload.isCamOn, data.avatar || payload.avatar, data.avatarColor || payload.avatarColor, data.clientId || payload.clientId, data.deviceId || payload.deviceId, data.singleInstance !== undefined ? data.singleInstance : payload.singleInstance);
+    if (data.type === 'platform_switch') {
+      switchRoomPlatform(data.platform || payload.platform);
+      const sender = payload.user || payload.fromUser || data.user;
+      if (sender && sender !== state.username && (state.peerId || Object.keys(state.participants).length > 1)) {
+        showToast(`@${sender} platformu değiştirdi: ${data.platform || payload.platform}`);
+      }
+    }
+    if (data.type === 'kick_user') handleRemoteUserKicked(data.targetUserId || payload.targetUserId, data.targetUsername || payload.targetUsername);
+    if (data.type === 'role_update') handleRemoteRoleUpdate(data.targetUserId || payload.targetUserId, data.newRole || payload.newRole, data.targetUsername || payload.targetUsername);
+    if (data.type === 'ownership_transfer' || data.type === 'ownership-transfer') {
+      if (typeof handleRemoteOwnershipTransfer === 'function') {
+        handleRemoteOwnershipTransfer(data.newOwnerUserId || payload.newOwnerUserId, data.newOwnerUsername || payload.newOwnerUsername, data.newOwnerClientId || payload.newOwnerClientId, data.fromUser || payload.fromUser);
+      }
+    }
+    if (data.type === 'host_browsing') handleRemoteBrowsingNotice(data.isBrowsing !== undefined ? data.isBrowsing : payload.isBrowsing, data.user || payload.user);
+    if (data.type === 'video_suggestion') handleIncomingVideoSuggestion(data);
+    if (data.type === 'queue_update') handleRemoteQueueUpdate(data.queue || payload.queue);
+    if (data.type === 'video_changed') handleRemoteVideoChanged(data.user || payload.user, data.title || payload.title, data.videoId || payload.videoId, data.provider || payload.provider);
+    if (data.type === 'photo_share') {
+      displayPhotoOnStage(data.dataUrl || payload.dataUrl, data.title || payload.title, false);
+      if (data.sender || payload.sender) showToast(`${data.sender || payload.sender} bir fotoğraf paylaştı!`);
+    }
+    if (data.type === 'photo_close') {
+      closePhotoStage(false);
+    }
+    if (data.type === 'privacy_change') {
+      if (typeof handleRemotePrivacyChange === 'function') handleRemotePrivacyChange(data.isPrivate !== undefined ? data.isPrivate : payload.isPrivate);
+    }
+    if (data.type === 'screenshare_start' || data.type === 'screenshare-start') {
+      if (typeof handleRemoteScreenShareStarted === 'function') handleRemoteScreenShareStarted(data.user || payload.user, payload || data);
+    }
+    if (data.type === 'screenshare_stop' || data.type === 'screenshare-stop') {
+      if (typeof handleRemoteScreenShareStopped === 'function') handleRemoteScreenShareStopped();
+    }
+  } catch (err) {}
+}
+window.handleIncomingP2PData = handleIncomingP2PData;
+
 function setupDataChannelEvents(channel) {
   channel.onopen = () => {
     console.log('P2P DataChannel Açıldı! (Sıfır Gecikme Senkron)');
@@ -5732,85 +5816,7 @@ function setupDataChannelEvents(channel) {
     }
   };
   channel.onmessage = (e) => {
-    try {
-      const data = JSON.parse(e.data);
-      const payload = data.payload || data;
-      if (data.type === 'sync') handleRemoteSync(payload);
-      if (data.type === 'touch') renderTouchEffect(data.x || payload.x, data.y || payload.y, false);
-      if (data.type === 'reaction') spawnFloatingReaction(data.emoji || payload.emoji, false);
-      if (data.type === 'sleep') {
-        const canRemoteSleep = payload.authorized || payload.isHost || payload.canControl || (payload.from && (payload.from === state.host || payload.userRole === 'owner' || payload.userRole === 'admin' || payload.userRole === 'dj')) || state.controlMode === 'everyone';
-        if (canRemoteSleep) {
-          applySleepMode(data.enabled !== undefined ? data.enabled : payload.enabled, false);
-        }
-      }
-      if (data.type === 'perm_change') handleRemotePermissionChange(data.mode || payload.mode, data.hostName || payload.hostName);
-      if (data.type === 'request_dj') handleDjPermissionRequested(data.fromUser || payload.fromUser);
-      if (data.type === 'grant_dj') handleDjPermissionGranted(data.toUser || payload.toUser);
-      if (data.type === 'friend_request') {
-        if (typeof handleIncomingFriendRequest === 'function') handleIncomingFriendRequest(payload);
-      }
-      if (data.type === 'friend_accepted') {
-        if (typeof handleIncomingFriendAccepted === 'function') handleIncomingFriendAccepted(payload);
-      }
-      if (data.type === 'friend_declined') {
-        if (typeof handleIncomingFriendDeclined === 'function') handleIncomingFriendDeclined(payload);
-      }
-      if (data.type === 'friend_removed') {
-        if (typeof handleRemoteFriendRemoved === 'function') handleRemoteFriendRemoved(payload.fromUsername, payload.toUsername);
-      }
-      if (data.type === 'affinity_unbound') {
-        if (typeof handleRemoteAffinityUnbound === 'function') handleRemoteAffinityUnbound(payload.fromUsername, payload.toUsername);
-      }
-      if (data.type === 'affinity_breakup_request') {
-        if (typeof handleIncomingAffinityBreakupRequest === 'function') handleIncomingAffinityBreakupRequest(payload);
-      }
-      if (data.type === 'affinity_breakup_accepted') {
-        if (typeof handleIncomingAffinityBreakupAccepted === 'function') handleIncomingAffinityBreakupAccepted(payload);
-      }
-      if (data.type === 'affinity_breakup_declined') {
-        if (typeof handleIncomingAffinityBreakupDeclined === 'function') handleIncomingAffinityBreakupDeclined(payload);
-      }
-      if (data.type === 'room_invite') {
-        if (typeof handleIncomingRoomInvite === 'function') handleIncomingRoomInvite(payload);
-      }
-      if (data.type === 'chat') renderChatMessage(data.sender || payload.sender, data.text || payload.text, false, data.time || payload.time, data.imageUrl || payload.imageUrl, data.avatarUrl || payload.avatarUrl, data.msgId || payload.msgId);
-      if (data.type === 'media_status') updateRemoteParticipantStatus(data.userId || payload.userId, data.username || payload.username, data.isMicOn !== undefined ? data.isMicOn : payload.isMicOn, data.isCamOn !== undefined ? data.isCamOn : payload.isCamOn, data.avatar || payload.avatar, data.avatarColor || payload.avatarColor, data.clientId || payload.clientId, data.deviceId || payload.deviceId, data.singleInstance !== undefined ? data.singleInstance : payload.singleInstance);
-      if (data.type === 'platform_switch') {
-        switchRoomPlatform(data.platform || payload.platform);
-        const sender = payload.user || payload.fromUser || data.user;
-        if (sender && sender !== state.username && (state.peerId || Object.keys(state.participants).length > 1)) {
-          showToast(`@${sender} platformu değiştirdi: ${data.platform || payload.platform}`);
-        }
-      }
-      if (data.type === 'kick_user') handleRemoteUserKicked(data.targetUserId || payload.targetUserId, data.targetUsername || payload.targetUsername);
-      if (data.type === 'role_update') handleRemoteRoleUpdate(data.targetUserId || payload.targetUserId, data.newRole || payload.newRole, data.targetUsername || payload.targetUsername);
-      if (data.type === 'ownership_transfer' || data.type === 'ownership-transfer') {
-        if (typeof handleRemoteOwnershipTransfer === 'function') {
-          handleRemoteOwnershipTransfer(data.newOwnerUserId || payload.newOwnerUserId, data.newOwnerUsername || payload.newOwnerUsername, data.newOwnerClientId || payload.newOwnerClientId, data.fromUser || payload.fromUser);
-        }
-      }
-      if (data.type === 'host_browsing') handleRemoteBrowsingNotice(data.isBrowsing !== undefined ? data.isBrowsing : payload.isBrowsing, data.user || payload.user);
-      if (data.type === 'video_suggestion') handleIncomingVideoSuggestion(data);
-      if (data.type === 'queue_update') handleRemoteQueueUpdate(data.queue || payload.queue);
-      if (data.type === 'video_changed') handleRemoteVideoChanged(data.user || payload.user, data.title || payload.title, data.videoId || payload.videoId);
-      if (data.type === 'photo_share') {
-        displayPhotoOnStage(data.dataUrl || payload.dataUrl, data.title || payload.title, false);
-        if (data.sender || payload.sender) showToast(`${data.sender || payload.sender} bir fotoğraf paylaştı!`);
-      }
-      if (data.type === 'photo_close') {
-        closePhotoStage(false);
-      }
-      if (data.type === 'privacy_change') {
-        if (typeof handleRemotePrivacyChange === 'function') handleRemotePrivacyChange(data.isPrivate !== undefined ? data.isPrivate : payload.isPrivate);
-      }
-      if (data.type === 'screenshare_start' || data.type === 'screenshare-start') {
-        if (typeof handleRemoteScreenShareStarted === 'function') handleRemoteScreenShareStarted(data.user || payload.user, payload || data);
-      }
-      if (data.type === 'screenshare_stop' || data.type === 'screenshare-stop') {
-        if (typeof handleRemoteScreenShareStopped === 'function') handleRemoteScreenShareStopped();
-      }
-    } catch (err) {}
+    handleIncomingP2PData(e.data);
   };
 }
 
@@ -5830,9 +5836,12 @@ function sendP2PData(type, payload = {}) {
   };
   const data = JSON.stringify({ type, payload: enrichedPayload, ...enrichedPayload });
 
-  // Fastest rail: LiveKit SFU data channel (playback sync commands + heartbeats)
-  if (type === 'sync' && window.MiruoLive && window.MiruoLive.isConnected()) {
-    try { window.MiruoLive.sendSync(enrichedPayload); } catch (_) {}
+  // Fastest rail: LiveKit SFU data channel (playback sync commands + heartbeats + room events)
+  if (window.MiruoLive && typeof window.MiruoLive.isConnected === 'function' && window.MiruoLive.isConnected()) {
+    try {
+      if (type === 'sync' && typeof window.MiruoLive.sendSync === 'function') window.MiruoLive.sendSync(enrichedPayload);
+      else if (type !== 'sync' && typeof window.MiruoLive.sendP2P === 'function') window.MiruoLive.sendP2P(type, enrichedPayload);
+    } catch (_) {}
   }
 
   const uniqueDcPeers = (typeof getUniquePeerEntries === 'function') ? getUniquePeerEntries() : Array.from(new Set(Object.values(state.peers || {})));
@@ -6432,6 +6441,10 @@ function extractKickChannel(val) {
 window.extractKickChannel = extractKickChannel;
 
 function clearStageWebContent() {
+  if (state._stageWebviewPollTimer) {
+    clearInterval(state._stageWebviewPollTimer);
+    state._stageWebviewPollTimer = null;
+  }
   const existingWv = document.getElementById('miruoStageWebview');
   if (existingWv) {
     try { existingWv.remove(); } catch (_) {}
@@ -6444,22 +6457,160 @@ function clearStageWebContent() {
 }
 window.clearStageWebContent = clearStageWebContent;
 
-function controlStageWebviewVideo(action, time) {
+function controlStageWebviewVideo(action, time, rate) {
+  state._lastWebviewCmdAt = Date.now();
   const wv = document.getElementById('miruoStageWebview');
-  if (!wv || typeof wv.executeJavaScript !== 'function') return;
-  try {
-    let script = '';
-    if (action === 'pause') {
-      script = `document.querySelectorAll('video').forEach(v => { try { v.pause(); } catch(_) {} });`;
-    } else if (action === 'play') {
-      script = `document.querySelectorAll('video').forEach(v => { try { v.play().catch(()=>{}); } catch(_) {} });`;
-    } else if (action === 'seek' && typeof time === 'number' && isFinite(time)) {
-      script = `document.querySelectorAll('video').forEach(v => { try { if (v.duration && isFinite(v.duration)) v.currentTime = ${Number(time)}; } catch(_) {} });`;
-    }
-    if (script) wv.executeJavaScript(script).catch(() => {});
-  } catch (_) {}
+  if (wv && typeof wv.executeJavaScript === 'function') {
+    try {
+      let script = '';
+      if (action === 'pause') {
+        script = `document.querySelectorAll('video').forEach(v => { try { v.pause(); } catch(_) {} });`;
+      } else if (action === 'play') {
+        script = `document.querySelectorAll('video').forEach(v => { try { v.play().catch(()=>{}); } catch(_) {} });`;
+      } else if (action === 'seek' && typeof time === 'number' && isFinite(time)) {
+        state.lastProgSeekAt = Date.now();
+        state._webviewVideoTime = Number(time);
+        state._webviewVideoAt = Date.now();
+        script = `document.querySelectorAll('video').forEach(v => { try { if (!v.duration || isFinite(v.duration)) v.currentTime = ${Number(time)}; } catch(_) {} });`;
+      } else if (action === 'rate' && typeof rate === 'number' && rate > 0) {
+        script = `document.querySelectorAll('video').forEach(v => { try { v.playbackRate = ${Number(rate)}; } catch(_) {} });`;
+      }
+      if (script) wv.executeJavaScript(script).catch(() => {});
+    } catch (_) {}
+  }
+  if (dom.webPlayerFrame && dom.webPlayerFrame.contentWindow && !dom.webPlayerFrame.classList.contains('hidden')) {
+    try {
+      const cw = dom.webPlayerFrame.contentWindow;
+      if (action === 'pause') {
+        cw.postMessage(JSON.stringify({ method: 'pause', event: 'command', func: 'pause' }), '*');
+        cw.postMessage({ method: 'pause', command: 'pause' }, '*');
+      } else if (action === 'play') {
+        cw.postMessage(JSON.stringify({ method: 'play', event: 'command', func: 'play' }), '*');
+        cw.postMessage({ method: 'play', command: 'play' }, '*');
+      } else if (action === 'seek' && typeof time === 'number' && isFinite(time)) {
+        cw.postMessage(JSON.stringify({ method: 'setCurrentTime', value: Number(time), event: 'command', func: 'seek', args: [Number(time)] }), '*');
+        cw.postMessage({ method: 'setCurrentTime', value: Number(time), command: 'seek', time: Number(time) }, '*');
+      }
+    } catch (_) {}
+  }
 }
 window.controlStageWebviewVideo = controlStageWebviewVideo;
+
+function startStageWebviewSyncPoll(wv) {
+  if (state._stageWebviewPollTimer) {
+    clearInterval(state._stageWebviewPollTimer);
+    state._stageWebviewPollTimer = null;
+  }
+  if (!wv || typeof wv.executeJavaScript !== 'function') return;
+
+  state._stageWebviewPollTimer = setInterval(() => {
+    if (!state.isInRoom || (state.activeMode !== 'web' && state.activeMode !== 'kick' && state.activeMode !== 'twitch')) return;
+    if (!document.getElementById('miruoStageWebview')) return;
+    try {
+      wv.executeJavaScript(`
+        (function() {
+          var vids = document.querySelectorAll('video');
+          var best = null;
+          for (var i = 0; i < vids.length; i++) {
+            var v = vids[i];
+            if (!best || (v.videoWidth * v.videoHeight) > (best.videoWidth * best.videoHeight) || v.duration > 0) {
+              best = v;
+            }
+          }
+          return {
+            hasVideo: !!best,
+            currentTime: best ? Number(best.currentTime || 0) : 0,
+            duration: (best && best.duration && isFinite(best.duration) && best.duration < 86400) ? Number(best.duration) : 0,
+            paused: best ? !!best.paused : true,
+            rate: best ? Number(best.playbackRate || 1) : 1,
+            url: location.href,
+            title: document.title || ''
+          };
+        })()
+      `).then((info) => {
+        if (!info || !state.isInRoom) return;
+        const now = Date.now();
+        const isAuthUrl = /accounts\.google\.|\/login|\/signin|\/ap\/|auth-redirect/i.test(info.url || '');
+
+        // 1. Detect navigation to a new movie / episode / live channel by Host/Controller inside the stage webview
+        if (info.url && /^https?:/i.test(info.url) && !isAuthUrl && canUserControlPlayback() && !state.isRemoteAction) {
+          if (state._lastMountedWebUrl && info.url !== state._lastMountedWebUrl && (now - (state._lastWebUrlBroadcastAt || 0) > 2000)) {
+            const isContentUrl = /\/watch|\/video|\/episode|\/detail|\/title|kick\.com\/[^/]+|twitch\.tv\/[^/]+/i.test(info.url);
+            if (isContentUrl) {
+              state._lastMountedWebUrl = info.url;
+              state._lastWebUrlBroadcastAt = now;
+              state.currentVideoId = info.url;
+              if (info.title) {
+                state.currentVideoTitle = info.title;
+                if (dom.nowPlayingTitle) dom.nowPlayingTitle.textContent = info.title;
+              }
+              sendP2PData('video_changed', { user: state.username, title: state.currentVideoTitle, videoId: info.url, provider: state.currentProvider });
+              sendSignal({ type: 'video-changed', user: state.username, title: state.currentVideoTitle, videoId: info.url, provider: state.currentProvider });
+            }
+          }
+        }
+
+        if (!info.hasVideo) return;
+
+        const prevTime = state._webviewVideoTime;
+        const prevAt = state._webviewVideoAt;
+        state._webviewVideoTime = info.currentTime;
+        state._webviewVideoAt = now;
+        if (!state.isUserDraggingSeek) {
+          state.currentTime = info.currentTime;
+        }
+        if (info.duration > 0) {
+          state.duration = info.duration;
+          state.isLiveStream = false;
+        } else if (state.activeMode === 'kick' || state.activeMode === 'twitch') {
+          state.isLiveStream = true;
+        }
+
+        const cmdRecent = (now - (state._lastWebviewCmdAt || 0)) < 1400;
+        const remoteRecent = state.isRemoteAction || ((now - (state.lastSyncProcessedAt || 0)) < 1200);
+        if (cmdRecent || remoteRecent) return;
+
+        // 2. Two-way play/pause & seek detection inside Netflix / Kick / Twitch / Prime / Disney+ / Web player
+        if (canUserControlPlayback()) {
+          const isWvPlaying = !info.paused;
+          if (isWvPlaying !== !!state.isPlaying && info.currentTime > 0.3) {
+            state.isPlaying = isWvPlaying;
+            updatePlayPauseUI(isWvPlaying);
+            sendP2PData('sync', {
+              action: isWvPlaying ? 'play' : 'pause',
+              time: info.currentTime,
+              isPlaying: isWvPlaying,
+              activeMode: state.activeMode,
+              videoId: state.currentVideoId,
+              provider: state.currentProvider,
+              sentAt: now
+            });
+          } else if (typeof prevTime === 'number' && prevAt && !state.isLiveStream) {
+            const expectedT = state.isPlaying ? (prevTime + ((now - prevAt) / 1000) * (info.rate || 1)) : prevTime;
+            if (Math.abs(info.currentTime - expectedT) > 2.8 && (now - (state.lastSyncSentAt || 0) > 900)) {
+              state.lastSyncSentAt = now;
+              sendP2PData('sync', {
+                action: 'seek',
+                time: info.currentTime,
+                isPlaying: state.isPlaying,
+                activeMode: state.activeMode,
+                videoId: state.currentVideoId,
+                provider: state.currentProvider,
+                sentAt: now
+              });
+            }
+          }
+        } else {
+          // Viewer without playback permission: keep locked to room play/pause state
+          const isWvPlaying = !info.paused;
+          if (isWvPlaying !== !!state.isPlaying) {
+            controlStageWebviewVideo(state.isPlaying ? 'play' : 'pause');
+          }
+        }
+      }).catch(() => {});
+    } catch (_) {}
+  }, 450);
+}
 
 function mountStageWebContent(embedUrl, rawUrl, provider) {
   const isDesktopElectron = !!(window.miruoDesktop && window.miruoDesktop.isDesktop);
@@ -6471,7 +6622,13 @@ function mountStageWebContent(embedUrl, rawUrl, provider) {
     if (typeof hideIframeFallback === 'function') hideIframeFallback();
     let wv = document.getElementById('miruoStageWebview');
     const targetSrc = rawUrl || embedUrl;
-    const ua = navigator.userAgent.replace(/\s(Electron|Miruo)[^\s]*/g, '');
+    state._lastMountedWebUrl = targetSrc;
+    const isGoogleAuth = /accounts\.google\.|accounts\.youtube\./i.test(targetSrc || '');
+    const isMac = window.miruoDesktop && window.miruoDesktop.platform === 'darwin';
+    const ffUa = isMac
+      ? 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:135.0) Gecko/20100101 Firefox/135.0'
+      : 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:135.0) Gecko/20100101 Firefox/135.0';
+    const ua = isGoogleAuth ? ffUa : navigator.userAgent.replace(/\s(Electron|Miruo)[^\s]*/g, '');
     if (!wv) {
       wv = document.createElement('webview');
       wv.id = 'miruoStageWebview';
@@ -6483,7 +6640,12 @@ function mountStageWebContent(embedUrl, rawUrl, provider) {
       dom.webPlayerFrame.parentNode.insertBefore(wv, dom.webPlayerFrame);
     }
     wv.classList.remove('hidden');
-    wv.setAttribute('src', targetSrc);
+    if (wv.getAttribute('src') !== targetSrc) {
+      wv.setAttribute('src', targetSrc);
+    }
+    startStageWebviewSyncPoll(wv);
+    if (typeof renderStagePipCards === 'function') renderStagePipCards();
+    if (typeof renderVideoGrid === 'function') renderVideoGrid();
     return;
   }
 
@@ -6500,6 +6662,8 @@ function mountStageWebContent(embedUrl, rawUrl, provider) {
     dom.webPlayerFrame.src = embedUrl;
     dom.webPlayerFrame.onerror = () => showIframeFallback(embedUrl, provider);
   }
+  if (typeof renderStagePipCards === 'function') renderStagePipCards();
+  if (typeof renderVideoGrid === 'function') renderVideoGrid();
 }
 window.mountStageWebContent = mountStageWebContent;
 
@@ -6823,8 +6987,8 @@ function loadWebStream(url, title, provider = 'Web', broadcast = true) {
 
   if (typeof startSyncHeartbeat === 'function') startSyncHeartbeat();
   if (broadcast) {
-    sendP2PData('video_changed', { user: state.username, title: state.currentVideoTitle, videoId: url });
-    sendSignal({ type: 'video-changed', user: state.username, title: state.currentVideoTitle, videoId: url });
+    sendP2PData('video_changed', { user: state.username, title: state.currentVideoTitle, videoId: url, provider });
+    sendSignal({ type: 'video-changed', user: state.username, title: state.currentVideoTitle, videoId: url, provider });
   }
 
   showToast(`${provider} içeriği odaya aktarıldı!`);
@@ -6897,13 +7061,46 @@ function sendYtCommand(func, args = []) {
       state.ytPlayer[func](...args);
     } catch (_) {}
   }
-  if (dom.nativeVideoPlayer) {
+  if (dom.nativeVideoPlayer && state.activeMode === 'direct') {
     try {
       if (func === 'pauseVideo') dom.nativeVideoPlayer.pause();
-      else if (func === 'playVideo' && state.activeMode === 'direct') dom.nativeVideoPlayer.play().catch(() => {});
+      else if (func === 'playVideo') dom.nativeVideoPlayer.play().catch(() => {});
     } catch (_) {}
   }
 }
+
+function controlStageDirectVideo(shouldPlay) {
+  if (state.activeMode === 'direct' && dom.nativeVideoPlayer) {
+    try {
+      if (shouldPlay) dom.nativeVideoPlayer.play().catch(() => {});
+      else dom.nativeVideoPlayer.pause();
+    } catch (_) {}
+  }
+}
+window.controlStageDirectVideo = controlStageDirectVideo;
+
+function ensureRoomPlaybackContinues() {
+  if (!state.isInRoom) return;
+  if (state.isPlaying) {
+    if (state.activeMode === 'youtube') {
+      sendYtCommand('playVideo');
+    } else if (state.activeMode === 'direct' && dom.nativeVideoPlayer && dom.nativeVideoPlayer.paused) {
+      dom.nativeVideoPlayer.play().catch(() => {});
+    } else if ((state.activeMode === 'web' || state.activeMode === 'kick' || state.activeMode === 'twitch') && typeof controlStageWebviewVideo === 'function') {
+      controlStageWebviewVideo('play');
+    }
+  }
+  const camSelectors = '#selfVideo, #partnerVideo, .extra-partner-video, #roomVideoGrid video, #remoteScreenPlayer';
+  document.querySelectorAll(camSelectors).forEach(vid => {
+    if (vid && vid.paused && vid.srcObject) {
+      const tracks = vid.srcObject.getVideoTracks ? vid.srcObject.getVideoTracks() : [];
+      if (tracks.length > 0 && tracks[0].readyState === 'live') {
+        vid.play().catch(() => {});
+      }
+    }
+  });
+}
+window.ensureRoomPlaybackContinues = ensureRoomPlaybackContinues;
 
 function recordHostSyncRef(payload) {
   if (!payload || typeof payload.time !== 'number') return;
@@ -7037,7 +7234,7 @@ function handleRemoteSync(payload) {
     const expectedTime = shouldPlay ? getExpectedHostTimeNow() : targetTime;
     const isNewVideo = payload.videoId && payload.videoId !== state.currentVideoId;
     if (isNewVideo) {
-      if (typeof window.loadRemoteContentBridge === 'function') window.loadRemoteContentBridge(payload.videoId, payload.title, shouldPlay, expectedTime);
+      if (typeof window.loadRemoteContentBridge === 'function') window.loadRemoteContentBridge(payload.videoId, payload.title, shouldPlay, expectedTime, payload.provider);
       else loadYoutubeVideo(payload.videoId, shouldPlay, expectedTime);
     }
     state.currentTime = expectedTime;
@@ -7069,6 +7266,9 @@ function handleRemoteSync(payload) {
         if (shouldPlay) dom.nativeVideoPlayer.play().catch(() => {});
         else dom.nativeVideoPlayer.pause();
       } else if (typeof controlStageWebviewVideo === 'function') {
+        if (!state.isLiveStream && typeof expectedTime === 'number' && expectedTime > 0) {
+          controlStageWebviewVideo('seek', expectedTime);
+        }
         controlStageWebviewVideo(shouldPlay ? 'play' : 'pause');
       }
     }
@@ -7203,11 +7403,12 @@ function handleRemoteSync(payload) {
       }
       dom.nativeVideoPlayer.play().catch(() => {});
     } else if (typeof controlStageWebviewVideo === 'function') {
+      if (!state.isLiveStream && typeof targetTime === 'number' && targetTime > 0 && Math.abs(livePos - targetTime) > 1.2) {
+        controlStageWebviewVideo('seek', targetTime);
+      }
       controlStageWebviewVideo('play');
     }
-    document.querySelectorAll('video:not(.peer-cam-video):not(#localVideo):not(#partnerVideo):not([data-webrtc-stream])').forEach(v => {
-      try { v.play().catch(() => {}); } catch (_) {}
-    });
+    controlStageDirectVideo(true);
   }
 
   if (payload.action === 'pause') {
@@ -7237,21 +7438,17 @@ function handleRemoteSync(payload) {
       }
     }
     if (typeof controlStageWebviewVideo === 'function') {
+      if (typeof payload.time === 'number' && !state.isLiveStream && Math.abs(curLocalBeforePause - targetTime) > 1.0) {
+        controlStageWebviewVideo('seek', targetTime);
+      }
       controlStageWebviewVideo('pause');
     }
-    document.querySelectorAll('video:not(.peer-cam-video):not(#localVideo):not(#partnerVideo):not([data-webrtc-stream])').forEach(v => {
-      try { v.pause(); } catch (_) {}
-    });
+    controlStageDirectVideo(false);
     const enforceRemotePause = () => {
       if (!state.isPlaying) {
         if (state.activeMode === 'youtube') sendYtCommand('pauseVideo');
-        if (dom.nativeVideoPlayer) {
-          try { dom.nativeVideoPlayer.pause(); } catch (_) {}
-        }
+        controlStageDirectVideo(false);
         if (typeof controlStageWebviewVideo === 'function') controlStageWebviewVideo('pause');
-        document.querySelectorAll('video:not(.peer-cam-video):not(#localVideo):not(#partnerVideo):not([data-webrtc-stream])').forEach(v => {
-          try { v.pause(); } catch (_) {}
-        });
       }
     };
     setTimeout(enforceRemotePause, 60);
@@ -7321,7 +7518,7 @@ function handleRemoteSync(payload) {
         state.lastVideoMismatchFixAt = Date.now();
         recordHostSyncRef(payload);
         const tgt = typeof payload.time === 'number' ? getExpectedHostTimeNow() : 0;
-        if (typeof window.loadRemoteContentBridge === 'function') window.loadRemoteContentBridge(payload.videoId, payload.title, !!payload.isPlaying, tgt);
+        if (typeof window.loadRemoteContentBridge === 'function') window.loadRemoteContentBridge(payload.videoId, payload.title, !!payload.isPlaying, tgt, payload.provider);
         else loadYoutubeVideo(payload.videoId, !!payload.isPlaying, tgt);
         return;
       }
@@ -7350,13 +7547,15 @@ function handleRemoteSync(payload) {
           }
           sendYtCommand('pauseVideo');
         }
-        if (dom.nativeVideoPlayer) {
-          try { dom.nativeVideoPlayer.pause(); } catch (_) {}
+        controlStageDirectVideo(false);
+        if (typeof controlStageWebviewVideo === 'function') {
+          if (typeof payload.time === 'number' && !state.isLiveStream && payload.time > 0 && Math.abs(curLocal - payload.time) > 1.2 &&
+              (!state._lastPausedAlignSeekAt || Date.now() - state._lastPausedAlignSeekAt > 2500)) {
+            state._lastPausedAlignSeekAt = Date.now();
+            controlStageWebviewVideo('seek', payload.time);
+          }
+          controlStageWebviewVideo('pause');
         }
-        if (typeof controlStageWebviewVideo === 'function') controlStageWebviewVideo('pause');
-        document.querySelectorAll('video:not(.peer-cam-video):not(#localVideo):not(#partnerVideo):not([data-webrtc-stream])').forEach(v => {
-          try { v.pause(); } catch (_) {}
-        });
         if (typeof payload.time === 'number') {
           state.currentTime = payload.time;
           state.lastReportedYtTime = payload.time;
@@ -7368,12 +7567,24 @@ function handleRemoteSync(payload) {
         return;
       }
 
-      // If watching live external platforms (Kick / Twitch / Web embed), videoId match above already synced the stream
+      // If watching external platforms (Kick / Twitch / Netflix / Prime / Disney+ / Web), sync play state + VOD timestamp
       if (state.activeMode === 'kick' || state.activeMode === 'twitch' || state.activeMode === 'web') {
         if (!state.isPlaying) {
           state.isPlaying = true;
           updatePlayPauseUI(true);
           if (typeof controlStageWebviewVideo === 'function') controlStageWebviewVideo('play');
+        }
+        if (!state.isLiveStream && state.activeMode === 'web' && typeof payload.time === 'number' && payload.time > 0) {
+          const expectedWebNow = getExpectedHostTimeNow();
+          const curWebLocal = getLivePlayerTime();
+          if (Math.abs(curWebLocal - expectedWebNow) > 2.0 && (!state.lastHardSeekAt || (Date.now() - state.lastHardSeekAt) > 3500)) {
+            state.lastHardSeekAt = Date.now();
+            state.currentTime = expectedWebNow;
+            if (typeof controlStageWebviewVideo === 'function') {
+              controlStageWebviewVideo('seek', expectedWebNow);
+              controlStageWebviewVideo('play');
+            }
+          }
         }
         return;
       }
@@ -7575,6 +7786,14 @@ function getLivePlayerTime() {
   if (state.activeMode === 'direct' && dom.nativeVideoPlayer) {
     return dom.nativeVideoPlayer.currentTime || 0;
   }
+  if ((state.activeMode === 'web' || state.activeMode === 'kick' || state.activeMode === 'twitch') && typeof state._webviewVideoTime === 'number') {
+    if (state.isPlaying && state._webviewVideoAt) {
+      const elapsed = (Date.now() - state._webviewVideoAt) / 1000;
+      const cap = state.duration > 0 ? state.duration : 9999999;
+      return Math.min(cap, state._webviewVideoTime + elapsed);
+    }
+    return state._webviewVideoTime;
+  }
   return state.currentTime || 0;
 }
 window.getLivePlayerTime = getLivePlayerTime;
@@ -7623,7 +7842,7 @@ function startSyncHeartbeat() {
     const isSyncableMode = (state.activeMode === 'youtube' || state.activeMode === 'direct' || state.activeMode === 'kick' || state.activeMode === 'twitch' || state.activeMode === 'web');
     const canBroadcastHeartbeat = state.isInRoom && (state.isHost || isSameHostAccount) && isSyncableMode && !!state.currentVideoId;
     if (canBroadcastHeartbeat) {
-      const liveTime = (state.activeMode === 'youtube' || state.activeMode === 'direct') ? getLivePlayerTime() : 0;
+      const liveTime = getLivePlayerTime();
       state.currentTime = liveTime;
       sendP2PData('sync', {
         action: 'heartbeat',
@@ -7849,15 +8068,15 @@ function togglePlayPause() {
     }
   }
 
-  // 2. Native Video Player / Direct
-  if (dom.nativeVideoPlayer) {
+  // 2. Native Video Player / Direct (never pause local screen share preview!)
+  if (state.activeMode === 'direct' && dom.nativeVideoPlayer) {
     if (state.isPlaying) {
       dom.nativeVideoPlayer.play().catch(() => {});
     } else {
       dom.nativeVideoPlayer.pause();
-      setTimeout(() => { if (!state.isPlaying && dom.nativeVideoPlayer) dom.nativeVideoPlayer.pause(); }, 60);
-      setTimeout(() => { if (!state.isPlaying && dom.nativeVideoPlayer) dom.nativeVideoPlayer.pause(); }, 250);
-      setTimeout(() => { if (!state.isPlaying && dom.nativeVideoPlayer) dom.nativeVideoPlayer.pause(); }, 600);
+      setTimeout(() => { if (!state.isPlaying && state.activeMode === 'direct' && dom.nativeVideoPlayer) dom.nativeVideoPlayer.pause(); }, 60);
+      setTimeout(() => { if (!state.isPlaying && state.activeMode === 'direct' && dom.nativeVideoPlayer) dom.nativeVideoPlayer.pause(); }, 250);
+      setTimeout(() => { if (!state.isPlaying && state.activeMode === 'direct' && dom.nativeVideoPlayer) dom.nativeVideoPlayer.pause(); }, 600);
     }
   }
 
@@ -7865,15 +8084,7 @@ function togglePlayPause() {
   if (typeof controlStageWebviewVideo === 'function') {
     controlStageWebviewVideo(state.isPlaying ? 'play' : 'pause');
   }
-  if (!state.isPlaying) {
-    document.querySelectorAll('video:not(.peer-cam-video):not(#localVideo):not(#partnerVideo):not([data-webrtc-stream])').forEach(v => {
-      try { v.pause(); } catch (_) {}
-    });
-  } else {
-    document.querySelectorAll('video:not(.peer-cam-video):not(#localVideo):not(#partnerVideo):not([data-webrtc-stream])').forEach(v => {
-      try { v.play().catch(() => {}); } catch (_) {}
-    });
-  }
+  controlStageDirectVideo(state.isPlaying);
 
   // 4. Send authoritative playback sync broadcast across all peers
   const effectiveRole = state.isHost
@@ -8510,35 +8721,39 @@ async function startScreenSharing() {
     sendP2PData('screenshare_start', ssMeta);
     sendSignal({ type: 'screenshare-start', ...ssMeta });
 
-    // Add track ONCE per unique WebRTC peer (avoid duplicate addTrack on aliased peer keys!)
-    state.screenSenders = [];
-    const uniquePeers = (typeof getUniquePeerEntries === 'function') ? getUniquePeerEntries() : Array.from(new Set(Object.values(state.peers || {})));
-    const addedPcs = new Set();
-    uniquePeers.forEach(peer => {
-      if (peer && peer.pc && peer.pc.signalingState !== 'closed' && !addedPcs.has(peer.pc)) {
-        addedPcs.add(peer.pc);
-        peer._suppressNegNeeded = true;
+    if (window.MiruoLive && window.MiruoLive.isEnabled()) {
+      try { await window.MiruoLive.syncLocal(); } catch (_) {}
+    } else {
+      // Legacy P2P fallback: Add track ONCE per unique WebRTC peer
+      state.screenSenders = [];
+      const uniquePeers = (typeof getUniquePeerEntries === 'function') ? getUniquePeerEntries() : Array.from(new Set(Object.values(state.peers || {})));
+      const addedPcs = new Set();
+      uniquePeers.forEach(peer => {
+        if (peer && peer.pc && peer.pc.signalingState !== 'closed' && !addedPcs.has(peer.pc)) {
+          addedPcs.add(peer.pc);
+          peer._suppressNegNeeded = true;
+          stream.getTracks().forEach(track => {
+            try {
+              const sender = peer.pc.addTrack(track, stream);
+              sender._miruoRole = 'screen';
+              state.screenSenders.push({ pc: peer.pc, sender });
+            } catch (_) {}
+          });
+          peer._suppressNegNeeded = false;
+        }
+      });
+      if (state.pc && state.pc.signalingState !== 'closed' && !addedPcs.has(state.pc)) {
+        addedPcs.add(state.pc);
         stream.getTracks().forEach(track => {
           try {
-            const sender = peer.pc.addTrack(track, stream);
+            const sender = state.pc.addTrack(track, stream);
             sender._miruoRole = 'screen';
-            state.screenSenders.push({ pc: peer.pc, sender });
+            state.screenSenders.push({ pc: state.pc, sender });
           } catch (_) {}
         });
-        peer._suppressNegNeeded = false;
       }
-    });
-    if (state.pc && state.pc.signalingState !== 'closed' && !addedPcs.has(state.pc)) {
-      addedPcs.add(state.pc);
-      stream.getTracks().forEach(track => {
-        try {
-          const sender = state.pc.addTrack(track, stream);
-          sender._miruoRole = 'screen';
-          state.screenSenders.push({ pc: state.pc, sender });
-        } catch (_) {}
-      });
+      await renegotiateWebRTC();
     }
-    await renegotiateWebRTC();
 
     // Keep background audio active so iOS doesn't suspend capture when switching apps
     startScreenShareKeepAlive();
@@ -8567,9 +8782,13 @@ async function startScreenSharing() {
 
 function stopScreenSharing() {
   stopScreenShareKeepAlive();
+  state.isScreenSharing = false;
   if (state.screenStream) {
     state.screenStream.getTracks().forEach(t => t.stop());
     state.screenStream = null;
+  }
+  if (window.MiruoLive && window.MiruoLive.isEnabled()) {
+    try { window.MiruoLive.syncLocal(); } catch (_) {}
   }
   if (state.screenSenders && state.screenSenders.length) {
     state.screenSenders.forEach(item => {
@@ -8586,7 +8805,6 @@ function stopScreenSharing() {
     if (dom.emptyStatePlaceholder) dom.emptyStatePlaceholder.classList.remove('hidden');
     state.activeMode = null;
   }
-  state.isScreenSharing = false;
   if (dom.startScreenShareBtn) dom.startScreenShareBtn.classList.remove('hidden');
   if (dom.stopScreenShareBtn) dom.stopScreenShareBtn.classList.add('hidden');
   sendP2PData('screenshare_stop', { user: state.username });
@@ -8629,8 +8847,11 @@ function handleRemoteScreenShareStarted(user, meta = {}) {
     dom.remoteScreenPlayer.classList.remove('hidden');
 
     const uniquePeers = (typeof getUniquePeerEntries === 'function') ? getUniquePeerEntries() : Array.from(new Set(Object.values(state.peers || {})));
-    let screenTrack = null;
+    let screenTrack = (window.MiruoLive && typeof window.MiruoLive.getScreenTrack === 'function')
+      ? window.MiruoLive.getScreenTrack(null)
+      : null;
     for (const p of uniquePeers) {
+      if (screenTrack) break;
       if (p && p.screenVideoTrack && p.screenVideoTrack.readyState === 'live') {
         screenTrack = p.screenVideoTrack;
         break;
@@ -8647,6 +8868,7 @@ function handleRemoteScreenShareStarted(user, meta = {}) {
       }
     }
     if (screenTrack) {
+      dom.remoteScreenPlayer.dataset.trackId = screenTrack.id;
       dom.remoteScreenPlayer.srcObject = new MediaStream([screenTrack]);
       dom.remoteScreenPlayer.play().catch(() => {});
     }
@@ -20996,31 +21218,58 @@ function initEvents() {
     history: { title: 'Geçmiş', url: 'https://m.youtube.com/feed/history' }
   };
 
-  function openDesktopPlatformBrowser(providerKey, url, platformTitle) {
+  function openDesktopPlatformBrowser(providerKey, url, platformTitle, opts = {}) {
     const old = document.getElementById('desktopBrowserOverlay');
     if (old) old.remove();
 
+    const isConnectMode = !!(opts && opts.isConnectMode);
+    if (typeof window.ensureRoomPlaybackContinues === 'function') {
+      try { window.ensureRoomPlaybackContinues(); } catch (_) {}
+    }
+
     const isMac = window.miruoDesktop && window.miruoDesktop.platform === 'darwin';
     let startUrl = String(url).replace('//m.youtube.com', '//www.youtube.com');
-    const ua = navigator.userAgent.replace(/\s(Electron|Miruo)[^\s]*/g, '');
+    const isGoogleAuthStart = /accounts\.google\.|accounts\.youtube\./i.test(startUrl);
+    const ffUa = isMac
+      ? 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:135.0) Gecko/20100101 Firefox/135.0'
+      : 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:135.0) Gecko/20100101 Firefox/135.0';
+    const ua = isGoogleAuthStart ? ffUa : navigator.userAgent.replace(/\s(Electron|Miruo)[^\s]*/g, '');
     const btnCss = 'display:flex;align-items:center;gap:6px;padding:8px 14px;border-radius:999px;border:1px solid rgba(255,255,255,.15);background:rgba(255,255,255,.08);color:#fff;font:600 13px system-ui,sans-serif;cursor:pointer;-webkit-app-region:no-drag;user-select:none;';
 
     const playingTitle = (dom.nowPlayingTitle && dom.nowPlayingTitle.textContent) || state.currentVideoTitle || '';
-    const hasActivePlaying = !!(state.roomId && dom.roomWorkspaceSection && !dom.roomWorkspaceSection.classList.contains('hidden') && playingTitle && !playingTitle.includes('Henüz') && !playingTitle.includes('Seçilmedi') && !playingTitle.includes('No video'));
+    const hasActivePlaying = !!(state.isInRoom && state.roomId && state.currentVideoId && dom.roomWorkspaceSection && !dom.roomWorkspaceSection.classList.contains('hidden') && playingTitle && !playingTitle.includes('Henüz') && !playingTitle.includes('Seçilmedi') && !playingTitle.includes('No video'));
 
     const ov = document.createElement('div');
     ov.id = 'desktopBrowserOverlay';
     ov.style.cssText = 'position:fixed;inset:0;z-index:2147483000;background:#000;display:flex;flex-direction:column;';
     ov.innerHTML = `
       <div style="display:flex;align-items:center;gap:10px;padding:10px 16px 10px ${isMac ? 84 : 16}px;background:#0B0D14;border-bottom:1px solid rgba(255,255,255,.1);-webkit-app-region:drag;">
-        <button id="dbPlatformBtn" type="button" title="Farklı bir platform seç (YouTube, Web Tarayıcı vb.)" style="${btnCss}background:rgba(225,29,72,.22);border-color:rgba(225,29,72,.45);color:#fda4af;font-weight:700;">☰ Platform Seç</button>
+        ${isConnectMode
+          ? `<button id="dbCloseConnectBtn" type="button" title="Ayarlara Dön" style="${btnCss}background:rgba(255,255,255,.12);border-color:rgba(255,255,255,.25);color:#fff;font-weight:700;">✕ Kapat</button>`
+          : `<button id="dbPlatformBtn" type="button" title="Farklı bir platform seç (YouTube, Web Tarayıcı vb.)" style="${btnCss}background:rgba(225,29,72,.22);border-color:rgba(225,29,72,.45);color:#fda4af;font-weight:700;">☰ Platform Seç</button>`
+        }
         <button id="dbBackBtn" type="button" title="Önceki Sayfa (Geri - en başa gelince odaya döner)" style="${btnCss}">← Geri</button>
         <button id="dbFwdBtn" type="button" title="Sonraki Sayfa (İleri)" style="${btnCss}">→ İleri</button>
         <div style="flex:1;min-width:0;display:flex;flex-direction:column;align-items:center;text-align:center;">
           <span id="dbTitle" style="width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#e5e7eb;font:700 14px system-ui,sans-serif;">${platformTitle}</span>
+          ${(!isConnectMode && hasActivePlaying) ? `<span style="color:#34d399;font:600 11px system-ui,sans-serif;">▶ Arka planda "${escapeHtml(playingTitle.substring(0, 42))}" kesintisiz oynuyor</span>` : ''}
         </div>
-        <button id="dbQueueBtn" type="button" title="Mevcut videoyu durdurmadan sıraya ekle" style="${btnCss}background:rgba(255,255,255,.14);border-color:rgba(255,255,255,.25);">+ Sıraya Ekle</button>
-        <button id="dbPlayBtn" type="button" title="Bu videoyu hemen odada başlat" style="${btnCss}background:linear-gradient(90deg,#e11d48,#a64d79);border-color:transparent;font-weight:700;">▶ Odada Oynat</button>
+        ${isConnectMode
+          ? `<button id="dbSaveConnectBtn" type="button" title="Giriş yaptıysanız oturumu kaydedip Ayarlara dönün" style="${btnCss}background:linear-gradient(90deg,#10b981,#059669);border-color:transparent;font-weight:700;">✓ Oturumu Kaydet & Bağla</button>`
+          : `<button id="dbQueueBtn" type="button" title="Mevcut videoyu durdurmadan sıraya ekle" style="${btnCss}background:rgba(255,255,255,.14);border-color:rgba(255,255,255,.25);">+ Sıraya Ekle</button>
+             <button id="dbPlayBtn" type="button" title="Bu videoyu hemen odada başlat" style="${btnCss}background:linear-gradient(90deg,#e11d48,#a64d79);border-color:transparent;font-weight:700;">▶ Şimdi Oynat</button>`
+        }
+      </div>
+      <div id="dbChoiceBanner" style="display:none;align-items:center;justify-content:space-between;gap:12px;padding:10px 18px;background:linear-gradient(90deg,rgba(15,23,42,.97),rgba(30,27,75,.97));border-bottom:1px solid rgba(255,255,255,.15);">
+        <div style="min-width:0;flex:1;">
+          <div style="color:#fda4af;font:700 11px system-ui,sans-serif;text-transform:uppercase;letter-spacing:.04em;">Video Seçildi — Arka Plandaki Video Oynamaya Devam Ediyor</div>
+          <div id="dbChoiceTitle" style="color:#fff;font:700 13px system-ui,sans-serif;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"></div>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px;flex-shrink:0;">
+          <button id="dbChoiceQueueBtn" type="button" style="${btnCss}background:rgba(16,185,129,.22);border-color:rgba(16,185,129,.5);color:#6ee7b7;font-weight:700;">+ Sıraya Al (Mevcut Video Devam Etsin)</button>
+          <button id="dbChoicePlayNowBtn" type="button" style="${btnCss}background:linear-gradient(90deg,#e11d48,#a64d79);border-color:transparent;font-weight:700;">▶ Şimdi Oynat</button>
+          <button id="dbChoiceDismissBtn" type="button" style="${btnCss}padding:6px 10px;font-size:12px;">Gezinmeye Devam Et</button>
+        </div>
       </div>
       <webview id="dbWebview" src="${startUrl}" partition="persist:miruo-browser" useragent="${ua}" allowpopups style="flex:1;width:100%;border:0;background:#000;"></webview>`;
     document.body.appendChild(ov);
@@ -21028,32 +21277,135 @@ function initEvents() {
     const wv = ov.querySelector('#dbWebview');
     const titleEl = ov.querySelector('#dbTitle');
     const platformBtn = ov.querySelector('#dbPlatformBtn');
+    const closeConnectBtn = ov.querySelector('#dbCloseConnectBtn');
+    const saveConnectBtn = ov.querySelector('#dbSaveConnectBtn');
     const backBtn = ov.querySelector('#dbBackBtn');
     const fwdBtn = ov.querySelector('#dbFwdBtn');
     const playBtn = ov.querySelector('#dbPlayBtn');
     const queueBtn = ov.querySelector('#dbQueueBtn');
+    const choiceBanner = ov.querySelector('#dbChoiceBanner');
+    const choiceTitle = ov.querySelector('#dbChoiceTitle');
+    const choiceQueueBtn = ov.querySelector('#dbChoiceQueueBtn');
+    const choicePlayNowBtn = ov.querySelector('#dbChoicePlayNowBtn');
+    const choiceDismissBtn = ov.querySelector('#dbChoiceDismissBtn');
 
     const isYt = providerKey === 'youtube';
     const isTwitch = providerKey === 'twitch';
     const isKick = providerKey === 'kick';
+    let lastPromptedUrl = '';
 
     const canPlay = () => {
       let cur = '';
       try { cur = wv.getURL(); } catch (e) { return false; }
       if (!cur || !/^https?:/i.test(cur)) return false;
+      if (/accounts\.google\.|\/ServiceLogin|\/signin|\/login|\/ap\/|auth-redirect/i.test(cur)) return false;
       if (isYt) return !!extractYtId(cur);
       if (isTwitch || cur.includes('twitch.tv')) return !!extractTwitchChannel(cur);
       if (isKick || cur.includes('kick.com')) return !!extractKickChannel(cur);
       return true;
     };
 
+    const close = () => {
+      document.removeEventListener('keydown', onKey, true);
+      ov.remove();
+      if (typeof window.ensureRoomPlaybackContinues === 'function') {
+        try { window.ensureRoomPlaybackContinues(); } catch (_) {}
+      }
+    };
+    const onKey = (e) => { if (e.key === 'Escape') close(); };
+    document.addEventListener('keydown', onKey, true);
+
+    const finishConnectSave = (detectedEmail) => {
+      const savedUser = JSON.parse(localStorage.getItem('miruo_user') || '{}');
+      const fallbackAcc = detectedEmail || savedUser.email || (savedUser.username ? `@${savedUser.username}` : `${platformTitle} Hesabı (Aktif)`);
+      if (window.MiruoBridge && typeof window.MiruoBridge.onAccountConnected === 'function') {
+        window.MiruoBridge.onAccountConnected(providerKey, fallbackAcc);
+      }
+      close();
+    };
+
+    if (closeConnectBtn) closeConnectBtn.addEventListener('click', close);
+    if (saveConnectBtn) {
+      saveConnectBtn.addEventListener('click', () => {
+        try {
+          wv.executeJavaScript(`
+            (function() {
+              try {
+                var text = document.body ? document.body.innerText : '';
+                var m = text.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}/);
+                if (m) return m[0];
+              } catch(e) {}
+              return '';
+            })()
+          `).then((em) => finishConnectSave(em || '')).catch(() => finishConnectSave(''));
+        } catch (_) {
+          finishConnectSave('');
+        }
+      });
+    }
+
     const refreshNav = () => {
-      let t = '';
-      try { t = (wv.getTitle() || '').replace(/\s*-\s*YouTube$/i, ''); } catch (e) {}
+      if (typeof window.ensureRoomPlaybackContinues === 'function') {
+        try { window.ensureRoomPlaybackContinues(); } catch (_) {}
+      }
+      let t = '', cur = '';
+      try {
+        cur = wv.getURL() || '';
+        t = (wv.getTitle() || '').replace(/\s*-\s*YouTube$/i, '');
+      } catch (e) {}
       if (t) titleEl.textContent = t;
+
+      // In Connect Mode: auto-detect completion once redirected out of login/auth pages onto authenticated platform page
+      if (isConnectMode && cur && /^https?:/i.test(cur)) {
+        const lower = cur.toLowerCase();
+        const isStillAuth = /servicelogin|\/signin|identifier|\/v3\/signin|\/login|openid|challenge|auth-redirect|\/ap\/|accounts\.google/i.test(lower);
+        if (!isStillAuth) {
+          const isTargetReached =
+            (providerKey === 'youtube' && lower.includes('youtube.com')) ||
+            (providerKey === 'netflix' && lower.includes('netflix.com') && (lower.includes('/browse') || lower.includes('/profiles'))) ||
+            (providerKey === 'prime' && (lower.includes('primevideo.com/storefront') || lower.includes('primevideo.com/detail') || lower.includes('primevideo.com/region'))) ||
+            (providerKey === 'disney' && lower.includes('disneyplus.com') && (lower.includes('/home') || lower.includes('/browse')));
+          if (isTargetReached) {
+            try {
+              wv.executeJavaScript(`
+                (function() {
+                  try {
+                    var text = document.body ? document.body.innerText : '';
+                    var m = text.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}/);
+                    if (m) return m[0];
+                  } catch(e) {}
+                  return '';
+                })()
+              `).then((em) => finishConnectSave(em || '')).catch(() => finishConnectSave(''));
+            } catch (_) {
+              finishConnectSave('');
+            }
+            return;
+          }
+        }
+      }
+
       const ok = canPlay();
-      playBtn.style.opacity = ok ? '1' : '0.45';
-      queueBtn.style.opacity = ok ? '1' : '0.45';
+      if (playBtn) playBtn.style.opacity = ok ? '1' : '0.45';
+      if (queueBtn) queueBtn.style.opacity = ok ? '1' : '0.45';
+
+      // When a video is already playing in the room, mute the picker webview & pause its preview video so the room's background video never stops or overlaps, and show the instant "Şimdi Oynat" / "+ Sıraya Al" bar!
+      if (!isConnectMode && hasActivePlaying) {
+        try { if (typeof wv.setAudioMuted === 'function') wv.setAudioMuted(true); } catch (_) {}
+        if (ok) {
+          try {
+            wv.executeJavaScript(`document.querySelectorAll('video').forEach(v => { try { v.muted = true; v.pause(); } catch(_) {} });`).catch(() => {});
+          } catch (_) {}
+          if (choiceBanner && cur !== lastPromptedUrl) {
+            lastPromptedUrl = cur;
+            if (choiceTitle) choiceTitle.textContent = t || cur;
+            choiceBanner.style.display = 'flex';
+          }
+        } else if (choiceBanner) {
+          choiceBanner.style.display = 'none';
+        }
+      }
+
       try {
         backBtn.style.opacity = wv.canGoBack() ? '1' : '0.45';
         fwdBtn.style.opacity = wv.canGoForward() ? '1' : '0.45';
@@ -21062,13 +21414,6 @@ function initEvents() {
 
     ['did-navigate', 'did-navigate-in-page', 'page-title-updated', 'dom-ready'].forEach(ev => wv.addEventListener(ev, refreshNav));
     refreshNav();
-
-    const close = () => {
-      document.removeEventListener('keydown', onKey, true);
-      ov.remove();
-    };
-    const onKey = (e) => { if (e.key === 'Escape') close(); };
-    document.addEventListener('keydown', onKey, true);
 
     const handleBack = () => {
       try {
@@ -21108,14 +21453,15 @@ function initEvents() {
       window.miruoDesktop.onNavForward(handleForward);
     }
 
-    playBtn.addEventListener('click', () => {
+    const doPlaySelected = () => {
       if (!canPlay()) {
         showToast(isYt ? 'Önce izlemek istediğin videoyu aç' : (isTwitch ? 'Önce izlemek istediğin bir Twitch yayınına tıkla' : (isKick ? 'Önce izlemek istediğin bir Kick yayınına tıkla' : 'Önce bir sayfa aç')));
         return;
       }
       let cur = '', t = '';
       try { cur = wv.getURL(); t = (wv.getTitle() || '').replace(/\s*-\s*YouTube$/i, ''); } catch (e) {}
-      close();
+      ov.remove();
+      document.removeEventListener('keydown', onKey, true);
       const startSelectedContent = () => {
         if (isKick || cur.includes('kick.com')) {
           const ch = extractKickChannel(cur);
@@ -21137,9 +21483,9 @@ function initEvents() {
         createAndJoinRoom(roomTitle, state.isPrivateRoom, platformTitle);
         setTimeout(startSelectedContent, 450);
       }
-    });
+    };
 
-    queueBtn.addEventListener('click', () => {
+    const doQueueSelected = () => {
       if (!canPlay()) {
         showToast(isYt ? 'Önce sıraya eklemek istediğin videoyu aç' : (isTwitch ? 'Önce sıraya eklemek istediğin bir Twitch yayınına tıkla' : (isKick ? 'Önce sıraya eklemek istediğin bir Kick yayınına tıkla' : 'Önce bir sayfa aç')));
         return;
@@ -21150,11 +21496,8 @@ function initEvents() {
       const cleanTwitch = (isTwitch || cur.includes('twitch.tv')) ? extractTwitchChannel(cur) : '';
       const cleanKick = (isKick || cur.includes('kick.com')) ? extractKickChannel(cur) : '';
 
-      if (!state.roomId || !dom.roomWorkspaceSection || dom.roomWorkspaceSection.classList.contains('hidden')) {
-        close();
-        if (cleanKick) loadKickStream(cur, t || `${cleanKick} - Kick`);
-        else if (cleanTwitch) loadTwitchStream(cur, t || `${cleanTwitch} - Twitch`);
-        else selectAndPlayYoutubeVideo(cur, t || platformTitle, platformTitle);
+      if (!state.roomId || !dom.roomWorkspaceSection || dom.roomWorkspaceSection.classList.contains('hidden') || !state.currentVideoId) {
+        doPlaySelected();
         return;
       }
 
@@ -21185,7 +21528,17 @@ function initEvents() {
       }
       showToast(`✓ "${t || platformTitle}" sıraya eklendi! Odanızdaki video kesintisiz devam ediyor.`);
       close();
-    });
+    };
+
+    if (playBtn) playBtn.addEventListener('click', doPlaySelected);
+    if (queueBtn) queueBtn.addEventListener('click', doQueueSelected);
+    if (choicePlayNowBtn) choicePlayNowBtn.addEventListener('click', doPlaySelected);
+    if (choiceQueueBtn) choiceQueueBtn.addEventListener('click', doQueueSelected);
+    if (choiceDismissBtn) {
+      choiceDismissBtn.addEventListener('click', () => {
+        if (choiceBanner) choiceBanner.style.display = 'none';
+      });
+    }
   }
 
   function launchPlatform(providerKey) {
@@ -21260,6 +21613,12 @@ function initEvents() {
       return;
     }
     if (state.isInRoom && state.roomId) {
+      // If a video is ALREADY playing in the room on Web, never stop it immediately when clicking a platform card!
+      // Instead, show a non-destructive action dialog where the user can choose "Şimdi Oynat" or "+ Sıraya Ekle".
+      if (hasActiveVideo) {
+        openWebPlatformActionPrompt(providerKey, targetUrl, config.title);
+        return;
+      }
       if (providerKey === 'kick') {
         const chan = extractKickChannel(targetUrl) || 'elraenn';
         loadKickStream(chan, 'Kick Yayını');
@@ -21312,6 +21671,67 @@ function initEvents() {
     launchPlatform('youtube');
   }
   window.openRealYouTubeInterface = openRealYouTubeInterface;
+  function openWebPlatformActionPrompt(providerKey, defaultUrl, platformTitle) {
+    const old = document.getElementById('miruoWebPlatformPrompt');
+    if (old) old.remove();
+    if (typeof window.ensureRoomPlaybackContinues === 'function') {
+      try { window.ensureRoomPlaybackContinues(); } catch (_) {}
+    }
+    const isKick = providerKey === 'kick';
+    const isTwitch = providerKey === 'twitch';
+    const placeholder = isKick ? 'Kick kanal adı veya linki (örn: elraenn)' : (isTwitch ? 'Twitch kanal adı veya linki (örn: elraenn)' : `${platformTitle} video / içerik linki`);
+    const defVal = isKick ? 'elraenn' : (isTwitch ? 'elraenn' : defaultUrl);
+    const modal = document.createElement('div');
+    modal.id = 'miruoWebPlatformPrompt';
+    modal.style.cssText = 'position:fixed;inset:0;z-index:2147483000;background:rgba(0,0,0,.78);backdrop-filter:blur(8px);display:flex;align-items:center;justify-content:center;padding:16px;';
+    modal.innerHTML = `
+      <div style="width:100%;max-width:420px;background:#0F131F;border:1px solid rgba(255,255,255,.15);border-radius:20px;padding:20px;color:#fff;box-shadow:0 24px 64px rgba(0,0,0,.7);">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
+          <span style="font:700 15px system-ui,sans-serif;">${escapeHtml(platformTitle)} İçeriği Seç</span>
+          <button id="mwpCloseBtn" type="button" style="background:rgba(255,255,255,.1);border:0;color:#cbd5e1;width:28px;height:28px;border-radius:999px;cursor:pointer;">✕</button>
+        </div>
+        <p style="font:500 12px system-ui,sans-serif;color:#34d399;margin:0 0 12px 0;">▶ Arka plandaki mevcut videonuz kesintisiz oynamaya devam ediyor.</p>
+        <input id="mwpInput" type="text" value="${escapeHtml(defVal)}" placeholder="${escapeHtml(placeholder)}" style="width:100%;box-sizing:border-box;padding:10px 12px;border-radius:12px;border:1px solid rgba(255,255,255,.18);background:rgba(0,0,0,.45);color:#fff;font:500 13px system-ui,sans-serif;margin-bottom:14px;outline:none;" />
+        <div style="display:flex;gap:8px;justify-content:flex-end;">
+          <button id="mwpQueueBtn" type="button" style="padding:10px 14px;border-radius:12px;border:1px solid rgba(16,185,129,.45);background:rgba(16,185,129,.18);color:#6ee7b7;font:700 12px system-ui,sans-serif;cursor:pointer;">+ Sıraya Al (Video Devam Etsin)</button>
+          <button id="mwpPlayNowBtn" type="button" style="padding:10px 16px;border-radius:12px;border:0;background:linear-gradient(90deg,#e11d48,#a64d79);color:#fff;font:700 12px system-ui,sans-serif;cursor:pointer;">▶ Şimdi Oynat</button>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(modal);
+    const inp = modal.querySelector('#mwpInput');
+    const closeM = () => {
+      modal.remove();
+      if (typeof window.ensureRoomPlaybackContinues === 'function') {
+        try { window.ensureRoomPlaybackContinues(); } catch (_) {}
+      }
+    };
+    modal.querySelector('#mwpCloseBtn').addEventListener('click', closeM);
+    modal.addEventListener('click', (e) => { if (e.target === modal) closeM(); });
+    modal.querySelector('#mwpPlayNowBtn').addEventListener('click', () => {
+      const val = (inp.value || '').trim() || defVal;
+      modal.remove();
+      if (isKick) loadKickStream(val, `${extractKickChannel(val) || val} - Kick`);
+      else if (isTwitch) loadTwitchStream(val, `${extractTwitchChannel(val) || val} - Twitch`);
+      else selectAndPlayYoutubeVideo(val, `${platformTitle} Yayını`, platformTitle);
+    });
+    modal.querySelector('#mwpQueueBtn').addEventListener('click', () => {
+      const val = (inp.value || '').trim() || defVal;
+      if (isKick) {
+        const ch = extractKickChannel(val) || val;
+        addToRoomQueue({ id: `kick:${ch}`, title: `${ch} - Kick Yayını`, thumb: 'https://kick.com/favicon.ico', channel: ch, addedBy: state.username });
+      } else if (isTwitch) {
+        const ch = extractTwitchChannel(val) || val;
+        addToRoomQueue({ id: `twitch:${ch}`, title: `${ch} - Twitch Yayını`, thumb: 'logo.png', channel: ch, addedBy: state.username });
+      } else {
+        const ytId = extractYtId(val);
+        addToRoomQueue({ id: ytId || val, title: `${platformTitle} İçeriği`, thumb: ytId ? `https://i.ytimg.com/vi/${ytId}/hqdefault.jpg` : 'logo.png', channel: platformTitle, addedBy: state.username });
+      }
+      showToast(`✓ "${platformTitle}" sıraya eklendi! Mevcut video kaldığı yerden devam ediyor.`);
+      closeM();
+    });
+  }
+
   window.launchPlatform = launchPlatform;
 
   function openRaveYoutubeModal() {
@@ -21637,7 +22057,7 @@ function initEvents() {
     updateRoomQueueUI();
   }
 
-  function handleRemoteVideoChanged(user, title, videoId) {
+  function handleRemoteVideoChanged(user, title, videoId, provider) {
     // Enforce strict room ownership / authorization on remote video/platform changes
     const cleanU = (u) => String(u || '').toLowerCase().replace(/^@/, '').trim();
     const senderClean = cleanU(user);
@@ -21658,12 +22078,12 @@ function initEvents() {
       showToast(`${user || 'Oda Sahibi'} yeni içerik başlattı: ${title}`);
       renderChatMessage('SİSTEM', `${user || 'Oda Sahibi'} yeni içerik başlattı: ${title}`, false);
     }
-    loadRemoteContent(videoId, title);
+    loadRemoteContent(videoId, title, true, 0, provider);
   }
 
   window.loadRemoteContentBridge = loadRemoteContent;
-  // Loads whatever the partner started (YouTube / direct stream / web / twitch) so every mode stays in sync
-  function loadRemoteContent(videoId, title, startPlaying = true, startTime = 0) {
+  // Loads whatever the partner started (YouTube / direct stream / web / twitch / kick / netflix / prime / disney) so every mode stays in sync
+  function loadRemoteContent(videoId, title, startPlaying = true, startTime = 0, provider) {
     if (!videoId || videoId === state.currentVideoId) return;
     try {
       const v = String(videoId);
@@ -21681,7 +22101,16 @@ function initEvents() {
         } else if (/\.(mp4|webm|m3u8|mov|mkv)(\?.*)?$/i.test(v) || v.includes('.m3u8') || v.includes('.mp4') || v.includes('/hls/') || v.includes('/stream/') || v.includes('manifest') || v.includes('googlevideo.com')) {
           loadDirectVideo(v, title, startPlaying, startTime);
         } else {
-          loadWebStream(v, title, 'Web', false);
+          let resolvedProvider = provider || 'Web';
+          if (!provider) {
+            if (/netflix\.com/i.test(v)) resolvedProvider = 'Netflix';
+            else if (/primevideo\.com|amazon\./i.test(v)) resolvedProvider = 'Prime Video';
+            else if (/disneyplus\.com/i.test(v)) resolvedProvider = 'Disney+';
+            else if (/exxen\.com/i.test(v)) resolvedProvider = 'Exxen';
+            else if (/blutv\.com/i.test(v)) resolvedProvider = 'BluTV';
+            else if (/gain\.tv/i.test(v)) resolvedProvider = 'GAİN';
+          }
+          loadWebStream(v, title, resolvedProvider, false);
         }
       }
     } catch (err) {
@@ -21787,8 +22216,10 @@ function initEvents() {
     state.currentTime = target;
     if (state.activeMode === 'youtube') {
       sendYtCommand('seekTo', [target, true]);
-    } else if (dom.nativeVideoPlayer) {
+    } else if (state.activeMode === 'direct' && dom.nativeVideoPlayer) {
       dom.nativeVideoPlayer.currentTime = target;
+    } else if (typeof controlStageWebviewVideo === 'function') {
+      controlStageWebviewVideo('seek', target);
     }
     if (dom.seekSlider && state.duration > 0) {
       dom.seekSlider.value = (target / state.duration) * 100;
@@ -24002,7 +24433,7 @@ window.recordUsernameChange = recordUsernameChange;
     youtube: {
       name: 'YouTube / Google',
       iconSvg: '<svg class="w-5 h-5 text-red-500 fill-current" viewBox="0 0 24 24"><path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z"/></svg>',
-      loginUrl: 'https://accounts.google.com/ServiceLogin?service=youtube',
+      loginUrl: 'https://accounts.google.com/ServiceLogin?service=youtube&continue=https%3A%2F%2Fwww.youtube.com%2F',
       watchUrl: 'https://m.youtube.com/feed/subscriptions',
       placeholder: 'ornek@gmail.com'
     },
@@ -24026,6 +24457,20 @@ window.recordUsernameChange = recordUsernameChange;
       loginUrl: 'https://www.disneyplus.com/login',
       watchUrl: 'https://www.disneyplus.com/home',
       placeholder: 'disney@hesabiniz.com'
+    },
+    kick: {
+      name: 'Kick',
+      iconSvg: '<div class="w-6 h-6 rounded bg-emerald-900/60 text-emerald-400 font-black text-xs flex items-center justify-center">K</div>',
+      loginUrl: 'https://kick.com',
+      watchUrl: 'https://kick.com',
+      placeholder: 'kick_kullanici'
+    },
+    twitch: {
+      name: 'Twitch',
+      iconSvg: '<div class="w-6 h-6 rounded bg-purple-900/60 text-purple-300 font-black text-xs flex items-center justify-center">Tw</div>',
+      loginUrl: 'https://www.twitch.tv/login',
+      watchUrl: 'https://www.twitch.tv',
+      placeholder: 'twitch_kullanici'
     }
   };
 
@@ -24040,7 +24485,9 @@ window.recordUsernameChange = recordUsernameChange;
       youtube: { connected: false, account: '', autoStart: true },
       netflix: { connected: false, account: '', autoStart: true },
       prime: { connected: false, account: '', autoStart: true },
-      disney: { connected: false, account: '', autoStart: true }
+      disney: { connected: false, account: '', autoStart: true },
+      kick: { connected: false, account: '', autoStart: true },
+      twitch: { connected: false, account: '', autoStart: true }
     };
   }
   window.getConnectedAccounts = getConnectedAccounts;
@@ -24069,31 +24516,13 @@ window.recordUsernameChange = recordUsernameChange;
   window.updateNowPlayingAccountBadge = updateNowPlayingAccountBadge;
 
   function startDirectPlatformLogin(provider) {
-    const pDef = PLATFORM_AUTH_CONFIGS[provider];
-    if (!pDef) return;
-
-    // 1. In iOS Native App: Opens the native in-app browser directly to that site's official login page!
-    if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.openPlatform) {
-      window.webkit.messageHandlers.openPlatform.postMessage({
-        provider: provider,
-        url: pDef.loginUrl,
-        title: `${pDef.name} Giriş`,
-        action: 'connect',
-        lang: currentLang
-      });
-      return;
-    }
-
-    // 2. On Web Desktop: Open login in a new tab
-    try {
-      window.open(pDef.loginUrl, '_blank');
-    } catch (e) {}
+    connectPlatformAccountPrompt(provider);
   }
 
   function connectPlatformAccountPrompt(provider) {
-    const pDef = PLATFORM_AUTH_CONFIGS[provider] || { name: provider, placeholder: 'ornek@email.com' };
+    const pDef = PLATFORM_AUTH_CONFIGS[provider] || { name: provider, loginUrl: 'https://www.google.com', placeholder: 'ornek@email.com' };
     const savedUser = JSON.parse(localStorage.getItem('miruo_user') || '{}');
-    const defaultAcc = savedUser.email || (savedUser.username ? `@${savedUser.username}` : '');
+    const defaultAcc = savedUser.email || (savedUser.username ? `@${savedUser.username}` : `${pDef.name} Hesabı`);
 
     // 1. In iOS Native App: Opens native in-app browser with connect mode
     if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.openPlatform) {
@@ -24108,24 +24537,56 @@ window.recordUsernameChange = recordUsernameChange;
       return;
     }
 
-    // 2. On Web Desktop / Electron: Clean in-app prompt so user stays in Settings
-    const entered = window.prompt(
-      `${pDef.name} hesabınızı bağlayın.\n\nHesap e-posta veya kullanıcı adınızı girin:`,
-      defaultAcc
-    );
-    if (entered && entered.trim()) {
-      const finalAcc = entered.trim();
-      const accounts = getConnectedAccounts();
-      accounts[provider] = {
-        connected: true,
-        account: finalAcc,
-        autoStart: true,
-        connectedAt: Date.now()
-      };
-      saveConnectedAccounts(accounts);
-      renderConnectedAccountsUI();
-      showToast(`✓ ${pDef.name} hesabı (${finalAcc}) başarıyla bağlandı!`);
+    // 2. On Electron Desktop App: Opens the persistent in-app browser directly to the official login page!
+    if (window.miruoDesktop && window.miruoDesktop.isDesktop) {
+      openDesktopPlatformBrowser(provider, pDef.loginUrl, `${pDef.name} Hesap Bağlama`, { isConnectMode: true });
+      return;
     }
+
+    // 3. On Web Browser: Redirects / opens official login window AND renders an in-app confirmation modal (never window.prompt)
+    try {
+      window.open(pDef.loginUrl, `miruo_auth_${provider}`, 'width=520,height=680,left=180,top=100,noopener=no');
+    } catch (_) {}
+
+    const oldModal = document.getElementById('miruoConnectAccountModal');
+    if (oldModal) oldModal.remove();
+    const modal = document.createElement('div');
+    modal.id = 'miruoConnectAccountModal';
+    modal.style.cssText = 'position:fixed;inset:0;z-index:2147483000;background:rgba(0,0,0,.78);backdrop-filter:blur(8px);display:flex;align-items:center;justify-content:center;padding:16px;';
+    modal.innerHTML = `
+      <div style="width:100%;max-width:410px;background:#0F131F;border:1px solid rgba(255,255,255,.15);border-radius:20px;padding:20px;color:#fff;box-shadow:0 24px 64px rgba(0,0,0,.7);">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
+          <span style="font:700 15px system-ui,sans-serif;">${escapeHtml(pDef.name)} Hesabını Bağla</span>
+          <button id="mcaCloseBtn" type="button" style="background:rgba(255,255,255,.1);border:0;color:#cbd5e1;width:28px;height:28px;border-radius:999px;cursor:pointer;">✕</button>
+        </div>
+        <p style="font:500 12px system-ui,sans-serif;color:#94a3b8;margin:0 0 12px 0;">
+          ${escapeHtml(pDef.name)} giriş sayfası yeni pencerede açıldı. Giriş yaptıktan sonra hesabınızı aşağıdan onaylayın:
+        </p>
+        <div style="margin-bottom:12px;">
+          <a href="${escapeHtml(pDef.loginUrl)}" target="_blank" rel="noopener" style="display:inline-flex;align-items:center;gap:6px;color:#fda4af;font:600 12px system-ui,sans-serif;text-decoration:underline;">
+            ↗ Giriş penceresi açılmadıysa buradan açın
+          </a>
+        </div>
+        <input id="mcaInput" type="text" value="${escapeHtml(defaultAcc)}" placeholder="${escapeHtml(pDef.placeholder || 'ornek@email.com')}" style="width:100%;box-sizing:border-box;padding:10px 12px;border-radius:12px;border:1px solid rgba(255,255,255,.18);background:rgba(0,0,0,.45);color:#fff;font:500 13px system-ui,sans-serif;margin-bottom:14px;outline:none;" />
+        <div style="display:flex;gap:8px;justify-content:flex-end;">
+          <button id="mcaCancelBtn" type="button" style="padding:9px 14px;border-radius:12px;border:1px solid rgba(255,255,255,.15);background:rgba(255,255,255,.06);color:#cbd5e1;font:600 12px system-ui,sans-serif;cursor:pointer;">İptal</button>
+          <button id="mcaConfirmBtn" type="button" style="padding:9px 16px;border-radius:12px;border:0;background:linear-gradient(90deg,#10b981,#059669);color:#fff;font:700 12px system-ui,sans-serif;cursor:pointer;">✓ Giriş Yaptım, Hesabı Bağla</button>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(modal);
+    const inp = modal.querySelector('#mcaInput');
+    const closeM = () => modal.remove();
+    modal.querySelector('#mcaCloseBtn').addEventListener('click', closeM);
+    modal.querySelector('#mcaCancelBtn').addEventListener('click', closeM);
+    modal.addEventListener('click', (e) => { if (e.target === modal) closeM(); });
+    modal.querySelector('#mcaConfirmBtn').addEventListener('click', () => {
+      const finalAcc = (inp.value || '').trim() || defaultAcc;
+      modal.remove();
+      if (window.MiruoBridge && typeof window.MiruoBridge.onAccountConnected === 'function') {
+        window.MiruoBridge.onAccountConnected(provider, finalAcc);
+      }
+    });
   }
 
   function toggleAccountConnection(provider) {
@@ -24184,7 +24645,9 @@ window.recordUsernameChange = recordUsernameChange;
       { key: 'youtube', btnId: 'toggleYtAccountBtn', badgeId: 'ytAccountStatusBadge', subId: 'ytAccountSubText', defaultSub: 'Google hesabı ile oturum aç' },
       { key: 'netflix', btnId: 'toggleNetflixAccountBtn', badgeId: 'netflixAccountStatusBadge', subId: 'netflixAccountSubText', defaultSub: 'Netflix hesabı ile oturum aç' },
       { key: 'prime', btnId: 'togglePrimeAccountBtn', badgeId: 'primeAccountStatusBadge', subId: 'primeAccountSubText', defaultSub: 'Prime hesabı ile oturum aç' },
-      { key: 'disney', btnId: 'toggleDisneyAccountBtn', badgeId: 'disneyAccountStatusBadge', subId: 'disneyAccountSubText', defaultSub: 'Disney+ hesabı ile oturum aç' }
+      { key: 'disney', btnId: 'toggleDisneyAccountBtn', badgeId: 'disneyAccountStatusBadge', subId: 'disneyAccountSubText', defaultSub: 'Disney+ hesabı ile oturum aç' },
+      { key: 'kick', btnId: 'toggleKickAccountBtn', badgeId: 'kickAccountStatusBadge', subId: 'kickAccountSubText', defaultSub: 'Kick hesabı ile oturum aç' },
+      { key: 'twitch', btnId: 'toggleTwitchAccountBtn', badgeId: 'twitchAccountStatusBadge', subId: 'twitchAccountSubText', defaultSub: 'Twitch hesabı ile oturum aç' }
     ];
 
     configs.forEach(cfg => {
@@ -24237,30 +24700,35 @@ window.recordUsernameChange = recordUsernameChange;
   };
   window.closeConnectPlatformModal = function() {};
 
-  // Platform Account Connect / Disconnect Buttons
-  if (dom.toggleYtAccountBtn) {
-    dom.toggleYtAccountBtn.addEventListener('click', () => {
-      toggleAccountConnection('youtube');
-    });
-  }
-
-  if (dom.toggleNetflixAccountBtn) {
-    dom.toggleNetflixAccountBtn.addEventListener('click', () => {
-      toggleAccountConnection('netflix');
-    });
-  }
-
-  if (dom.togglePrimeAccountBtn) {
-    dom.togglePrimeAccountBtn.addEventListener('click', () => {
-      toggleAccountConnection('prime');
-    });
-  }
-
-  if (dom.toggleDisneyAccountBtn) {
-    dom.toggleDisneyAccountBtn.addEventListener('click', () => {
-      toggleAccountConnection('disney');
-    });
-  }
+  // Platform Account Connect / Disconnect Buttons (Direct + Delegated)
+  const platformBtnMap = {
+    toggleYtAccountBtn: 'youtube',
+    toggleNetflixAccountBtn: 'netflix',
+    togglePrimeAccountBtn: 'prime',
+    toggleDisneyAccountBtn: 'disney',
+    toggleKickAccountBtn: 'kick',
+    toggleTwitchAccountBtn: 'twitch'
+  };
+  Object.entries(platformBtnMap).forEach(([btnId, prov]) => {
+    const el = document.getElementById(btnId);
+    if (el) {
+      el.dataset.boundConnect = '1';
+      el.addEventListener('click', (e) => {
+        if (e && e.stopPropagation) e.stopPropagation();
+        toggleAccountConnection(prov);
+      });
+    }
+  });
+  document.addEventListener('click', (e) => {
+    const btn = e.target && e.target.closest ? e.target.closest('[data-connect-platform]') : null;
+    if (btn && !btn.dataset.boundConnect) {
+      const prov = btn.getAttribute('data-connect-platform');
+      if (prov) {
+        e.stopPropagation();
+        toggleAccountConnection(prov);
+      }
+    }
+  });
 
 
 
@@ -24354,6 +24822,8 @@ window.recordUsernameChange = recordUsernameChange;
         sendYtCommand('seekTo', [targetTime, true]);
       } else if (state.activeMode === 'direct' && dom.nativeVideoPlayer) {
         dom.nativeVideoPlayer.currentTime = targetTime;
+      } else if (typeof controlStageWebviewVideo === 'function') {
+        controlStageWebviewVideo('seek', targetTime);
       }
       sendP2PData('sync', { action: 'seek', time: targetTime, isPlaying: state.isPlaying, sentAt: Date.now() });
       if (dom.stageBottomMiniProgressBar) {
@@ -24431,6 +24901,8 @@ window.recordUsernameChange = recordUsernameChange;
         sendYtCommand('seekTo', [targetTime, true]);
       } else if (state.activeMode === 'direct' && dom.nativeVideoPlayer) {
         dom.nativeVideoPlayer.currentTime = targetTime;
+      } else if (typeof controlStageWebviewVideo === 'function') {
+        controlStageWebviewVideo('seek', targetTime);
       }
       sendP2PData('sync', { action: 'seek', time: targetTime, isPlaying: state.isPlaying, sentAt: Date.now() });
       const targetPercent = pct * 100;
@@ -25577,6 +26049,9 @@ window.recordUsernameChange = recordUsernameChange;
     if (dom.roomEpisodesModal) dom.roomEpisodesModal.classList.add('hidden');
     if (dom.raveYoutubeModal) dom.raveYoutubeModal.classList.add('hidden');
     if (dom.roomPlatformChooserModal) dom.roomPlatformChooserModal.classList.remove('hidden');
+    if (typeof window.ensureRoomPlaybackContinues === 'function') {
+      try { window.ensureRoomPlaybackContinues(); } catch (_) {}
+    }
   };
   window.openVideoChooser = openVideoChooser;
 

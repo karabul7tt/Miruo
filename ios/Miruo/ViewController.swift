@@ -707,19 +707,23 @@ class ViewController: UIViewController, WKNavigationDelegate, WKUIDelegate, WKSc
         }
         browserVC.onOpenProviderPicker = { [weak self] in
             if isConnectMode { return }
-            let js = "if (typeof switchToProviderPicker === 'function') { switchToProviderPicker(); } else if (typeof openVideoChooser === 'function') { openVideoChooser(); }"
+            let js = "if (typeof window.ensureRoomPlaybackContinues === 'function') window.ensureRoomPlaybackContinues(); if (typeof switchToProviderPicker === 'function') { switchToProviderPicker(); } else if (typeof openVideoChooser === 'function') { openVideoChooser(); }"
             self?.webView.evaluateJavaScript(js, completionHandler: nil)
         }
         browserVC.onVideoSelected = { [weak self] videoIdOrUrl, action in
             let escapedId = videoIdOrUrl.replacingOccurrences(of: "'", with: "\\'")
             let escapedAcc = connectedAccount.replacingOccurrences(of: "'", with: "\\'")
             if action == "queue" {
-                let js = "window.MiruoBridge && window.MiruoBridge.addToQueue && window.MiruoBridge.addToQueue('\(escapedId)');"
+                let js = "window.MiruoBridge && window.MiruoBridge.addToQueue && window.MiruoBridge.addToQueue('\(escapedId)'); if (typeof window.ensureRoomPlaybackContinues === 'function') window.ensureRoomPlaybackContinues();"
                 self?.webView.evaluateJavaScript(js, completionHandler: nil)
             } else {
                 let js = "window.MiruoBridge && window.MiruoBridge.loadVideo('\(escapedId)', undefined, '\(provider)', '\(escapedAcc)');"
                 self?.webView.evaluateJavaScript(js, completionHandler: nil)
             }
+        }
+        browserVC.onBrowserDismissed = { [weak self] in
+            let js = "if (typeof window.ensureRoomPlaybackContinues === 'function') window.ensureRoomPlaybackContinues();"
+            self?.webView.evaluateJavaScript(js, completionHandler: nil)
         }
         let nav = UINavigationController(rootViewController: browserVC)
         nav.modalPresentationStyle = .pageSheet
@@ -729,7 +733,10 @@ class ViewController: UIViewController, WKNavigationDelegate, WKUIDelegate, WKSc
                 sheet.prefersGrabberVisible = true
             }
         }
-        present(nav, animated: true)
+        present(nav, animated: true) { [weak self] in
+            let js = "if (typeof window.ensureRoomPlaybackContinues === 'function') window.ensureRoomPlaybackContinues();"
+            self?.webView.evaluateJavaScript(js, completionHandler: nil)
+        }
     }
     
     // WKNavigationDelegate
@@ -922,6 +929,7 @@ class PlatformBrowserViewController: UIViewController, WKNavigationDelegate, WKU
     var onAccountConnected: ((String, String) -> Void)?
     var onOpenProviderPicker: (() -> Void)?
     var onVideoSelected: ((String, String) -> Void)?
+    var onBrowserDismissed: (() -> Void)?
     
     private var webView: WKWebView!
     private var searchBar: UISearchBar!
@@ -946,6 +954,7 @@ class PlatformBrowserViewController: UIViewController, WKNavigationDelegate, WKU
     override func viewWillDisappear(_ animated: Bool) {
         super.viewWillDisappear(animated)
         progressObservation?.invalidate()
+        onBrowserDismissed?()
     }
     
     private func setupNavigationBar() {
@@ -1143,9 +1152,30 @@ class PlatformBrowserViewController: UIViewController, WKNavigationDelegate, WKU
                         e.preventDefault();
                         e.stopPropagation();
                         notifyVideo(vid);
+                        return;
                     }
                 }
             }, true);
+
+            // Also intercept SPA pushState / replaceState on YouTube mobile so inline navigation to /watch never steals audio focus from the room's playing video
+            if (location.hostname.indexOf('youtube.com') !== -1) {
+                var _origPush = history.pushState;
+                if (_origPush) {
+                    history.pushState = function(state, title, url) {
+                        var vid = url ? extractId(String(url)) : null;
+                        if (vid) {
+                            notifyVideo(vid);
+                            return;
+                        }
+                        return _origPush.apply(this, arguments);
+                    };
+                }
+                setInterval(function() {
+                    document.querySelectorAll('video').forEach(function(v) {
+                        try { v.muted = true; if (!v.paused) v.pause(); } catch(e) {}
+                    });
+                }, 400);
+            }
         })();
         """
         let userScript = WKUserScript(source: scriptSource, injectionTime: .atDocumentEnd, forMainFrameOnly: false)
@@ -1535,6 +1565,20 @@ class PlatformBrowserViewController: UIViewController, WKNavigationDelegate, WKU
                 }
                 let isDisneyHome = lower.contains("/home") || lower.contains("/browse")
                 isActuallyAuthenticated = isDisneyDomain && (hasDisneyAuthCookie || isDisneyHome)
+
+            case "kick":
+                let isKickDomain = lower.contains("kick.com")
+                let hasKickAuthCookie = cookies.contains { c in
+                    c.domain.contains("kick.com") && (c.name.lowercased().contains("session") || c.name.lowercased().contains("token") || c.name.lowercased().contains("auth"))
+                }
+                isActuallyAuthenticated = isKickDomain && hasKickAuthCookie && !lower.contains("/login")
+
+            case "twitch":
+                let isTwitchDomain = lower.contains("twitch.tv")
+                let hasTwitchAuthCookie = cookies.contains { c in
+                    c.domain.contains("twitch.tv") && (c.name == "auth-token" || c.name == "twilight-user" || c.name == "login")
+                }
+                isActuallyAuthenticated = isTwitchDomain && hasTwitchAuthCookie && !lower.contains("/login")
                 
             default:
                 isActuallyAuthenticated = false

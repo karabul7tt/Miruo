@@ -882,26 +882,32 @@ function createWindow(port) {
     }
   }
 
-  // Automatically grant camera, mic, and screen permissions
-  session.defaultSession.setPermissionCheckHandler((webContents, permission, requestingOrigin) => {
-    const allowed = ['media', 'camera', 'microphone', 'notifications', 'display-capture', 'fullscreen', 'mediaKeySystem', 'screen'];
+  // Automatically grant camera, mic, DRM, and screen permissions
+  const checkPerm = (webContents, permission) => {
+    const allowed = ['media', 'camera', 'microphone', 'notifications', 'display-capture', 'fullscreen', 'mediaKeySystem', 'screen', 'clipboard-read', 'clipboard-sanitized-write'];
     return allowed.includes(permission);
-  });
+  };
+  const reqPerm = (webContents, permission, callback) => {
+    callback(checkPerm(webContents, permission));
+  };
+  session.defaultSession.setPermissionCheckHandler(checkPerm);
+  session.defaultSession.setPermissionRequestHandler(reqPerm);
 
-  session.defaultSession.setPermissionRequestHandler((webContents, permission, callback) => {
-    const allowed = ['media', 'camera', 'microphone', 'notifications', 'display-capture', 'fullscreen', 'mediaKeySystem', 'screen'];
-    if (allowed.includes(permission)) {
-      return callback(true);
-    }
-    callback(false);
-  });
+  const browserSession = session.fromPartition('persist:miruo-browser');
+  browserSession.setPermissionCheckHandler(checkPerm);
+  browserSession.setPermissionRequestHandler(reqPerm);
 
   // Native Electron Display Media (Screen Sharing) Handler
+  // Note: On macOS, passing audio:'loopback' when audioRequested is false (or unsupported) causes Electron to reject getDisplayMedia.
   if (session.defaultSession.setDisplayMediaRequestHandler && desktopCapturer) {
     session.defaultSession.setDisplayMediaRequestHandler((request, callback) => {
       desktopCapturer.getSources({ types: ['screen', 'window'] }).then((sources) => {
         if (sources && sources.length > 0) {
-          callback({ video: sources[0], audio: 'loopback' });
+          const response = { video: sources[0] };
+          if (process.platform === 'win32' && request && request.audioRequested) {
+            response.audio = 'loopback';
+          }
+          callback(response);
         } else {
           callback({});
         }
@@ -912,20 +918,50 @@ function createWindow(port) {
     });
   }
 
-  // YouTube & Twitch Embed & Web Referrer Bypass (Fixes Error 152/150/101 & Twitch Parent/Embed Restrictions)
-  session.defaultSession.webRequest.onBeforeSendHeaders(
-    { urls: ['*://*.youtube.com/*', '*://*.youtube-nocookie.com/*', '*://*.twitch.tv/*', '*://player.twitch.tv/*'] },
-    (details, callback) => {
-      const url = details.url || '';
-      if (url.includes('/embed/') || url.includes('/v/') || url.includes('twitch.tv')) {
-        details.requestHeaders['Referer'] = 'https://miruo.com.tr/';
-        if (details.requestHeaders['Origin'] && !details.requestHeaders['Origin'].includes('127.0.0.1')) {
-          details.requestHeaders['Origin'] = 'https://miruo.com.tr';
+  const firefoxAuthUA = process.platform === 'darwin'
+    ? 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:135.0) Gecko/20100101 Firefox/135.0'
+    : 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:135.0) Gecko/20100101 Firefox/135.0';
+  const cleanBrowserUA = process.platform === 'darwin'
+    ? 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36'
+    : 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36';
+
+  // Google Sign-In Attestation Bypass + YouTube & Twitch Embed Referrer Fix
+  const applyPlatformRequestHeaders = (details, callback) => {
+    const url = details.url || '';
+    const headers = details.requestHeaders || {};
+    const isGoogleAuth = url.includes('accounts.google.') || url.includes('accounts.youtube.') || url.includes('myaccount.google.') || url.includes('google.com/accounts') || url.includes('gstatic.com/accounts');
+
+    if (isGoogleAuth) {
+      Object.keys(headers).forEach((k) => {
+        const lk = k.toLowerCase();
+        if (lk.startsWith('sec-ch-ua') || lk.startsWith('x-browser-') || lk === 'x-client-data') {
+          delete headers[k];
         }
-      }
-      callback({ cancel: false, requestHeaders: details.requestHeaders });
+      });
+      headers['User-Agent'] = firefoxAuthUA;
+    } else {
+      Object.keys(headers).forEach((k) => {
+        if (k.toLowerCase() === 'user-agent' && typeof headers[k] === 'string') {
+          headers[k] = headers[k].replace(/\s(Electron|Miruo)\/[^\s]*/gi, '');
+        }
+        if (k.toLowerCase().startsWith('sec-ch-ua') && typeof headers[k] === 'string' && /Electron|Miruo/i.test(headers[k])) {
+          headers[k] = '"Chromium";v="134", "Google Chrome";v="134", "Not:A-Brand";v="24"';
+        }
+      });
     }
-  );
+
+    if ((url.includes('youtube.com/embed/') || url.includes('youtube-nocookie.com/embed/') || url.includes('/v/') || url.includes('twitch.tv')) && !isGoogleAuth) {
+      headers['Referer'] = 'https://miruo.com.tr/';
+      if (headers['Origin'] && !headers['Origin'].includes('127.0.0.1')) {
+        headers['Origin'] = 'https://miruo.com.tr';
+      }
+    }
+
+    callback({ cancel: false, requestHeaders: headers });
+  };
+
+  session.defaultSession.webRequest.onBeforeSendHeaders({ urls: ['*://*/*'] }, applyPlatformRequestHeaders);
+  browserSession.webRequest.onBeforeSendHeaders({ urls: ['*://*/*'] }, applyPlatformRequestHeaders);
 
   // Bypass X-Frame-Options & CSP frame-ancestors for all web streams, Kick, Twitch, and embedded players
   const stripFrameRestrictions = (details, callback) => {
@@ -947,8 +983,6 @@ function createWindow(port) {
   };
 
   session.defaultSession.webRequest.onHeadersReceived(stripFrameRestrictions);
-
-  const browserSession = session.fromPartition('persist:miruo-browser');
   browserSession.webRequest.onHeadersReceived(stripFrameRestrictions);
 
   // Handle external links by opening them in default system browser
@@ -987,9 +1021,53 @@ function createWindow(port) {
 
 // App lifecycle
 app.on('web-contents-created', (_event, contents) => {
+  const ffUA = process.platform === 'darwin'
+    ? 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:135.0) Gecko/20100101 Firefox/135.0'
+    : 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:135.0) Gecko/20100101 Firefox/135.0';
+  const chromeUA = process.platform === 'darwin'
+    ? 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36'
+    : 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36';
+
   if (contents.getType() === 'webview') {
+    const syncWebviewUA = (targetUrl) => {
+      const u = String(targetUrl || '');
+      const isGoogleAuth = u.includes('accounts.google.') || u.includes('accounts.youtube.') || u.includes('myaccount.google.') || u.includes('google.com/accounts');
+      try {
+        contents.setUserAgent(isGoogleAuth ? ffUA : chromeUA);
+      } catch (_) {}
+    };
+    contents.on('will-navigate', (_e, url) => syncWebviewUA(url));
+    contents.on('did-start-navigation', (_e, url, _isInPlace, isMainFrame) => {
+      if (isMainFrame) syncWebviewUA(url);
+    });
+    contents.on('dom-ready', () => {
+      try {
+        const curUrl = contents.getURL() || '';
+        const isGoogleAuth = curUrl.includes('accounts.google.') || curUrl.includes('accounts.youtube.');
+        contents.executeJavaScript(`
+          (function() {
+            try { Object.defineProperty(navigator, 'webdriver', { get: () => undefined }); } catch(_) {}
+            if (${isGoogleAuth ? 'true' : 'false'}) {
+              try { Object.defineProperty(navigator, 'userAgent', { get: () => ${JSON.stringify(ffUA)} }); } catch(_) {}
+              try { Object.defineProperty(navigator, 'userAgentData', { get: () => undefined }); } catch(_) {}
+              try { Object.defineProperty(navigator, 'vendor', { get: () => '' }); } catch(_) {}
+              try { delete window.chrome; } catch(_) {}
+              try {
+                if (navigator.credentials) {
+                  navigator.credentials.get = () => Promise.reject(new DOMException('NotSupportedError', 'NotSupportedError'));
+                  navigator.credentials.create = () => Promise.reject(new DOMException('NotSupportedError', 'NotSupportedError'));
+                }
+              } catch(_) {}
+            }
+          })();
+        `).catch(() => {});
+      } catch (_) {}
+    });
     contents.setWindowOpenHandler(({ url }) => {
-      if (/^https?:/i.test(url)) contents.loadURL(url);
+      if (/^https?:/i.test(url)) {
+        syncWebviewUA(url);
+        contents.loadURL(url);
+      }
       return { action: 'deny' };
     });
   }
