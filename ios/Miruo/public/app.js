@@ -2145,7 +2145,7 @@ function updateAuthStringsForCurrentLang() {
 // Standard Miruo Branded Room URL generator
 function getMiruoRoomUrl(roomId) {
   const code = (roomId || state.roomId || 'ODA-77').toUpperCase();
-  return `https://miruo.app/oda/${encodeURIComponent(code)}`;
+  return `https://www.miruo.com.tr/oda/${encodeURIComponent(code)}`;
 }
 
 // Global State
@@ -20470,7 +20470,7 @@ function initEvents() {
     if (supabaseClient && supabaseClient.auth) {
       try {
         await supabaseClient.auth.resetPasswordForEmail(emailVal, {
-          redirectTo: 'https://miruo.app/app/?modal=reset'
+          redirectTo: 'https://www.miruo.com.tr/app/?modal=reset'
         });
       } catch (err) {
         console.warn('[Miruo] Supabase resetPasswordForEmail info:', err);
@@ -24333,10 +24333,15 @@ window.recordUsernameChange = recordUsernameChange;
           }
         } catch (_) {}
 
-        // Also clean up from Supabase profiles if configured
+        // Also clean up from Supabase profiles and sign out Supabase Auth session (Apple 5.1.1(v))
         if (supabaseClient) {
           try {
             await supabaseClient.from('profiles').delete().eq('id', currentUser.id);
+          } catch (_) {}
+          try {
+            if (supabaseClient.auth && typeof supabaseClient.auth.signOut === 'function') {
+              await supabaseClient.auth.signOut();
+            }
           } catch (_) {}
         }
 
@@ -24457,7 +24462,15 @@ window.recordUsernameChange = recordUsernameChange;
           deleteModal.classList.remove('flex');
           showToast('Hesabınız ve tüm verileriniz kalıcı olarak silindi.');
           setTimeout(() => {
-            location.href = '/';
+            try {
+              if (window.location && window.location.protocol === 'file:') {
+                window.location.reload();
+              } else {
+                window.location.replace(window.location.pathname || '/app/');
+              }
+            } catch (_) {
+              window.location.reload();
+            }
           }, 1000);
         } else {
           if (deleteErrorAlert) {

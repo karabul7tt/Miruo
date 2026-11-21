@@ -29,11 +29,11 @@ echo "🍏 [2/6] macOS Masaüstü Uygulaması derleniyor ve Apple Noter Onayı a
   npm run dist:mac
 )
 
+NOTARY_PROFILE="${APPLE_NOTARY_PROFILE:-miruo-notary}"
+
 echo "🍏 Miruo.app Apple Noter Sunucusuna gönderiliyor..."
 xcrun notarytool submit desktop-app/dist/Miruo-1.0.0-arm64-mac.zip \
-  --apple-id "dythin.app@gmail.com" \
-  --password "bjnl-emth-buct-zzxb" \
-  --team-id "VR7K23PNPM" \
+  --keychain-profile "$NOTARY_PROFILE" \
   --wait
 
 echo "🍏 Apple Onay Bileti doğrudan Miruo.app paketine zımbalanıyor (Staple)..."
@@ -49,9 +49,7 @@ cp -f desktop-app/dist/Miruo-1.0.0-arm64.dmg downloads/Miruo.dmg
 
 echo "🍏 DMG Apple Noter Sunucusuna gönderiliyor..."
 xcrun notarytool submit downloads/Miruo.dmg \
-  --apple-id "dythin.app@gmail.com" \
-  --password "bjnl-emth-buct-zzxb" \
-  --team-id "VR7K23PNPM" \
+  --keychain-profile "$NOTARY_PROFILE" \
   --wait
 
 echo "🍏 Apple Onay Bileti DMG'ye zımbalanıyor (Staple)..."
@@ -65,9 +63,7 @@ echo "🍏 [2b/6] macOS (Intel x64) Uygulaması derleniyor ve Apple Noter Onayı
   npx electron-builder --mac zip --x64
 )
 xcrun notarytool submit desktop-app/dist/Miruo-1.0.0-mac.zip \
-  --apple-id "dythin.app@gmail.com" \
-  --password "bjnl-emth-buct-zzxb" \
-  --team-id "VR7K23PNPM" \
+  --keychain-profile "$NOTARY_PROFILE" \
   --wait
 xcrun stapler staple desktop-app/dist/mac/Miruo.app
 rm -f downloads/Miruo-Intel.zip website/downloads/Miruo-Intel.zip
