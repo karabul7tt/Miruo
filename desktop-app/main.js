@@ -965,6 +965,21 @@ function createWindow(port) {
 
   mainWindow.loadURL(`http://127.0.0.1:${port}/index.html`);
 
+  let isClosingGracefully = false;
+  mainWindow.on('close', (e) => {
+    if (isClosingGracefully || !mainWindow || mainWindow.isDestroyed()) return;
+    isClosingGracefully = true;
+    e.preventDefault();
+    try {
+      mainWindow.webContents.executeJavaScript('if (typeof window.notifyAppClosing === "function") window.notifyAppClosing();').catch(() => {});
+    } catch (_) {}
+    setTimeout(() => {
+      try {
+        if (mainWindow && !mainWindow.isDestroyed()) mainWindow.destroy();
+      } catch (_) {}
+    }, 180);
+  });
+
   mainWindow.on('closed', () => {
     mainWindow = null;
   });
