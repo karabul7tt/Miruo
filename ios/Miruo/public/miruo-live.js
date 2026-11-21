@@ -522,11 +522,14 @@
         try { await lp.unpublishTrack(cur.mst, false); } catch (_) {}
         pubs[kind] = null;
       }
+      if (mst && pubs[kind] && pubs[kind].pub && pubs[kind].pub.isMuted && typeof pubs[kind].pub.unmute === 'function') {
+        try { mst.enabled = true; await pubs[kind].pub.unmute(); } catch (_) {}
+      }
       if (mst && !pubs[kind]) {
         mst.enabled = true;
         let opts;
         if (kind === 'audio') {
-          opts = { source: L.Track.Source.Microphone, dtx: false, red: false, audioPreset: { maxBitrate: 48000 } };
+          opts = { source: L.Track.Source.Microphone, dtx: false, red: false, stopMicTrackOnMute: false, audioPreset: { maxBitrate: 48000 } };
         } else if (kind === 'video') {
           opts = { source: L.Track.Source.Camera, simulcast: false, videoEncoding: { maxBitrate: 700000, maxFramerate: 24 }, degradationPreference: 'maintain-framerate' };
         } else if (kind === 'screen') {
@@ -536,6 +539,9 @@
         }
         try {
           const pub = await lp.publishTrack(mst, opts);
+          if (pub && pub.isMuted && typeof pub.unmute === 'function') {
+            try { await pub.unmute(); } catch (_) {}
+          }
           pubs[kind] = { mst, pub };
         } catch (e) {
           console.warn('[MiruoLive] publish ' + kind + ' failed', e);
@@ -579,6 +585,9 @@
           remote.set(p.identity, entry);
           notifyStatus(p.identity);
           repaint();
+          if (st.isMicOn || st.isCamOn || st.isScreenSharing) {
+            syncLocal();
+          }
         }
       });
       r.on(E.ParticipantDisconnected, onParticipantGone);
@@ -658,16 +667,17 @@
     if (r) { try { r.disconnect(); } catch (_) {} }
   }
 
+  let _localMicMutedSince = 0;
   function watch() {
     const st = S();
     if (!st || !LK() || failed) return;
     const wantKey = (st.isInRoom && st.roomId && st.clientId) ? (String(st.roomId).trim().toUpperCase() + '|' + st.clientId) : null;
-    if (!wantKey) { if (room || connectingKey) disconnect(); return; }
+    if (!wantKey) { if (room || connectingKey) disconnect(); _localMicMutedSince = 0; return; }
     if (room && roomKey !== wantKey) disconnect();
     if (!room && !connectingKey && Date.now() >= nextAttemptAt) {
       connect(String(st.roomId).trim().toUpperCase(), wantKey);
     }
-    // keep late-created peer entries / participants wired to LiveKit video and self-heal removed <audio> elements
+    // keep late-created peer entries / participants wired to LiveKit video and self-heal removed/paused <audio> elements
     remote.forEach((v, id) => {
       applyVideo(id);
       if (v && v.screen) applyScreen(id);
@@ -675,6 +685,19 @@
         const el = audioEls.get(id);
         if (!el || !el.isConnected) {
           setAudio(id, v.audioTrackObj);
+        } else {
+          const p = participantFor(id);
+          const blocked = !!(p && p.username && typeof window.isUserBlocked === 'function' && window.isUserBlocked(p.username));
+          if (!blocked) {
+            if (el.muted) el.muted = false;
+            if (el.volume === 0) el.volume = 1;
+            if (el.paused && (el.srcObject || typeof v.audioTrackObj.attach === 'function')) {
+              if (room && room.canPlaybackAudio === false && typeof room.startAudio === 'function') {
+                room.startAudio().catch(() => {});
+              }
+              el.play().catch(() => { _needGesture = true; });
+            }
+          }
         }
       }
     });
@@ -696,7 +719,24 @@
       const curV = (st.isCamOn && st.localStream) ? (st.localStream.getVideoTracks().find(t => t.readyState === 'live') || null) : null;
       const curSV = (st.isScreenSharing && st.screenStream) ? (st.screenStream.getVideoTracks().find(t => t.readyState === 'live') || null) : null;
       const curSA = (st.isScreenSharing && st.screenStream) ? (st.screenStream.getAudioTracks().find(t => t.readyState === 'live') || null) : null;
+
+      // Auto-recover if mic is supposed to be ON but track ended or OS kept it muted > 2.5s
+      if (st.isMicOn) {
+        if (!curA || curA.muted === true) {
+          if (!_localMicMutedSince) _localMicMutedSince = Date.now();
+          if ((Date.now() - _localMicMutedSince) > 2500 && typeof window.recoverLocalMicTrack === 'function') {
+            _localMicMutedSince = 0;
+            window.recoverLocalMicTrack();
+          }
+        } else {
+          _localMicMutedSince = 0;
+        }
+      } else {
+        _localMicMutedSince = 0;
+      }
+
       if ((pubs.audio ? pubs.audio.mst : null) !== curA ||
+          (pubs.audio && pubs.audio.pub && pubs.audio.pub.isMuted && curA) ||
           (pubs.video ? pubs.video.mst : null) !== curV ||
           (pubs.screen ? pubs.screen.mst : null) !== curSV ||
           (pubs.screenAudio ? pubs.screenAudio.mst : null) !== curSA) {

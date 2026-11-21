@@ -7825,24 +7825,47 @@ function handleRemoteSync(payload) {
           return;
         }
 
-        const isNearLiveEdgeBehind = drift > 0 && localDur > 0 && targetLocalTime >= (localDur - 4);
-        const shouldSnapLive = localReliable && !isInitialBuffering && (
-          (isNearLiveEdgeBehind && (absDrift > 12 || (absDrift > 2.2 && (!state._lastLiveEdgeSnapAt || (now - state._lastLiveEdgeSnapAt) > 20000)))) ||
-          (!isNearLiveEdgeBehind && absDrift > 2.0)
-        );
-        if (shouldSnapLive && (!state.lastHardSeekAt || (now - state.lastHardSeekAt) > 4500)) {
-          if (isNearLiveEdgeBehind) state._lastLiveEdgeSnapAt = now;
-          const compTarget = Math.min((localDur || 9999999), targetLocalTime + (state.measuredSeekLatency || 0.5));
-          _applyYouTubeCompensatedSeek(compTarget, hostRate);
-          state.currentTime = compTarget;
+        const hostAtLiveEdge = (hostDur === 0) || ((hostDur - expectedHostNow) < 15);
+        // On YouTube Live streams, calling seekTo() for small drifts snaps to an HLS/DASH keyframe 5-10s earlier
+        // and creates an infinite 10-second rewind loop. Snap ONCE on load, then use smooth rate nudging only!
+        if (hostAtLiveEdge && localReliable && !isInitialBuffering && state._liveEdgeSnappedVideoId !== state.currentVideoId) {
+          state._liveEdgeSnappedVideoId = state.currentVideoId;
+          state._lastLiveEdgeSnapAt = now;
+          state.lastHardSeekAt = now;
+          const initialLiveTarget = (localDur > 0 && targetLocalTime < 9999999)
+            ? Math.min(localDur, targetLocalTime + (state.measuredSeekLatency || 0.5))
+            : 9999999;
+          sendYtCommand('seekTo', [initialLiveTarget, true]);
+          sendYtCommand('setPlaybackRate', [hostRate]);
+          state.playbackRate = hostRate;
+          return;
+        }
+
+        const hardSeekCooldownMs = hostAtLiveEdge ? 30000 : 12000;
+        const hardSeekThresholdSec = hostAtLiveEdge ? 15.0 : 6.0;
+        const canHardSeekLive = localReliable && !isInitialBuffering &&
+          absDrift > hardSeekThresholdSec &&
+          (!state.lastHardSeekAt || (now - state.lastHardSeekAt) > hardSeekCooldownMs);
+
+        if (canHardSeekLive) {
+          state._lastLiveEdgeSnapAt = now;
+          state.lastHardSeekAt = now;
+          if (hostAtLiveEdge) {
+            sendYtCommand('seekTo', [9999999, true]);
+            sendYtCommand('setPlaybackRate', [hostRate]);
+          } else {
+            const compTarget = Math.min((localDur || 9999999), targetLocalTime + (state.measuredSeekLatency || 0.5));
+            _applyYouTubeCompensatedSeek(compTarget, hostRate);
+            state.currentTime = compTarget;
+          }
           state.playbackRate = hostRate;
         } else {
-          // Smooth rate micro-catchup for live streams when slightly behind/ahead (>0.45s), within live buffer
+          // Gentle playbackRate nudging (zero re-buffering, zero rewind loop)
           let desiredLiveRate = hostRate;
-          const hasDvrHeadroom = localDur === 0 || (localDur - localTime) > 2.5;
-          if (absDrift > 0.45 && localReliable && (drift < 0 || hasDvrHeadroom)) {
+          const hasDvrHeadroom = localDur === 0 || (localDur - localTime) > 3.0;
+          if (absDrift > 1.5 && absDrift <= hardSeekThresholdSec && localReliable && (drift < 0 || hasDvrHeadroom)) {
             desiredLiveRate = _pickYouTubeCatchupRate(hostRate, drift);
-          } else if (absDrift <= 0.2) {
+          } else if (absDrift <= 0.6) {
             desiredLiveRate = hostRate;
           } else {
             desiredLiveRate = state.playbackRate || hostRate;
@@ -7856,13 +7879,12 @@ function handleRemoteSync(payload) {
       }
 
       // VOD synchronization: dynamic seek compensation + zero-spinner smooth rate catchup
-      // Tight VOD lock: with exact clock maths the target is trustworthy, so snap at >1.0s (twice >0.7s) instead of 2.2s
-      const snapHard = state.hostSyncRef && state.hostSyncRef.exact ? 1.0 : 2.2;
-      const snapSoft = state.hostSyncRef && state.hostSyncRef.exact ? 0.7 : 1.5;
+      const snapHard = 2.2;
+      const snapSoft = 1.5;
       if (absDrift > snapSoft && localReliable) state.driftStrikes = (state.driftStrikes || 0) + 1; else state.driftStrikes = 0;
-      const shouldSnap = localReliable && !isInitialBuffering && (absDrift > snapHard || (absDrift > snapSoft && state.driftStrikes >= 2));
+      const shouldSnap = localReliable && !isInitialBuffering && (absDrift > snapHard || (absDrift > snapSoft && state.driftStrikes >= 3));
       if (shouldSnap) {
-        if (!state.lastHardSeekAt || (now - state.lastHardSeekAt) > (state.hostSyncRef && state.hostSyncRef.exact ? 2000 : 3500)) {
+        if (!state.lastHardSeekAt || (now - state.lastHardSeekAt) > 5000) {
           if (targetLocalTime < 1.0 && localTime < 1.0) {
             // Already near start
           } else {
@@ -7980,11 +8002,9 @@ function startSyncHeartbeat() {
 
   syncHeartbeatInterval = setInterval(() => {
     if (state._suppressHbUntil && Date.now() < state._suppressHbUntil) return;
-    const cleanHost = String(state.hostName || state.host || '').toLowerCase().replace(/^@/, '').trim();
-    const cleanMe = String(state.username || '').toLowerCase().replace(/^@/, '').trim();
-    const isSameHostAccount = cleanHost && cleanMe && cleanHost === cleanMe;
     const isSyncableMode = (state.activeMode === 'youtube' || state.activeMode === 'direct' || state.activeMode === 'kick' || state.activeMode === 'twitch' || state.activeMode === 'web');
-    const canBroadcastHeartbeat = state.isInRoom && (state.isHost || isSameHostAccount) && isSyncableMode && !!state.currentVideoId;
+    // ONLY the authoritative room host broadcasts heartbeats (never duplicate same-account viewer devices!)
+    const canBroadcastHeartbeat = state.isInRoom && state.isHost === true && isSyncableMode && !!state.currentVideoId;
     if (canBroadcastHeartbeat) {
       const liveTime = getLivePlayerTime();
       state.currentTime = liveTime;
@@ -8268,7 +8288,19 @@ window.addEventListener('message', (event) => {
 
   if (data.event === 'infoDelivery' && data.info) {
     state._ytFirstInfoReceived = true;
+    // Detect growing DVR duration (VOD duration is static; YouTube Live DVR duration grows every few seconds)
+    let growingDvrLive = false;
+    if (typeof data.info.duration === 'number' && data.info.duration > 0 && state.currentVideoId) {
+      if (!state._ytDurTrack || state._ytDurTrack.videoId !== state.currentVideoId) {
+        state._ytDurTrack = { videoId: state.currentVideoId, lastDur: data.info.duration, growCount: 0 };
+      } else if (data.info.duration > state._ytDurTrack.lastDur + 0.8) {
+        state._ytDurTrack.lastDur = data.info.duration;
+        state._ytDurTrack.growCount = (state._ytDurTrack.growCount || 0) + 1;
+        if (state._ytDurTrack.growCount >= 2) growingDvrLive = true;
+      }
+    }
     const isLiveDetected = Boolean(
+      growingDvrLive ||
       data.info.isLive ||
       (data.info.videoData && (data.info.videoData.isLive || data.info.videoData.isLiveContent)) ||
       (typeof data.info.duration === 'number' && data.info.duration > 86400) ||
@@ -8332,8 +8364,8 @@ window.addEventListener('message', (event) => {
         if (dom.nowPlayingDuration) dom.nowPlayingDuration.textContent = formatTime(state.duration);
       }
 
-      // Check if user scrubbed inside YouTube iframe progress bar directly
-      if (typeof prevTime === 'number' && Math.abs(data.info.currentTime - prevTime) > 2.5 && !progSeekRecent && !loadingRecent) {
+      // Check if user scrubbed inside YouTube iframe progress bar directly (VOD + authorized controller only; NEVER on Live streams & NEVER self-rewind guests!)
+      if (!state.isLiveStream && typeof prevTime === 'number' && Math.abs(data.info.currentTime - prevTime) > 2.5 && !progSeekRecent && !loadingRecent) {
         if (!state.isRemoteAction && !state.isUserDraggingSeek && (Date.now() - (state.lastSyncSentAt || 0) > 800)) {
           if (canUserControlPlayback() && (state.isHost || state.controlMode === 'everyone' || state.controlMode === 'free')) {
             state.lastSyncSentAt = Date.now();
@@ -8343,9 +8375,6 @@ window.addEventListener('message', (event) => {
               isPlaying: state.isPlaying,
               sentAt: Date.now()
             });
-          } else {
-            // Unauthorized scrub: revert player back to synchronized room time
-            sendYtCommand('seekTo', [state.currentTime, true]);
           }
         }
       }
@@ -9576,6 +9605,9 @@ function leaveRoom() {
       ws = null;
     }
   } catch (e) {}
+
+  // Clear pending public room payload so a reconnecting globalRoomsChannel never re-announces a left/closed room
+  state.pendingPublicRoomPayload = null;
 
   // Cleanup Supabase room presence & channels:
   // Automatically close room ONLY when 0 participants remain in the room!
@@ -10852,21 +10884,24 @@ async function _toggleMicImpl() {
       broadcastMyMediaStatus();
       showToast('Mikrofon Açık (Canlı)');
 
-      // Single clean attachment/renegotiation across peers (no timed glare retries)
+      // Single clean attachment: when LiveKit SFU is enabled, publish ONLY via LiveKit (prevents P2P+SFU audio contention)
       (async () => {
         try {
           const uniquePeers = getUniquePeerEntries();
           const lkOn = !!(window.MiruoLive && window.MiruoLive.isEnabled());
-          if (lkOn) { try { await window.MiruoLive.syncLocal(); } catch (_) {} }
-          for (const peer of uniquePeers) {
-            if (peer && peer.pc && peer.pc.signalingState !== 'closed') {
-              await syncLocalMediaToPeer(peer, true);
+          if (lkOn) {
+            try { await window.MiruoLive.syncLocal(); } catch (_) {}
+          } else {
+            for (const peer of uniquePeers) {
+              if (peer && peer.pc && peer.pc.signalingState !== 'closed') {
+                await syncLocalMediaToPeer(peer, true);
+              }
             }
-          }
-          if (!lkOn && uniquePeers.length === 0 && state.pc && state.pc.signalingState !== 'closed') {
-            const { needsReneg } = await attachTrackToPeer(state.pc, audioTrack, state.localStream, 'mic');
-            if (needsReneg && typeof renegotiateWebRTC === 'function') {
-              try { await renegotiateWebRTC(); } catch (_) {}
+            if (uniquePeers.length === 0 && state.pc && state.pc.signalingState !== 'closed') {
+              const { needsReneg } = await attachTrackToPeer(state.pc, audioTrack, state.localStream, 'mic');
+              if (needsReneg && typeof renegotiateWebRTC === 'function') {
+                try { await renegotiateWebRTC(); } catch (_) {}
+              }
             }
           }
           broadcastMyMediaStatus();
@@ -10909,6 +10944,49 @@ async function _toggleMicImpl() {
   if (typeof renderVideoGrid === 'function') renderVideoGrid();
   syncMicSettingsValues();
 }
+
+let _micRecoveryInFlight = false;
+let _lastMicRecoveryAt = 0;
+async function recoverLocalMicTrack() {
+  if (!state.isInRoom || !state.isMicOn) return false;
+  const now = Date.now();
+  if (_micRecoveryInFlight || (now - _lastMicRecoveryAt) < 6000) return false;
+  _micRecoveryInFlight = true;
+  _lastMicRecoveryAt = now;
+  try {
+    const freshStream = await getAudioStreamSafe();
+    const freshTrack = freshStream && freshStream.getAudioTracks && freshStream.getAudioTracks()[0];
+    if (!freshTrack || freshTrack.readyState !== 'live') return false;
+    freshTrack.enabled = true;
+    if (!state.localStream) {
+      state.localStream = freshStream;
+    } else {
+      state.localStream.getAudioTracks().forEach(t => {
+        try { state.localStream.removeTrack(t); } catch (_) {}
+        try { t.stop(); } catch (_) {}
+      });
+      state.localStream.addTrack(freshTrack);
+    }
+    if (window.MiruoLive && window.MiruoLive.isEnabled()) {
+      await window.MiruoLive.syncLocal();
+    } else {
+      const uniquePeers = typeof getUniquePeerEntries === 'function' ? getUniquePeerEntries() : [];
+      for (const peer of uniquePeers) {
+        if (peer && peer.pc && peer.pc.signalingState !== 'closed') {
+          await syncLocalMediaToPeer(peer, true);
+        }
+      }
+    }
+    broadcastMyMediaStatus();
+    return true;
+  } catch (e) {
+    console.warn('[Miruo] recoverLocalMicTrack failed:', e);
+    return false;
+  } finally {
+    _micRecoveryInFlight = false;
+  }
+}
+window.recoverLocalMicTrack = recoverLocalMicTrack;
 
 async function optimizeVideoSender(sender) {
   if (!sender || typeof sender.getParameters !== 'function' || typeof sender.setParameters !== 'function') return;
@@ -12466,6 +12544,20 @@ let globalRealtimeRooms = [];
 let globalRoomsChannel = null;
 let globalRoomsSubscribed = false;
 let _globalRoomsReconnectTimer = null;
+const closedRoomTombstones = new Map(); // roomId -> closedAt timestamp (prevents stale packet resurrection)
+const PUBLIC_ROOM_STALE_MS = 12000; // Live rooms heartbeat every 4s; >12s without heartbeat/presence = closed
+const CLOSED_ROOM_TOMBSTONE_MS = 15000;
+
+function isRoomTombstoned(roomId) {
+  if (!roomId) return false;
+  const closedAt = closedRoomTombstones.get(roomId);
+  if (!closedAt) return false;
+  if ((Date.now() - closedAt) > CLOSED_ROOM_TOMBSTONE_MS) {
+    closedRoomTombstones.delete(roomId);
+    return false;
+  }
+  return true;
+}
 
 function initGlobalPublicRoomsSync() {
   if (!supabaseClient) {
@@ -12489,13 +12581,13 @@ function initGlobalPublicRoomsSync() {
     globalRoomsChannel
       .on('presence', { event: 'sync' }, () => {
         const presenceState = globalRoomsChannel.presenceState();
-        parseGlobalRoomsFromPresence(presenceState);
+        parseGlobalRoomsFromPresence(presenceState, { isLeave: false });
       })
       .on('presence', { event: 'join' }, () => {
-        parseGlobalRoomsFromPresence(globalRoomsChannel.presenceState());
+        parseGlobalRoomsFromPresence(globalRoomsChannel.presenceState(), { isLeave: false });
       })
-      .on('presence', { event: 'leave' }, () => {
-        parseGlobalRoomsFromPresence(globalRoomsChannel.presenceState());
+      .on('presence', { event: 'leave' }, ({ leftPresences }) => {
+        parseGlobalRoomsFromPresence(globalRoomsChannel.presenceState(), { isLeave: true, leftPresences });
       })
       .on('broadcast', { event: 'room_announced' }, ({ payload }) => {
         if (payload && payload.id) {
@@ -12521,7 +12613,7 @@ function initGlobalPublicRoomsSync() {
       .subscribe((status) => {
         if (status === 'SUBSCRIBED') {
           globalRoomsSubscribed = true;
-          if (state.pendingPublicRoomPayload && !state.isPrivateRoom) {
+          if (state.isInRoom && state.roomId && !state.isPrivateRoom && state.pendingPublicRoomPayload) {
             try {
               globalRoomsChannel.track(state.pendingPublicRoomPayload).catch(() => {});
               globalRoomsChannel.send({
@@ -12557,36 +12649,64 @@ function initGlobalPublicRoomsSync() {
   }
 }
 
-function parseGlobalRoomsFromPresence(presenceState) {
+function parseGlobalRoomsFromPresence(presenceState, opts = {}) {
   if (!presenceState) return;
+  const now = Date.now();
   const roomMap = new Map();
-  // 1. Add rooms actively tracked in Presence right now
+  const roomPresenceCounts = new Map();
+
+  // 1. Add rooms actively tracked in Presence right now (authoritative live participants)
   Object.keys(presenceState).forEach(key => {
     const presences = presenceState[key] || [];
     presences.forEach(p => {
       if (p && p.id && p.isPublic) {
+        closedRoomTombstones.delete(p.id);
+        const prevCount = roomPresenceCounts.get(p.id) || 0;
+        roomPresenceCounts.set(p.id, prevCount + 1);
         const hostAv = p.hostAvatar || (p.avatars && p.avatars[0]) || '';
-        roomMap.set(p.id, {
-          id: p.id,
-          name: p.name || 'Canlı Oda',
-          category: p.category || 'Müzik & Sohbet',
-          host: p.host || 'Yönetici',
-          hostAvatar: hostAv,
-          mediaTitle: p.mediaTitle || p.name || 'Canlı Yayın',
-          videoId: p.videoId || '',
-          thumb: p.thumb || (p.videoId ? `https://img.youtube.com/vi/${p.videoId}/mqdefault.jpg` : ''),
-          viewers: Math.max(1, p.viewers || 1),
-          avatars: (p.avatars && p.avatars.length > 0) ? p.avatars : (hostAv ? [hostAv] : [{ initial: (p.host || 'U').charAt(0).toUpperCase(), bg: 'from-purple-500 to-indigo-600' }]),
-          ts: p.updatedAt || Date.now()
-        });
+        const existing = roomMap.get(p.id);
+        const viewers = Math.max(prevCount + 1, p.viewers || 1);
+        if (!existing || (p.updatedAt || 0) >= (existing.ts || 0)) {
+          roomMap.set(p.id, {
+            id: p.id,
+            name: p.name || 'Canlı Oda',
+            category: p.category || 'Müzik & Sohbet',
+            host: p.host || 'Yönetici',
+            hostAvatar: hostAv,
+            mediaTitle: p.mediaTitle || p.name || 'Canlı Yayın',
+            videoId: p.videoId || '',
+            thumb: p.thumb || (p.videoId ? `https://img.youtube.com/vi/${p.videoId}/mqdefault.jpg` : ''),
+            viewers,
+            avatars: (p.avatars && p.avatars.length > 0) ? p.avatars : (hostAv ? [hostAv] : [{ initial: (p.host || 'U').charAt(0).toUpperCase(), bg: 'from-purple-500 to-indigo-600' }]),
+            ts: p.updatedAt || now,
+            fromPresence: true
+          });
+        } else {
+          existing.viewers = Math.max(existing.viewers || 1, viewers);
+        }
       }
     });
   });
 
-  // 2. Add broadcast rooms only if they are fresh (< 60s) and not private
-  const now = Date.now();
+  // If a presence: leave fired and a departed room now has 0 presences, tombstone it immediately so it vanishes at once!
+  if (opts && opts.isLeave && Array.isArray(opts.leftPresences)) {
+    opts.leftPresences.forEach(lp => {
+      if (lp && lp.id && !roomMap.has(lp.id)) {
+        closedRoomTombstones.set(lp.id, now);
+      }
+    });
+  }
+
+  // 2. Keep broadcast-only rooms ONLY if very fresh (< 10s), NOT tombstoned, and NOT just emptied on presence: leave
   (globalRealtimeRooms || []).forEach(r => {
-    if (r && r.id && !roomMap.has(r.id) && (now - (r.ts || 0) < 60000)) {
+    if (!r || !r.id || roomMap.has(r.id)) return;
+    if (isRoomTombstoned(r.id)) return;
+    // If this room was previously backed by Presence and is now absent from Presence, it is empty -> purge immediately!
+    if (r.fromPresence) {
+      closedRoomTombstones.set(r.id, now);
+      return;
+    }
+    if ((now - (r.ts || 0)) < 10000) {
       roomMap.set(r.id, r);
     }
   });
@@ -12599,6 +12719,13 @@ function parseGlobalRoomsFromPresence(presenceState) {
 
 function upsertGlobalRealtimeRoom(room) {
   if (!room || !room.id) return;
+  const isMyActiveRoom = !!(state.isInRoom && state.roomId === room.id && !state.isPrivateRoom);
+  if (isMyActiveRoom || room.fromPresence) {
+    closedRoomTombstones.delete(room.id);
+  } else if (isRoomTombstoned(room.id)) {
+    // Ignore delayed broadcast packet for a room that just closed
+    return;
+  }
   const myAv = room.hostAvatar || (room.avatars && room.avatars[0]) || (state.roomId === room.id && (state.avatarUrl || localStorage.getItem('miruo_avatar'))) || '';
   const formatted = {
     id: room.id,
@@ -12611,10 +12738,12 @@ function upsertGlobalRealtimeRoom(room) {
     thumb: room.thumb || (room.videoId ? `https://img.youtube.com/vi/${room.videoId}/mqdefault.jpg` : ''),
     viewers: Math.max(1, room.viewers || 1),
     avatars: (room.avatars && room.avatars.length > 0) ? room.avatars : (myAv ? [myAv] : [{ initial: (room.host || 'U').charAt(0).toUpperCase(), bg: 'from-purple-500 to-indigo-600' }]),
-    ts: Date.now()
+    ts: Date.now(),
+    fromPresence: !!room.fromPresence
   };
   const idx = globalRealtimeRooms.findIndex(r => r.id === room.id);
   if (idx >= 0) {
+    formatted.fromPresence = formatted.fromPresence || !!globalRealtimeRooms[idx].fromPresence;
     globalRealtimeRooms[idx] = formatted;
   } else {
     globalRealtimeRooms.unshift(formatted);
@@ -12625,11 +12754,18 @@ function upsertGlobalRealtimeRoom(room) {
 }
 
 function removeGlobalRealtimeRoom(roomId) {
+  if (!roomId) return;
+  closedRoomTombstones.set(roomId, Date.now());
   globalRealtimeRooms = globalRealtimeRooms.filter(r => r.id !== roomId);
   if (dom.publicRoomsGrid) {
     renderRoomList(mergeAllPublicRooms([]));
   }
 }
+
+window.parseGlobalRoomsFromPresence = parseGlobalRoomsFromPresence;
+window.upsertGlobalRealtimeRoom = upsertGlobalRealtimeRoom;
+window.removeGlobalRealtimeRoom = removeGlobalRealtimeRoom;
+window.mergeAllPublicRooms = mergeAllPublicRooms;
 
 function syncCurrentRoomToGlobalPresence() {
   if (!state.roomId || !state.isInRoom) return;
@@ -12682,11 +12818,19 @@ function syncCurrentRoomToGlobalPresence() {
   }
 }
 
-// Global 4-second Heartbeat: keeps host room continuously alive and visible across all networks
+// Global 4-second Heartbeat: keeps host room continuously alive and visible across all networks;
+// when browsing Explore outside a room, automatically prunes stale/empty rooms (>12s) every 4s.
 if (!window._publicRoomHeartbeatInterval) {
   window._publicRoomHeartbeatInterval = setInterval(() => {
     if (state.isInRoom && state.roomId && !state.isPrivateRoom) {
       syncCurrentRoomToGlobalPresence();
+    } else if (globalRealtimeRooms && globalRealtimeRooms.length > 0) {
+      const now = Date.now();
+      const before = globalRealtimeRooms.length;
+      globalRealtimeRooms = globalRealtimeRooms.filter(r => r && r.id && !isRoomTombstoned(r.id) && r.ts && (now - r.ts) < PUBLIC_ROOM_STALE_MS);
+      if (globalRealtimeRooms.length !== before && dom.publicRoomsGrid) {
+        renderRoomList(mergeAllPublicRooms([]));
+      }
     }
   }, 4000);
 }
@@ -12694,12 +12838,12 @@ if (!window._publicRoomHeartbeatInterval) {
 function mergeAllPublicRooms(serverRooms = []) {
   const roomMap = new Map();
   const now = Date.now();
-  // 1. Add global realtime presence rooms (prune rooms stale > 3 minutes)
+  // 1. Add global realtime presence rooms (prune rooms stale > 12s or tombstoned)
   (globalRealtimeRooms || []).forEach(r => {
     if (r && r.id) {
       if (state.isInRoom && r.id === state.roomId) {
         roomMap.set(r.id, r);
-      } else if (!r.ts || (now - r.ts) < 180000) {
+      } else if (!isRoomTombstoned(r.id) && r.ts && (now - r.ts) < PUBLIC_ROOM_STALE_MS) {
         roomMap.set(r.id, r);
       }
     }
@@ -12748,12 +12892,12 @@ function loadPublicRooms() {
     initGlobalPublicRoomsSync();
   }
 
-  // 2. Clean stale rooms (> 3 mins)
+  // 2. Clean stale rooms (> 12s) or tombstoned rooms
   const now = Date.now();
   globalRealtimeRooms = (globalRealtimeRooms || []).filter(r => {
     if (!r || !r.id) return false;
     if (state.isInRoom && r.id === state.roomId) return true;
-    return !r.ts || (now - r.ts) < 180000;
+    return !isRoomTombstoned(r.id) && r.ts && (now - r.ts) < PUBLIC_ROOM_STALE_MS;
   });
 
   // 3. Render immediately from realtime rooms + local room
@@ -28540,6 +28684,7 @@ function notifyAppClosing() {
       }).catch(() => {});
     }
   } catch (_) {}
+  state.pendingPublicRoomPayload = null;
   if (globalRoomsChannel) {
     try {
       if (remainingOtherCount === 0) {
@@ -28548,6 +28693,9 @@ function notifyAppClosing() {
           event: 'room_closed',
           payload: { id: state.roomId }
         }).catch(() => {});
+        if (typeof removeGlobalRealtimeRoom === 'function') {
+          removeGlobalRealtimeRoom(state.roomId);
+        }
       }
       globalRoomsChannel.untrack().catch(() => {});
     } catch (_) {}
