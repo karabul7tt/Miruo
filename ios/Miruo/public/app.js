@@ -16597,7 +16597,7 @@ function renderAffinityPickerList() {
       card.innerHTML = `
         <div class="flex items-center gap-3 min-w-0">
           <div class="w-10 h-10 rounded-full bg-gradient-to-tr from-rose-500 to-indigo-600 flex items-center justify-center text-xs font-bold text-white shrink-0 shadow-sm border border-white/20">
-            ${(fr.avatar || fr.name.charAt(0) || 'A').toUpperCase()}
+            ${escapeHtml(String(fr.avatar || (fr.name && fr.name.charAt(0)) || 'A').toUpperCase())}
           </div>
           <div class="truncate">
             <div class="flex items-center gap-1.5">
@@ -19044,12 +19044,23 @@ function updateUserUI(user) {
   if (tabMyFriendCodeDisplay) tabMyFriendCodeDisplay.textContent = displayHandle;
   if (modalMyFriendCodeDisplay) modalMyFriendCodeDisplay.textContent = displayHandle;
 
+  function safeAvatarUrl(rawUrl) {
+    const s = String(rawUrl || '').trim();
+    if (!s) return '';
+    if (/^(https?:\/\/|data:image\/(png|jpeg|jpg|webp|gif);base64,|\/[^/])/i.test(s)) {
+      return escapeHtml(s);
+    }
+    return '';
+  }
+  const safeUserAvatarUrl = safeAvatarUrl(user.avatarUrl);
+  const safeUserInitial = escapeHtml((user.avatarChar || realFullName || cleanUsername || 'M').charAt(0).toUpperCase());
+
   if (dom.userProfileBtn) {
-    if (user.avatarUrl) {
-      dom.userProfileBtn.innerHTML = `<img src="${user.avatarUrl}" class="w-full h-full object-cover rounded-full" alt="Avatar">`;
+    if (safeUserAvatarUrl) {
+      dom.userProfileBtn.innerHTML = `<img src="${safeUserAvatarUrl}" class="w-full h-full object-cover rounded-full" alt="Avatar">`;
       dom.userProfileBtn.className = 'w-8 h-8 rounded-full overflow-hidden flex items-center justify-center cursor-pointer border border-white/20 shadow-sm';
     } else {
-      dom.userProfileBtn.innerHTML = `<span id="userAvatarHeader">${(user.avatarChar || realFullName || cleanUsername || 'M').charAt(0).toUpperCase()}</span>`;
+      dom.userProfileBtn.innerHTML = `<span id="userAvatarHeader">${safeUserInitial}</span>`;
       dom.userProfileBtn.className = `w-8 h-8 rounded-full bg-gradient-to-tr ${user.avatarBg || 'from-rose-500 to-indigo-600'} flex items-center justify-center text-xs font-bold text-white shadow-sm cursor-pointer`;
     }
   }
@@ -19057,31 +19068,30 @@ function updateUserUI(user) {
   // Mobile Bottom Navigation Profile Avatar
   const mobileNavAvatar = document.getElementById('mobileNavAvatar');
   if (mobileNavAvatar) {
-    if (user.avatarUrl) {
-      mobileNavAvatar.innerHTML = `<img src="${user.avatarUrl}" class="w-full h-full object-cover rounded-full" alt="Avatar">`;
+    if (safeUserAvatarUrl) {
+      mobileNavAvatar.innerHTML = `<img src="${safeUserAvatarUrl}" class="w-full h-full object-cover rounded-full" alt="Avatar">`;
       mobileNavAvatar.className = 'w-6 h-6 rounded-full overflow-hidden flex items-center justify-center text-[10px] font-bold text-white shadow-xs border border-white/20';
     } else {
-      const char = (user.avatarChar || realFullName || cleanUsername || 'M').charAt(0).toUpperCase();
-      mobileNavAvatar.innerHTML = char;
+      mobileNavAvatar.innerHTML = safeUserInitial;
       mobileNavAvatar.className = `w-6 h-6 rounded-full bg-gradient-to-tr ${user.avatarBg || 'from-rose-500 to-indigo-600'} flex items-center justify-center text-[10px] font-bold text-white shadow-xs overflow-hidden border border-white/20`;
     }
   }
 
   if (dom.editAvatarPreview) {
-    if (user.avatarUrl) {
-      dom.editAvatarPreview.innerHTML = `<img src="${user.avatarUrl}" class="w-full h-full object-cover rounded-full" alt="Preview">`;
+    if (safeUserAvatarUrl) {
+      dom.editAvatarPreview.innerHTML = `<img src="${safeUserAvatarUrl}" class="w-full h-full object-cover rounded-full" alt="Preview">`;
       dom.editAvatarPreview.className = 'w-22 h-22 rounded-2xl overflow-hidden flex items-center justify-center border-2 border-white/20 shadow-md';
     } else {
-      dom.editAvatarPreview.innerHTML = (user.avatarChar || realFullName || cleanUsername || 'M').charAt(0).toUpperCase();
+      dom.editAvatarPreview.innerHTML = safeUserInitial;
       dom.editAvatarPreview.className = `w-22 h-22 rounded-2xl bg-gradient-to-tr ${user.avatarBg || 'from-rose-500 to-indigo-600'} flex items-center justify-center text-3xl font-bold text-white border-2 border-white/20 shadow-md`;
     }
   }
-  if (dom.signUpAvatarPreview && user.avatarUrl) {
-    dom.signUpAvatarPreview.innerHTML = `<img src="${user.avatarUrl}" class="w-full h-full object-cover rounded-full" alt="Avatar">`;
+  if (dom.signUpAvatarPreview && safeUserAvatarUrl) {
+    dom.signUpAvatarPreview.innerHTML = `<img src="${safeUserAvatarUrl}" class="w-full h-full object-cover rounded-full" alt="Avatar">`;
   }
   if (dom.selfPipAvatarInitial) {
-    if (user.avatarUrl) {
-      dom.selfPipAvatarInitial.innerHTML = `<img src="${user.avatarUrl}" class="w-full h-full object-cover rounded-full" alt="Avatar">`;
+    if (safeUserAvatarUrl) {
+      dom.selfPipAvatarInitial.innerHTML = `<img src="${safeUserAvatarUrl}" class="w-full h-full object-cover rounded-full" alt="Avatar">`;
     } else {
       dom.selfPipAvatarInitial.textContent = (user.avatarChar || realFullName || cleanUsername || 'M').charAt(0).toUpperCase();
     }
@@ -21394,18 +21404,121 @@ function initEvents() {
         }
 
         const cleanUsername = fullName.trim().replace(/^@/, '');
+        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
+        if (!emailRegex.test(cleanRegEmail)) {
+          showAuthAlert("Lütfen geçerli bir e-posta adresi girin (Örn: adiniz@gmail.com).");
+          if (dom.authContactInput) dom.authContactInput.focus();
+          return;
+        }
 
-        // Dispatch 6-digit email confirmation OTP
-        handleSendEmailOtp({
-          fullName: fullName,
-          username: cleanUsername,
-          email: cleanRegEmail,
-          password: passwordVal,
-          avatarUrl: selectedSignUpAvatarData || ''
-        });
+        const prevRegBtnText = dom.authSubmitBtn ? dom.authSubmitBtn.textContent : 'Kayıt Ol';
+        if (dom.authSubmitBtn) {
+          dom.authSubmitBtn.disabled = true;
+          dom.authSubmitBtn.textContent = "Hesap Oluşturuluyor...";
+        }
+
+        try {
+          if (!supabaseClient || !supabaseClient.auth) {
+            throw new Error("Kayıt sunucusuna şu an ulaşılamıyor. Lütfen internet bağlantınızı kontrol edin.");
+          }
+          const { data: supaSignUp, error: supaSignUpErr } = await supabaseClient.auth.signUp({
+            email: cleanRegEmail,
+            password: passwordVal,
+            options: {
+              emailRedirectTo: 'https://www.miruo.com.tr/app/',
+              data: {
+                full_name: fullName,
+                username: cleanUsername,
+                avatar_url: selectedSignUpAvatarData || ''
+              }
+            }
+          });
+
+          if (supaSignUpErr) {
+            const em = String(supaSignUpErr.message || '').toLowerCase();
+            if (em.includes('already registered') || em.includes('already exists') || em.includes('user already')) {
+              showAuthAlert("Bu e-posta adresi ile zaten kayıtlı bir hesap bulunuyor! Lütfen 'Giriş Yap' sekmesinden giriş yapın.");
+            } else if (em.includes('rate limit') || em.includes('too many') || supaSignUpErr.status === 429) {
+              showAuthAlert("Çok fazla deneme yapıldı. Lütfen birkaç dakika bekleyip tekrar deneyin.");
+            } else if (em.includes('password')) {
+              showAuthAlert("Şifreniz güvenlik kurallarına uymuyor (en az 6 karakter olmalıdır).");
+            } else {
+              showAuthAlert("Kayıt oluşturulamadı: " + (supaSignUpErr.message || "Lütfen tekrar deneyin."));
+            }
+            if (dom.authSubmitBtn) { dom.authSubmitBtn.disabled = false; dom.authSubmitBtn.textContent = prevRegBtnText; }
+            return;
+          }
+
+          // Supabase returns an empty identities array when email is already registered (anti-enumeration)
+          if (supaSignUp && supaSignUp.user && Array.isArray(supaSignUp.user.identities) && supaSignUp.user.identities.length === 0) {
+            showAuthAlert("Bu e-posta adresi ile zaten kayıtlı bir hesap bulunuyor! Lütfen 'Giriş Yap' sekmesinden giriş yapın.");
+            if (dom.authSubmitBtn) { dom.authSubmitBtn.disabled = false; dom.authSubmitBtn.textContent = prevRegBtnText; }
+            return;
+          }
+
+          const realUid = (supaSignUp && supaSignUp.user && supaSignUp.user.id) || ('user_' + Math.random().toString(36).substring(2, 10));
+          const user = {
+            id: realUid,
+            name: fullName || cleanUsername,
+            fullName: fullName || cleanUsername,
+            username: cleanUsername,
+            email: cleanRegEmail,
+            provider: 'email',
+            avatarUrl: selectedSignUpAvatarData || '',
+            avatarBg: selectedSignUpAvatarBg,
+            avatarChar: cleanUsername.charAt(0).toUpperCase()
+          };
+
+          // Save public profile info locally (NEVER store plaintext password in localStorage!)
+          try {
+            const regList = JSON.parse(localStorage.getItem('miruo_registered_users') || '[]');
+            const exists = regList.some(u => u && u.email && u.email.toLowerCase() === cleanRegEmail);
+            if (!exists) {
+              regList.push({
+                id: realUid,
+                email: cleanRegEmail,
+                username: cleanUsername,
+                fullName: fullName || cleanUsername,
+                provider: 'email',
+                avatarUrl: selectedSignUpAvatarData || '',
+                avatarBg: selectedSignUpAvatarBg
+              });
+              localStorage.setItem('miruo_registered_users', JSON.stringify(regList));
+            }
+          } catch (_) {}
+
+          syncUserProfileToSupabase(user);
+
+          if (supaSignUp && supaSignUp.session) {
+            // Immediate session granted -> log user in right away
+            localStorage.setItem('miruo_user', JSON.stringify(user));
+            localStorage.setItem('miruo_custom_username', cleanUsername);
+            state.userId = user.id;
+            state.username = cleanUsername;
+            state.avatarUrl = user.avatarUrl;
+            showAuthAlert("Hesabınız başarıyla oluşturuldu! Hoş geldiniz.", true);
+            setTimeout(() => {
+              updateUserUI(user);
+              if (dom.authModal) {
+                dom.authModal.classList.add('hidden');
+                unfreezeBackgroundAfterModal();
+              }
+              showToast(`Hoş geldin @${cleanUsername}!`);
+              if (dom.authSubmitBtn) { dom.authSubmitBtn.disabled = false; dom.authSubmitBtn.textContent = prevRegBtnText; }
+            }, 400);
+          } else {
+            // Email confirmation required by Supabase Auth
+            showAuthAlert(`Kayıt başarılı! ${cleanRegEmail} adresinize doğrulama bağlantısı gönderildi. E-postanızı onayladıktan sonra giriş yapabilirsiniz.`, true);
+            if (dom.authSubmitBtn) { dom.authSubmitBtn.disabled = false; dom.authSubmitBtn.textContent = "Giriş Yap"; }
+            setTimeout(() => { setAuthMode(false); }, 1800);
+          }
+        } catch (regErr) {
+          showAuthAlert(regErr.message || "Kayıt sırasında bir hata oluştu.");
+          if (dom.authSubmitBtn) { dom.authSubmitBtn.disabled = false; dom.authSubmitBtn.textContent = prevRegBtnText; }
+        }
 
       } else {
-        // SIGN IN VALIDATION: SUPPORT BOTH USERNAME AND EMAIL (Strict check against registered users)
+        // SIGN IN VALIDATION: SUPPORT BOTH USERNAME AND EMAIL (Strict Supabase/Backend Verification — Zero Local Password Bypass)
         const rawContact = contactVal.trim();
         const cleanContact = rawContact.replace(/^@/, '').trim();
         if (!cleanContact) {
@@ -21418,33 +21531,13 @@ function initEvents() {
         const registeredUsers = JSON.parse(localStorage.getItem('miruo_registered_users') || '[]');
         const byEmailMap = JSON.parse(localStorage.getItem('miruo_profiles_by_email') || '{}');
 
-        // Check local registered accounts by email or clean username
+        // Look up cached metadata (for Apple redirect or username->email lookup only — NEVER bypasses password!)
         let localMatch = registeredUsers.find(u => {
+          if (!u) return false;
           if (isEmail && u.email && u.email.toLowerCase() === cleanContact.toLowerCase()) return true;
           if (u.username && u.username.toLowerCase().replace(/^@/, '') === cleanContact.toLowerCase()) return true;
-          if (u.email && u.email.toLowerCase() === cleanContact.toLowerCase()) return true;
           return false;
         });
-
-        // Also check if current miruo_user matches
-        const storedUser = JSON.parse(localStorage.getItem('miruo_user') || 'null');
-        if (!localMatch && storedUser) {
-          const storedUserClean = (storedUser.username || '').toLowerCase().replace(/^@/, '');
-          const storedEmail = (storedUser.email || '').toLowerCase();
-          if (storedUserClean === cleanContact.toLowerCase() || (isEmail && storedEmail === cleanContact.toLowerCase())) {
-            localMatch = {
-              id: storedUser.id,
-              email: storedUser.email || '',
-              username: storedUser.username || cleanContact,
-              fullName: (storedUser.fullName && !storedUser.fullName.startsWith('@')) ? storedUser.fullName : (storedUser.name || storedUser.username || cleanContact),
-              password: passwordVal,
-              avatarUrl: storedUser.avatarUrl || '',
-              avatarBg: storedUser.avatarBg || '',
-              isApple: !!(storedUser.isApple || storedUser.provider === 'apple'),
-              provider: storedUser.provider || (storedUser.isApple ? 'apple' : 'email')
-            };
-          }
-        }
 
         if (!passwordVal) {
           // If this account is an Apple ID account, trigger Touch ID / Apple authentication seamlessly
@@ -21465,87 +21558,85 @@ function initEvents() {
 
         let loginSuccess = false;
         let userData = null;
+        let authFailMsg = '';
 
-        // 1. Check local backend
-        try {
-          const loginPayload = { email: cleanContact, emailOrUsername: cleanContact, password: passwordVal };
-          let resp = await fetch('/api/auth/login', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(loginPayload)
-          });
-          let data = null;
-          if (resp && resp.ok) {
-            const ct = resp.headers.get('content-type') || '';
-            if (ct.includes('application/json')) data = await resp.json();
-          }
-          if ((!data || !data.success) && MIRUO_API_BASE) {
+        // 1. Check custom backend if configured
+        if (MIRUO_API_BASE) {
+          try {
+            const loginPayload = { email: cleanContact, emailOrUsername: cleanContact, password: passwordVal };
+            const resp = await fetch(`${MIRUO_API_BASE}/api/auth/login`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(loginPayload)
+            });
+            if (resp && resp.ok) {
+              const ct = resp.headers.get('content-type') || '';
+              if (ct.includes('application/json')) {
+                const data = await resp.json();
+                if (data && data.success && data.user) {
+                  loginSuccess = true;
+                  userData = data.user;
+                }
+              }
+            }
+          } catch (_) {}
+        }
+
+        // 2. Authenticate strictly via Supabase Auth (supports both email AND @username via profiles lookup)
+        if (!loginSuccess && supabaseClient && supabaseClient.auth) {
+          let loginEmail = isEmail ? cleanContact.toLowerCase() : (localMatch && localMatch.email ? localMatch.email.toLowerCase() : '');
+          if (!loginEmail && !isEmail) {
             try {
-              const fallbackResp = await fetch(`${MIRUO_API_BASE}/api/auth/login`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(loginPayload)
-              });
-              if (fallbackResp && fallbackResp.ok) {
-                const ct = fallbackResp.headers.get('content-type') || '';
-                if (ct.includes('application/json')) data = await fallbackResp.json();
+              const { data: profLookup } = await supabaseClient
+                .from('profiles')
+                .select('email')
+                .ilike('username', cleanContact)
+                .maybeSingle();
+              if (profLookup && profLookup.email) {
+                loginEmail = String(profLookup.email).trim().toLowerCase();
               }
             } catch (_) {}
           }
-          if (data && data.success && data.user) {
-            loginSuccess = true;
-            userData = data.user;
-          }
-        } catch (e) {}
 
-        // 2. Check Supabase (if email)
-        if (!loginSuccess && supabaseClient && isEmail) {
-          try {
-            const { data: supaAuth, error: supaErr } = await supabaseClient.auth.signInWithPassword({
-              email: cleanContact,
-              password: passwordVal
-            });
-            if (!supaErr && supaAuth && supaAuth.user) {
-              loginSuccess = true;
-              userData = {
-                id: supaAuth.user.id,
-                email: supaAuth.user.email,
-                fullName: supaAuth.user.user_metadata?.full_name || supaAuth.user.user_metadata?.name,
-                username: supaAuth.user.user_metadata?.username,
-                avatarUrl: supaAuth.user.user_metadata?.avatar_url,
-                avatarBg: supaAuth.user.user_metadata?.avatar_bg
-              };
+          if (loginEmail) {
+            try {
+              const { data: supaAuth, error: supaErr } = await supabaseClient.auth.signInWithPassword({
+                email: loginEmail,
+                password: passwordVal
+              });
+              if (!supaErr && supaAuth && supaAuth.user) {
+                loginSuccess = true;
+                userData = {
+                  id: supaAuth.user.id,
+                  email: supaAuth.user.email,
+                  fullName: supaAuth.user.user_metadata?.full_name || supaAuth.user.user_metadata?.name,
+                  username: supaAuth.user.user_metadata?.username,
+                  avatarUrl: supaAuth.user.user_metadata?.avatar_url,
+                  avatarBg: supaAuth.user.user_metadata?.avatar_bg
+                };
+              } else if (supaErr) {
+                const em = String(supaErr.message || '').toLowerCase();
+                if (em.includes('email not confirmed')) {
+                  authFailMsg = "E-posta adresiniz henüz doğrulanmamış. Lütfen gelen kutunuzdaki (ve spam klasöründeki) onay bağlantısına tıklayın.";
+                } else if (em.includes('invalid login credentials')) {
+                  authFailMsg = "E-posta/kullanıcı adı veya şifre hatalı! Lütfen kontrol edip tekrar deneyin.";
+                } else if (em.includes('rate limit') || supaErr.status === 429) {
+                  authFailMsg = "Çok fazla giriş denemesi yapıldı. Lütfen birkaç dakika bekleyin.";
+                } else {
+                  authFailMsg = "Giriş yapılamadı: " + (supaErr.message || "Lütfen tekrar deneyin.");
+                }
+              }
+            } catch (e) {
+              authFailMsg = "Bağlantı hatası. Lütfen internet bağlantınızı kontrol edin.";
             }
-          } catch (e) {}
-        }
-
-        // 3. Check local registered user record
-        if (!loginSuccess && localMatch) {
-          if (localMatch.isApple || localMatch.provider === 'apple' || !localMatch.password || localMatch.password === passwordVal) {
-            loginSuccess = true;
-            userData = {
-              id: localMatch.id || ('user_' + Math.random().toString(36).substring(2, 8)),
-              email: localMatch.email,
-              fullName: localMatch.fullName,
-              username: localMatch.username,
-              avatarUrl: localMatch.avatarUrl,
-              avatarBg: localMatch.avatarBg,
-              isApple: !!(localMatch.isApple || localMatch.provider === 'apple'),
-              provider: localMatch.provider || (localMatch.isApple ? 'apple' : 'email')
-            };
-          } else {
-            dom.authSubmitBtn.innerText = prevBtnText;
-            dom.authSubmitBtn.disabled = false;
-            showAuthAlert("Girdiğiniz şifre hatalı! Lütfen kontrol edin.");
-            return;
           }
         }
 
-        // STRICT BLOCK: If account does not exist anywhere, DO NOT log in!
+        // STRICT BLOCK: Never bypass authentication with localStorage!
         if (!loginSuccess) {
           dom.authSubmitBtn.innerText = prevBtnText;
           dom.authSubmitBtn.disabled = false;
-          showAuthAlert("Bu kullanıcı adı veya e-posta ile kayıtlı bir hesap bulunamadı! Lütfen önce 'Kayıt Ol' sekmesinden hesap oluşturun.");
+          showAuthAlert(authFailMsg || "Bu e-posta veya kullanıcı adı ile kayıtlı hesap bulunamadı ya da şifre hatalı!");
           return;
         }
 
@@ -24768,7 +24859,7 @@ window.recordUsernameChange = recordUsernameChange;
         badge.style.cssText = 'position:fixed;top:50%;left:50%;transform:translate(-50%,-50%) scale(0.92);z-index:2147483647;pointer-events-none;display:flex;align-items:center;gap:10px;padding:14px 24px;border-radius:24px;background:rgba(14,5,18,0.88);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);border:1px solid rgba(255,255,255,0.2);box-shadow:0 20px 50px rgba(0,0,0,0.7);color:#fff;font-family:system-ui,-apple-system,BlinkMacSystemFont,sans-serif;font-weight:700;font-size:16px;letter-spacing:0.3px;opacity:0;transition:opacity 0.16s ease, transform 0.16s ease;user-select:none;';
         document.body.appendChild(badge);
       }
-      badge.innerHTML = `${icon ? `<span style="font-size:20px;line-height:1;">${icon}</span>` : ''}<span>${text}</span>`;
+      badge.innerHTML = `${icon ? `<span style="font-size:20px;line-height:1;">${escapeHtml(icon)}</span>` : ''}<span>${escapeHtml(text)}</span>`;
       badge.style.opacity = '1';
       badge.style.transform = 'translate(-50%, -50%) scale(1)';
       clearTimeout(badge._timer);

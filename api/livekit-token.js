@@ -11,8 +11,18 @@ function signJwt(payload, secret) {
   return `${header}.${body}.${sig}`;
 }
 
-function setCors(res) {
-  res.setHeader('Access-Control-Allow-Origin', '*');
+function setCors(req, res) {
+  const origin = String((req && req.headers && req.headers.origin) || '');
+  const allowed =
+    !origin ||
+    origin === 'null' ||
+    origin === 'https://www.miruo.com.tr' ||
+    origin === 'https://miruo.com.tr' ||
+    origin === 'capacitor://localhost' ||
+    /^https:\/\/[a-z0-9-]+\.vercel\.app$/i.test(origin) ||
+    /^http:\/\/(127\.0\.0\.1|localhost)(:\d+)?$/i.test(origin);
+  res.setHeader('Access-Control-Allow-Origin', allowed ? (origin || '*') : 'https://www.miruo.com.tr');
+  res.setHeader('Vary', 'Origin');
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
   res.setHeader('Cache-Control', 'no-store');
@@ -27,7 +37,7 @@ async function readBody(req) {
 }
 
 module.exports = async function handler(req, res) {
-  setCors(res);
+  setCors(req, res);
   if (req.method === 'OPTIONS') { res.statusCode = 204; return res.end(); }
   if (req.method !== 'POST') { res.statusCode = 405; return res.end(JSON.stringify({ error: 'method_not_allowed' })); }
 
