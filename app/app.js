@@ -81,8 +81,8 @@ function extractAuthFromUrl(url) {
 function extractUserProfile(user) {
   if (!user) return { name: null, avatar: null, email: null, usernameBase: 'user' };
   const meta = user.user_metadata || {};
-  const googleIdentity = user.identities?.find(i => i.provider === 'google') || user.identities?.[0];
-  const idData = googleIdentity?.identity_data || {};
+  const socialIdentity = user.identities?.find(i => i.provider === 'google' || i.provider === 'apple') || user.identities?.[0];
+  const idData = socialIdentity?.identity_data || {};
 
   const rawName =
     meta.full_name ||
@@ -91,6 +91,8 @@ function extractUserProfile(user) {
     idData.name ||
     (meta.given_name ? `${meta.given_name} ${meta.family_name || ''}`.trim() : null) ||
     (idData.given_name ? `${idData.given_name} ${idData.family_name || ''}`.trim() : null) ||
+    (meta.first_name ? `${meta.first_name} ${meta.last_name || ''}`.trim() : null) ||
+    (idData.first_name ? `${idData.first_name} ${idData.last_name || ''}`.trim() : null) ||
     meta.displayName ||
     idData.displayName ||
     null;
@@ -108,6 +110,8 @@ function extractUserProfile(user) {
   const usernameBase = (
     meta.preferred_username ||
     idData.preferred_username ||
+    meta.user_name ||
+    idData.user_name ||
     (rawName ? rawName.replace(/[^a-zA-Z0-9_]/g, '_') : null) ||
     (email ? email.split('@')[0].replace(/[^a-zA-Z0-9_]/g, '') : null) ||
     'user'
@@ -332,12 +336,18 @@ function persistUserToLocalRegistry(user, oldUsername = '') {
       : ((user.name && !user.name.startsWith('@')) ? user.name.trim() : '');
 
     const regUsers = JSON.parse(localStorage.getItem('miruo_registered_users') || '[]');
-    let idx = regUsers.findIndex(u =>
-      (user.id && u.id && u.id === user.id) ||
-      (cleanEmail && u.email && u.email.toLowerCase() === cleanEmail) ||
-      (cleanOld && u.username && u.username.toLowerCase().replace(/^@/, '') === cleanOld) ||
-      (cleanU && u.username && u.username.toLowerCase().replace(/^@/, '') === cleanU.toLowerCase())
-    );
+    let idx = regUsers.findIndex(u => {
+      if (!u) return false;
+      if (user.id && u.id && u.id === user.id) return true;
+      if (cleanEmail && u.email && u.email.toLowerCase() === cleanEmail) return true;
+      // Only match by username if the existing entry does NOT belong to a different email or account ID!
+      const differentEmail = cleanEmail && u.email && u.email.toLowerCase() !== cleanEmail;
+      const differentId = user.id && u.id && u.id !== user.id && !u.id.startsWith('user_');
+      if (differentEmail || differentId) return false;
+      if (cleanOld && u.username && u.username.toLowerCase().replace(/^@/, '') === cleanOld) return true;
+      if (cleanU && u.username && u.username.toLowerCase().replace(/^@/, '') === cleanU.toLowerCase()) return true;
+      return false;
+    });
 
     if (idx !== -1) {
       if (user.id) regUsers[idx].id = user.id;
@@ -459,14 +469,13 @@ function resolveCustomizedUserProfile({ id, email, rawName, rawUsername, rawAvat
   }
   if (!saved) {
     const cur = JSON.parse(localStorage.getItem('miruo_user') || 'null');
-    if (cur && ((cleanId && cur.id === cleanId) || (cleanEmail && cur.email && cur.email.toLowerCase() === cleanEmail) || (inputUsername && cur.username && cur.username.toLowerCase().replace(/^@/, '') === inputUsername) || cur.hasCustomProfile)) {
+    if (cur && ((cleanId && cur.id === cleanId) || (cleanEmail && cur.email && cur.email.toLowerCase() === cleanEmail) || (inputUsername && cur.username && cur.username.toLowerCase().replace(/^@/, '') === inputUsername))) {
       saved = cur;
     }
   }
 
-  // 2. Resolve Username: NEVER wipe user's customized username!
+  // 2. Resolve Username: NEVER wipe user's customized username for this account!
   const customUsername = 
-    localStorage.getItem('miruo_custom_username') ||
     (saved && (saved.customUsername || (saved.hasCustomProfile && saved.username && !saved.username.startsWith('user_') ? saved.username : ''))) ||
     (cleanId && localStorage.getItem(`miruo_custom_username_${cleanId}`)) ||
     (cleanEmail && localStorage.getItem(`miruo_custom_username_${cleanEmail}`)) ||
@@ -482,9 +491,8 @@ function resolveCustomizedUserProfile({ id, email, rawName, rawUsername, rawAvat
 
   const finalUsername = (customUsername || fallbackUsername || 'kullanici').replace(/^@/, '').trim();
 
-  // 3. Resolve Full Name: NEVER wipe user's customized full name!
+  // 3. Resolve Full Name: NEVER wipe user's customized full name for this account!
   const customFullName =
-    localStorage.getItem('miruo_custom_fullname') ||
     (saved && (saved.customFullName || (saved.hasCustomProfile && saved.fullName ? saved.fullName : (saved.name && !saved.name.startsWith('@') && saved.name !== 'Misafir' ? saved.name : '')))) ||
     (cleanId && localStorage.getItem(`miruo_custom_fullname_${cleanId}`)) ||
     (cleanEmail && localStorage.getItem(`miruo_custom_fullname_${cleanEmail}`)) ||
@@ -495,7 +503,7 @@ function resolveCustomizedUserProfile({ id, email, rawName, rawUsername, rawAvat
   const fallbackFullName = rawName || (cleanEmail ? cleanEmail.split('@')[0] : 'Miruo Kullanıcısı');
   const finalFullName = (customFullName && !customFullName.startsWith('@')) ? customFullName.trim() : (fallbackFullName || finalUsername);
 
-  // 4. Resolve Avatar: NEVER wipe user's customized avatar photo!
+  // 4. Resolve Avatar: NEVER wipe user's customized avatar photo for this account!
   const customAvatar =
     window.pendingAvatarUrl ||
     (cleanId && localStorage.getItem(`miruo_custom_avatar_${cleanId}`)) ||
@@ -503,8 +511,6 @@ function resolveCustomizedUserProfile({ id, email, rawName, rawUsername, rawAvat
     (inputUsername && localStorage.getItem(`miruo_custom_avatar_${inputUsername}`)) ||
     (saved && (saved.customAvatarUrl || (saved.avatarUrl && !saved.avatarUrl.includes('googleusercontent.com') ? saved.avatarUrl : ''))) ||
     meta.custom_avatar_url ||
-    localStorage.getItem('miruo_custom_avatar') ||
-    localStorage.getItem('miruo_avatar') ||
     (saved && saved.avatarUrl) ||
     '';
 
@@ -3059,8 +3065,11 @@ function connectSupabaseRoomSignaling() {
   state.roomId = cleanRoom;
 
   const savedUserObj = JSON.parse(localStorage.getItem('miruo_user') || '{}');
+  if (!state.roomJoinedAt) state.roomJoinedAt = Date.now();
   const myData = {
     clientId: state.clientId,
+    deviceId: state.deviceId,
+    singleInstance: !!state.isSingleInstanceDevice,
     userId: state.userId,
     username: state.username,
     avatar: state.avatarUrl || savedUserObj.avatarUrl || '',
@@ -3068,14 +3077,15 @@ function connectSupabaseRoomSignaling() {
     isMicOn: !!state.isMicOn,
     isCamOn: !!state.isCamOn,
     isHost: !!state.isHost,
-    role: state.userRole || (state.isHost ? 'owner' : 'member')
+    role: state.userRole || (state.isHost ? 'owner' : 'member'),
+    joinedAt: state.roomJoinedAt
   };
 
   // If already connected to this exact room and channel is active, ensure presence is tracked and media broadcasted
   if (roomSupabaseChannel && currentRoomSubscribed === cleanRoom && (roomSupabaseChannel.state === 'joined' || roomSupabaseChannel.state === 'joining')) {
     try {
       roomSupabaseChannel.track(myData).catch(() => {});
-      sendSignal({ type: 'peer-joined', clientId: state.clientId, userId: state.userId, username: state.username, avatar: myData.avatar });
+      sendSignal({ type: 'peer-joined', clientId: state.clientId, deviceId: state.deviceId, singleInstance: !!state.isSingleInstanceDevice, userId: state.userId, username: state.username, avatar: myData.avatar, isHost: !!state.isHost, role: myData.role, joinedAt: state.roomJoinedAt });
       broadcastMyMediaStatus();
     } catch (_) {}
     return;
@@ -3107,6 +3117,7 @@ function connectSupabaseRoomSignaling() {
       if (!targetKey) return;
       let removed = false;
       let removedName = '';
+      let removedWasHost = false;
       const cleanTarget = String(targetKey).toLowerCase();
       state.departedClients.add(cleanTarget);
       // Auto-expire departedClients entry after 6s so a rejoining peer is never permanently blocked
@@ -3120,6 +3131,11 @@ function connectSupabaseRoomSignaling() {
         // Strict client-level matching so same user on computer & phone is never cross-deleted!
         if (kId === cleanTarget || cId === cleanTarget || (uId && uId === cleanTarget && !cId)) {
           removedName = p.username || removedName;
+          const cleanHost = String(state.hostName || state.host || '').toLowerCase().replace(/^@/, '').trim();
+          const cleanPName = String(p.username || '').toLowerCase().replace(/^@/, '').trim();
+          if (p.isHost || p.role === 'owner' || (cleanHost && cleanPName && cleanHost === cleanPName)) {
+            removedWasHost = true;
+          }
           if (cId) {
             state.departedClients.add(cId);
             setTimeout(() => { try { state.departedClients && state.departedClients.delete(cId); } catch (_) {} }, 6000);
@@ -3166,6 +3182,13 @@ function connectSupabaseRoomSignaling() {
       const remainingPeers = Object.keys(state.participants || {}).filter(k => k !== state.clientId && !k.startsWith('bot_') && (!state.departedClients || !state.departedClients.has(String(k).toLowerCase())));
       state.peerId = remainingPeers.length > 0 ? remainingPeers[0] : null;
       updatePeerStatus(!!state.peerId);
+
+      // If the departed participant was the room owner (or if there is no active owner left in the room),
+      // deterministically elect & promote the next room owner according to role + longest time in room!
+      const anyActiveHostLeft = state.isHost || Object.values(state.participants || {}).some(p => p && !isSelfMember(p) && (p.isHost || p.role === 'owner'));
+      if (state.isInRoom && (removedWasHost || !anyActiveHostLeft) && typeof window.electAndApplyRoomSuccessor === 'function') {
+        try { window.electAndApplyRoomSuccessor(cleanTarget); } catch (_) {}
+      }
 
       renderParticipantsList();
       renderVideoGrid();
@@ -3233,6 +3256,9 @@ function connectSupabaseRoomSignaling() {
           const finalMic = hasRecentMediaStatus
             ? Boolean(existing.isMicOn)
             : (typeof info.isMicOn === 'boolean' ? info.isMicOn : Boolean(existing.isMicOn));
+          const finalJoinedAt = (typeof info.joinedAt === 'number' && info.joinedAt > 0)
+            ? (existing.joinedAt ? Math.min(existing.joinedAt, info.joinedAt) : info.joinedAt)
+            : (existing.joinedAt || Date.now());
 
           state.participants[existingKey] = {
             ...existing,
@@ -3248,14 +3274,19 @@ function connectSupabaseRoomSignaling() {
             isCamOn: finalCam,
             isHost: typeof info.isHost === 'boolean' ? info.isHost : !!existing.isHost,
             role: info.role || existing.role || (info.isHost ? 'owner' : 'member'),
+            joinedAt: finalJoinedAt,
             isSelf: false,
             lastSeen: Date.now()
           };
           const nextSnap = `${displayUsername}|${finalMic}|${finalCam}|${state.participants[existingKey].avatar}`;
           if (prevSnap !== nextSnap) anyParticipantChanged = true;
 
-          if (info.isHost && info.username) {
+          if ((info.isHost || info.role === 'owner') && info.username) {
             state.hostName = info.username;
+            state.host = info.username;
+            if (typeof window.reconcileActiveRoomHost === 'function') {
+              try { window.reconcileActiveRoomHost(info.clientId || pk, info.username, finalJoinedAt); } catch (_) {}
+            }
           }
           if (finalCam && !existing.isCamOn) {
             state.dismissedPips = state.dismissedPips || {};
@@ -3416,6 +3447,7 @@ function connectSupabaseRoomSignaling() {
             } catch (_) {}
           }, 1500);
           const savedUserObj = JSON.parse(localStorage.getItem('miruo_user') || '{}');
+          if (!state.roomJoinedAt) state.roomJoinedAt = Date.now();
           const myData = {
             clientId: state.clientId,
             deviceId: state.deviceId,
@@ -3427,7 +3459,8 @@ function connectSupabaseRoomSignaling() {
             isMicOn: !!state.isMicOn,
             isCamOn: !!state.isCamOn,
             isHost: !!state.isHost,
-            role: state.userRole || (state.isHost ? 'owner' : 'member')
+            role: state.userRole || (state.isHost ? 'owner' : 'member'),
+            joinedAt: state.roomJoinedAt
           };
           state._lastTrackedPresenceSnap = `${myData.username}|${myData.avatar}|${myData.isMicOn}|${myData.isCamOn}|${myData.role}`;
           thisChannel.track(myData).catch(() => {});
@@ -3448,7 +3481,8 @@ function connectSupabaseRoomSignaling() {
             isMicOn: !!state.isMicOn,
             isCamOn: !!state.isCamOn,
             isHost: !!state.isHost,
-            role: myData.role
+            role: myData.role,
+            joinedAt: state.roomJoinedAt
           });
           broadcastMyMediaStatus();
           if (!state.isHost) {
@@ -3481,7 +3515,8 @@ function connectSupabaseRoomSignaling() {
       isMicOn: !!state.isMicOn,
       isCamOn: !!state.isCamOn,
       isHost: !!state.isHost,
-      role: myData.role
+      role: myData.role,
+      joinedAt: state.roomJoinedAt
     });
     if (!state.isHost) {
       setTimeout(() => {
@@ -3661,10 +3696,13 @@ function handleSignalMessage(msg) {
   switch (msg.type) {
     case 'init':
       if (typeof msg.isHost === 'boolean') {
-        if (msg.isHost === true) {
+        const wasFormerHost = Boolean(state.roomId && (function() {
+          try { return sessionStorage.getItem('miruo_former_host_left_' + String(state.roomId).toUpperCase()) === '1'; } catch (_) { return false; }
+        })());
+        if (msg.isHost === true && !wasFormerHost) {
           state.isHost = true;
           state.userRole = 'owner';
-        } else if (!state.isHost) {
+        } else if (!state.isHost || wasFormerHost) {
           state.isHost = false;
         }
       }
@@ -3721,9 +3759,15 @@ function handleSignalMessage(msg) {
       const existingP = state.participants[remoteKey] || {};
       const joinedIsHost = typeof msg.isHost === 'boolean' ? msg.isHost : !!existingP.isHost;
       const joinedRole = msg.role || existingP.role || (joinedIsHost ? 'owner' : 'member');
+      const joinedAtVal = (typeof msg.joinedAt === 'number' && msg.joinedAt > 0)
+        ? (existingP.joinedAt ? Math.min(existingP.joinedAt, msg.joinedAt) : msg.joinedAt)
+        : (existingP.joinedAt || Date.now());
       if (joinedIsHost && (msg.username || msg.name)) {
         state.hostName = msg.username || msg.name;
         state.host = state.hostName;
+        if (typeof window.reconcileActiveRoomHost === 'function') {
+          try { window.reconcileActiveRoomHost(msg.clientId || remoteKey, joinedName, joinedAtVal); } catch (_) {}
+        }
       }
       state.participants[remoteKey] = {
         ...existingP,
@@ -3739,6 +3783,7 @@ function handleSignalMessage(msg) {
         isCamOn: typeof msg.isCamOn === 'boolean' ? msg.isCamOn : (typeof existingP.isCamOn === 'boolean' ? existingP.isCamOn : false),
         isHost: joinedIsHost,
         role: joinedRole,
+        joinedAt: joinedAtVal,
         isSelf: false,
         lastSeen: Date.now()
       };
@@ -4011,7 +4056,7 @@ function handleSignalMessage(msg) {
 
     case 'media_status':
     case 'media-status':
-      updateRemoteParticipantStatus(msg.userId, msg.username, msg.isMicOn, msg.isCamOn, msg.avatar, msg.avatarColor, msg.clientId, msg.deviceId, msg.singleInstance);
+      updateRemoteParticipantStatus(msg.userId, msg.username, msg.isMicOn, msg.isCamOn, msg.avatar, msg.avatarColor, msg.clientId, msg.deviceId, msg.singleInstance, msg.joinedAt, msg.isHost, msg.role);
       break;
 
     case 'platform-switch':
@@ -5766,7 +5811,7 @@ function handleIncomingP2PData(rawData) {
       if (typeof handleIncomingRoomInvite === 'function') handleIncomingRoomInvite(payload);
     }
     if (data.type === 'chat') renderChatMessage(data.sender || payload.sender, data.text || payload.text, false, data.time || payload.time, data.imageUrl || payload.imageUrl, data.avatarUrl || payload.avatarUrl, data.msgId || payload.msgId);
-    if (data.type === 'media_status') updateRemoteParticipantStatus(data.userId || payload.userId, data.username || payload.username, data.isMicOn !== undefined ? data.isMicOn : payload.isMicOn, data.isCamOn !== undefined ? data.isCamOn : payload.isCamOn, data.avatar || payload.avatar, data.avatarColor || payload.avatarColor, data.clientId || payload.clientId, data.deviceId || payload.deviceId, data.singleInstance !== undefined ? data.singleInstance : payload.singleInstance);
+    if (data.type === 'media_status') updateRemoteParticipantStatus(data.userId || payload.userId, data.username || payload.username, data.isMicOn !== undefined ? data.isMicOn : payload.isMicOn, data.isCamOn !== undefined ? data.isCamOn : payload.isCamOn, data.avatar || payload.avatar, data.avatarColor || payload.avatarColor, data.clientId || payload.clientId, data.deviceId || payload.deviceId, data.singleInstance !== undefined ? data.singleInstance : payload.singleInstance, data.joinedAt || payload.joinedAt, data.isHost !== undefined ? data.isHost : payload.isHost, data.role || payload.role);
     if (data.type === 'platform_switch') {
       switchRoomPlatform(data.platform || payload.platform);
       const sender = payload.user || payload.fromUser || data.user;
@@ -6471,7 +6516,25 @@ function controlStageWebviewVideo(action, time, rate) {
         state.lastProgSeekAt = Date.now();
         state._webviewVideoTime = Number(time);
         state._webviewVideoAt = Date.now();
-        script = `document.querySelectorAll('video').forEach(v => { try { if (!v.duration || isFinite(v.duration)) v.currentTime = ${Number(time)}; } catch(_) {} });`;
+        script = `document.querySelectorAll('video').forEach(v => { try {
+          var t = ${Number(time)};
+          if (t >= 999999) {
+            var bEnd = (v.buffered && v.buffered.length > 0) ? v.buffered.end(v.buffered.length - 1) : ((v.seekable && v.seekable.length > 0) ? v.seekable.end(v.seekable.length - 1) : 0);
+            if (bEnd > 0) v.currentTime = Math.max(0, bEnd - 0.25);
+            v.playbackRate = 1.0;
+            v.play().catch(()=>{});
+          } else if (!v.duration || isFinite(v.duration)) {
+            v.currentTime = t;
+          }
+        } catch(_) {} });`;
+      } else if (action === 'live_edge') {
+        state.lastProgSeekAt = Date.now();
+        script = `document.querySelectorAll('video').forEach(v => { try {
+          var bEnd = (v.buffered && v.buffered.length > 0) ? v.buffered.end(v.buffered.length - 1) : ((v.seekable && v.seekable.length > 0) ? v.seekable.end(v.seekable.length - 1) : 0);
+          if (bEnd > 0) v.currentTime = Math.max(0, bEnd - 0.25);
+          v.playbackRate = 1.0;
+          v.play().catch(()=>{});
+        } catch(_) {} });`;
       } else if (action === 'rate' && typeof rate === 'number' && rate > 0) {
         script = `document.querySelectorAll('video').forEach(v => { try { v.playbackRate = ${Number(rate)}; } catch(_) {} });`;
       }
@@ -6487,6 +6550,16 @@ function controlStageWebviewVideo(action, time, rate) {
       } else if (action === 'play') {
         cw.postMessage(JSON.stringify({ method: 'play', event: 'command', func: 'play' }), '*');
         cw.postMessage({ method: 'play', command: 'play' }, '*');
+      } else if (action === 'live_edge' || (action === 'seek' && typeof time === 'number' && time >= 999999)) {
+        cw.postMessage(JSON.stringify({ method: 'play', event: 'command', func: 'play' }), '*');
+        cw.postMessage({ method: 'play', command: 'play' }, '*');
+        // For cross-origin live embeds (Kick / Twitch / Web) in standard iframe, refresh live edge URL cleanly
+        const curSrc = dom.webPlayerFrame.getAttribute('src') || '';
+        if (curSrc && (state.activeMode === 'kick' || state.activeMode === 'twitch' || state.isLiveStream) && !curSrc.startsWith('about:')) {
+          const baseSrc = curSrc.replace(/[?&]_miruo_live=\d+/g, '');
+          const sep = baseSrc.includes('?') ? '&' : '?';
+          dom.webPlayerFrame.src = `${baseSrc}${sep}_miruo_live=${Date.now()}`;
+        }
       } else if (action === 'seek' && typeof time === 'number' && isFinite(time)) {
         cw.postMessage(JSON.stringify({ method: 'setCurrentTime', value: Number(time), event: 'command', func: 'seek', args: [Number(time)] }), '*');
         cw.postMessage({ method: 'setCurrentTime', value: Number(time), command: 'seek', time: Number(time) }, '*');
@@ -6507,6 +6580,7 @@ function startStageWebviewSyncPoll(wv) {
     if (!state.isInRoom || (state.activeMode !== 'web' && state.activeMode !== 'kick' && state.activeMode !== 'twitch')) return;
     if (!document.getElementById('miruoStageWebview')) return;
     try {
+      const forceLiveEdge = Boolean(state.activeMode === 'kick' || state.activeMode === 'twitch' || state.isLiveStream);
       wv.executeJavaScript(`
         (function() {
           var vids = document.querySelectorAll('video');
@@ -6517,10 +6591,39 @@ function startStageWebviewSyncPoll(wv) {
               best = v;
             }
           }
+          var bEnd = 0;
+          var lag = 0;
+          var isLive = ${forceLiveEdge ? 'true' : 'false'};
+          if (best) {
+            if (!isFinite(best.duration) || best.duration > 86400) isLive = true;
+            if (best.buffered && best.buffered.length > 0) {
+              bEnd = best.buffered.end(best.buffered.length - 1);
+            } else if (best.seekable && best.seekable.length > 0) {
+              bEnd = best.seekable.end(best.seekable.length - 1);
+            }
+            if (bEnd > 0 && best.currentTime > 0) {
+              lag = Math.max(0, bEnd - best.currentTime);
+            }
+            // Zero-Lag Live Stream Lock for Kick, Twitch & Live Web Streams:
+            // Keeps every participant's HLS buffer within ~0.35s of the live edge so nobody lags 2-3s behind!
+            if (isLive && !best.paused && bEnd > 0) {
+              if (lag > 2.2) {
+                try { best.currentTime = Math.max(0, bEnd - 0.25); } catch(_) {}
+                if (best.playbackRate !== 1.0) best.playbackRate = 1.0;
+              } else if (lag > 0.75) {
+                if (best.playbackRate !== 1.08) best.playbackRate = 1.08;
+              } else if (lag <= 0.45 && best.playbackRate !== 1.0) {
+                best.playbackRate = 1.0;
+              }
+            }
+          }
           return {
             hasVideo: !!best,
             currentTime: best ? Number(best.currentTime || 0) : 0,
-            duration: (best && best.duration && isFinite(best.duration) && best.duration < 86400) ? Number(best.duration) : 0,
+            bufferedEnd: Number(bEnd || 0),
+            lagFromEdge: Number(lag || 0),
+            isLiveDetected: !!isLive,
+            duration: (!isLive && best && best.duration && isFinite(best.duration) && best.duration < 86400) ? Number(best.duration) : 0,
             paused: best ? !!best.paused : true,
             rate: best ? Number(best.playbackRate || 1) : 1,
             url: location.href,
@@ -6559,11 +6662,13 @@ function startStageWebviewSyncPoll(wv) {
         if (!state.isUserDraggingSeek) {
           state.currentTime = info.currentTime;
         }
-        if (info.duration > 0) {
+        if (state.activeMode === 'kick' || state.activeMode === 'twitch' || info.isLiveDetected) {
+          state.isLiveStream = true;
+          state.isAtLiveEdge = (info.lagFromEdge || 0) < 1.8;
+          if (typeof updateLiveBadgeUI === 'function') updateLiveBadgeUI();
+        } else if (info.duration > 0) {
           state.duration = info.duration;
           state.isLiveStream = false;
-        } else if (state.activeMode === 'kick' || state.activeMode === 'twitch') {
-          state.isLiveStream = true;
         }
 
         const cmdRecent = (now - (state._lastWebviewCmdAt || 0)) < 1400;
@@ -7285,7 +7390,7 @@ function handleRemoteSync(payload) {
     return;
   }
 
-  const isPlaybackCommand = (payload.action === 'play' || payload.action === 'pause' || payload.action === 'seek' || payload.action === 'load_yt');
+  const isPlaybackCommand = (payload.action === 'play' || payload.action === 'pause' || payload.action === 'seek' || payload.action === 'live_edge' || payload.action === 'load_yt');
   if (isPlaybackCommand) {
     if (payload.clientId && payload.clientId === state.clientId) return;
 
@@ -7457,24 +7562,31 @@ function handleRemoteSync(payload) {
     setTimeout(enforceRemotePause, 1000);
   }
 
-  if (payload.action === 'seek') {
-    const rawTarget = typeof payload.time === 'number' ? payload.time : 0;
+  if (payload.action === 'seek' || payload.action === 'live_edge') {
+    const isLiveJump = payload.action === 'live_edge' || (typeof payload.time === 'number' && payload.time >= 999999) || (payload.isLive && payload.action === 'live_edge');
+    const rawTarget = isLiveJump ? 9999999 : (typeof payload.time === 'number' ? payload.time : 0);
     const nextPlay = typeof payload.isPlaying === 'boolean' ? payload.isPlaying : state.isPlaying;
     recordHostSyncRef({ ...payload, time: rawTarget, isPlaying: nextPlay });
-    const targetTime = nextPlay ? (rawTarget + oneWaySec) : rawTarget;
+    const targetTime = isLiveJump ? 9999999 : (nextPlay ? (rawTarget + oneWaySec) : rawTarget);
     state.currentTime = targetTime;
     state.lastHardSeekAt = Date.now();
     state.lastReportedYtTime = targetTime;
     state.lastReportedYtAt = Date.now();
     state._lastInfoT = targetTime;
     state._lastInfoAt = Date.now();
+    if (isLiveJump) {
+      state.isAtLiveEdge = true;
+      if (typeof updateLiveBadgeUI === 'function') updateLiveBadgeUI();
+    }
     if (typeof payload.isPlaying === 'boolean') {
       state.isPlaying = payload.isPlaying;
       if (!state.isPlaying) state._explicitRemotePauseAt = Date.now();
       updatePlayPauseUI(state.isPlaying);
     }
     if (state.activeMode === 'youtube') {
-      const seekT = state.isPlaying ? Math.min((state.liveDuration || state.duration || 999999), targetTime + (state.measuredSeekLatency || 0.5)) : targetTime;
+      const seekT = isLiveJump
+        ? 9999999
+        : (state.isPlaying ? Math.min((state.liveDuration || state.duration || 999999), targetTime + (state.measuredSeekLatency || 0.5)) : targetTime);
       _applyYouTubeCompensatedSeek(seekT, state.roomPlaybackRate || state.playbackRate || 1.0);
       if (state.isPlaying) {
         setTimeout(() => { if (state.isPlaying && state.activeMode === 'youtube') sendYtCommand('playVideo'); }, 150);
@@ -7483,14 +7595,22 @@ function handleRemoteSync(payload) {
         setTimeout(() => { if (!state.isPlaying && state.activeMode === 'youtube') sendYtCommand('pauseVideo'); }, 600);
       }
     } else if (state.activeMode === 'direct' && dom.nativeVideoPlayer) {
-      dom.nativeVideoPlayer.currentTime = targetTime;
+      if (isLiveJump) {
+        const b = dom.nativeVideoPlayer.buffered;
+        const s = dom.nativeVideoPlayer.seekable;
+        const edge = (b && b.length > 0) ? b.end(b.length - 1) : ((s && s.length > 0) ? s.end(s.length - 1) : (dom.nativeVideoPlayer.duration || 0));
+        if (edge > 0 && isFinite(edge)) dom.nativeVideoPlayer.currentTime = Math.max(0, edge - 0.25);
+        dom.nativeVideoPlayer.playbackRate = 1.0;
+      } else {
+        dom.nativeVideoPlayer.currentTime = targetTime;
+      }
       if (state.isPlaying) dom.nativeVideoPlayer.play().catch(() => {});
       else dom.nativeVideoPlayer.pause();
     } else if (typeof controlStageWebviewVideo === 'function') {
-      controlStageWebviewVideo('seek', targetTime);
+      controlStageWebviewVideo(isLiveJump ? 'live_edge' : 'seek', targetTime);
       controlStageWebviewVideo(state.isPlaying ? 'play' : 'pause');
     }
-    if (dom.seekSlider && state.duration > 0) {
+    if (dom.seekSlider && state.duration > 0 && !isLiveJump) {
       dom.seekSlider.value = (targetTime / state.duration) * 100;
     }
   }
@@ -7511,6 +7631,11 @@ function handleRemoteSync(payload) {
       const staleHb = hbSent && state.lastHbSentAt && hbSent < state.lastHbSentAt;
       if (hbSent && !staleHb) state.lastHbSentAt = hbSent;
       if (staleHb) return;
+
+      // Never overwrite an active screen-sharing session with background video heartbeats
+      if (state.activeMode === 'screenshare' || state.isScreenSharing) {
+        return;
+      }
 
       // Different video than the host? Jump straight to the host's video + position.
       if (payload.videoId && payload.videoId !== state.currentVideoId &&
@@ -7567,22 +7692,41 @@ function handleRemoteSync(payload) {
         return;
       }
 
-      // If watching external platforms (Kick / Twitch / Netflix / Prime / Disney+ / Web), sync play state + VOD timestamp
+      // If watching external platforms (Kick / Twitch / Netflix / Prime / Disney+ / Web), sync play state + VOD timestamp + live edge
       if (state.activeMode === 'kick' || state.activeMode === 'twitch' || state.activeMode === 'web') {
         if (!state.isPlaying) {
           state.isPlaying = true;
           updatePlayPauseUI(true);
           if (typeof controlStageWebviewVideo === 'function') controlStageWebviewVideo('play');
         }
+        if (state.isLiveStream || state.activeMode === 'kick' || state.activeMode === 'twitch') {
+          if (!state._lastWebLiveEdgeCheckAt || (Date.now() - state._lastWebLiveEdgeCheckAt) > 3500) {
+            state._lastWebLiveEdgeCheckAt = Date.now();
+            if (typeof controlStageWebviewVideo === 'function') controlStageWebviewVideo('live_edge');
+          }
+          return;
+        }
         if (!state.isLiveStream && state.activeMode === 'web' && typeof payload.time === 'number' && payload.time > 0) {
           const expectedWebNow = getExpectedHostTimeNow();
           const curWebLocal = getLivePlayerTime();
-          if (Math.abs(curWebLocal - expectedWebNow) > 2.0 && (!state.lastHardSeekAt || (Date.now() - state.lastHardSeekAt) > 3500)) {
+          const webDrift = expectedWebNow - curWebLocal;
+          const absWebDrift = Math.abs(webDrift);
+          const hostWebRate = (typeof payload.rate === 'number' && payload.rate > 0) ? payload.rate : (state.roomPlaybackRate || 1.0);
+          if (absWebDrift > 1.8 && (!state.lastHardSeekAt || (Date.now() - state.lastHardSeekAt) > 2500)) {
             state.lastHardSeekAt = Date.now();
             state.currentTime = expectedWebNow;
             if (typeof controlStageWebviewVideo === 'function') {
               controlStageWebviewVideo('seek', expectedWebNow);
+              controlStageWebviewVideo('rate', hostWebRate);
               controlStageWebviewVideo('play');
+            }
+          } else if (typeof controlStageWebviewVideo === 'function') {
+            const catchupRate = absWebDrift > 0.35
+              ? (webDrift > 0 ? Math.min(1.5, hostWebRate * 1.07) : Math.max(0.75, hostWebRate * 0.93))
+              : hostWebRate;
+            if (Math.abs((state.playbackRate || 1.0) - catchupRate) > 0.03) {
+              state.playbackRate = catchupRate;
+              controlStageWebviewVideo('rate', catchupRate);
             }
           }
         }
@@ -8008,11 +8152,18 @@ function jumpToLiveEdge() {
         state.ytPlayer.playVideo();
       } catch (_) {}
     }
-  } else if (dom.nativeVideoPlayer) {
-    if (dom.nativeVideoPlayer.duration && isFinite(dom.nativeVideoPlayer.duration)) {
-      dom.nativeVideoPlayer.currentTime = dom.nativeVideoPlayer.duration;
+  } else if (state.activeMode === 'direct' && dom.nativeVideoPlayer) {
+    const b = dom.nativeVideoPlayer.buffered;
+    const s = dom.nativeVideoPlayer.seekable;
+    const edge = (b && b.length > 0) ? b.end(b.length - 1) : ((s && s.length > 0) ? s.end(s.length - 1) : (dom.nativeVideoPlayer.duration || 0));
+    if (edge > 0 && isFinite(edge)) {
+      dom.nativeVideoPlayer.currentTime = Math.max(0, edge - 0.25);
     }
+    dom.nativeVideoPlayer.playbackRate = 1.0;
     dom.nativeVideoPlayer.play().catch(() => {});
+  } else if (typeof controlStageWebviewVideo === 'function') {
+    controlStageWebviewVideo('live_edge');
+    controlStageWebviewVideo('play');
   }
   state.isAtLiveEdge = true;
   state.isPlaying = true;
@@ -8020,7 +8171,9 @@ function jumpToLiveEdge() {
   updateLiveBadgeUI();
   showToast('Canlı yayına geçildi (En Güncel)');
   if (canUserControlPlayback()) {
-    sendP2PData('sync', { action: 'seek', time: 9999999, isPlaying: true, isLive: true, sentAt: Date.now() });
+    const livePayload = { action: 'live_edge', time: 9999999, isPlaying: true, isLive: true, sentAt: Date.now() };
+    sendP2PData('sync', livePayload);
+    sendSignal({ type: 'sync', ...livePayload });
   }
 }
 window.jumpToLiveEdge = jumpToLiveEdge;
@@ -8657,22 +8810,34 @@ window.playVideoOnStage = playVideoOnStage;
 async function startScreenSharing() {
   try {
     let stream = null;
-    try {
+    const isMacDesktop = !!(window.miruoDesktop && window.miruoDesktop.isDesktop && window.miruoDesktop.platform === 'darwin');
+    if (isMacDesktop) {
       stream = await navigator.mediaDevices.getDisplayMedia({
-        video: { cursor: 'always', frameRate: 60 },
-        audio: true
+        video: { cursor: 'always', frameRate: 30 }
       });
-    } catch (audioErr) {
-      console.warn('[ScreenShare] getDisplayMedia with audio failed, falling back to video only:', audioErr);
-      stream = await navigator.mediaDevices.getDisplayMedia({
-        video: { cursor: 'always', frameRate: 60 }
-      });
+    } else {
+      try {
+        stream = await navigator.mediaDevices.getDisplayMedia({
+          video: { cursor: 'always', frameRate: 60 },
+          audio: true
+        });
+      } catch (audioErr) {
+        console.warn('[ScreenShare] getDisplayMedia with audio failed, falling back to video only:', audioErr);
+        stream = await navigator.mediaDevices.getDisplayMedia({
+          video: { cursor: 'always', frameRate: 60 }
+        });
+      }
     }
 
     state.screenStream = stream;
     state.isScreenSharing = true;
     state.activeMode = 'screenshare';
     state.currentVideoId = null;
+
+    if (typeof videoDisplaySettings !== 'undefined') {
+      videoDisplaySettings.showVideo = true;
+      if (typeof applyVideoDisplay === 'function') applyVideoDisplay();
+    }
 
     // Stop and completely clear any playing YouTube / Web / background media so old paused frame never shows
     try { sendYtCommand('pauseVideo'); } catch (_) {}
@@ -8817,6 +8982,10 @@ function handleRemoteScreenShareStarted(user, meta = {}) {
   state.currentVideoId = null;
   state.remoteScreenStreamId = (meta && meta.streamId) || null;
   state.remoteScreenTrackId = (meta && meta.trackId) || null;
+  if (typeof videoDisplaySettings !== 'undefined') {
+    videoDisplaySettings.showVideo = true;
+    if (typeof applyVideoDisplay === 'function') applyVideoDisplay();
+  }
   try { sendYtCommand('pauseVideo'); } catch (_) {}
   const oldYtFrame = document.getElementById('miruoYtIframe');
   if (oldYtFrame) { try { oldYtFrame.src = 'about:blank'; oldYtFrame.remove(); } catch (_) {} }
@@ -8834,43 +9003,63 @@ function handleRemoteScreenShareStarted(user, meta = {}) {
 
   if (dom.emptyStatePlaceholder) dom.emptyStatePlaceholder.classList.add('hidden');
   if (dom.sleepModePlaceholder) dom.sleepModePlaceholder.classList.add('hidden');
+  if (dom.audioOnlyPlaceholder) dom.audioOnlyPlaceholder.classList.add('hidden');
   const photoStage = document.getElementById('photoStageContainer');
   if (photoStage) photoStage.classList.add('hidden');
 
   if (dom.remoteScreenPlayer) {
+    dom.remoteScreenPlayer.style.zIndex = '25';
     dom.remoteScreenPlayer.playsInline = true;
     dom.remoteScreenPlayer.muted = true;
     dom.remoteScreenPlayer.defaultMuted = true;
     dom.remoteScreenPlayer.autoplay = true;
     dom.remoteScreenPlayer.setAttribute('playsinline', 'true');
     dom.remoteScreenPlayer.setAttribute('webkit-playsinline', 'true');
-    dom.remoteScreenPlayer.classList.remove('hidden');
+    dom.remoteScreenPlayer.classList.remove('hidden', 'video-display-hidden');
 
-    const uniquePeers = (typeof getUniquePeerEntries === 'function') ? getUniquePeerEntries() : Array.from(new Set(Object.values(state.peers || {})));
-    let screenTrack = (window.MiruoLive && typeof window.MiruoLive.getScreenTrack === 'function')
-      ? window.MiruoLive.getScreenTrack(null)
-      : null;
-    for (const p of uniquePeers) {
-      if (screenTrack) break;
-      if (p && p.screenVideoTrack && p.screenVideoTrack.readyState === 'live') {
-        screenTrack = p.screenVideoTrack;
-        break;
-      }
-      if (p && p.stream) {
-        const vt = p.stream.getVideoTracks().filter(t => t.readyState === 'live');
-        if (state.remoteScreenTrackId) {
-          const exact = vt.find(t => t.id === state.remoteScreenTrackId);
-          if (exact) { screenTrack = exact; break; }
+    const attachAvailableScreenTrack = () => {
+      if (!dom.remoteScreenPlayer || state.activeMode !== 'screenshare') return false;
+      const uniquePeers = (typeof getUniquePeerEntries === 'function') ? getUniquePeerEntries() : Array.from(new Set(Object.values(state.peers || {})));
+      let screenTrack = (window.MiruoLive && typeof window.MiruoLive.getScreenTrack === 'function')
+        ? window.MiruoLive.getScreenTrack(null)
+        : null;
+      for (const p of uniquePeers) {
+        if (screenTrack) break;
+        if (p && p.screenVideoTrack && p.screenVideoTrack.readyState === 'live') {
+          screenTrack = p.screenVideoTrack;
+          break;
         }
-        const detail = vt.find(t => t.contentHint === 'detail' || /screen|display|window/i.test(t.label || ''));
-        if (detail) { screenTrack = detail; break; }
-        if (vt.length > 1) { screenTrack = vt[vt.length - 1]; break; }
+        if (p && p.stream) {
+          const vt = p.stream.getVideoTracks().filter(t => t.readyState === 'live');
+          if (state.remoteScreenTrackId) {
+            const exact = vt.find(t => t.id === state.remoteScreenTrackId);
+            if (exact) { screenTrack = exact; break; }
+          }
+          const detail = vt.find(t => t.contentHint === 'detail' || /screen|display|window/i.test(t.label || ''));
+          if (detail) { screenTrack = detail; break; }
+          if (vt.length > 1) { screenTrack = vt[vt.length - 1]; break; }
+        }
       }
-    }
-    if (screenTrack) {
-      dom.remoteScreenPlayer.dataset.trackId = screenTrack.id;
-      dom.remoteScreenPlayer.srcObject = new MediaStream([screenTrack]);
-      dom.remoteScreenPlayer.play().catch(() => {});
+      if (screenTrack) {
+        if (!dom.remoteScreenPlayer.srcObject || dom.remoteScreenPlayer.dataset.trackId !== screenTrack.id) {
+          dom.remoteScreenPlayer.dataset.trackId = screenTrack.id;
+          dom.remoteScreenPlayer.srcObject = new MediaStream([screenTrack]);
+        }
+        dom.remoteScreenPlayer.classList.remove('hidden', 'video-display-hidden');
+        dom.remoteScreenPlayer.play().catch(() => {});
+        return true;
+      }
+      return false;
+    };
+
+    if (!attachAvailableScreenTrack()) {
+      let retries = 0;
+      const pollScreen = setInterval(() => {
+        retries++;
+        if (!state.isInRoom || state.activeMode !== 'screenshare' || attachAvailableScreenTrack() || retries > 20) {
+          clearInterval(pollScreen);
+        }
+      }, 250);
     }
   }
   showToast(`@${user || 'Oda Sahibi'} ekranını paylaşıyor`);
@@ -9261,8 +9450,33 @@ function leaveRoom() {
     stopScreenSharing();
   }
 
+  // Check if any other real participants remain in the room BEFORE clearing participants
+  const remainingOtherCount = Object.values(state.participants || {}).filter(p =>
+    p && !isSelfMember(p) && !String(p.clientId || p.peerId || '').startsWith('bot_') &&
+    (!state.departedClients || !state.departedClients.has(String(p.clientId || '').toLowerCase()))
+  ).length;
+
+  if (state.isHost && remainingOtherCount > 0 && typeof electNextRoomOwner === 'function') {
+    const successor = electNextRoomOwner(state.clientId);
+    if (successor) {
+      try {
+        transferRoomOwnership(successor.userId, successor.username, successor.clientId);
+      } catch (_) {}
+    }
+    if (state.roomId) {
+      try { sessionStorage.setItem('miruo_former_host_left_' + String(state.roomId).toUpperCase(), '1'); } catch (_) {}
+    }
+  } else if (state.roomId && remainingOtherCount > 0) {
+    try { sessionStorage.setItem('miruo_former_host_left_' + String(state.roomId).toUpperCase(), '1'); } catch (_) {}
+  } else if (state.roomId && remainingOtherCount === 0) {
+    try { sessionStorage.removeItem('miruo_former_host_left_' + String(state.roomId).toUpperCase()); } catch (_) {}
+  }
+
   // Notify other room participants immediately of departure
   try {
+    if (window.MiruoLive && typeof window.MiruoLive.sendLeave === 'function') {
+      window.MiruoLive.sendLeave();
+    }
     const leavePayload = {
       clientId: state.clientId,
       userId: state.userId,
@@ -9363,14 +9577,17 @@ function leaveRoom() {
     }
   } catch (e) {}
 
-  // Cleanup Supabase room presence & channels
-  if (globalRoomsChannel && state.isHost) {
+  // Cleanup Supabase room presence & channels:
+  // Automatically close room ONLY when 0 participants remain in the room!
+  if (globalRoomsChannel) {
     try {
-      globalRoomsChannel.send({
-        type: 'broadcast',
-        event: 'room_closed',
-        payload: { id: state.roomId }
-      }).catch(() => {});
+      if (remainingOtherCount === 0 && state.roomId) {
+        globalRoomsChannel.send({
+          type: 'broadcast',
+          event: 'room_closed',
+          payload: { id: state.roomId }
+        }).catch(() => {});
+      }
       globalRoomsChannel.untrack().catch(() => {});
     } catch (_) {}
   }
@@ -9393,12 +9610,13 @@ function leaveRoom() {
 
   // Rotate clientId on room exit so re-entering never collides with departedClients or delayed leave events
   state.clientId = 'cl_' + Math.random().toString(36).substring(2, 9) + '_' + Date.now().toString(36);
+  state.roomJoinedAt = 0;
   try { sessionStorage.setItem('miruo_client_id', state.clientId); } catch (_) {}
 
-  // Clear local room state so closed room never lingers in Explore
+  // Clear local room state; if empty, remove room from global realtime rooms list
   try {
     localStorage.removeItem('miruo_my_public_rooms');
-    if (state.roomId) {
+    if (state.roomId && remainingOtherCount === 0) {
       removeGlobalRealtimeRoom(state.roomId);
     }
   } catch (_) {}
@@ -11834,6 +12052,8 @@ function createAndJoinRoom(title, isPrivate = false, category = 'YouTube', video
     connectedAccount: activeConn
   }).then(code => {
     state.roomId = code;
+    state.roomJoinedAt = Date.now();
+    try { sessionStorage.removeItem('miruo_former_host_left_' + String(code).toUpperCase()); } catch (_) {}
     state.isInRoom = true;
     state.participants = {};
     if (dom.roomMemberCountBadge) dom.roomMemberCountBadge.textContent = '1';
@@ -11877,13 +12097,18 @@ function joinRoomByCode(rawCode) {
   if (code.length < 4) { showToast('Oda kodunu gir (örn. ODA-4729)'); return; }
 
   const enterByRoomMeta = (roomMeta) => {
+    const targetRoomId = String((roomMeta && roomMeta.id) || code).toUpperCase();
     const cleanHostKey = String((roomMeta && roomMeta.host) || '').toLowerCase().replace(/^@/, '').trim();
     const cleanMyKey = String(state.username || '').toLowerCase().replace(/^@/, '').trim();
-    state.isHost = Boolean(cleanHostKey && cleanMyKey && cleanHostKey === cleanMyKey);
+    const wasFormerHostWhoLeft = (function() {
+      try { return sessionStorage.getItem('miruo_former_host_left_' + targetRoomId) === '1'; } catch (_) { return false; }
+    })();
+    state.isHost = Boolean(cleanHostKey && cleanMyKey && cleanHostKey === cleanMyKey && !wasFormerHostWhoLeft);
     state.userRole = state.isHost ? 'owner' : 'member';
     state.hasDjPermission = state.isHost;
     state.controlMode = (roomMeta && roomMeta.controlMode) || 'host_only';
-    state.roomId = (roomMeta && roomMeta.id) || code;
+    state.roomId = targetRoomId;
+    state.roomJoinedAt = Date.now();
     state.isInRoom = true;
     state.participants = {};
     if (dom.roomMemberCountBadge) dom.roomMemberCountBadge.textContent = '1';
@@ -12172,13 +12397,17 @@ function renderRoomList(roomsToRender) {
     // Entire capsule card is clickable to enter the room
     const enterRoom = (e) => {
       if (e) { e.preventDefault(); e.stopPropagation(); }
-      const roomId = r.id;
+      const roomId = String(r.id || '').toUpperCase();
       state.roomId = roomId;
+      state.roomJoinedAt = Date.now();
       state.hostName = r.host || 'Yönetici';
       state.host = r.host || 'Yönetici';
       const cleanHostKey = String(r.host || '').toLowerCase().replace(/^@/, '').trim();
       const cleanMyKey = String(state.username || '').toLowerCase().replace(/^@/, '').trim();
-      state.isHost = Boolean(cleanHostKey && cleanMyKey && cleanHostKey === cleanMyKey);
+      const wasFormerHostWhoLeft = (function() {
+        try { return sessionStorage.getItem('miruo_former_host_left_' + roomId) === '1'; } catch (_) { return false; }
+      })();
+      state.isHost = Boolean(cleanHostKey && cleanMyKey && cleanHostKey === cleanMyKey && !wasFormerHostWhoLeft);
       state.userRole = state.isHost ? 'owner' : 'member';
       state.controlMode = r.controlMode || 'host_only';
       state.hasDjPermission = state.isHost;
@@ -16965,7 +17194,7 @@ function evictDuplicateDeviceSessions(newClientId, deviceId, singleInstance = fa
 }
 window.evictDuplicateDeviceSessions = evictDuplicateDeviceSessions;
 
-function updateRemoteParticipantStatus(userId, username, isMicOn, isCamOn, avatar, avatarColor, clientId, deviceId = '', singleInstance = false) {
+function updateRemoteParticipantStatus(userId, username, isMicOn, isCamOn, avatar, avatarColor, clientId, deviceId = '', singleInstance = false, joinedAt = null, isHostFlag = undefined, roleFlag = undefined) {
   if (!userId && !clientId) return;
   // Prevent tracking self as a remote participant
   const isSelf = clientId ? (String(clientId) === String(state.clientId)) : (userId === state.userId && !clientId);
@@ -16989,7 +17218,7 @@ function updateRemoteParticipantStatus(userId, username, isMicOn, isCamOn, avata
 
   const existing = state.participants[existingKey] || {};
   const isNewParticipant = !state.participants[existingKey];
-  const prevSnapshot = !isNewParticipant ? [existing.isMicOn, existing.isCamOn, existing.username, existing.avatar].join('|') : null;
+  const prevSnapshot = !isNewParticipant ? [existing.isMicOn, existing.isCamOn, existing.username, existing.avatar, existing.role, existing.isHost].join('|') : null;
   let finalUName = username || existing.username || 'Katılımcı';
   if (state.username && finalUName.toLowerCase() === state.username.toLowerCase()) {
     finalUName = `${state.username} (Cihaz 2)`;
@@ -16998,6 +17227,15 @@ function updateRemoteParticipantStatus(userId, username, isMicOn, isCamOn, avata
   const finalColor = avatarColor || existing.avatarColor || 'from-indigo-500 to-purple-600';
   const effectiveCam = typeof isCamOn === 'boolean' ? isCamOn : !!existing.isCamOn;
   const effectiveMic = typeof isMicOn === 'boolean' ? isMicOn : !!existing.isMicOn;
+  const effectiveIsHost = typeof isHostFlag === 'boolean' ? isHostFlag : !!existing.isHost;
+  const effectiveRole = roleFlag || existing.role || (effectiveIsHost ? 'owner' : 'member');
+  const effectiveJoinedAt = (typeof joinedAt === 'number' && joinedAt > 0)
+    ? (existing.joinedAt ? Math.min(existing.joinedAt, joinedAt) : joinedAt)
+    : (existing.joinedAt || Date.now());
+
+  if ((effectiveIsHost || effectiveRole === 'owner') && typeof window.reconcileActiveRoomHost === 'function') {
+    try { window.reconcileActiveRoomHost(clientId || existingKey, finalUName, effectiveJoinedAt); } catch (_) {}
+  }
 
   const peerObj = (typeof getPeerEntry === 'function')
     ? (getPeerEntry(clientId) || getPeerEntry(userId) || getPeerEntry(existingKey))
@@ -17023,7 +17261,9 @@ function updateRemoteParticipantStatus(userId, username, isMicOn, isCamOn, avata
     avatarColor: finalColor,
     isMicOn: effectiveMic,
     isCamOn: effectiveCam,
-    role: existing.role || (existing.isHost ? 'owner' : 'member'),
+    isHost: effectiveIsHost,
+    role: effectiveRole,
+    joinedAt: effectiveJoinedAt,
     isSelf: false,
     stream: peerStream || existing.stream,
     mediaStatusAt: Date.now(),
@@ -17065,7 +17305,7 @@ function updateRemoteParticipantStatus(userId, username, isMicOn, isCamOn, avata
   } catch (_) {}
 
   const nowP = state.participants[existingKey];
-  const newSnapshot = [nowP.isMicOn, nowP.isCamOn, nowP.username, nowP.avatar].join('|');
+  const newSnapshot = [nowP.isMicOn, nowP.isCamOn, nowP.username, nowP.avatar, nowP.role, nowP.isHost].join('|');
   const expectedGridCount = 1 + Object.keys(state.participants).filter(k => k !== state.clientId && !k.startsWith('bot_')).length;
   const currentGridCount = dom.roomVideoGrid ? dom.roomVideoGrid.children.length : 0;
   const needsCamAttachRetry = effectiveCam && (!dom.partnerVideo || !dom.partnerVideo.srcObject || dom.partnerVideo.videoWidth === 0);
@@ -17089,6 +17329,7 @@ if (!window._mediaAnnounceTimer) {
 
 function broadcastMyMediaStatus() {
   const savedUserObj = JSON.parse(localStorage.getItem('miruo_user') || '{}');
+  if (!state.roomJoinedAt) state.roomJoinedAt = Date.now();
   const payload = {
     userId: state.userId,
     clientId: state.clientId,
@@ -17100,7 +17341,8 @@ function broadcastMyMediaStatus() {
     isMicOn: !!state.isMicOn,
     isCamOn: !!state.isCamOn,
     isHost: !!state.isHost,
-    role: state.userRole || (state.isHost ? 'owner' : 'member')
+    role: state.userRole || (state.isHost ? 'owner' : 'member'),
+    joinedAt: state.roomJoinedAt
   };
   sendP2PData('media_status', payload);
   if (roomSupabaseChannel && roomSupabaseChannel.track) {
@@ -17439,6 +17681,129 @@ function handleRemoteOwnershipTransfer(newOwnerUserId, newOwnerUsername, newOwne
   renderChatMessage('SİSTEM', `@${cleanNew || 'Katılımcı'} artık yeni Oda Sahibi.`, false);
 }
 window.handleRemoteOwnershipTransfer = handleRemoteOwnershipTransfer;
+
+// If another participant in the room is already the active Room Owner, ensure a rejoining former owner steps down to normal viewer
+function reconcileActiveRoomHost(remoteClientId, remoteUsername, remoteJoinedAt) {
+  if (!state.isInRoom || !remoteClientId || String(remoteClientId) === String(state.clientId)) return;
+  const cleanRemote = String(remoteUsername || '').replace(/^@/, '').trim();
+  const wasFormerOwnerWhoLeft = Boolean(state.roomId && (function() {
+    try { return sessionStorage.getItem('miruo_former_host_left_' + String(state.roomId).toUpperCase()) === '1'; } catch (_) { return false; }
+  })());
+  const myJoinedAt = state.roomJoinedAt || Date.now();
+  const remoteIsOlder = typeof remoteJoinedAt === 'number' && remoteJoinedAt > 0 && (remoteJoinedAt + 200) < myJoinedAt;
+
+  if (state.isHost && (wasFormerOwnerWhoLeft || remoteIsOlder)) {
+    state.isHost = false;
+    state.userRole = 'member';
+    state.hasDjPermission = false;
+    if (cleanRemote) {
+      state.hostName = cleanRemote;
+      state.host = cleanRemote;
+    }
+    if (typeof updatePermissionUI === 'function') updatePermissionUI();
+    if (typeof broadcastMyMediaStatus === 'function') broadcastMyMediaStatus();
+    if (typeof renderParticipantsList === 'function') renderParticipantsList();
+  } else if (!state.isHost && cleanRemote) {
+    state.hostName = cleanRemote;
+    state.host = cleanRemote;
+    if (typeof updatePermissionUI === 'function') updatePermissionUI();
+  }
+}
+window.reconcileActiveRoomHost = reconcileActiveRoomHost;
+
+// Deterministic Room Ownership Succession Engine:
+// 1. If there are remaining participants with elevated video/control permission ('admin', 'video_control', 'dj'),
+//    pick the one who has stayed in the room the longest (earliest joinedAt).
+// 2. Otherwise, pick the remaining participant who has stayed in the room the longest (earliest joinedAt).
+function electNextRoomOwner(excludeClientId = null) {
+  const candidates = [];
+  const exClean = excludeClientId ? String(excludeClientId).toLowerCase() : '';
+
+  if (state.isInRoom && state.clientId && String(state.clientId).toLowerCase() !== exClean) {
+    candidates.push({
+      clientId: state.clientId,
+      userId: state.userId,
+      username: state.username || 'Katılımcı',
+      role: state.userRole || (state.isHost ? 'owner' : 'member'),
+      hasVideoPerm: Boolean(state.userRole === 'admin' || state.userRole === 'video_control' || state.userRole === 'dj' || state.hasDjPermission),
+      joinedAt: state.roomJoinedAt || Date.now(),
+      isSelf: true
+    });
+  }
+
+  Object.values(state.participants || {}).forEach(p => {
+    if (!p || isSelfMember(p)) return;
+    const cid = String(p.clientId || p.peerId || p.userId || '');
+    if (!cid || cid.toLowerCase() === exClean || cid.startsWith('bot_')) return;
+    if (state.departedClients && state.departedClients.has(cid.toLowerCase())) return;
+    const r = p.role || 'member';
+    candidates.push({
+      clientId: p.clientId || cid,
+      userId: p.userId || cid,
+      username: p.username || 'Katılımcı',
+      role: r,
+      hasVideoPerm: Boolean(r === 'admin' || r === 'video_control' || r === 'dj' || p.hasDjPermission),
+      joinedAt: (typeof p.joinedAt === 'number' && p.joinedAt > 0) ? p.joinedAt : Date.now(),
+      isSelf: false
+    });
+  });
+
+  if (candidates.length === 0) return null;
+
+  const authorizedPool = candidates.filter(c => c.hasVideoPerm);
+  const pool = authorizedPool.length > 0 ? authorizedPool : candidates;
+
+  pool.sort((a, b) => {
+    const ja = a.joinedAt || 0;
+    const jb = b.joinedAt || 0;
+    if (ja !== jb) return ja - jb;
+    return String(a.clientId).localeCompare(String(b.clientId));
+  });
+
+  return pool[0] || null;
+}
+window.electNextRoomOwner = electNextRoomOwner;
+
+function electAndApplyRoomSuccessor(departedClientId = null) {
+  if (!state.isInRoom) return null;
+  // Check if there is already an active owner in the room
+  const existingRemoteOwner = Object.values(state.participants || {}).find(p =>
+    p && !isSelfMember(p) &&
+    String(p.clientId || '').toLowerCase() !== String(departedClientId || '').toLowerCase() &&
+    (!state.departedClients || !state.departedClients.has(String(p.clientId || '').toLowerCase())) &&
+    (p.isHost || p.role === 'owner')
+  );
+  if (state.isHost || existingRemoteOwner) {
+    return existingRemoteOwner || null;
+  }
+
+  const nextOwner = electNextRoomOwner(departedClientId);
+  if (!nextOwner) return null;
+
+  handleRemoteOwnershipTransfer(nextOwner.userId, nextOwner.username, nextOwner.clientId, 'Sistem');
+  if (nextOwner.isSelf) {
+    const transferPayload = {
+      newOwnerUserId: nextOwner.userId || '',
+      newOwnerUsername: String(nextOwner.username || '').replace(/^@/, '').trim(),
+      newOwnerClientId: nextOwner.clientId || '',
+      fromUser: 'Sistem',
+      roomId: state.roomId || 'ODA-77',
+      sentAt: Date.now()
+    };
+    sendP2PData('ownership_transfer', transferPayload);
+    sendSignal({ type: 'ownership_transfer', ...transferPayload });
+    if (globalUsersChannel) {
+      try {
+        globalUsersChannel.send({ type: 'broadcast', event: 'ownership_transfer', payload: transferPayload }).catch(() => {});
+      } catch (_) {}
+    }
+    if (typeof syncCurrentRoomToGlobalPresence === 'function') {
+      syncCurrentRoomToGlobalPresence();
+    }
+  }
+  return nextOwner;
+}
+window.electAndApplyRoomSuccessor = electAndApplyRoomSuccessor;
 
 function renderParticipantsList() {
   if (!dom.participantsListContainer) return;
@@ -18915,6 +19280,18 @@ window.initFsChatDragAndResize = initFsChatDragAndResize;
 // "odadayken klavyeye basınca aşağı kaymasın ekran, dik tam ekranken bunu yapıyor düzelt"
 // ==========================================
 function initMobileKeyboardProtection() {
+  const scrollChatBottom = () => {
+    const c1 = (dom && dom.chatMessagesContainer) || document.getElementById('chatMessagesContainer');
+    if (c1) c1.scrollTop = c1.scrollHeight;
+    const c2 = document.getElementById('fsChatMessagesContainer');
+    if (c2) c2.scrollTop = c2.scrollHeight;
+  };
+
+  const isChatTextInput = (el) => {
+    if (!el || !el.id) return false;
+    return el.id === 'chatMessageInput' || el.id === 'fsChatInput' || el.id === 'chatInput';
+  };
+
   const lockViewportAtZero = () => {
     const isRoomOrFs = document.body.classList.contains('in-room-mode') || 
                        document.body.classList.contains('stage-is-fullscreen');
@@ -18926,6 +19303,75 @@ function initMobileKeyboardProtection() {
     if (document.documentElement.scrollTop !== 0) document.documentElement.scrollTop = 0;
   };
 
+  const syncVisualViewportLayout = (forceChatInputFocused = undefined) => {
+    const isRoomOrFs = document.body.classList.contains('in-room-mode') || 
+                       document.body.classList.contains('stage-is-fullscreen');
+    if (!isRoomOrFs) {
+      document.body.classList.remove('mobile-chat-keyboard-open');
+      document.documentElement.style.removeProperty('--miruo-vvh');
+      document.documentElement.style.removeProperty('--miruo-vv-top');
+      document.documentElement.style.removeProperty('--miruo-kb-offset');
+      return;
+    }
+
+    lockViewportAtZero();
+
+    const vv = window.visualViewport;
+    const vvh = vv ? vv.height : window.innerHeight;
+    const vvTop = vv ? (vv.offsetTop || 0) : 0;
+    const isPortrait = window.innerHeight >= window.innerWidth;
+    const isMobileScreen = window.innerWidth <= 900 || ('ontouchstart' in window);
+    const keyboardHeight = Math.max(0, window.innerHeight - vvh - vvTop);
+    const activeEl = document.activeElement;
+    const chatFocused = typeof forceChatInputFocused === 'boolean'
+      ? forceChatInputFocused
+      : isChatTextInput(activeEl);
+    const isKeyboardOpen = keyboardHeight > 65 || (chatFocused && isMobileScreen && isPortrait);
+
+    document.documentElement.style.setProperty('--miruo-vvh', `${Math.round(vvh)}px`);
+    document.documentElement.style.setProperty('--miruo-vv-top', `${Math.round(vvTop)}px`);
+    document.documentElement.style.setProperty('--miruo-kb-offset', `${Math.round(keyboardHeight)}px`);
+
+    // 1. Portrait Fullscreen Live Chat: Lift chat overlay bottom directly above virtual keyboard
+    const fsChat = (dom && dom.fsChatOverlay) || document.getElementById('fsChatOverlay');
+    const isFs = isStageFullscreen();
+    if (fsChat && !fsChat.classList.contains('hidden') && isPortrait && isFs) {
+      if (isKeyboardOpen) {
+        fsChat.style.bottom = `${Math.max(12, keyboardHeight + 8)}px`;
+        fsChat.style.maxHeight = `${Math.max(160, Math.min(vvh - 40, window.innerHeight * 0.55))}px`;
+        scrollChatBottom();
+      } else {
+        fsChat.style.removeProperty('bottom');
+        fsChat.style.removeProperty('max-height');
+      }
+    }
+
+    // 2. Portrait In-Room View: Contract body & workspace height to visualViewport and compact top stage while typing
+    if (isPortrait && !isFs && document.body.classList.contains('in-room-mode')) {
+      const wsEl = (dom && dom.roomWorkspaceSection) || document.getElementById('roomWorkspaceSection');
+      if (isKeyboardOpen && chatFocused) {
+        document.body.classList.add('mobile-chat-keyboard-open');
+        document.body.style.setProperty('height', `${Math.round(vvh)}px`, 'important');
+        document.body.style.setProperty('max-height', `${Math.round(vvh)}px`, 'important');
+        if (wsEl) {
+          wsEl.style.setProperty('height', `${Math.round(vvh)}px`, 'important');
+          wsEl.style.setProperty('max-height', `${Math.round(vvh)}px`, 'important');
+        }
+        scrollChatBottom();
+      } else {
+        document.body.classList.remove('mobile-chat-keyboard-open');
+        document.body.style.removeProperty('height');
+        document.body.style.removeProperty('max-height');
+        if (wsEl) {
+          wsEl.style.removeProperty('height');
+          wsEl.style.removeProperty('max-height');
+        }
+      }
+    } else {
+      document.body.classList.remove('mobile-chat-keyboard-open');
+    }
+  };
+
   window.addEventListener('scroll', lockViewportAtZero, { passive: true });
 
   document.addEventListener('focusin', (e) => {
@@ -18933,10 +19379,11 @@ function initMobileKeyboardProtection() {
                        document.body.classList.contains('stage-is-fullscreen');
     if (!isRoomOrFs) return;
     if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA')) {
-      requestAnimationFrame(lockViewportAtZero);
-      setTimeout(lockViewportAtZero, 40);
-      setTimeout(lockViewportAtZero, 120);
-      setTimeout(lockViewportAtZero, 300);
+      const isChat = isChatTextInput(e.target);
+      requestAnimationFrame(() => syncVisualViewportLayout(isChat));
+      setTimeout(() => syncVisualViewportLayout(isChat), 60);
+      setTimeout(() => syncVisualViewportLayout(isChat), 180);
+      setTimeout(() => syncVisualViewportLayout(isChat), 350);
     }
   });
 
@@ -18944,8 +19391,9 @@ function initMobileKeyboardProtection() {
     const isRoomOrFs = document.body.classList.contains('in-room-mode') || 
                        document.body.classList.contains('stage-is-fullscreen');
     if (!isRoomOrFs) return;
-    setTimeout(lockViewportAtZero, 100);
-    const fsChat = dom.fsChatOverlay || document.getElementById('fsChatOverlay');
+    setTimeout(() => syncVisualViewportLayout(false), 80);
+    setTimeout(() => syncVisualViewportLayout(false), 250);
+    const fsChat = (dom && dom.fsChatOverlay) || document.getElementById('fsChatOverlay');
     if (fsChat && window.innerHeight > window.innerWidth) {
       fsChat.style.removeProperty('bottom');
       fsChat.style.removeProperty('max-height');
@@ -18953,43 +19401,8 @@ function initMobileKeyboardProtection() {
   });
 
   if (window.visualViewport) {
-    const onViewportChange = () => {
-      const isRoomOrFs = document.body.classList.contains('in-room-mode') || 
-                         document.body.classList.contains('stage-is-fullscreen');
-      if (!isRoomOrFs) return;
-
-      lockViewportAtZero();
-
-      const vv = window.visualViewport;
-      const isPortrait = window.innerHeight > window.innerWidth;
-      const keyboardHeight = Math.max(0, window.innerHeight - vv.height - (vv.offsetTop || 0));
-      const isKeyboardOpen = keyboardHeight > 70;
-
-      // 1. Portrait Fullscreen Live Chat: Lift chat overlay bottom directly above virtual keyboard
-      const fsChat = dom.fsChatOverlay || document.getElementById('fsChatOverlay');
-      const isFs = isStageFullscreen();
-      if (fsChat && !fsChat.classList.contains('hidden') && isPortrait && isFs) {
-        if (isKeyboardOpen) {
-          fsChat.style.bottom = `${keyboardHeight}px`;
-          fsChat.style.maxHeight = `${Math.min(vv.height - 100, window.innerHeight * 0.50)}px`;
-        } else {
-          fsChat.style.removeProperty('bottom');
-          fsChat.style.removeProperty('max-height');
-        }
-      }
-
-      // 2. Portrait In-Room View: Contract body height to visualViewport to avoid scrolling
-      if (isPortrait && !isFs && document.body.classList.contains('in-room-mode')) {
-        if (isKeyboardOpen) {
-          document.body.style.height = `${vv.height}px`;
-        } else {
-          document.body.style.removeProperty('height');
-        }
-      }
-    };
-
-    window.visualViewport.addEventListener('resize', onViewportChange);
-    window.visualViewport.addEventListener('scroll', lockViewportAtZero);
+    window.visualViewport.addEventListener('resize', () => syncVisualViewportLayout());
+    window.visualViewport.addEventListener('scroll', () => syncVisualViewportLayout());
   }
 }
 window.initMobileKeyboardProtection = initMobileKeyboardProtection;
@@ -19204,7 +19617,7 @@ function initEvents() {
 
     const canonicalAppleId = rawAppleSub ? `apple_${rawAppleSub}` : '';
 
-    // 0. Check all saved custom profile locations FIRST (never lose user's chosen name or avatar!)
+    // 0. Check all saved custom profile locations FIRST for THIS specific Apple ID / Email (never mix with a different user's profile!)
     const savedCustomProfile =
       (rawAppleSub && JSON.parse(localStorage.getItem(`miruo_saved_profile_${rawAppleSub}`) || 'null')) ||
       (email && JSON.parse(localStorage.getItem(`miruo_saved_profile_${email}`) || 'null')) ||
@@ -19215,26 +19628,25 @@ function initEvents() {
       (savedCustomProfile && savedCustomProfile.fullName) ||
       (rawAppleSub && localStorage.getItem(`miruo_apple_name_${rawAppleSub}`)) ||
       (rawAppleSub && localStorage.getItem(`miruo_custom_fullname_${rawAppleSub}`)) ||
-      localStorage.getItem('miruo_custom_fullname') ||
+      (email && localStorage.getItem(`miruo_custom_fullname_${email}`)) ||
       '';
 
     const customSavedUsername =
       (savedCustomProfile && savedCustomProfile.username) ||
       (rawAppleSub && localStorage.getItem(`miruo_apple_username_${rawAppleSub}`)) ||
       (rawAppleSub && localStorage.getItem(`miruo_custom_username_${rawAppleSub}`)) ||
-      localStorage.getItem('miruo_custom_username') ||
+      (email && localStorage.getItem(`miruo_custom_username_${email}`)) ||
       '';
 
     const customSavedAvatar =
       (savedCustomProfile && (savedCustomProfile.avatarUrl || savedCustomProfile.avatarBg)) ||
       (rawAppleSub && localStorage.getItem(`miruo_apple_avatar_${rawAppleSub}`)) ||
-      localStorage.getItem('miruo_custom_avatar') ||
+      (email && localStorage.getItem(`miruo_custom_avatar_${email}`)) ||
       '';
 
     // 1. Look up if this Apple ID or Email is ALREADY registered locally
-    const regList = JSON.parse(localStorage.getItem('miruo_registered_users') || '[]');
     const byEmail = JSON.parse(localStorage.getItem('miruo_profiles_by_email') || '{}');
-    let existingLocal = existingFromNative || regList.find(u =>
+    let existingLocal = existingFromNative || JSON.parse(localStorage.getItem('miruo_registered_users') || '[]').find(u =>
       (rawAppleSub && (u.id === canonicalAppleId || u.id === rawAppleSub || u.appleUserId === rawAppleSub)) ||
       (email && u.email && u.email.toLowerCase() === email)
     ) || (email && byEmail[email]) || null;
@@ -19401,9 +19813,10 @@ function initEvents() {
     state.avatarUrl = verifiedUser.avatarUrl || '';
     state.avatarBg = verifiedUser.avatarBg;
 
-    // Persist in local registered users list without creating duplicates
+    // Persist in local registered users list without creating duplicates or overwriting other accounts
     try {
-      const idx = regList.findIndex(u =>
+      const freshRegList = JSON.parse(localStorage.getItem('miruo_registered_users') || '[]');
+      const idx = freshRegList.findIndex(u =>
         (u.id && u.id === verifiedUser.id) ||
         (rawAppleSub && u.appleUserId === rawAppleSub) ||
         (resolvedEmail && u.email && u.email.toLowerCase() === resolvedEmail)
@@ -19420,11 +19833,11 @@ function initEvents() {
         provider: 'apple'
       };
       if (idx >= 0) {
-        regList[idx] = Object.assign({}, regList[idx], entry);
+        freshRegList[idx] = Object.assign({}, freshRegList[idx], entry);
       } else {
-        regList.push(entry);
+        freshRegList.push(entry);
       }
-      localStorage.setItem('miruo_registered_users', JSON.stringify(regList));
+      localStorage.setItem('miruo_registered_users', JSON.stringify(freshRegList));
 
       if (resolvedEmail) {
         byEmail[resolvedEmail] = entry;
@@ -19558,7 +19971,8 @@ function initEvents() {
         dom.authModal.classList.add('hidden');
         unfreezeBackgroundAfterModal();
       }
-      showToast(`${isApple ? 'Apple' : 'Google'} ile giriş yapıldı: ${displayName}`);
+      const loginDisplayName = verifiedUser.fullName || verifiedUser.name || verifiedUser.username || verifiedUser.email || 'Kullanıcı';
+      showToast(`${isApple ? 'Apple' : 'Google'} ile giriş yapıldı: ${loginDisplayName}`);
       syncUserProfileToSupabase(verifiedUser);
     } catch (e) {
       console.error('[Miruo] handleNativeOAuthResponse error:', e);
@@ -28078,6 +28492,26 @@ function notifyAppClosing() {
   if (!state.isInRoom || !state.roomId) return;
   if (state._lastClosingNotifyAt && (Date.now() - state._lastClosingNotifyAt < 1500)) return;
   state._lastClosingNotifyAt = Date.now();
+
+  const remainingOtherCount = Object.values(state.participants || {}).filter(p =>
+    p && !isSelfMember(p) && !String(p.clientId || p.peerId || '').startsWith('bot_') &&
+    (!state.departedClients || !state.departedClients.has(String(p.clientId || '').toLowerCase()))
+  ).length;
+
+  if (state.isHost && remainingOtherCount > 0 && typeof electNextRoomOwner === 'function') {
+    const successor = electNextRoomOwner(state.clientId);
+    if (successor) {
+      try {
+        transferRoomOwnership(successor.userId, successor.username, successor.clientId);
+      } catch (_) {}
+    }
+    try { sessionStorage.setItem('miruo_former_host_left_' + String(state.roomId).toUpperCase(), '1'); } catch (_) {}
+  } else if (remainingOtherCount > 0) {
+    try { sessionStorage.setItem('miruo_former_host_left_' + String(state.roomId).toUpperCase(), '1'); } catch (_) {}
+  } else {
+    try { sessionStorage.removeItem('miruo_former_host_left_' + String(state.roomId).toUpperCase()); } catch (_) {}
+  }
+
   try {
     if (window.MiruoLive && typeof window.MiruoLive.sendLeave === 'function') {
       window.MiruoLive.sendLeave();
@@ -28106,13 +28540,15 @@ function notifyAppClosing() {
       }).catch(() => {});
     }
   } catch (_) {}
-  if (state.isHost && globalRoomsChannel) {
+  if (globalRoomsChannel) {
     try {
-      globalRoomsChannel.send({
-        type: 'broadcast',
-        event: 'room_closed',
-        payload: { id: state.roomId }
-      }).catch(() => {});
+      if (remainingOtherCount === 0) {
+        globalRoomsChannel.send({
+          type: 'broadcast',
+          event: 'room_closed',
+          payload: { id: state.roomId }
+        }).catch(() => {});
+      }
       globalRoomsChannel.untrack().catch(() => {});
     } catch (_) {}
   }

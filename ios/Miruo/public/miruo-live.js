@@ -250,11 +250,20 @@
         try { window.handleRemoteScreenShareStarted(sharerName, { trackId: r.screen.id }); } catch (_) {}
       }
       if (screenPlayer) {
-        screenPlayer.classList.remove('hidden');
+        screenPlayer.style.zIndex = '25';
+        screenPlayer.classList.remove('hidden', 'video-display-hidden');
         screenPlayer.playsInline = true;
         screenPlayer.muted = true;
+        screenPlayer.defaultMuted = true;
         screenPlayer.autoplay = true;
-        if (!screenPlayer.srcObject || screenPlayer.dataset.trackId !== r.screen.id) {
+        screenPlayer.setAttribute('playsinline', 'true');
+        screenPlayer.setAttribute('webkit-playsinline', 'true');
+        if (r.screenTrackObj && typeof r.screenTrackObj.attach === 'function') {
+          if (!screenPlayer.srcObject || screenPlayer.dataset.trackId !== r.screen.id) {
+            screenPlayer.dataset.trackId = r.screen.id;
+            try { r.screenTrackObj.attach(screenPlayer); } catch (_) { screenPlayer.srcObject = new MediaStream([r.screen]); }
+          }
+        } else if (!screenPlayer.srcObject || screenPlayer.dataset.trackId !== r.screen.id) {
           screenPlayer.dataset.trackId = r.screen.id;
           screenPlayer.srcObject = new MediaStream([r.screen]);
         }
@@ -281,8 +290,15 @@
       } catch (_) {}
     }
     const L = LK();
-    const isScreenVideo = (pub && pub.source === L.Track.Source.ScreenShare) || (pub && pub.trackName === 'screen');
-    const isScreenAudio = (pub && pub.source === L.Track.Source.ScreenShareAudio) || (pub && pub.trackName === 'screen_audio');
+    const srcVal = (pub && pub.source) || (track && track.source) || '';
+    const nameVal = (pub && pub.trackName) || (track && track.name) || '';
+    const isScreenVideo = (srcVal === (L && L.Track && L.Track.Source && L.Track.Source.ScreenShare)) ||
+                          srcVal === 'screen_share' ||
+                          nameVal === 'screen' ||
+                          (track && track.mediaStreamTrack && (track.mediaStreamTrack.contentHint === 'detail' || /screen|display|window/i.test(track.mediaStreamTrack.label || '')));
+    const isScreenAudio = (srcVal === (L && L.Track && L.Track.Source && L.Track.Source.ScreenShareAudio)) ||
+                          srcVal === 'screen_share_audio' ||
+                          nameVal === 'screen_audio';
     if (track.kind === 'audio' && isScreenAudio) {
       r.screenAudio = track.mediaStreamTrack;
       remote.set(id, r);
@@ -310,8 +326,10 @@
     const r = remote.get(id);
     if (!r) return;
     const L = LK();
-    const isScreenVideo = (pub && pub.source === L.Track.Source.ScreenShare) || (pub && pub.trackName === 'screen');
-    const isScreenAudio = (pub && pub.source === L.Track.Source.ScreenShareAudio) || (pub && pub.trackName === 'screen_audio');
+    const srcVal = (pub && pub.source) || (track && track.source) || '';
+    const nameVal = (pub && pub.trackName) || (track && track.name) || '';
+    const isScreenVideo = (srcVal === (L && L.Track && L.Track.Source && L.Track.Source.ScreenShare)) || srcVal === 'screen_share' || nameVal === 'screen' || (r.screen && track && track.mediaStreamTrack === r.screen);
+    const isScreenAudio = (srcVal === (L && L.Track && L.Track.Source && L.Track.Source.ScreenShareAudio)) || srcVal === 'screen_share_audio' || nameVal === 'screen_audio';
     if (track.kind === 'audio' && isScreenAudio) {
       r.screenAudio = null;
       setScreenAudio(id, null);
@@ -390,7 +408,8 @@
       mic: !!st.isMicOn,
       cam: !!st.isCamOn,
       host: !!st.isHost,
-      role: st.userRole || (st.isHost ? 'owner' : 'member')
+      role: st.userRole || (st.isHost ? 'owner' : 'member'),
+      ja: st.roomJoinedAt || Date.now()
     }, false);
   }
   function onData(bytes, participant, kind, topic) {
@@ -430,9 +449,17 @@
           existingP.lastSeen = Date.now();
           if (m.dev) existingP.deviceId = m.dev;
           if (typeof m.si === 'boolean') existingP.singleInstance = m.si;
+          if (m.ja && (!existingP.joinedAt || m.ja < existingP.joinedAt)) existingP.joinedAt = m.ja;
+          if (m.role) existingP.role = m.role;
+          if (typeof m.host === 'boolean') {
+            existingP.isHost = m.host;
+            if (m.host && typeof window.reconcileActiveRoomHost === 'function') {
+              try { window.reconcileActiveRoomHost(m.id, m.u || existingP.username); } catch (_) {}
+            }
+          }
           delete existingP.vanishedSince;
         } else if (typeof updateRemoteParticipantStatus === 'function') {
-          updateRemoteParticipantStatus(m.uid || m.id, m.u || 'Katılımcı', !!m.mic, !!m.cam, m.av || '', '', m.id, m.dev || '', !!m.si);
+          updateRemoteParticipantStatus(m.uid || m.id, m.u || 'Katılımcı', !!m.mic, !!m.cam, m.av || '', '', m.id, m.dev || '', !!m.si, m.ja || Date.now(), !!m.host, m.role || (m.host ? 'owner' : 'member'));
         }
       }
     } else if (m.k === 'ping') {

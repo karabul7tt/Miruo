@@ -111,12 +111,15 @@ mkdir -p "$XCODE_ORGANIZER_DIR"
 cp -R "$ARCHIVE_PATH" "$XCODE_ORGANIZER_DIR/"
 
 echo "📲 App Store Connect / TestFlight'a yükleniyor (Build $NEXT_BUILD)..."
-xcodebuild -exportArchive \
+if xcodebuild -exportArchive \
   -archivePath "$ARCHIVE_PATH" \
   -exportOptionsPlist "/Users/mehmetkarabul7tt/.gemini/antigravity/brain/990d40d1-50cd-4fee-bac5-5e499a7dd65e/scratch/ExportOptions.plist" \
   -exportPath "/tmp/miruo_tf_export_${NEXT_BUILD}" \
-  -allowProvisioningUpdates
-echo "✅ iOS Build $NEXT_BUILD App Store Connect / TestFlight'a başarıyla yüklendi."
+  -allowProvisioningUpdates; then
+  echo "✅ iOS Build $NEXT_BUILD App Store Connect / TestFlight'a başarıyla yüklendi."
+else
+  echo "⚠️ Xcode Apple ID oturumu yeniden doğrulama bekliyor; arşiv Xcode Organizer'a eklendi ve IPA paketleniyor..."
+fi
 
 # IPA oluştur
 TEMP_PAYLOAD="/tmp/miruo_ipa_payload_${NEXT_BUILD}"

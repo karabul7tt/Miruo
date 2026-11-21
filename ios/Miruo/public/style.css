@@ -1132,6 +1132,41 @@ body.in-room-mode #roomMainSplitLayout {
     -webkit-overflow-scrolling: touch !important;
   }
 
+  /* When Mobile Virtual Keyboard is OPEN (.mobile-chat-keyboard-open):
+     Compact the top video/toolbar and keep the chat input & latest messages directly above the keyboard! */
+  body.in-room-mode.mobile-chat-keyboard-open:not(.stage-is-fullscreen) {
+    height: var(--miruo-vvh, 100dvh) !important;
+    max-height: var(--miruo-vvh, 100dvh) !important;
+    top: var(--miruo-vv-top, 0px) !important;
+    bottom: auto !important;
+  }
+
+  body.in-room-mode.mobile-chat-keyboard-open:not(.stage-is-fullscreen) #roomStickyHeader {
+    padding-top: max(4px, env(safe-area-inset-top, 0px)) !important;
+    padding-bottom: 4px !important;
+  }
+
+  body.in-room-mode.mobile-chat-keyboard-open:not(.stage-is-fullscreen) #roomWorkspaceSection:not(.chat-is-closed) #stageContainer {
+    max-height: 18vh !important;
+    min-height: 96px !important;
+  }
+
+  body.in-room-mode.mobile-chat-keyboard-open:not(.stage-is-fullscreen) #nowPlayingBar,
+  body.in-room-mode.mobile-chat-keyboard-open:not(.stage-is-fullscreen) #roomControlsToolbar,
+  body.in-room-mode.mobile-chat-keyboard-open:not(.stage-is-fullscreen) #roomVideoGrid {
+    display: none !important;
+  }
+
+  body.in-room-mode.mobile-chat-keyboard-open:not(.stage-is-fullscreen) #roomWorkspaceSection:not(.chat-is-closed) #roomChatSidebar {
+    flex: 1 1 0% !important;
+    min-height: 120px !important;
+  }
+
+  body.in-room-mode.mobile-chat-keyboard-open:not(.stage-is-fullscreen) #chatBottomFixedBar {
+    padding-top: 6px !important;
+    padding-bottom: 6px !important;
+  }
+
   /* When Chat is CLOSED (.chat-is-closed): Video cleanly expands to fill theater space without dead voids */
   body.in-room-mode:not(.stage-is-fullscreen) #roomWorkspaceSection.chat-is-closed #roomPlayerColumn {
     flex: 1 1 0% !important;
