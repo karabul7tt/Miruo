@@ -20280,40 +20280,7 @@ function initEvents() {
       return;
     }
 
-    // 1b. Desktop App (macOS/Windows) Apple Sign-In:
-    // Use REAL Supabase Apple OAuth so Mac, Windows, Web & iPhone share the EXACT SAME Supabase Auth UUID & cloud profile!
-    if (!isGoogle && window.miruoDesktop && typeof window.miruoDesktop.openOAuthWindow === 'function' && supabaseClient && supabaseClient.auth) {
-      hideAuthAlert();
-      if (btn) btn.classList.add('opacity-60', 'pointer-events-none');
-      try {
-        const redirectUrl = 'https://www.miruo.com.tr/app';
-        const { data, error } = await supabaseClient.auth.signInWithOAuth({
-          provider: 'apple',
-          options: {
-            redirectTo: redirectUrl,
-            skipBrowserRedirect: true
-          }
-        });
-        if (!error && data && data.url) {
-          const oauthRes = await window.miruoDesktop.openOAuthWindow({
-            provider: 'apple',
-            authUrl: data.url
-          });
-          if (btn) btn.classList.remove('opacity-60', 'pointer-events-none');
-          if (oauthRes && oauthRes.success && oauthRes.url) {
-            window.handleNativeOAuthResponse(oauthRes);
-            return;
-          } else if (oauthRes && (oauthRes.canceled || oauthRes.error === 'Pencere kapatıldı.')) {
-            return;
-          }
-        }
-      } catch (appleOauthErr) {
-        console.warn('[Miruo] Desktop Apple OAuth fallback to local Touch ID:', appleOauthErr);
-      }
-      if (btn) btn.classList.remove('opacity-60', 'pointer-events-none');
-    }
-
-    // 1c. Fallback Native macOS Touch ID Apple Sign In (only if Supabase Apple OAuth unavailable)
+    // 1b. Native macOS Touch ID Apple Sign In (prevents opening broken Supabase Apple OAuth popup when Apple OAuth secret isn't configured in Supabase)
     if (!isGoogle && window.miruoDesktop && typeof window.miruoDesktop.promptAppleTouchID === 'function') {
       hideAuthAlert();
       if (btn) btn.classList.add('opacity-60', 'pointer-events-none');
