@@ -47,7 +47,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com">
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="style.css?v=95">
+  <link rel="stylesheet" href="style.css?v=96">
   <script>
     // Early language sync from localStorage
     try {
@@ -1393,7 +1393,7 @@
   </div>
 
   <!-- FULLSCREEN AUTH SCREEN (Image 3 Design with Animated Miruo Owl, No Welcome/Lightning, Miruo Colors) -->
-  <div id="authModal" class="fixed inset-0 z-[99999] bg-[#0B0910] text-white overflow-y-auto overflow-x-hidden hidden transition-all duration-300" style="background-color: #0B0910 !important; position: fixed !important; top: 0 !important; left: 0 !important; right: 0 !important; bottom: 0 !important; width: 100vw !important; height: 100vh !important; z-index: 99999 !important; -webkit-overflow-scrolling: touch !important;">
+  <div id="authModal" class="fixed inset-0 z-[99999] bg-[#0B0910] text-white overflow-y-auto overflow-x-hidden hidden transition-all duration-300" style="background-color: #0B0910 !important; position: fixed !important; inset: 0 !important; width: 100% !important; height: 100dvh !important; z-index: 99999 !important; -webkit-overflow-scrolling: touch !important;">
     <!-- Celestial Sliding Starfield Canvas (Fixed Background) -->
     <canvas id="authStarCanvas" class="pointer-events-none fixed inset-0 w-full h-full z-0"></canvas>
 
@@ -1403,11 +1403,11 @@
       <div class="absolute bottom-10 left-1/3 w-80 h-80 bg-[#6A1E55]/20 rounded-full blur-[100px]"></div>
     </div>
 
-    <!-- Scrollable Content Wrapper: min-h-full allows natural scrolling when content exceeds viewport -->
-    <div class="relative z-10 w-full min-h-full flex flex-col justify-between sm:justify-center items-center p-3 sm:p-6 md:p-8">
+    <!-- Scrollable Content Wrapper: respects iOS Dynamic Island / safe-area top & bottom, centered cleanly -->
+    <div class="relative z-10 w-full min-h-full flex flex-col justify-center items-center gap-4 px-4 sm:px-6 md:px-8" style="padding-top: max(56px, calc(env(safe-area-inset-top) + 44px)); padding-bottom: max(24px, calc(env(safe-area-inset-bottom) + 16px));">
 
-      <!-- Clean Language Switcher positioned elegantly in top-right corner -->
-      <div id="authLangSelectorGroup" class="fixed top-3.5 right-3.5 sm:top-5 sm:right-6 z-50 flex items-center gap-1.5 bg-black/40 hover:bg-black/60 p-1 rounded-xl border border-white/15 backdrop-blur-md shadow-xl transition-all">
+      <!-- Clean Language Switcher positioned safely below iOS status bar -->
+      <div id="authLangSelectorGroup" class="fixed right-3.5 sm:right-6 z-50 flex items-center gap-1.5 bg-black/50 hover:bg-black/70 p-1 rounded-xl border border-white/15 backdrop-blur-md shadow-xl transition-all" style="top: max(14px, calc(env(safe-area-inset-top) + 6px));">
         <button type="button" class="auth-lang-btn px-2.5 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer" data-lang="tr">Türkçe</button>
         <button type="button" class="auth-lang-btn px-2.5 py-1 rounded-lg text-xs font-medium text-gray-400 hover:text-white transition-all cursor-pointer" data-lang="en">English</button>
         <button type="button" class="auth-lang-btn px-2.5 py-1 rounded-lg text-xs font-medium text-gray-400 hover:text-white transition-all cursor-pointer" data-lang="de">Deutsch</button>
@@ -1418,10 +1418,10 @@
       </button>
 
       <!-- TOP SECTION: ANIMATED 3D MIRUO OWL MASCOT (Moving & Blinking Eyes, Celestial Sliding Stars) -->
-      <div class="flex flex-col items-center justify-center py-2 px-4 select-none shrink-0 mb-1">
-        <div class="owlbox mb-1">
+      <div class="flex flex-col items-center justify-center py-1 px-4 select-none shrink-0">
+        <div class="owlbox mb-1.5">
           <div class="owl3d cursor-pointer" id="authOwlContainer" title="Gözler seni takip ediyor!">
-            <svg id="authOwlSvg" viewBox="0 0 120 120" class="w-20 h-20 sm:w-24 sm:h-24 drop-shadow-[0_0_24px_rgba(166,77,121,0.45)]" role="img" aria-label="Miruo Baykuşu">
+            <svg id="authOwlSvg" viewBox="0 0 120 120" class="w-18 h-18 sm:w-24 sm:h-24 drop-shadow-[0_0_24px_rgba(166,77,121,0.45)]" style="width:76px;height:76px;" role="img" aria-label="Miruo Baykuşu">
               <defs>
                 <linearGradient id="authOwlRoseGrad" x1="0" y1="0" x2="1" y2="1">
                   <stop offset="0%" stop-color="#C26D97"/>
@@ -1445,8 +1445,8 @@
         <p id="authTaglineText" class="text-xs text-rose-300/80 font-medium tracking-wide mt-0.5" data-i18n="auth_tagline">Birlikte izlemenin en samimi yolu</p>
       </div>
 
-      <!-- FULLSCREEN AUTH CARD (Centered on desktop, hugging bottom on mobile) -->
-      <div class="w-full max-w-sm sm:max-w-md mx-auto bg-white rounded-3xl p-5 sm:p-6 shadow-2xl text-gray-900 space-y-3 relative border border-white/20 mt-auto sm:mt-0 shrink-0 mb-3 sm:mb-0" style="padding-bottom: max(20px, calc(12px + env(safe-area-inset-bottom)));">
+      <!-- FULLSCREEN AUTH CARD (Cleanly centered on both mobile & desktop) -->
+      <div class="w-full max-w-sm sm:max-w-md mx-auto bg-white rounded-3xl p-5 sm:p-6 shadow-2xl text-gray-900 space-y-3 relative border border-white/20 shrink-0">
       
       <!-- Segmented Pill Switcher (Sign In / Sign Up) -->
       <div class="bg-[#F0F2F5] p-1 rounded-2xl flex items-center">
@@ -2200,7 +2200,7 @@
   </div>
 
   <!-- Dedicated Profile Edit Modal (Opened exclusively via [Düzenle] button on Profile Screen) -->
-  <div id="dedicatedProfileEditModal" class="fixed inset-0 bg-[#0B0910] text-white z-[99999] hidden flex-col w-screen h-screen overflow-hidden" style="background-color: #0B0910 !important; position: fixed !important; top: 0 !important; left: 0 !important; right: 0 !important; bottom: 0 !important; width: 100vw !important; height: 100vh !important; z-index: 99999 !important; overscroll-behavior: none !important;">
+  <div id="dedicatedProfileEditModal" class="fixed inset-0 bg-[#0B0910] text-white z-[99999] hidden flex-col w-full h-full overflow-hidden" style="background-color: #0B0910 !important; position: fixed !important; inset: 0 !important; width: 100% !important; height: 100dvh !important; z-index: 99999 !important; overscroll-behavior: none !important;">
     <header class="w-full bg-[#0B0910] border-b border-white/10 shrink-0 z-30" style="background-color: #0B0910 !important; padding-top: max(16px, env(safe-area-inset-top));">
       <div class="max-w-lg mx-auto px-4 sm:px-6 py-3.5 flex items-center justify-between">
         <div class="flex items-center gap-2.5">
@@ -2287,7 +2287,7 @@
   </div>
 
   <!-- Fullscreen Settings Hub Modal (Pure Settings) -->
-  <div id="profileEditModal" class="fixed inset-0 bg-[#0B0910] text-white z-[99999] hidden flex flex-col w-screen h-screen overflow-hidden" style="background-color: #0B0910 !important; position: fixed !important; top: 0 !important; left: 0 !important; right: 0 !important; bottom: 0 !important; width: 100vw !important; height: 100vh !important; z-index: 99999 !important; overscroll-behavior: none !important;">
+  <div id="profileEditModal" class="fixed inset-0 bg-[#0B0910] text-white z-[99999] hidden flex flex-col w-full h-full overflow-hidden" style="background-color: #0B0910 !important; position: fixed !important; inset: 0 !important; width: 100% !important; height: 100dvh !important; z-index: 99999 !important; overscroll-behavior: none !important;">
     
     <!-- Top Modal Header: Strictly Fixed, Solid 100% #0B0910 Background, Never Budges -->
     <header class="w-full bg-[#0B0910] border-b border-white/10 shrink-0 z-30" style="background-color: #0B0910 !important; padding-top: max(16px, env(safe-area-inset-top));">
@@ -3383,10 +3383,10 @@
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="https://www.youtube.com/iframe_api"></script>
   <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
-  <script src="config.js?v=95"></script>
-  <script src="livekit-client.umd.js?v=95"></script>
-  <script src="app.js?v=95"></script>
-  <script src="miruo-live.js?v=95"></script>
+  <script src="config.js?v=96"></script>
+  <script src="livekit-client.umd.js?v=96"></script>
+  <script src="app.js?v=96"></script>
+  <script src="miruo-live.js?v=96"></script>
 
 </body>
 </html>
