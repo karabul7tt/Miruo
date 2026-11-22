@@ -292,6 +292,10 @@ function initSupabase() {
           }
           return;
         }
+        if (event === 'USER_UPDATED' && state._localProfileSavedAt && (Date.now() - state._localProfileSavedAt) < 15000) {
+          // Ignore self-triggered USER_UPDATED right after saving custom profile edits
+          return;
+        }
         if (session && session.user && !isRecovery) {
           applySupabaseSessionUser(session.user);
         }
@@ -610,12 +614,16 @@ function applySupabaseSessionUser(sbUser) {
   if (typeof showToast === 'function') {
     showToast(`Hoş geldin, ${user.fullName || user.username || 'Kullanıcı'}!`);
   }
-  syncUserProfileToSupabase(user);
 
-  // Cloud Database Profile Fetch: Pull saved profile from Supabase 'profiles' table to guarantee 100% cross-device persistence
+  // Cloud Database Profile Fetch FIRST:
+  // Pull saved custom profile from Supabase 'profiles' BEFORE upserting, so signing in with Google/Apple
+  // NEVER overwrites a user's previously customized name, username, or photo!
   if (supabaseClient) {
     (async () => {
       try {
+        if (state._localProfileSavedAt && (Date.now() - state._localProfileSavedAt) < 15000) {
+          return;
+        }
         let supaRow = null;
         if (sbUser.id) {
           const { data: byId } = await supabaseClient.from('profiles').select('*').eq('id', sbUser.id).maybeSingle();
@@ -626,7 +634,14 @@ function applySupabaseSessionUser(sbUser) {
           const { data: byEm } = await supabaseClient.from('profiles').select('*').ilike('email', em).maybeSingle();
           if (byEm) supaRow = byEm;
         }
-        if (supaRow) {
+        // Re-check local save guard after async fetch
+        if (state._localProfileSavedAt && (Date.now() - state._localProfileSavedAt) < 15000) {
+          return;
+        }
+        const localSavedCur = JSON.parse(localStorage.getItem('miruo_user') || 'null');
+        const localHasCustom = !!(localSavedCur && localSavedCur.hasCustomProfile && localSavedCur.customProfileUpdatedAt);
+
+        if (supaRow && !localHasCustom) {
           let hasChange = false;
           if (supaRow.username && supaRow.username !== user.username) {
             user.username = supaRow.username;
@@ -640,13 +655,14 @@ function applySupabaseSessionUser(sbUser) {
             user.customFullName = supaRow.full_name;
             hasChange = true;
           }
-          if (supaRow.avatar_url && supaRow.avatar_url !== user.avatarUrl) {
+          if (typeof supaRow.avatar_url === 'string' && supaRow.avatar_url && supaRow.avatar_url !== user.avatarUrl) {
             user.avatarUrl = supaRow.avatar_url;
             user.customAvatarUrl = supaRow.avatar_url;
             state.avatarUrl = supaRow.avatar_url;
             hasChange = true;
           }
           if (hasChange) {
+            user.hasCustomProfile = true;
             user.avatarChar = (user.fullName || user.username || 'M').charAt(0).toUpperCase();
             localStorage.setItem('miruo_user', JSON.stringify(user));
             localStorage.setItem('miruo_custom_username', user.username);
@@ -671,6 +687,9 @@ function applySupabaseSessionUser(sbUser) {
             persistUserToLocalRegistry(user);
             updateUserUI(user);
           }
+        } else if (!supaRow) {
+          // First time this account signs in (no cloud profile row yet): seed Supabase profiles with initial info
+          syncUserProfileToSupabase(user);
         }
       } catch (_) {}
     })();
@@ -24234,6 +24253,10 @@ window.recordUsernameChange = recordUsernameChange;
         savedUser.hasCustomProfile = true;
         savedUser.customUsername = cleanUsername;
         savedUser.customFullName = resolvedFullName;
+        savedUser.customAvatarUrl = savedUser.avatarUrl || '';
+        savedUser.customProfileUpdatedAt = Date.now();
+        state._localProfileSavedAt = Date.now();
+        window.pendingAvatarUrl = savedUser.avatarUrl || '';
         if (usernameChanged && cleanUsername !== currentActiveUsername) {
           recordUsernameChange();
         }
@@ -24245,7 +24268,14 @@ window.recordUsernameChange = recordUsernameChange;
           localStorage.setItem('miruo_custom_avatar', savedUser.avatarUrl);
           localStorage.setItem('miruo_avatar', savedUser.avatarUrl);
         } else {
-          try { localStorage.removeItem('miruo_custom_avatar'); localStorage.removeItem('miruo_avatar'); } catch (_) {}
+          try {
+            localStorage.removeItem('miruo_custom_avatar');
+            localStorage.removeItem('miruo_avatar');
+            if (savedUser.id) localStorage.removeItem(`miruo_custom_avatar_${savedUser.id}`);
+            if (savedUser.email) localStorage.removeItem(`miruo_custom_avatar_${savedUser.email.toLowerCase().trim()}`);
+            if (cleanUsername) localStorage.removeItem(`miruo_custom_avatar_${cleanUsername}`);
+            if (currentActiveUsername) localStorage.removeItem(`miruo_custom_avatar_${currentActiveUsername}`);
+          } catch (_) {}
         }
         if (cleanUsername) {
           localStorage.setItem(`miruo_saved_profile_${cleanUsername}`, JSON.stringify(savedUser));
@@ -24317,6 +24347,17 @@ window.recordUsernameChange = recordUsernameChange;
       }
     });
   }
+
+  // Keep Profile Edit inputs visible above iOS keyboard (prevent WKWebView upward viewport jump)
+  [dom.editProfileFullNameInput, dom.editProfileUsernameInput].forEach(inp => {
+    if (!inp) return;
+    inp.addEventListener('focus', () => {
+      setTimeout(() => {
+        try { window.scrollTo(0, 0); } catch (_) {}
+        try { inp.scrollIntoView({ behavior: 'smooth', block: 'center' }); } catch (_) {}
+      }, 220);
+    });
+  });
 
   // Live Instagram username validation & availability check
   let usernameCheckDebounce = null;

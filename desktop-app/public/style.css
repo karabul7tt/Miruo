@@ -914,8 +914,8 @@ html::-webkit-scrollbar {
   position: fixed !important;
   inset: 0 !important;
   width: 100% !important;
-  height: 100% !important;
-  height: 100dvh !important;
+  height: var(--miruo-vvh, 100dvh) !important;
+  max-height: var(--miruo-vvh, 100dvh) !important;
   min-height: 0 !important;
   background-color: #0B0910 !important;
   z-index: 99999 !important;
@@ -924,6 +924,16 @@ html::-webkit-scrollbar {
   box-sizing: border-box !important;
   overflow: hidden !important;
   overscroll-behavior: none !important;
+}
+
+/* Prevent iOS Safari / WKWebView auto-zoom & upward viewport jump when tapping inputs (<16px triggers zoom!) */
+@media (max-width: 1023px) {
+  #dedicatedProfileEditModal input,
+  #profileEditModal input,
+  #authModal input {
+    font-size: 16px !important;
+    line-height: 1.4 !important;
+  }
 }
 
 #profileEditModalScrollBody,
