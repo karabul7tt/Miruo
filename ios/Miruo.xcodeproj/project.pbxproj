@@ -12,6 +12,7 @@
 		A10000022C00000100000001 /* ViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000022C00000100000001 /* ViewController.swift */; };
 		A10000042C00000100000001 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = B10000042C00000100000001 /* Assets.xcassets */; };
 		A10000072C00000100000001 /* public in Resources */ = {isa = PBXBuildFile; fileRef = B10000072C00000100000001 /* public */; };
+		A10000082C00000100000001 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = B10000082C00000100000001 /* PrivacyInfo.xcprivacy */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -21,6 +22,7 @@
 		B10000042C00000100000001 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		B10000052C00000100000001 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		B10000072C00000100000001 /* public */ = {isa = PBXFileReference; lastKnownFileType = folder; path = public; sourceTree = "<group>"; };
+		B10000082C00000100000001 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; lastKnownFileType = text.xml; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
 		C10000012C00000100000001 /* Miruo.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Miruo.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
@@ -51,6 +53,7 @@
 				B10000022C00000100000001 /* ViewController.swift */,
 				B10000042C00000100000001 /* Assets.xcassets */,
 				B10000052C00000100000001 /* Info.plist */,
+				B10000082C00000100000001 /* PrivacyInfo.xcprivacy */,
 				B10000072C00000100000001 /* public */,
 			);
 			path = Miruo;
@@ -123,6 +126,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				A10000042C00000100000001 /* Assets.xcassets in Resources */,
+				A10000082C00000100000001 /* PrivacyInfo.xcprivacy in Resources */,
 				A10000072C00000100000001 /* public in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -152,7 +156,7 @@
 				CLANG_ENABLE_MODULES = YES;
 				CLANG_ENABLE_OBJC_ARC = YES;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 93;
+				CURRENT_PROJECT_VERSION = 94;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = Miruo/Info.plist;
 				CODE_SIGN_ENTITLEMENTS = Miruo/Miruo.entitlements;
@@ -180,7 +184,7 @@
 				CLANG_ENABLE_MODULES = YES;
 				CLANG_ENABLE_OBJC_ARC = YES;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 93;
+				CURRENT_PROJECT_VERSION = 94;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = Miruo/Info.plist;
 				CODE_SIGN_ENTITLEMENTS = Miruo/Miruo.entitlements;
