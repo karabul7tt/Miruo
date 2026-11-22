@@ -329,9 +329,19 @@ window.selectedSignUpAvatarData = null;
 window.selectedSignUpAvatarBg = 'from-rose-500 to-indigo-600';
 window.selectedSignUpAvatarChar = 'M';
 
+function getCanonicalProvider(u) {
+  if (!u) return 'email';
+  if (u.isApple || u.provider === 'apple' || String(u.id || '').startsWith('apple_')) return 'apple';
+  if (u.isGoogle || u.provider === 'google') return 'google';
+  if (u.provider === 'phone') return 'phone';
+  return 'email';
+}
+window.getCanonicalProvider = getCanonicalProvider;
+
 function persistUserToLocalRegistry(user, oldUsername = '') {
-  if (!user) return;
+  if (!user || user.isGuest) return;
   try {
+    const prov = getCanonicalProvider(user);
     const cleanU = (user.username || '').replace(/^@/, '').trim();
     const cleanOld = (oldUsername || '').replace(/^@/, '').trim().toLowerCase();
     const cleanEmail = (user.email || '').trim().toLowerCase();
@@ -342,9 +352,12 @@ function persistUserToLocalRegistry(user, oldUsername = '') {
     const regUsers = JSON.parse(localStorage.getItem('miruo_registered_users') || '[]');
     let idx = regUsers.findIndex(u => {
       if (!u) return false;
+      const uProv = getCanonicalProvider(u);
+      // STRICT PROVIDER ISOLATION: Never merge an Email account with an Apple or Google account!
+      if (uProv !== prov) return false;
       if (user.id && u.id && u.id === user.id) return true;
+      if (user.appleUserId && u.appleUserId && u.appleUserId === user.appleUserId) return true;
       if (cleanEmail && u.email && u.email.toLowerCase() === cleanEmail) return true;
-      // Only match by username if the existing entry does NOT belong to a different email or account ID!
       const differentEmail = cleanEmail && u.email && u.email.toLowerCase() !== cleanEmail;
       const differentId = user.id && u.id && u.id !== user.id && !u.id.startsWith('user_');
       if (differentEmail || differentId) return false;
@@ -353,45 +366,36 @@ function persistUserToLocalRegistry(user, oldUsername = '') {
       return false;
     });
 
+    const record = {
+      id: user.id || (idx !== -1 && regUsers[idx].id) || ('user_' + Math.random().toString(36).substring(2, 8)),
+      provider: prov,
+      isApple: prov === 'apple',
+      isGoogle: prov === 'google',
+      appleUserId: user.appleUserId || (idx !== -1 ? regUsers[idx].appleUserId : undefined),
+      email: cleanEmail || (idx !== -1 ? (regUsers[idx].email || '') : ''),
+      username: cleanU || (idx !== -1 ? (regUsers[idx].username || '') : ''),
+      fullName: realFullName || (idx !== -1 ? (regUsers[idx].fullName || '') : cleanU),
+      avatarUrl: user.avatarUrl !== undefined ? user.avatarUrl : (idx !== -1 ? (regUsers[idx].avatarUrl || '') : ''),
+      avatarBg: user.avatarBg || (idx !== -1 ? (regUsers[idx].avatarBg || 'from-rose-500 to-[#A64D79]') : 'from-rose-500 to-[#A64D79]'),
+      hasCustomProfile: !!(user.hasCustomProfile || (idx !== -1 && regUsers[idx].hasCustomProfile))
+    };
+
     if (idx !== -1) {
-      if (user.id) regUsers[idx].id = user.id;
-      if (cleanEmail) regUsers[idx].email = cleanEmail;
-      if (cleanU) regUsers[idx].username = cleanU;
-      if (realFullName) regUsers[idx].fullName = realFullName;
-      if (user.password) regUsers[idx].password = user.password;
-      if (user.avatarUrl !== undefined) regUsers[idx].avatarUrl = user.avatarUrl;
-      if (user.avatarBg) regUsers[idx].avatarBg = user.avatarBg;
-    } else if (cleanEmail || cleanU) {
-      regUsers.push({
-        id: user.id || ('user_' + Math.random().toString(36).substring(2, 8)),
-        email: cleanEmail,
-        username: cleanU,
-        fullName: realFullName || cleanU,
-        password: user.password || '',
-        avatarUrl: user.avatarUrl || '',
-        avatarBg: user.avatarBg || 'from-rose-500 to-[#A64D79]'
-      });
+      regUsers[idx] = Object.assign({}, regUsers[idx], record);
+      delete regUsers[idx].password; // Never store plaintext password
+    } else if (cleanEmail || cleanU || user.id) {
+      regUsers.push(record);
     }
     localStorage.setItem('miruo_registered_users', JSON.stringify(regUsers));
 
     if (cleanEmail) {
       const byEmail = JSON.parse(localStorage.getItem('miruo_profiles_by_email') || '{}');
-      const prev = byEmail[cleanEmail] || {};
-      byEmail[cleanEmail] = {
-        id: user.id || prev.id || '',
-        email: cleanEmail,
-        username: cleanU || prev.username || '',
-        fullName: realFullName || prev.fullName || cleanU || '',
-        avatarUrl: user.avatarUrl !== undefined ? user.avatarUrl : (prev.avatarUrl || ''),
-        avatarBg: user.avatarBg || prev.avatarBg || 'from-rose-500 to-[#A64D79]'
-      };
+      // Key by provider:email so Email, Google & Apple accounts with the same email NEVER overwrite each other!
+      byEmail[`${prov}:${cleanEmail}`] = record;
       localStorage.setItem('miruo_profiles_by_email', JSON.stringify(byEmail));
     }
-    if (user.avatarUrl) {
-      localStorage.setItem('miruo_avatar', user.avatarUrl);
-    }
     if (window.miruoDesktop && typeof window.miruoDesktop.saveDesktopProfile === 'function') {
-      window.miruoDesktop.saveDesktopProfile(user);
+      window.miruoDesktop.saveDesktopProfile(Object.assign({}, user, { provider: prov, isApple: prov === 'apple', isGoogle: prov === 'google' }));
     }
   } catch (e) {
     console.warn('[Miruo persistUserToLocalRegistry warning]:', e);
@@ -457,44 +461,48 @@ function syncUserProfileToSupabase(user) {
 function resolveCustomizedUserProfile({ id, email, rawName, rawUsername, rawAvatar, rawAvatarBg, provider, isApple, isGoogle, meta = {} }) {
   const cleanId = String(id || '').trim();
   const cleanEmail = String(email || '').toLowerCase().trim();
-  const inputUsername = String(rawUsername || meta.username || '').replace(/^@/, '').trim().toLowerCase();
+  const targetProv = provider || (isApple ? 'apple' : (isGoogle ? 'google' : 'email'));
+  const sameAccountProvider = (obj) => Boolean(obj && (getCanonicalProvider(obj) === targetProv || (cleanId && obj.id && String(obj.id).trim() === cleanId)));
 
-  // 1. Gather all potential saved profiles for this account across all keys
+  // 1. Gather saved profile STRICTLY for THIS exact account (id + provider — NEVER bleed across Google/Apple/Email!)
   let saved = null;
   if (cleanId) {
-    try { saved = JSON.parse(localStorage.getItem(`miruo_saved_profile_${cleanId}`)); } catch (_) {}
+    try {
+      const p = JSON.parse(localStorage.getItem(`miruo_saved_profile_${cleanId}`));
+      if (sameAccountProvider(p)) saved = p;
+    } catch (_) {}
   }
   if (!saved && cleanEmail) {
-    try { saved = JSON.parse(localStorage.getItem(`miruo_saved_profile_${cleanEmail}`)); } catch (_) {}
-  }
-  if (!saved && inputUsername) {
-    try { saved = JSON.parse(localStorage.getItem(`miruo_saved_profile_${inputUsername}`)); } catch (_) {}
+    try {
+      const p = JSON.parse(localStorage.getItem(`miruo_saved_profile_${targetProv}_${cleanEmail}`));
+      if (sameAccountProvider(p)) saved = p;
+    } catch (_) {}
   }
   if (!saved) {
     const regList = JSON.parse(localStorage.getItem('miruo_registered_users') || '[]');
-    saved = regList.find(u => 
-      (cleanId && u.id && String(u.id).trim() === cleanId) ||
-      (cleanEmail && u.email && String(u.email).toLowerCase().trim() === cleanEmail) ||
-      (inputUsername && u.username && String(u.username).toLowerCase().replace(/^@/, '') === inputUsername)
+    saved = regList.find(u =>
+      sameAccountProvider(u) && (
+        (cleanId && u.id && String(u.id).trim() === cleanId) ||
+        (cleanEmail && u.email && String(u.email).toLowerCase().trim() === cleanEmail)
+      )
     ) || null;
   }
-  if (!saved) {
+  if (!saved && cleanEmail) {
     const byEmail = JSON.parse(localStorage.getItem('miruo_profiles_by_email') || '{}');
-    if (cleanEmail && byEmail[cleanEmail]) saved = byEmail[cleanEmail];
+    const candidate = byEmail[`${targetProv}:${cleanEmail}`];
+    if (sameAccountProvider(candidate)) saved = candidate;
   }
   if (!saved) {
     const cur = JSON.parse(localStorage.getItem('miruo_user') || 'null');
-    if (cur && ((cleanId && cur.id === cleanId) || (cleanEmail && cur.email && cur.email.toLowerCase() === cleanEmail) || (inputUsername && cur.username && cur.username.toLowerCase().replace(/^@/, '') === inputUsername))) {
+    if (cur && sameAccountProvider(cur) && ((cleanId && cur.id === cleanId) || (cleanEmail && cur.email && cur.email.toLowerCase() === cleanEmail))) {
       saved = cur;
     }
   }
 
-  // 2. Resolve Username: NEVER wipe user's customized username for this account!
-  const customUsername = 
+  // 2. Resolve Username: Keep THIS account's customized username if edited, otherwise use provider's data!
+  const customUsername =
     (saved && (saved.customUsername || (saved.hasCustomProfile && saved.username && !saved.username.startsWith('user_') ? saved.username : ''))) ||
     (cleanId && localStorage.getItem(`miruo_custom_username_${cleanId}`)) ||
-    (cleanEmail && localStorage.getItem(`miruo_custom_username_${cleanEmail}`)) ||
-    (inputUsername && localStorage.getItem(`miruo_custom_username_${inputUsername}`)) ||
     meta.custom_username ||
     meta.username ||
     '';
@@ -506,31 +514,28 @@ function resolveCustomizedUserProfile({ id, email, rawName, rawUsername, rawAvat
 
   const finalUsername = (customUsername || fallbackUsername || 'kullanici').replace(/^@/, '').trim();
 
-  // 3. Resolve Full Name: NEVER wipe user's customized full name for this account!
+  // 3. Resolve Full Name: Keep THIS account's customized full name if edited, otherwise use provider's data!
   const customFullName =
     (saved && (saved.customFullName || (saved.hasCustomProfile && saved.fullName ? saved.fullName : (saved.name && !saved.name.startsWith('@') && saved.name !== 'Misafir' ? saved.name : '')))) ||
     (cleanId && localStorage.getItem(`miruo_custom_fullname_${cleanId}`)) ||
-    (cleanEmail && localStorage.getItem(`miruo_custom_fullname_${cleanEmail}`)) ||
-    (inputUsername && localStorage.getItem(`miruo_custom_fullname_${inputUsername}`)) ||
     meta.custom_full_name ||
     '';
 
   const fallbackFullName = rawName || (cleanEmail ? cleanEmail.split('@')[0] : 'Miruo Kullanıcısı');
   const finalFullName = (customFullName && !customFullName.startsWith('@')) ? customFullName.trim() : (fallbackFullName || finalUsername);
 
-  // 4. Resolve Avatar: NEVER wipe user's customized avatar photo for this account!
+  // 4. Resolve Avatar: Keep THIS account's customized avatar if edited, otherwise use provider's avatar (e.g. Google photo)!
+  // NEVER read window.pendingAvatarUrl or another account's avatar!
   const customAvatar =
-    window.pendingAvatarUrl ||
     (cleanId && localStorage.getItem(`miruo_custom_avatar_${cleanId}`)) ||
-    (cleanEmail && localStorage.getItem(`miruo_custom_avatar_${cleanEmail}`)) ||
-    (inputUsername && localStorage.getItem(`miruo_custom_avatar_${inputUsername}`)) ||
-    (saved && (saved.customAvatarUrl || (saved.avatarUrl && !saved.avatarUrl.includes('googleusercontent.com') ? saved.avatarUrl : ''))) ||
+    (saved && saved.hasCustomProfile && typeof saved.customAvatarUrl === 'string' && saved.customAvatarUrl) ||
+    (saved && saved.hasCustomProfile && typeof saved.avatarUrl === 'string' && saved.avatarUrl) ||
     meta.custom_avatar_url ||
-    (saved && saved.avatarUrl) ||
     '';
 
-  const finalAvatarUrl = customAvatar || rawAvatar || '';
-  const finalAvatarBg = window.pendingAvatarBg || (saved && saved.avatarBg) || rawAvatarBg || (isApple ? 'linear-gradient(135deg, #ec4899, #8b5cf6)' : 'from-rose-500 to-indigo-600');
+  const explicitlyClearedAvatar = Boolean(saved && saved.hasCustomProfile && saved.customAvatarUrl === '' && saved.avatarUrl === '');
+  const finalAvatarUrl = customAvatar || (explicitlyClearedAvatar ? '' : (rawAvatar || ''));
+  const finalAvatarBg = (saved && saved.avatarBg) || rawAvatarBg || (isApple ? 'linear-gradient(135deg, #ec4899, #8b5cf6)' : 'from-rose-500 to-indigo-600');
 
   const resolved = {
     id: cleanId || (saved && saved.id) || ('user_' + Math.random().toString(36).substring(2, 8)),
@@ -541,9 +546,9 @@ function resolveCustomizedUserProfile({ id, email, rawName, rawUsername, rawAvat
     avatarChar: (finalFullName || finalUsername || 'M').charAt(0).toUpperCase(),
     avatarUrl: finalAvatarUrl,
     avatarBg: finalAvatarBg,
-    isApple: !!isApple,
-    isGoogle: !!isGoogle,
-    provider: provider || (isApple ? 'apple' : (isGoogle ? 'google' : 'email')),
+    isApple: targetProv === 'apple',
+    isGoogle: targetProv === 'google',
+    provider: targetProv,
     isGuest: false,
     hasCustomProfile: !!(customUsername || customFullName || customAvatar),
     customUsername: finalUsername,
@@ -558,6 +563,9 @@ function resolveCustomizedUserProfile({ id, email, rawName, rawUsername, rawAvat
   if (finalAvatarUrl) {
     localStorage.setItem('miruo_custom_avatar', finalAvatarUrl);
     localStorage.setItem('miruo_avatar', finalAvatarUrl);
+  } else {
+    localStorage.removeItem('miruo_custom_avatar');
+    localStorage.removeItem('miruo_avatar');
   }
 
   if (cleanId) {
@@ -567,17 +575,7 @@ function resolveCustomizedUserProfile({ id, email, rawName, rawUsername, rawAvat
     if (finalAvatarUrl) localStorage.setItem(`miruo_custom_avatar_${cleanId}`, finalAvatarUrl);
   }
   if (cleanEmail) {
-    localStorage.setItem(`miruo_saved_profile_${cleanEmail}`, JSON.stringify(resolved));
-    localStorage.setItem(`miruo_custom_username_${cleanEmail}`, finalUsername);
-    localStorage.setItem(`miruo_custom_fullname_${cleanEmail}`, finalFullName);
-    if (finalAvatarUrl) localStorage.setItem(`miruo_custom_avatar_${cleanEmail}`, finalAvatarUrl);
-  }
-  if (finalUsername) {
-    const cleanU = finalUsername.toLowerCase().replace(/^@/, '');
-    localStorage.setItem(`miruo_saved_profile_${cleanU}`, JSON.stringify(resolved));
-    localStorage.setItem(`miruo_custom_username_${cleanU}`, finalUsername);
-    localStorage.setItem(`miruo_custom_fullname_${cleanU}`, finalFullName);
-    if (finalAvatarUrl) localStorage.setItem(`miruo_custom_avatar_${cleanU}`, finalAvatarUrl);
+    localStorage.setItem(`miruo_saved_profile_${targetProv}_${cleanEmail}`, JSON.stringify(resolved));
   }
 
   persistUserToLocalRegistry(resolved);
@@ -692,10 +690,8 @@ function applySupabaseSessionUser(sbUser) {
             }
             if (user.email) {
               const cleanE = user.email.trim().toLowerCase();
-              localStorage.setItem(`miruo_saved_profile_${cleanE}`, JSON.stringify(user));
-              localStorage.setItem(`miruo_custom_username_${cleanE}`, user.username);
-              localStorage.setItem(`miruo_custom_fullname_${cleanE}`, user.fullName);
-              if (user.avatarUrl) localStorage.setItem(`miruo_custom_avatar_${cleanE}`, user.avatarUrl);
+              const uProv = getCanonicalProvider(user);
+              localStorage.setItem(`miruo_saved_profile_${uProv}_${cleanE}`, JSON.stringify(user));
             }
             persistUserToLocalRegistry(user);
             updateUserUI(user);
@@ -751,65 +747,33 @@ window.triggerPhotoPicker = triggerPhotoPicker;
 window.handleNativeImagePicked = function(base64Data, target) {
   if (!base64Data) return;
   if (target === 'avatar') {
-    window.pendingAvatarUrl = base64Data;
-    window.pendingAvatarBg = '';
-    const previewEl = (dom && dom.editAvatarPreview) || document.getElementById('editAvatarPreview');
-    if (previewEl) {
-      previewEl.innerHTML = `<img src="${base64Data}" class="w-full h-full object-cover rounded-2xl" alt="PP">`;
-      previewEl.className = 'w-20 h-20 rounded-2xl overflow-hidden shadow-xl border-2 border-[#A64D79] ring-4 ring-[#A64D79]/20 flex items-center justify-center';
+    const finishAvatar = (finalImg) => {
+      if (typeof window.applyNewAvatarPhoto === 'function') {
+        window.applyNewAvatarPhoto(finalImg);
+      }
+    };
+    if (typeof window.openAvatarCropper === 'function') {
+      window.openAvatarCropper(base64Data, finishAvatar);
+    } else {
+      finishAvatar(base64Data);
     }
-
-    // Auto-save & activate immediately
-    const savedUser = JSON.parse(localStorage.getItem('miruo_user') || '{}');
-    savedUser.avatarUrl = base64Data;
-    savedUser.avatarBg = '';
-    savedUser.hasCustomProfile = true;
-    savedUser.customAvatarUrl = base64Data;
-    savedUser.customProfileUpdatedAt = Date.now();
-    state._localProfileSavedAt = Date.now();
-    state.avatarUrl = base64Data;
-    state.avatarBg = '';
-    localStorage.setItem('miruo_user', JSON.stringify(savedUser));
-    localStorage.setItem('miruo_custom_avatar', base64Data);
-    if (savedUser.id) {
-      localStorage.setItem(`miruo_custom_avatar_${savedUser.id}`, base64Data);
-      localStorage.setItem(`miruo_saved_profile_${savedUser.id}`, JSON.stringify(savedUser));
-    }
-    if (savedUser.email) {
-      const cleanE = savedUser.email.toLowerCase().trim();
-      localStorage.setItem(`miruo_custom_avatar_${cleanE}`, base64Data);
-      localStorage.setItem(`miruo_saved_profile_${cleanE}`, JSON.stringify(savedUser));
-    }
-    persistUserToLocalRegistry(savedUser);
-
-    try {
-      fetch('/api/auth/update-profile', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          userId: savedUser.id || state.userId,
-          email: savedUser.email || '',
-          username: (savedUser.username || state.username || '').replace(/^@/, ''),
-          fullName: savedUser.fullName || savedUser.name || '',
-          avatarUrl: base64Data
-        })
-      }).catch(e => console.warn('[Update Avatar Backend Error]:', e));
-    } catch (e) {}
-    syncUserProfileToSupabase(savedUser);
-
-    updateUserUI(savedUser);
-    if (typeof renderProfileTab === 'function') renderProfileTab();
-    showToast('Profil fotoğrafı güncellendi');
   } else if (target === 'chat') {
     sendChatMessage('', base64Data);
     showToast('Fotoğraf sohbete yüklendi!');
     const stickerPopover = document.getElementById('chatStickerPopover');
     if (stickerPopover) stickerPopover.classList.add('hidden');
   } else if (target === 'signup') {
-    window.selectedSignUpAvatarData = base64Data;
-    const previewEl = (dom && dom.signUpAvatarPreview) || document.getElementById('signUpAvatarPreview');
-    if (previewEl) {
-      previewEl.innerHTML = `<img src="${base64Data}" class="w-full h-full object-cover rounded-full" alt="Avatar">`;
+    const finishSignupAvatar = (finalImg) => {
+      window.selectedSignUpAvatarData = finalImg;
+      const previewEl = (dom && dom.signUpAvatarPreview) || document.getElementById('signUpAvatarPreview');
+      if (previewEl) {
+        previewEl.innerHTML = `<img src="${finalImg}" class="w-full h-full object-cover rounded-full" alt="Avatar">`;
+      }
+    };
+    if (typeof window.openAvatarCropper === 'function') {
+      window.openAvatarCropper(base64Data, finishSignupAvatar);
+    } else {
+      finishSignupAvatar(base64Data);
     }
     showToast('Kayıt fotoğrafı seçildi');
   } else {
@@ -16259,12 +16223,12 @@ function renderAffinityTree(containerId = 'affinityConstellationContainer', svgI
 
   centerDiv.innerHTML = `
     <div class="relative flex items-center justify-center cursor-pointer group" style="width: 86px; height: 86px;">
-      <div class="affinity-center-halo absolute -inset-2.5 rounded-full border-2 border-rose-500/70 shadow-[0_0_26px_rgba(244,63,94,0.5)]"></div>
-      <div id="${isOwnProfile ? 'tabProfileCenterAvatar' : 'publicCenterAvatar'}" class="w-full h-full rounded-full overflow-hidden bg-gradient-to-tr from-[#A64D79] to-[#6A1E55] border-2 border-rose-400/90 shadow-2xl flex items-center justify-center text-white font-black text-3xl">
-        ${centerAvatar ? `<img src="${centerAvatar}" class="w-full h-full object-cover">` : centerInitial}
+      <div class="affinity-center-halo pointer-events-none absolute -inset-2.5 rounded-full border-2 border-rose-500/70 shadow-[0_0_26px_rgba(244,63,94,0.5)]"></div>
+      <div id="${isOwnProfile ? 'tabProfileCenterAvatar' : 'publicCenterAvatar'}" class="relative z-10 cursor-zoom-in w-full h-full rounded-full overflow-hidden bg-gradient-to-tr from-[#A64D79] to-[#6A1E55] border-2 border-rose-400/90 shadow-2xl flex items-center justify-center text-white font-black text-3xl">
+        ${centerAvatar ? `<img src="${centerAvatar}" class="w-full h-full object-cover pointer-events-none">` : centerInitial}
       </div>
       ${isOwnProfile ? `
-      <button id="tabProfileCenterAvatarEditBtn" type="button" class="absolute -bottom-1 -right-1 w-7 h-7 rounded-full bg-rose-600 hover:bg-rose-500 border-2 border-[#080711] text-white flex items-center justify-center shadow-lg active:scale-90 transition-transform cursor-pointer" title="Fotoğrafı Değiştir">
+      <button id="tabProfileCenterAvatarEditBtn" type="button" class="absolute z-20 -bottom-1 -right-1 w-7 h-7 rounded-full bg-rose-600 hover:bg-rose-500 border-2 border-[#080711] text-white flex items-center justify-center shadow-lg active:scale-90 transition-transform cursor-pointer" title="Fotoğrafı Değiştir">
         <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 13a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
       </button>` : ''}
     </div>
@@ -18786,93 +18750,105 @@ function loadUserSession() {
     }, 350);
   }
 
-  const customUsername = localStorage.getItem('miruo_custom_username');
-  const backupAvatar = localStorage.getItem('miruo_avatar') || '';
-  if (user) {
-    if (!user.avatarUrl && backupAvatar) {
-      user.avatarUrl = backupAvatar;
-    }
-    const cleanEmail = (user.email || '').trim().toLowerCase();
-    const cleanU = (user.username || customUsername || '').replace(/^@/, '').toLowerCase().trim();
-    try {
-      if (cleanEmail) {
-        const byEmail = JSON.parse(localStorage.getItem('miruo_profiles_by_email') || '{}');
-        const emailProf = byEmail[cleanEmail];
-        if (emailProf) {
-          if (!user.username && emailProf.username) user.username = emailProf.username;
-          if ((!user.fullName || user.fullName.startsWith('@')) && emailProf.fullName) {
-            user.fullName = emailProf.fullName;
-            user.name = emailProf.fullName;
-          }
-          if (!user.avatarUrl && emailProf.avatarUrl) user.avatarUrl = emailProf.avatarUrl;
-          if (!user.avatarBg && emailProf.avatarBg) user.avatarBg = emailProf.avatarBg;
-        }
-      }
-      if (!user.avatarUrl || !user.fullName) {
-        const regUsers = JSON.parse(localStorage.getItem('miruo_registered_users') || '[]');
-        const regMatch = regUsers.find(u => (cleanEmail && u.email && u.email.toLowerCase() === cleanEmail) || (cleanU && u.username && u.username.toLowerCase().replace(/^@/,'') === cleanU));
-        if (regMatch) {
-          if (!user.avatarUrl && regMatch.avatarUrl) user.avatarUrl = regMatch.avatarUrl;
-          if (!user.avatarBg && regMatch.avatarBg) user.avatarBg = regMatch.avatarBg;
-          if ((!user.fullName || user.fullName.startsWith('@')) && regMatch.fullName) user.fullName = regMatch.fullName;
-        }
-      }
-    } catch (e) {}
+  // Restore ONLY THIS specific logged-in user's own saved profile (strict ID + provider isolation, zero cross-account bleed!)
+  if (user && !user.isGuest) {
+    const myProv = getCanonicalProvider(user);
+    const myId = String(user.id || '').trim();
+    const myEmail = String(user.email || '').trim().toLowerCase();
+    user.provider = myProv;
+    user.isApple = myProv === 'apple';
+    user.isGoogle = myProv === 'google';
 
-    const customSavedUsername = localStorage.getItem('miruo_custom_username');
-    const customSavedFullName = localStorage.getItem('miruo_custom_fullname');
-    if (customSavedUsername) {
-      user.username = customSavedUsername.replace(/^@/, '');
-    } else if (user.username) {
-      user.username = user.username.replace(/^@/, '');
-    }
-    if (customSavedFullName) {
-      user.fullName = customSavedFullName;
-      user.name = customSavedFullName;
-    } else if (!user.fullName || user.fullName === '@' + user.username) {
-      if (user.name && !user.name.startsWith('@') && user.name !== 'Misafir') {
-        user.fullName = user.name;
+    try {
+      const idVault = myId ? JSON.parse(localStorage.getItem(`miruo_saved_profile_${myId}`) || 'null') : null;
+      const provEmailVault = myEmail ? JSON.parse(localStorage.getItem(`miruo_saved_profile_${myProv}_${myEmail}`) || 'null') : null;
+      const vault = (idVault && getCanonicalProvider(idVault) === myProv) ? idVault
+        : ((provEmailVault && getCanonicalProvider(provEmailVault) === myProv) ? provEmailVault : null);
+      if (vault) {
+        if (vault.username) user.username = vault.username.replace(/^@/, '');
+        if (vault.fullName && !vault.fullName.startsWith('@')) { user.fullName = vault.fullName; user.name = vault.fullName; }
+        if (typeof vault.avatarUrl === 'string' && vault.avatarUrl) user.avatarUrl = vault.avatarUrl;
+        if (vault.avatarBg) user.avatarBg = vault.avatarBg;
       }
-    }
+    } catch (_) {}
   }
-  const customSavedUsernameFinal = localStorage.getItem('miruo_custom_username');
-  state.userId = user.id || state.userId;
-  state.username = (customSavedUsernameFinal || (user && user.username) || (user && user.name) || 'kullanici').replace(/^@/, '');
+
+  state.userId = (user && user.id) || state.userId;
+  state.username = ((user && user.username) || (user && user.name) || 'kullanici').replace(/^@/, '');
   state.roomId = (roomFromUrl || '').toUpperCase();
   state.isInRoom = !!roomFromUrl;
-  state.avatarUrl = (user && user.avatarUrl) || backupAvatar || '';
+  state.avatarUrl = (user && user.avatarUrl) || '';
   state.avatarBg = (user && user.avatarBg) || '';
 
-  if (user && user.avatarUrl) {
-    localStorage.setItem('miruo_avatar', user.avatarUrl);
+  if (user && !user.isGuest) {
     localStorage.setItem('miruo_user', JSON.stringify(user));
   }
 
-  // Desktop User Profile Restore from UserData directory
-  if (window.miruoDesktop && typeof window.miruoDesktop.getDesktopProfile === 'function') {
+  // Desktop User Profile Restore: ONLY apply if the saved desktop profile matches THIS exact account ID + provider!
+  if (user && !user.isGuest && window.miruoDesktop && typeof window.miruoDesktop.getDesktopProfile === 'function') {
     window.miruoDesktop.getDesktopProfile().then(deskUser => {
-      if (deskUser && (deskUser.avatarUrl || deskUser.username || deskUser.fullName)) {
-        let changed = false;
-        if (deskUser.avatarUrl && deskUser.avatarUrl !== user.avatarUrl) {
-          user.avatarUrl = deskUser.avatarUrl;
-          state.avatarUrl = deskUser.avatarUrl;
-          localStorage.setItem('miruo_avatar', deskUser.avatarUrl);
-          changed = true;
-        }
-        if (deskUser.fullName && deskUser.fullName !== user.fullName && !deskUser.fullName.startsWith('@')) {
-          user.fullName = deskUser.fullName;
-          user.name = deskUser.fullName;
-          changed = true;
-        }
-        if (deskUser.username && deskUser.username !== user.username) {
-          user.username = deskUser.username;
-          state.username = deskUser.username;
-          changed = true;
-        }
-        if (changed) {
-          localStorage.setItem('miruo_user', JSON.stringify(user));
-          updateUserUI(user);
-        }
+      if (!deskUser || !deskUser.id || !user.id) return;
+      if (String(deskUser.id) !== String(user.id) || getCanonicalProvider(deskUser) !== getCanonicalProvider(user)) return;
+      let changed = false;
+      if (typeof deskUser.avatarUrl === 'string' && deskUser.avatarUrl && deskUser.avatarUrl !== user.avatarUrl) {
+        user.avatarUrl = deskUser.avatarUrl;
+        state.avatarUrl = deskUser.avatarUrl;
+        changed = true;
+      }
+      if (deskUser.fullName && deskUser.fullName !== user.fullName && !deskUser.fullName.startsWith('@')) {
+        user.fullName = deskUser.fullName;
+        user.name = deskUser.fullName;
+        changed = true;
+      }
+      if (deskUser.username && deskUser.username !== user.username) {
+        user.username = deskUser.username;
+        state.username = deskUser.username;
+        changed = true;
+      }
+      if (changed) {
+        localStorage.setItem('miruo_user', JSON.stringify(user));
+        updateUserUI(user);
+      }
+    }).catch(() => {});
+  }
+
+  // Startup Cloud Profile Refresh: Pull latest name/username/photo from Supabase 'profiles' by exact UUID
+  if (user && !user.isGuest && user.id && supabaseClient && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(user.id))) {
+    supabaseClient.from('profiles').select('*').eq('id', user.id).maybeSingle().then(({ data: cloudRow }) => {
+      if (!cloudRow) return;
+      if (state._localProfileSavedAt && (Date.now() - state._localProfileSavedAt) < 15000) return;
+      const curNow = JSON.parse(localStorage.getItem('miruo_user') || 'null');
+      if (!curNow || String(curNow.id) !== String(cloudRow.id)) return;
+      let changed = false;
+      if (cloudRow.username && cloudRow.username !== curNow.username) {
+        curNow.username = cloudRow.username;
+        curNow.customUsername = cloudRow.username;
+        state.username = cloudRow.username;
+        changed = true;
+      }
+      if (cloudRow.full_name && cloudRow.full_name !== curNow.fullName && !cloudRow.full_name.startsWith('@')) {
+        curNow.fullName = cloudRow.full_name;
+        curNow.name = cloudRow.full_name;
+        curNow.customFullName = cloudRow.full_name;
+        changed = true;
+      }
+      if (typeof cloudRow.avatar_url === 'string' && cloudRow.avatar_url !== (curNow.avatarUrl || '')) {
+        curNow.avatarUrl = cloudRow.avatar_url;
+        curNow.customAvatarUrl = cloudRow.avatar_url;
+        state.avatarUrl = cloudRow.avatar_url;
+        changed = true;
+      }
+      if (cloudRow.avatar_bg && cloudRow.avatar_bg !== curNow.avatarBg) {
+        curNow.avatarBg = cloudRow.avatar_bg;
+        state.avatarBg = cloudRow.avatar_bg;
+        changed = true;
+      }
+      if (changed) {
+        curNow.avatarChar = (curNow.fullName || curNow.username || 'M').charAt(0).toUpperCase();
+        localStorage.setItem('miruo_user', JSON.stringify(curNow));
+        localStorage.setItem(`miruo_saved_profile_${curNow.id}`, JSON.stringify(curNow));
+        updateUserUI(curNow);
+        if (typeof renderProfileTab === 'function') renderProfileTab();
       }
     }).catch(() => {});
   }
@@ -19574,10 +19550,18 @@ function initMobileKeyboardProtection() {
     return el.id === 'chatMessageInput' || el.id === 'fsChatInput' || el.id === 'chatInput';
   };
 
+  const isFullscreenModalOpen = () => {
+    const ids = ['dedicatedProfileEditModal', 'profileEditModal', 'authModal'];
+    return ids.some(id => {
+      const el = document.getElementById(id);
+      return el && !el.classList.contains('hidden');
+    });
+  };
+
   const lockViewportAtZero = () => {
     const isRoomOrFs = document.body.classList.contains('in-room-mode') || 
                        document.body.classList.contains('stage-is-fullscreen');
-    if (!isRoomOrFs) return;
+    if (!isRoomOrFs && !isFullscreenModalOpen()) return;
     if (window.scrollY !== 0 || window.scrollX !== 0) {
       window.scrollTo(0, 0);
     }
@@ -19588,8 +19572,10 @@ function initMobileKeyboardProtection() {
   const syncVisualViewportLayout = (forceChatInputFocused = undefined) => {
     const isRoomOrFs = document.body.classList.contains('in-room-mode') || 
                        document.body.classList.contains('stage-is-fullscreen');
-    if (!isRoomOrFs) {
+    const modalOpen = isFullscreenModalOpen();
+    if (!isRoomOrFs && !modalOpen) {
       document.body.classList.remove('mobile-chat-keyboard-open');
+      document.body.classList.remove('miruo-modal-kb-open');
       document.documentElement.style.removeProperty('--miruo-vvh');
       document.documentElement.style.removeProperty('--miruo-vv-top');
       document.documentElement.style.removeProperty('--miruo-kb-offset');
@@ -19602,7 +19588,7 @@ function initMobileKeyboardProtection() {
     const vvh = vv ? vv.height : window.innerHeight;
     const vvTop = vv ? (vv.offsetTop || 0) : 0;
     const isPortrait = window.innerHeight >= window.innerWidth;
-    const isMobileScreen = window.innerWidth <= 900 || ('ontouchstart' in window);
+    const isMobileScreen = window.innerWidth <= 1023 || ('ontouchstart' in window);
     const keyboardHeight = Math.max(0, window.innerHeight - vvh - vvTop);
     const activeEl = document.activeElement;
     const chatFocused = typeof forceChatInputFocused === 'boolean'
@@ -19613,6 +19599,30 @@ function initMobileKeyboardProtection() {
     document.documentElement.style.setProperty('--miruo-vvh', `${Math.round(vvh)}px`);
     document.documentElement.style.setProperty('--miruo-vv-top', `${Math.round(vvTop)}px`);
     document.documentElement.style.setProperty('--miruo-kb-offset', `${Math.round(keyboardHeight)}px`);
+
+    // 0. Fullscreen Modals (Profile Edit, Settings, Auth): Keep inputs pinned & visible above virtual keyboard
+    if (modalOpen) {
+      const modalInputFocused = Boolean(
+        activeEl &&
+        (activeEl.tagName === 'INPUT' || activeEl.tagName === 'TEXTAREA') &&
+        activeEl.closest &&
+        activeEl.closest('#dedicatedProfileEditModal, #profileEditModal, #authModal')
+      );
+      const isModalKbOpen = isMobileScreen && (keyboardHeight > 65 || modalInputFocused);
+      document.body.classList.toggle('miruo-modal-kb-open', isModalKbOpen);
+      if (isModalKbOpen) {
+        const dedMain = document.querySelector('#dedicatedProfileEditModal > main');
+        if (dedMain && activeEl && activeEl.closest && activeEl.closest('#dedicatedProfileEditModal')) {
+          dedMain.scrollTop = 0;
+        }
+      }
+      if (!isRoomOrFs) {
+        document.body.classList.remove('mobile-chat-keyboard-open');
+        return;
+      }
+    } else {
+      document.body.classList.remove('miruo-modal-kb-open');
+    }
 
     // 1. Portrait Fullscreen Live Chat: Lift chat overlay bottom directly above virtual keyboard
     const fsChat = (dom && dom.fsChatOverlay) || document.getElementById('fsChatOverlay');
@@ -19653,13 +19663,15 @@ function initMobileKeyboardProtection() {
       document.body.classList.remove('mobile-chat-keyboard-open');
     }
   };
+  window.syncVisualViewportLayout = syncVisualViewportLayout;
 
   window.addEventListener('scroll', lockViewportAtZero, { passive: true });
 
   document.addEventListener('focusin', (e) => {
     const isRoomOrFs = document.body.classList.contains('in-room-mode') || 
                        document.body.classList.contains('stage-is-fullscreen');
-    if (!isRoomOrFs) return;
+    const modalOpen = isFullscreenModalOpen();
+    if (!isRoomOrFs && !modalOpen) return;
     if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA')) {
       const isChat = isChatTextInput(e.target);
       requestAnimationFrame(() => syncVisualViewportLayout(isChat));
@@ -19672,7 +19684,8 @@ function initMobileKeyboardProtection() {
   document.addEventListener('focusout', (e) => {
     const isRoomOrFs = document.body.classList.contains('in-room-mode') || 
                        document.body.classList.contains('stage-is-fullscreen');
-    if (!isRoomOrFs) return;
+    const modalOpen = isFullscreenModalOpen();
+    if (!isRoomOrFs && !modalOpen) return;
     setTimeout(() => syncVisualViewportLayout(false), 80);
     setTimeout(() => syncVisualViewportLayout(false), 250);
     const fsChat = (dom && dom.fsChatOverlay) || document.getElementById('fsChatOverlay');
@@ -19746,9 +19759,18 @@ function initEvents() {
       if (!file) return;
       const reader = new FileReader();
       reader.onload = (loadEvt) => {
-        selectedSignUpAvatarData = loadEvt.target.result;
-        if (dom.signUpAvatarPreview) {
-          dom.signUpAvatarPreview.innerHTML = `<img src="${selectedSignUpAvatarData}" class="w-full h-full object-cover rounded-full" alt="Avatar">`;
+        const rawUrl = loadEvt.target.result;
+        const finishSignup = (croppedUrl) => {
+          selectedSignUpAvatarData = croppedUrl;
+          window.selectedSignUpAvatarData = croppedUrl;
+          if (dom.signUpAvatarPreview) {
+            dom.signUpAvatarPreview.innerHTML = `<img src="${croppedUrl}" class="w-full h-full object-cover rounded-full" alt="Avatar">`;
+          }
+        };
+        if (typeof window.openAvatarCropper === 'function') {
+          window.openAvatarCropper(rawUrl, finishSignup);
+        } else {
+          finishSignup(rawUrl);
         }
       };
       reader.readAsDataURL(file);
@@ -19899,39 +19921,45 @@ function initEvents() {
 
     const canonicalAppleId = rawAppleSub ? `apple_${rawAppleSub}` : '';
 
-    // 0. Check all saved custom profile locations FIRST for THIS specific Apple ID / Email (never mix with a different user's profile!)
+    // 0. Check saved custom profile ONLY for THIS specific Apple ID (NEVER inherit an Email/Google account's photo/name!)
+    const rawSavedBySub = rawAppleSub ? JSON.parse(localStorage.getItem(`miruo_saved_profile_${rawAppleSub}`) || 'null') : null;
+    const rawSavedByCanon = canonicalAppleId ? JSON.parse(localStorage.getItem(`miruo_saved_profile_${canonicalAppleId}`) || 'null') : null;
+    const rawSavedByEmail = email ? JSON.parse(localStorage.getItem(`miruo_saved_profile_apple_${email}`) || 'null') : null;
+    const isAppleProfileObj = (p) => Boolean(p && (p.isApple === true || p.provider === 'apple'));
     const savedCustomProfile =
-      (rawAppleSub && JSON.parse(localStorage.getItem(`miruo_saved_profile_${rawAppleSub}`) || 'null')) ||
-      (email && JSON.parse(localStorage.getItem(`miruo_saved_profile_${email}`) || 'null')) ||
-      (canonicalAppleId && JSON.parse(localStorage.getItem(`miruo_saved_profile_${canonicalAppleId}`) || 'null')) ||
+      (isAppleProfileObj(rawSavedBySub) ? rawSavedBySub : null) ||
+      (isAppleProfileObj(rawSavedByCanon) ? rawSavedByCanon : null) ||
+      (isAppleProfileObj(rawSavedByEmail) ? rawSavedByEmail : null) ||
       null;
 
     const customSavedFullName =
       (savedCustomProfile && savedCustomProfile.fullName) ||
       (rawAppleSub && localStorage.getItem(`miruo_apple_name_${rawAppleSub}`)) ||
       (rawAppleSub && localStorage.getItem(`miruo_custom_fullname_${rawAppleSub}`)) ||
-      (email && localStorage.getItem(`miruo_custom_fullname_${email}`)) ||
       '';
 
     const customSavedUsername =
       (savedCustomProfile && savedCustomProfile.username) ||
       (rawAppleSub && localStorage.getItem(`miruo_apple_username_${rawAppleSub}`)) ||
       (rawAppleSub && localStorage.getItem(`miruo_custom_username_${rawAppleSub}`)) ||
-      (email && localStorage.getItem(`miruo_custom_username_${email}`)) ||
       '';
 
     const customSavedAvatar =
       (savedCustomProfile && (savedCustomProfile.avatarUrl || savedCustomProfile.avatarBg)) ||
       (rawAppleSub && localStorage.getItem(`miruo_apple_avatar_${rawAppleSub}`)) ||
-      (email && localStorage.getItem(`miruo_custom_avatar_${email}`)) ||
       '';
 
-    // 1. Look up if this Apple ID or Email is ALREADY registered locally
+    // 1. Look up if THIS specific Apple ID is ALREADY registered locally (strictly provider === 'apple'!)
     const byEmail = JSON.parse(localStorage.getItem('miruo_profiles_by_email') || '{}');
-    let existingLocal = existingFromNative || JSON.parse(localStorage.getItem('miruo_registered_users') || '[]').find(u =>
-      (rawAppleSub && (u.id === canonicalAppleId || u.id === rawAppleSub || u.appleUserId === rawAppleSub)) ||
-      (email && u.email && u.email.toLowerCase() === email)
-    ) || (email && byEmail[email]) || null;
+    let existingLocal = (isAppleProfileObj(existingFromNative) ? existingFromNative : null) ||
+      JSON.parse(localStorage.getItem('miruo_registered_users') || '[]').find(u =>
+        isAppleProfileObj(u) && (
+          (rawAppleSub && (u.id === canonicalAppleId || u.id === rawAppleSub || u.appleUserId === rawAppleSub)) ||
+          (email && u.email && u.email.toLowerCase() === email)
+        )
+      ) ||
+      (email && isAppleProfileObj(byEmail[email]) ? byEmail[email] : null) ||
+      null;
 
     // 2. Sync & look up existing account from persistent backend (/api/auth/social-sync)
     let backendUser = null;
@@ -20078,48 +20106,18 @@ function initEvents() {
       if (verifiedUser.avatarUrl) localStorage.setItem(`miruo_apple_avatar_${rawAppleSub}`, verifiedUser.avatarUrl);
     }
     if (resolvedEmail) {
-      localStorage.setItem(`miruo_saved_profile_${resolvedEmail}`, JSON.stringify(verifiedUser));
+      localStorage.setItem(`miruo_saved_profile_apple_${resolvedEmail}`, JSON.stringify(verifiedUser));
     }
     localStorage.setItem(`miruo_saved_profile_${verifiedUser.id}`, JSON.stringify(verifiedUser));
-    localStorage.setItem('miruo_custom_fullname', verifiedUser.fullName);
-    localStorage.setItem('miruo_custom_username', verifiedUser.username);
-    if (verifiedUser.avatarUrl) localStorage.setItem('miruo_custom_avatar', verifiedUser.avatarUrl);
 
     state.userId = verifiedUser.id;
     state.username = verifiedUser.username;
     state.avatarUrl = verifiedUser.avatarUrl || '';
     state.avatarBg = verifiedUser.avatarBg;
 
-    // Persist in local registered users list without creating duplicates or overwriting other accounts
+    // Persist in local registered users list strictly scoped to provider === 'apple' (NEVER overwrite Email or Google accounts!)
     try {
-      const freshRegList = JSON.parse(localStorage.getItem('miruo_registered_users') || '[]');
-      const idx = freshRegList.findIndex(u =>
-        (u.id && u.id === verifiedUser.id) ||
-        (rawAppleSub && u.appleUserId === rawAppleSub) ||
-        (resolvedEmail && u.email && u.email.toLowerCase() === resolvedEmail)
-      );
-      const entry = {
-        id: verifiedUser.id,
-        appleUserId: rawAppleSub || undefined,
-        email: resolvedEmail,
-        username: safeUsername,
-        fullName: displayName,
-        avatarUrl: verifiedUser.avatarUrl || '',
-        avatarBg: verifiedUser.avatarBg,
-        isApple: true,
-        provider: 'apple'
-      };
-      if (idx >= 0) {
-        freshRegList[idx] = Object.assign({}, freshRegList[idx], entry);
-      } else {
-        freshRegList.push(entry);
-      }
-      localStorage.setItem('miruo_registered_users', JSON.stringify(freshRegList));
-
-      if (resolvedEmail) {
-        byEmail[resolvedEmail] = entry;
-        localStorage.setItem('miruo_profiles_by_email', JSON.stringify(byEmail));
-      }
+      persistUserToLocalRegistry(verifiedUser);
     } catch (_) {}
 
     // Ensure native embedded store / Keychain is synchronized with custom profile
@@ -21749,14 +21747,17 @@ function initEvents() {
         dom.authSubmitBtn.innerText = prevBtnText;
         dom.authSubmitBtn.disabled = false;
 
-        // Successfully authenticated: always preserve exact saved custom username, real full name, email, and avatar
-        const resolvedEmail = (userData.email || (localMatch && localMatch.email) || (isEmail ? cleanContact : '')).toLowerCase();
-        const cleanContactU = (!isEmail ? cleanContact.replace(/^@/, '').toLowerCase() : '');
-        const emailProf = (resolvedEmail && byEmailMap[resolvedEmail]) || {};
-        const idProf = (userData.id && JSON.parse(localStorage.getItem(`miruo_saved_profile_${userData.id}`) || 'null')) || {};
-        const emailSavedProf = (resolvedEmail && JSON.parse(localStorage.getItem(`miruo_saved_profile_${resolvedEmail}`) || 'null')) || {};
-        const userSavedProf = (cleanContactU && JSON.parse(localStorage.getItem(`miruo_saved_profile_${cleanContactU}`) || 'null')) || {};
-        const prevSavedUser = JSON.parse(localStorage.getItem('miruo_user') || '{}');
+        // Successfully authenticated: strictly preserve THIS Email account's profile (NEVER pull Apple or Google profiles!)
+        const resolvedEmail = (userData.email || (localMatch && getCanonicalProvider(localMatch) === 'email' && localMatch.email) || (isEmail ? cleanContact : '')).toLowerCase();
+        const emailProv = 'email';
+        const isEmailRecord = (rec) => Boolean(rec && getCanonicalProvider(rec) === emailProv);
+        const safeLocalMatch = isEmailRecord(localMatch) ? localMatch : null;
+        const emailProfRaw = (resolvedEmail && byEmailMap[`${emailProv}:${resolvedEmail}`]) || null;
+        const emailProf = isEmailRecord(emailProfRaw) ? emailProfRaw : {};
+        const idProfRaw = (userData.id && JSON.parse(localStorage.getItem(`miruo_saved_profile_${userData.id}`) || 'null')) || null;
+        const idProf = (idProfRaw && (idProfRaw.id === userData.id || isEmailRecord(idProfRaw))) ? idProfRaw : {};
+        const emailSavedProfRaw = (resolvedEmail && JSON.parse(localStorage.getItem(`miruo_saved_profile_${emailProv}_${resolvedEmail}`) || 'null')) || null;
+        const emailSavedProf = isEmailRecord(emailSavedProfRaw) ? emailSavedProfRaw : {};
 
         // Fetch authoritative cloud 'profiles' row FIRST before merging local cache (prevents stale/other-account overwrite!)
         let supaRow = null;
@@ -21774,12 +21775,9 @@ function initEvents() {
           (supaRow && supaRow.username) ||
           idProf.username ||
           emailSavedProf.username ||
-          userSavedProf.username ||
           emailProf.username ||
-          (localMatch && localMatch.username) ||
+          (safeLocalMatch && safeLocalMatch.username) ||
           userData.username ||
-          (resolvedEmail && localStorage.getItem(`miruo_custom_username_${resolvedEmail}`)) ||
-          (cleanContactU && localStorage.getItem(`miruo_custom_username_${cleanContactU}`)) ||
           cleanContact.split('@')[0]
         ).replace(/^@/, '');
 
@@ -21787,11 +21785,8 @@ function initEvents() {
           (supaRow && supaRow.full_name && !supaRow.full_name.startsWith('@') ? supaRow.full_name : '') ||
           (idProf.fullName && !idProf.fullName.startsWith('@') ? idProf.fullName : '') ||
           (emailSavedProf.fullName && !emailSavedProf.fullName.startsWith('@') ? emailSavedProf.fullName : '') ||
-          (userSavedProf.fullName && !userSavedProf.fullName.startsWith('@') ? userSavedProf.fullName : '') ||
-          (resolvedEmail && localStorage.getItem(`miruo_custom_fullname_${resolvedEmail}`)) ||
-          (cleanContactU && localStorage.getItem(`miruo_custom_fullname_${cleanContactU}`)) ||
           (emailProf.fullName && !emailProf.fullName.startsWith('@') ? emailProf.fullName : '') ||
-          (localMatch && localMatch.fullName && !localMatch.fullName.startsWith('@') ? localMatch.fullName : '') ||
+          (safeLocalMatch && safeLocalMatch.fullName && !safeLocalMatch.fullName.startsWith('@') ? safeLocalMatch.fullName : '') ||
           (userData.fullName && !userData.fullName.startsWith('@') ? userData.fullName : '') ||
           finalUsername;
 
@@ -21799,12 +21794,9 @@ function initEvents() {
           (supaRow && typeof supaRow.avatar_url === 'string' && supaRow.avatar_url) ||
           idProf.avatarUrl ||
           emailSavedProf.avatarUrl ||
-          userSavedProf.avatarUrl ||
           (userData.id && localStorage.getItem(`miruo_custom_avatar_${userData.id}`)) ||
-          (resolvedEmail && localStorage.getItem(`miruo_custom_avatar_${resolvedEmail}`)) ||
-          (cleanContactU && localStorage.getItem(`miruo_custom_avatar_${cleanContactU}`)) ||
           emailProf.avatarUrl ||
-          (localMatch && localMatch.avatarUrl) ||
+          (safeLocalMatch && safeLocalMatch.avatarUrl) ||
           userData.avatarUrl ||
           '';
 
@@ -21812,14 +21804,13 @@ function initEvents() {
           (supaRow && supaRow.avatar_bg) ||
           idProf.avatarBg ||
           emailSavedProf.avatarBg ||
-          userSavedProf.avatarBg ||
           emailProf.avatarBg ||
-          (localMatch && localMatch.avatarBg) ||
+          (safeLocalMatch && safeLocalMatch.avatarBg) ||
           userData.avatarBg ||
           'from-rose-500 to-[#A64D79]';
 
         const user = {
-          id: userData.id || (localMatch && localMatch.id) || emailProf.id || ('user_' + Math.random().toString(36).substring(2, 8)),
+          id: userData.id || (safeLocalMatch && safeLocalMatch.id) || emailProf.id || ('user_' + Math.random().toString(36).substring(2, 8)),
           name: finalFullName,
           fullName: finalFullName,
           username: finalUsername,
@@ -21827,8 +21818,8 @@ function initEvents() {
           avatarChar: (finalFullName || finalUsername || 'M').charAt(0).toUpperCase(),
           avatarUrl: finalAvatarUrl,
           avatarBg: finalAvatarBg,
-          provider: userData.provider || (userData.isApple ? 'apple' : 'email'),
-          isApple: !!userData.isApple,
+          provider: emailProv,
+          isApple: false,
           isGoogle: false,
           isGuest: false,
           hasCustomProfile: true,
@@ -21837,15 +21828,6 @@ function initEvents() {
           customAvatarUrl: finalAvatarUrl
         };
         localStorage.setItem('miruo_user', JSON.stringify(user));
-        localStorage.setItem('miruo_custom_username', finalUsername);
-        localStorage.setItem('miruo_custom_fullname', finalFullName);
-        if (finalAvatarUrl) {
-          localStorage.setItem('miruo_custom_avatar', finalAvatarUrl);
-          localStorage.setItem('miruo_avatar', finalAvatarUrl);
-        } else {
-          localStorage.removeItem('miruo_custom_avatar');
-          localStorage.removeItem('miruo_avatar');
-        }
         if (user.id) {
           localStorage.setItem(`miruo_saved_profile_${user.id}`, JSON.stringify(user));
           localStorage.setItem(`miruo_custom_username_${user.id}`, finalUsername);
@@ -21854,10 +21836,7 @@ function initEvents() {
         }
         if (user.email) {
           const cleanE = user.email.toLowerCase().trim();
-          localStorage.setItem(`miruo_saved_profile_${cleanE}`, JSON.stringify(user));
-          localStorage.setItem(`miruo_custom_username_${cleanE}`, finalUsername);
-          localStorage.setItem(`miruo_custom_fullname_${cleanE}`, finalFullName);
-          if (finalAvatarUrl) localStorage.setItem(`miruo_custom_avatar_${cleanE}`, finalAvatarUrl);
+          localStorage.setItem(`miruo_saved_profile_${emailProv}_${cleanE}`, JSON.stringify(user));
         }
         persistUserToLocalRegistry(user);
 
@@ -23548,9 +23527,18 @@ function initEvents() {
   function closeDedicatedProfileModal() {
     const dedicatedModal = document.getElementById('dedicatedProfileEditModal');
     if (!dedicatedModal) return;
+    try {
+      if (document.activeElement && typeof document.activeElement.blur === 'function') {
+        document.activeElement.blur();
+      }
+    } catch (_) {}
+    document.body.classList.remove('miruo-modal-kb-open');
     dedicatedModal.classList.add('hidden');
     dedicatedModal.classList.remove('flex');
     unfreezeBackgroundAfterModal(true);
+    if (typeof window.syncVisualViewportLayout === 'function') {
+      window.syncVisualViewportLayout(false);
+    }
   }
 
   window.openDedicatedProfileModal = openDedicatedProfileModal;
@@ -23563,8 +23551,8 @@ function initEvents() {
       if (overlay) overlay.remove();
       overlay = document.createElement('div');
       overlay.id = 'miruoAvatarLightbox';
-      overlay.className = 'fixed inset-0 z-[100000] flex flex-col items-center justify-center p-6 bg-black/88 backdrop-blur-xl animate-fade-in';
-      overlay.style.cssText = 'position:fixed;inset:0;z-index:100000;background:rgba(5,4,10,0.9);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);';
+      overlay.className = 'fixed inset-0 z-[100000] flex flex-col items-center justify-center p-6 bg-black/90 backdrop-blur-xl animate-fade-in';
+      overlay.style.cssText = 'position:fixed;inset:0;z-index:100000;background:rgba(5,4,10,0.92);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);';
 
       const safeUrl = (avatarUrl && /^(https?:\/\/|data:image\/(png|jpeg|jpg|webp|gif);base64,|\/[^/])/i.test(String(avatarUrl).trim()))
         ? escapeHtml(String(avatarUrl).trim())
@@ -23576,7 +23564,7 @@ function initEvents() {
       overlay.innerHTML = `
         <button id="closeAvatarLightboxBtn" type="button" aria-label="Kapat" class="absolute top-6 right-6 w-11 h-11 rounded-full bg-white/15 hover:bg-white/25 active:scale-95 text-white flex items-center justify-center text-lg font-bold transition-all cursor-pointer shadow-lg" style="top: max(20px, env(safe-area-inset-top));">✕</button>
         <div class="flex flex-col items-center gap-4 max-w-full" id="avatarLightboxCard">
-          <div class="w-72 h-72 sm:w-80 sm:h-80 rounded-full overflow-hidden bg-gradient-to-tr ${avatarBg} border-4 border-white/20 shadow-[0_25px_70px_rgba(0,0,0,0.85)] flex items-center justify-center text-white font-black text-7xl select-none transition-transform duration-200">
+          <div class="w-72 h-72 sm:w-80 sm:h-80 rounded-full overflow-hidden bg-gradient-to-tr ${avatarBg} border-4 border-white/25 shadow-[0_25px_70px_rgba(0,0,0,0.9)] flex items-center justify-center text-white font-black text-7xl select-none transition-transform duration-200">
             ${safeUrl ? `<img src="${safeUrl}" class="w-full h-full object-cover" alt="Profil Fotoğrafı">` : safeInit}
           </div>
           ${(safeTitle || safeSub) ? `
@@ -23607,6 +23595,310 @@ function initEvents() {
     }
   }
   window.openAvatarLightbox = openAvatarLightbox;
+
+  // Global delegated fallback so tapping ANY profile photo reliably opens the fullscreen PP lightbox
+  if (!window._miruoAvatarLightboxDelegated) {
+    window._miruoAvatarLightboxDelegated = true;
+    document.addEventListener('click', (ev) => {
+      if (ev.target && ev.target.closest && ev.target.closest('#tabProfileCenterAvatarEditBtn, #tabProfileAvatarEditBtn')) return;
+      const ownAv = ev.target && ev.target.closest && ev.target.closest('#tabProfileCenterAvatar, #tabProfileAvatar');
+      if (ownAv) {
+        if (document.getElementById('miruoAvatarLightbox')) return;
+        const savedUser = JSON.parse(localStorage.getItem('miruo_user') || '{}');
+        const imgEl = ownAv.querySelector('img');
+        const avUrl = (imgEl && imgEl.getAttribute('src')) || savedUser.avatarUrl || state.avatarUrl || '';
+        const displayTitle = (savedUser.fullName && !savedUser.fullName.startsWith('@') ? savedUser.fullName : '') || savedUser.name || ('@' + (savedUser.username || state.username || 'kullanici').replace(/^@/, ''));
+        const displayHandle = '@' + (savedUser.username || state.username || 'kullanici').replace(/^@/, '');
+        const initialChar = (displayTitle || displayHandle || 'M').replace(/^@/, '').charAt(0).toUpperCase();
+        const activeBg = savedUser.avatarBg || state.avatarBg || 'from-[#A64D79] to-[#6A1E55]';
+        openAvatarLightbox(avUrl, initialChar, activeBg, displayTitle, displayHandle);
+        return;
+      }
+      const pubAv = ev.target && ev.target.closest && ev.target.closest('#publicCenterAvatar, #publicProfileAvatar');
+      if (pubAv) {
+        if (document.getElementById('miruoAvatarLightbox')) return;
+        const imgEl = pubAv.querySelector('img');
+        const avUrl = (imgEl && imgEl.getAttribute('src')) || '';
+        const nameEl = document.getElementById('publicProfileName');
+        const handleEl = document.getElementById('publicProfileUsername');
+        const displayTitle = (nameEl && nameEl.textContent.trim()) || 'Kullanıcı';
+        const displayHandle = (handleEl && handleEl.textContent.trim()) || '';
+        const initialChar = (displayTitle || pubAv.textContent || 'M').trim().charAt(0).toUpperCase();
+        openAvatarLightbox(avUrl, initialChar, 'from-[#A64D79] to-[#6A1E55]', displayTitle, displayHandle);
+      }
+    });
+  }
+
+  // Interactive Circular Profile Photo Cropper (Pan + Zoom + Pinch + Exact Circle Export)
+  function openAvatarCropper(rawImageDataUrl, onCroppedCallback) {
+    if (!rawImageDataUrl || typeof onCroppedCallback !== 'function') return;
+    try {
+      const existing = document.getElementById('miruoAvatarCropModal');
+      if (existing) existing.remove();
+
+      const STAGE_SIZE = 280;
+      const CIRCLE_SIZE = 240;
+      const EXPORT_SIZE = 320;
+      const MIN_ZOOM = 1;
+      const MAX_ZOOM = 3.5;
+
+      const modal = document.createElement('div');
+      modal.id = 'miruoAvatarCropModal';
+      modal.className = 'fixed inset-0 z-[100001] flex flex-col items-center justify-center p-4 select-none';
+      modal.style.cssText = 'position:fixed;inset:0;z-index:100001;background:rgba(5,4,10,0.95);backdrop-filter:blur(22px);-webkit-backdrop-filter:blur(22px);touch-action:none;';
+
+      modal.innerHTML = `
+        <div class="w-full max-w-sm bg-[#120E1A] border border-white/15 rounded-3xl p-5 shadow-[0_25px_70px_rgba(0,0,0,0.85)] flex flex-col items-center gap-4">
+          <div class="w-full flex items-center justify-between">
+            <div>
+              <h3 class="text-sm font-extrabold text-white tracking-tight">Fotoğrafı Konumlandır</h3>
+              <p class="text-[11px] text-gray-400">Fotoğrafı kaydırıp yakınlaştırarak yuvarlağa yerleştir</p>
+            </div>
+            <button id="miruoCropCloseBtn" type="button" aria-label="İptal" class="w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 text-white flex items-center justify-center text-sm font-bold cursor-pointer">✕</button>
+          </div>
+
+          <div id="miruoCropStage" class="relative overflow-hidden rounded-2xl bg-black/80 border border-white/15" style="width:${STAGE_SIZE}px;height:${STAGE_SIZE}px;touch-action:none;cursor:grab;">
+            <img id="miruoCropImg" draggable="false" alt="Kırpma Önizleme" style="position:absolute;left:50%;top:50%;max-width:none;max-height:none;user-select:none;-webkit-user-drag:none;transform-origin:center center;will-change:transform;">
+            <div class="pointer-events-none absolute inset-0 flex items-center justify-center">
+              <div id="miruoCropAperture" class="relative rounded-full overflow-hidden" style="width:${CIRCLE_SIZE}px;height:${CIRCLE_SIZE}px;border:2.5px solid rgba(255,255,255,0.9);box-shadow:0 0 0 9999px rgba(5,4,10,0.72);">
+                <div id="miruoCropGrid" class="absolute inset-0 opacity-0 transition-opacity duration-150" style="background-image:linear-gradient(to right, rgba(255,255,255,0.35) 1px, transparent 1px),linear-gradient(to bottom, rgba(255,255,255,0.35) 1px, transparent 1px);background-size:33.333% 33.333%;"></div>
+              </div>
+            </div>
+          </div>
+
+          <div class="w-full space-y-2">
+            <div class="flex items-center gap-2.5">
+              <button id="miruoCropZoomOutBtn" type="button" class="w-8 h-8 rounded-xl bg-white/10 hover:bg-white/20 text-white font-bold text-base flex items-center justify-center cursor-pointer">−</button>
+              <input id="miruoCropZoomSlider" type="range" min="${MIN_ZOOM}" max="${MAX_ZOOM}" step="0.01" value="1" class="flex-1 accent-rose-500 cursor-pointer">
+              <button id="miruoCropZoomInBtn" type="button" class="w-8 h-8 rounded-xl bg-white/10 hover:bg-white/20 text-white font-bold text-base flex items-center justify-center cursor-pointer">+</button>
+              <span id="miruoCropZoomLabel" class="text-[11px] font-bold text-rose-300 w-9 text-right tabular-nums">1.0x</span>
+            </div>
+          </div>
+
+          <div class="w-full flex items-center gap-2 pt-1">
+            <button id="miruoCropResetBtn" type="button" class="px-3 py-2.5 rounded-xl bg-white/10 hover:bg-white/15 text-gray-200 text-xs font-bold cursor-pointer">Ortala</button>
+            <button id="miruoCropCancelBtn" type="button" class="flex-1 py-2.5 rounded-xl bg-white/10 hover:bg-white/15 text-gray-200 text-xs font-bold cursor-pointer">İptal</button>
+            <button id="miruoCropSaveBtn" type="button" class="flex-1 py-2.5 rounded-xl bg-gradient-to-r from-rose-600 via-pink-600 to-[#A64D79] hover:opacity-95 text-white text-xs font-extrabold shadow-lg shadow-rose-600/25 cursor-pointer">Kaydet</button>
+          </div>
+        </div>
+      `;
+
+      document.body.appendChild(modal);
+
+      const stage = modal.querySelector('#miruoCropStage');
+      const imgEl = modal.querySelector('#miruoCropImg');
+      const gridEl = modal.querySelector('#miruoCropGrid');
+      const zoomSlider = modal.querySelector('#miruoCropZoomSlider');
+      const zoomLabel = modal.querySelector('#miruoCropZoomLabel');
+      const zoomOutBtn = modal.querySelector('#miruoCropZoomOutBtn');
+      const zoomInBtn = modal.querySelector('#miruoCropZoomInBtn');
+      const resetBtn = modal.querySelector('#miruoCropResetBtn');
+      const cancelBtn = modal.querySelector('#miruoCropCancelBtn');
+      const closeBtn = modal.querySelector('#miruoCropCloseBtn');
+      const saveBtn = modal.querySelector('#miruoCropSaveBtn');
+
+      let natW = 0;
+      let natH = 0;
+      let baseScale = 1;
+      let zoom = 1;
+      let tx = 0;
+      let ty = 0;
+      let isDragging = false;
+      let dragStartX = 0;
+      let dragStartY = 0;
+      let startTx = 0;
+      let startTy = 0;
+      let pinchStartDist = 0;
+      let pinchStartZoom = 1;
+
+      const clampPan = () => {
+        if (!natW || !natH) return;
+        const dispW = natW * baseScale * zoom;
+        const dispH = natH * baseScale * zoom;
+        const maxTx = Math.max(0, (dispW - CIRCLE_SIZE) / 2);
+        const maxTy = Math.max(0, (dispH - CIRCLE_SIZE) / 2);
+        tx = Math.max(-maxTx, Math.min(maxTx, tx));
+        ty = Math.max(-maxTy, Math.min(maxTy, ty));
+      };
+
+      const renderTransform = () => {
+        clampPan();
+        imgEl.style.transform = `translate3d(${tx}px, ${ty}px, 0) scale(${zoom})`;
+        if (zoomSlider) zoomSlider.value = String(zoom);
+        if (zoomLabel) zoomLabel.textContent = `${zoom.toFixed(1)}x`;
+      };
+
+      const setZoom = (nextZoom) => {
+        const clamped = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, Number(nextZoom) || 1));
+        if (zoom > 0) {
+          const ratio = clamped / zoom;
+          tx *= ratio;
+          ty *= ratio;
+        }
+        zoom = clamped;
+        renderTransform();
+      };
+
+      imgEl.onload = () => {
+        natW = imgEl.naturalWidth || imgEl.width || CIRCLE_SIZE;
+        natH = imgEl.naturalHeight || imgEl.height || CIRCLE_SIZE;
+        baseScale = Math.max(CIRCLE_SIZE / natW, CIRCLE_SIZE / natH);
+        const baseW = natW * baseScale;
+        const baseH = natH * baseScale;
+        imgEl.style.width = `${baseW}px`;
+        imgEl.style.height = `${baseH}px`;
+        imgEl.style.marginLeft = `${-baseW / 2}px`;
+        imgEl.style.marginTop = `${-baseH / 2}px`;
+        zoom = 1;
+        tx = 0;
+        ty = 0;
+        renderTransform();
+      };
+      imgEl.onerror = () => {
+        closeCropper();
+        showToast('Fotoğraf yüklenemedi.');
+      };
+      imgEl.src = rawImageDataUrl;
+
+      const setGridVisible = (vis) => {
+        if (gridEl) gridEl.style.opacity = vis ? '0.45' : '0';
+      };
+
+      // Mouse / Pointer drag
+      const onMouseMove = (ev) => {
+        if (!isDragging) return;
+        tx = startTx + (ev.clientX - dragStartX);
+        ty = startTy + (ev.clientY - dragStartY);
+        renderTransform();
+      };
+      const onMouseUp = () => {
+        if (!isDragging) return;
+        isDragging = false;
+        stage.style.cursor = 'grab';
+        setGridVisible(false);
+      };
+      stage.addEventListener('mousedown', (ev) => {
+        ev.preventDefault();
+        isDragging = true;
+        dragStartX = ev.clientX;
+        dragStartY = ev.clientY;
+        startTx = tx;
+        startTy = ty;
+        stage.style.cursor = 'grabbing';
+        setGridVisible(true);
+      });
+      window.addEventListener('mousemove', onMouseMove);
+      window.addEventListener('mouseup', onMouseUp);
+
+      // Touch drag + 2-finger pinch zoom
+      const getTouchDist = (t1, t2) => Math.hypot(t2.clientX - t1.clientX, t2.clientY - t1.clientY);
+      stage.addEventListener('touchstart', (ev) => {
+        if (ev.touches.length === 1) {
+          isDragging = true;
+          pinchStartDist = 0;
+          dragStartX = ev.touches[0].clientX;
+          dragStartY = ev.touches[0].clientY;
+          startTx = tx;
+          startTy = ty;
+          setGridVisible(true);
+        } else if (ev.touches.length >= 2) {
+          isDragging = false;
+          pinchStartDist = getTouchDist(ev.touches[0], ev.touches[1]);
+          pinchStartZoom = zoom;
+          setGridVisible(true);
+        }
+      }, { passive: true });
+      stage.addEventListener('touchmove', (ev) => {
+        if (ev.cancelable) ev.preventDefault();
+        if (ev.touches.length === 1 && isDragging) {
+          tx = startTx + (ev.touches[0].clientX - dragStartX);
+          ty = startTy + (ev.touches[0].clientY - dragStartY);
+          renderTransform();
+        } else if (ev.touches.length >= 2 && pinchStartDist > 0) {
+          const dist = getTouchDist(ev.touches[0], ev.touches[1]);
+          setZoom(pinchStartZoom * (dist / pinchStartDist));
+        }
+      }, { passive: false });
+      stage.addEventListener('touchend', (ev) => {
+        if (ev.touches.length === 0) {
+          isDragging = false;
+          pinchStartDist = 0;
+          setGridVisible(false);
+        } else if (ev.touches.length === 1) {
+          isDragging = true;
+          pinchStartDist = 0;
+          dragStartX = ev.touches[0].clientX;
+          dragStartY = ev.touches[0].clientY;
+          startTx = tx;
+          startTy = ty;
+        }
+      });
+
+      // Mouse wheel zoom
+      stage.addEventListener('wheel', (ev) => {
+        ev.preventDefault();
+        const delta = ev.deltaY < 0 ? 0.12 : -0.12;
+        setZoom(zoom + delta);
+      }, { passive: false });
+
+      if (zoomSlider) zoomSlider.addEventListener('input', () => setZoom(parseFloat(zoomSlider.value)));
+      if (zoomOutBtn) zoomOutBtn.addEventListener('click', () => setZoom(zoom - 0.2));
+      if (zoomInBtn) zoomInBtn.addEventListener('click', () => setZoom(zoom + 0.2));
+      if (resetBtn) resetBtn.addEventListener('click', () => { zoom = 1; tx = 0; ty = 0; renderTransform(); });
+
+      const onEsc = (ev) => { if (ev.key === 'Escape') closeCropper(); };
+      document.addEventListener('keydown', onEsc);
+
+      const closeCropper = () => {
+        window.removeEventListener('mousemove', onMouseMove);
+        window.removeEventListener('mouseup', onMouseUp);
+        document.removeEventListener('keydown', onEsc);
+        try { modal.remove(); } catch (_) {}
+      };
+
+      if (cancelBtn) cancelBtn.addEventListener('click', closeCropper);
+      if (closeBtn) closeBtn.addEventListener('click', closeCropper);
+
+      if (saveBtn) {
+        saveBtn.addEventListener('click', () => {
+          try {
+            if (!natW || !natH) {
+              closeCropper();
+              onCroppedCallback(rawImageDataUrl);
+              return;
+            }
+            const effectiveScale = baseScale * zoom;
+            const dispW = natW * effectiveScale;
+            const dispH = natH * effectiveScale;
+            const cropLeftDisp = dispW / 2 - tx - CIRCLE_SIZE / 2;
+            const cropTopDisp = dispH / 2 - ty - CIRCLE_SIZE / 2;
+            const sx = Math.max(0, Math.min(natW - 1, cropLeftDisp / effectiveScale));
+            const sy = Math.max(0, Math.min(natH - 1, cropTopDisp / effectiveScale));
+            const sSize = Math.min(natW - sx, natH - sy, CIRCLE_SIZE / effectiveScale);
+
+            const canvas = document.createElement('canvas');
+            canvas.width = EXPORT_SIZE;
+            canvas.height = EXPORT_SIZE;
+            const ctx = canvas.getContext('2d');
+            ctx.imageSmoothingEnabled = true;
+            ctx.imageSmoothingQuality = 'high';
+            ctx.drawImage(imgEl, sx, sy, sSize, sSize, 0, 0, EXPORT_SIZE, EXPORT_SIZE);
+            const croppedDataUrl = canvas.toDataURL('image/jpeg', 0.86);
+            closeCropper();
+            onCroppedCallback(croppedDataUrl);
+          } catch (err) {
+            console.warn('[Miruo] openAvatarCropper export error:', err);
+            closeCropper();
+            onCroppedCallback(rawImageDataUrl);
+          }
+        });
+      }
+    } catch (e) {
+      console.warn('[Miruo] openAvatarCropper error:', e);
+      onCroppedCallback(rawImageDataUrl);
+    }
+  }
+  window.openAvatarCropper = openAvatarCropper;
 
   const closeDedicatedProfileEditBtn = document.getElementById('closeDedicatedProfileEditBtn');
   if (closeDedicatedProfileEditBtn) {
@@ -23948,12 +24240,16 @@ function initEvents() {
     window.pendingAvatarUrl = base64Data;
     window.pendingAvatarBg = '';
     if (dom.editAvatarPreview) {
-      dom.editAvatarPreview.innerHTML = `<img src="${window.pendingAvatarUrl}" class="w-full h-full object-cover rounded-2xl" alt="PP">`;
-      dom.editAvatarPreview.className = 'w-20 h-20 rounded-2xl overflow-hidden shadow-xl border-2 border-[#A64D79] ring-4 ring-[#A64D79]/20 flex items-center justify-center';
+      dom.editAvatarPreview.innerHTML = `<img src="${window.pendingAvatarUrl}" class="w-full h-full object-cover rounded-full" alt="PP">`;
+      dom.editAvatarPreview.className = 'w-24 h-24 rounded-full overflow-hidden shadow-xl border-2 border-[#A64D79] ring-4 ring-[#A64D79]/20 flex items-center justify-center';
     }
 
-    // Auto-save & activate immediately across all storage vaults
+    // Auto-save & activate immediately STRICTLY scoped to THIS account (provider + id)
     const savedUser = JSON.parse(localStorage.getItem('miruo_user') || '{}');
+    const prov = typeof getCanonicalProvider === 'function' ? getCanonicalProvider(savedUser) : (savedUser.provider || 'email');
+    savedUser.provider = prov;
+    savedUser.isApple = prov === 'apple';
+    savedUser.isGoogle = prov === 'google';
     savedUser.avatarUrl = base64Data;
     savedUser.avatarBg = '';
     savedUser.hasCustomProfile = true;
@@ -23963,21 +24259,17 @@ function initEvents() {
     state.avatarUrl = base64Data;
     state.avatarBg = '';
     localStorage.setItem('miruo_user', JSON.stringify(savedUser));
-    localStorage.setItem('miruo_custom_avatar', base64Data);
-    localStorage.setItem('miruo_avatar', base64Data);
     if (savedUser.id) {
       localStorage.setItem(`miruo_custom_avatar_${savedUser.id}`, base64Data);
       localStorage.setItem(`miruo_saved_profile_${savedUser.id}`, JSON.stringify(savedUser));
     }
+    if (savedUser.appleUserId) {
+      localStorage.setItem(`miruo_apple_avatar_${savedUser.appleUserId}`, base64Data);
+      localStorage.setItem(`miruo_saved_profile_${savedUser.appleUserId}`, JSON.stringify(savedUser));
+    }
     if (savedUser.email) {
       const cleanE = savedUser.email.toLowerCase().trim();
-      localStorage.setItem(`miruo_custom_avatar_${cleanE}`, base64Data);
-      localStorage.setItem(`miruo_saved_profile_${cleanE}`, JSON.stringify(savedUser));
-    }
-    if (savedUser.username) {
-      const cleanU = savedUser.username.toLowerCase().replace(/^@/, '').trim();
-      localStorage.setItem(`miruo_custom_avatar_${cleanU}`, base64Data);
-      localStorage.setItem(`miruo_saved_profile_${cleanU}`, JSON.stringify(savedUser));
+      localStorage.setItem(`miruo_saved_profile_${prov}_${cleanE}`, JSON.stringify(savedUser));
     }
     if (typeof persistUserToLocalRegistry === 'function') persistUserToLocalRegistry(savedUser);
 
@@ -24010,6 +24302,7 @@ function initEvents() {
 
     updateUserUI(savedUser);
     if (typeof renderProfileTab === 'function') renderProfileTab();
+    if (typeof renderAffinityTree === 'function') renderAffinityTree();
     showToast('Profil fotoğrafı güncellendi');
   }
   window.applyNewAvatarPhoto = applyNewAvatarPhoto;
@@ -24017,12 +24310,16 @@ function initEvents() {
   const triggerAvatarPicker = async (e) => {
     if (e && typeof e.stopPropagation === 'function') e.stopPropagation();
 
-    // 1. Desktop native dialog (Mac & Windows Electron)
+    // 1. Desktop native dialog (Mac & Windows Electron) -> open interactive circular cropper!
     if (window.miruoDesktop && typeof window.miruoDesktop.selectPhotoFile === 'function') {
       try {
         const photoData = await window.miruoDesktop.selectPhotoFile();
         if (photoData) {
-          applyNewAvatarPhoto(photoData);
+          if (typeof window.openAvatarCropper === 'function') {
+            window.openAvatarCropper(photoData, (cropped) => applyNewAvatarPhoto(cropped));
+          } else {
+            applyNewAvatarPhoto(photoData);
+          }
           return;
         }
       } catch (err) {
@@ -24030,7 +24327,7 @@ function initEvents() {
       }
     }
 
-    // 2. iOS native PHPicker
+    // 2. iOS native PHPicker (handleNativeImagePicked routes through openAvatarCropper!)
     if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.pickImage) {
       triggerPhotoPicker('avatar');
       return;
@@ -24059,8 +24356,20 @@ function initEvents() {
       }
 
       try {
-        const base64Data = await compressAvatarFile(file);
-        applyNewAvatarPhoto(base64Data);
+        if (typeof window.openAvatarCropper === 'function') {
+          const reader = new FileReader();
+          reader.onload = (loadEvt) => {
+            const rawUrl = loadEvt.target && loadEvt.target.result;
+            if (rawUrl) {
+              window.openAvatarCropper(rawUrl, (cropped) => applyNewAvatarPhoto(cropped));
+            }
+          };
+          reader.onerror = () => showToast('Fotoğraf okunurken bir hata oluştu');
+          reader.readAsDataURL(file);
+        } else {
+          const base64Data = await compressAvatarFile(file);
+          applyNewAvatarPhoto(base64Data);
+        }
       } catch (err) {
         console.error('Avatar processing error:', err);
         showToast('Fotoğraf yüklenirken bir hata oluştu');
@@ -24074,11 +24383,31 @@ function initEvents() {
       window.pendingAvatarUrl = '';
       window.pendingAvatarBg = 'from-[#A64D79] to-[#6A1E55]';
       const savedUser = JSON.parse(localStorage.getItem('miruo_user') || '{}');
+      const prov = typeof getCanonicalProvider === 'function' ? getCanonicalProvider(savedUser) : (savedUser.provider || 'email');
+      savedUser.provider = prov;
+      savedUser.isApple = prov === 'apple';
+      savedUser.isGoogle = prov === 'google';
       savedUser.avatarUrl = '';
       savedUser.avatarBg = window.pendingAvatarBg;
+      savedUser.hasCustomProfile = true;
+      savedUser.customAvatarUrl = '';
+      savedUser.customProfileUpdatedAt = Date.now();
+      state._localProfileSavedAt = Date.now();
       state.avatarUrl = '';
       state.avatarBg = window.pendingAvatarBg;
       localStorage.setItem('miruo_user', JSON.stringify(savedUser));
+      if (savedUser.id) {
+        localStorage.removeItem(`miruo_custom_avatar_${savedUser.id}`);
+        localStorage.setItem(`miruo_saved_profile_${savedUser.id}`, JSON.stringify(savedUser));
+      }
+      if (savedUser.appleUserId) {
+        localStorage.removeItem(`miruo_apple_avatar_${savedUser.appleUserId}`);
+        localStorage.setItem(`miruo_saved_profile_${savedUser.appleUserId}`, JSON.stringify(savedUser));
+      }
+      if (savedUser.email) {
+        localStorage.setItem(`miruo_saved_profile_${prov}_${savedUser.email.toLowerCase().trim()}`, JSON.stringify(savedUser));
+      }
+      if (typeof persistUserToLocalRegistry === 'function') persistUserToLocalRegistry(savedUser);
 
       try {
         fetch('/api/auth/update-profile', {
@@ -24099,9 +24428,10 @@ function initEvents() {
       if (dom.editAvatarPreview) {
         const nameChar = (dom.editProfileFullNameInput?.value.trim() || dom.editProfileUsernameInput?.value.trim() || dom.editProfileNameInput?.value.trim() || state.username || 'M').charAt(0).toUpperCase();
         dom.editAvatarPreview.innerHTML = nameChar;
-        dom.editAvatarPreview.className = `w-20 h-20 rounded-2xl bg-gradient-to-tr ${window.pendingAvatarBg} flex items-center justify-center text-3xl font-bold text-white shadow-xl overflow-hidden border-2 border-white/20 ring-4 ring-white/5`;
+        dom.editAvatarPreview.className = `w-24 h-24 rounded-full bg-gradient-to-tr ${window.pendingAvatarBg} flex items-center justify-center text-3xl font-bold text-white shadow-xl overflow-hidden border-2 border-white/20 ring-4 ring-white/5`;
       }
       renderProfileTab();
+      if (typeof renderAffinityTree === 'function') renderAffinityTree();
       showToast('Profil fotoğrafı kaldırıldı.');
     });
   }
@@ -24113,11 +24443,31 @@ function initEvents() {
       window.pendingAvatarBg = bg;
       window.pendingAvatarUrl = '';
       const savedUser = JSON.parse(localStorage.getItem('miruo_user') || '{}');
+      const prov = typeof getCanonicalProvider === 'function' ? getCanonicalProvider(savedUser) : (savedUser.provider || 'email');
+      savedUser.provider = prov;
+      savedUser.isApple = prov === 'apple';
+      savedUser.isGoogle = prov === 'google';
       savedUser.avatarUrl = '';
       savedUser.avatarBg = bg;
+      savedUser.hasCustomProfile = true;
+      savedUser.customAvatarUrl = '';
+      savedUser.customProfileUpdatedAt = Date.now();
+      state._localProfileSavedAt = Date.now();
       state.avatarUrl = '';
       state.avatarBg = bg;
       localStorage.setItem('miruo_user', JSON.stringify(savedUser));
+      if (savedUser.id) {
+        localStorage.removeItem(`miruo_custom_avatar_${savedUser.id}`);
+        localStorage.setItem(`miruo_saved_profile_${savedUser.id}`, JSON.stringify(savedUser));
+      }
+      if (savedUser.appleUserId) {
+        localStorage.removeItem(`miruo_apple_avatar_${savedUser.appleUserId}`);
+        localStorage.setItem(`miruo_saved_profile_${savedUser.appleUserId}`, JSON.stringify(savedUser));
+      }
+      if (savedUser.email) {
+        localStorage.setItem(`miruo_saved_profile_${prov}_${savedUser.email.toLowerCase().trim()}`, JSON.stringify(savedUser));
+      }
+      if (typeof persistUserToLocalRegistry === 'function') persistUserToLocalRegistry(savedUser);
 
       try {
         fetch('/api/auth/update-profile', {
@@ -24138,9 +24488,10 @@ function initEvents() {
       if (dom.editAvatarPreview) {
         const nameChar = (dom.editProfileFullNameInput?.value.trim() || dom.editProfileUsernameInput?.value.trim() || dom.editProfileNameInput?.value.trim() || state.username || 'M').charAt(0).toUpperCase();
         dom.editAvatarPreview.innerHTML = nameChar;
-        dom.editAvatarPreview.className = `w-20 h-20 rounded-2xl bg-gradient-to-tr ${window.pendingAvatarBg} flex items-center justify-center text-3xl font-bold text-white shadow-xl overflow-hidden border-2 border-white/20 ring-4 ring-white/5`;
+        dom.editAvatarPreview.className = `w-24 h-24 rounded-full bg-gradient-to-tr ${window.pendingAvatarBg} flex items-center justify-center text-3xl font-bold text-white shadow-xl overflow-hidden border-2 border-white/20 ring-4 ring-white/5`;
       }
       renderProfileTab();
+      if (typeof renderAffinityTree === 'function') renderAffinityTree();
       showToast('Avatar rengi güncellendi');
     });
   });
@@ -24354,6 +24705,10 @@ window.recordUsernameChange = recordUsernameChange;
           state.avatarUrl = preservedAvatar;
         }
 
+        const prov = typeof getCanonicalProvider === 'function' ? getCanonicalProvider(savedUser) : (savedUser.provider || 'email');
+        savedUser.provider = prov;
+        savedUser.isApple = prov === 'apple';
+        savedUser.isGoogle = prov === 'google';
         savedUser.hasCustomProfile = true;
         savedUser.customUsername = cleanUsername;
         savedUser.customFullName = resolvedFullName;
@@ -24366,26 +24721,11 @@ window.recordUsernameChange = recordUsernameChange;
         }
 
         localStorage.setItem('miruo_user', JSON.stringify(savedUser));
-        localStorage.setItem('miruo_custom_username', cleanUsername);
-        localStorage.setItem('miruo_custom_fullname', resolvedFullName);
-        if (savedUser.avatarUrl) {
-          localStorage.setItem('miruo_custom_avatar', savedUser.avatarUrl);
-          localStorage.setItem('miruo_avatar', savedUser.avatarUrl);
-        } else {
+        if (!savedUser.avatarUrl) {
           try {
-            localStorage.removeItem('miruo_custom_avatar');
-            localStorage.removeItem('miruo_avatar');
             if (savedUser.id) localStorage.removeItem(`miruo_custom_avatar_${savedUser.id}`);
-            if (savedUser.email) localStorage.removeItem(`miruo_custom_avatar_${savedUser.email.toLowerCase().trim()}`);
-            if (cleanUsername) localStorage.removeItem(`miruo_custom_avatar_${cleanUsername}`);
-            if (currentActiveUsername) localStorage.removeItem(`miruo_custom_avatar_${currentActiveUsername}`);
+            if (savedUser.appleUserId) localStorage.removeItem(`miruo_apple_avatar_${savedUser.appleUserId}`);
           } catch (_) {}
-        }
-        if (cleanUsername) {
-          localStorage.setItem(`miruo_saved_profile_${cleanUsername}`, JSON.stringify(savedUser));
-          localStorage.setItem(`miruo_custom_username_${cleanUsername}`, cleanUsername);
-          localStorage.setItem(`miruo_custom_fullname_${cleanUsername}`, resolvedFullName);
-          if (savedUser.avatarUrl) localStorage.setItem(`miruo_custom_avatar_${cleanUsername}`, savedUser.avatarUrl);
         }
         if (savedUser.appleUserId) {
           localStorage.setItem(`miruo_apple_name_${savedUser.appleUserId}`, resolvedFullName);
@@ -24395,10 +24735,7 @@ window.recordUsernameChange = recordUsernameChange;
         }
         if (savedUser.email) {
           const cleanE = savedUser.email.toLowerCase().trim();
-          localStorage.setItem(`miruo_saved_profile_${cleanE}`, JSON.stringify(savedUser));
-          localStorage.setItem(`miruo_custom_username_${cleanE}`, cleanUsername);
-          localStorage.setItem(`miruo_custom_fullname_${cleanE}`, resolvedFullName);
-          if (savedUser.avatarUrl) localStorage.setItem(`miruo_custom_avatar_${cleanE}`, savedUser.avatarUrl);
+          localStorage.setItem(`miruo_saved_profile_${prov}_${cleanE}`, JSON.stringify(savedUser));
         }
         if (savedUser.id) {
           localStorage.setItem(`miruo_saved_profile_${savedUser.id}`, JSON.stringify(savedUser));
@@ -24452,14 +24789,34 @@ window.recordUsernameChange = recordUsernameChange;
     });
   }
 
-  // Keep Profile Edit inputs visible above iOS keyboard (prevent WKWebView upward viewport jump)
+  // Keep Profile Edit inputs rock-steady & visible above iOS/mobile keyboard (ZERO jump, ZERO cover!)
+  let _profileKbBlurTimer = null;
   [dom.editProfileFullNameInput, dom.editProfileUsernameInput].forEach(inp => {
     if (!inp) return;
     inp.addEventListener('focus', () => {
-      setTimeout(() => {
+      clearTimeout(_profileKbBlurTimer);
+      const isMobileW = window.innerWidth <= 1023 || ('ontouchstart' in window);
+      if (isMobileW) {
+        document.body.classList.add('miruo-modal-kb-open');
+        const dedMain = document.querySelector('#dedicatedProfileEditModal > main');
+        if (dedMain) dedMain.scrollTop = 0;
         try { window.scrollTo(0, 0); } catch (_) {}
-        try { inp.scrollIntoView({ behavior: 'smooth', block: 'center' }); } catch (_) {}
-      }, 220);
+        if (typeof window.syncVisualViewportLayout === 'function') {
+          window.syncVisualViewportLayout(false);
+        }
+      }
+    });
+    inp.addEventListener('blur', () => {
+      clearTimeout(_profileKbBlurTimer);
+      _profileKbBlurTimer = setTimeout(() => {
+        const ae = document.activeElement;
+        if (ae !== dom.editProfileFullNameInput && ae !== dom.editProfileUsernameInput) {
+          document.body.classList.remove('miruo-modal-kb-open');
+          if (typeof window.syncVisualViewportLayout === 'function') {
+            window.syncVisualViewportLayout(false);
+          }
+        }
+      }, 150);
     });
   });
 

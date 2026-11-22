@@ -8,7 +8,7 @@
   <link rel="manifest" href="manifest.json">
   <meta name="theme-color" content="#000000">
   <meta name="referrer" content="strict-origin-when-cross-origin">
-  <script src="vendor/tailwind.js?v=102"></script>
+  <script src="vendor/tailwind.js?v=103"></script>
   <script>
     // Miruo "Velvet Wine & Dusty Rose" Color Hunt Palette:
     // #1A1A1D (Obsidian Black), #3B1C32 (Deep Plum), #6A1E55 (Royal Wine), #A64D79 (Velvet Rose)
@@ -47,7 +47,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com">
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="style.css?v=102">
+  <link rel="stylesheet" href="style.css?v=103">
   <script>
     // Early language sync from localStorage
     try {
@@ -2200,7 +2200,7 @@
   </div>
 
   <!-- Dedicated Profile Edit Modal (Opened exclusively via [Düzenle] button on Profile Screen) -->
-  <div id="dedicatedProfileEditModal" class="fixed inset-0 bg-[#0B0910] text-white z-[99999] hidden flex-col w-full h-full overflow-hidden" style="background-color: #0B0910 !important; position: fixed !important; inset: 0 !important; width: 100% !important; height: 100dvh !important; z-index: 99999 !important; overscroll-behavior: none !important;">
+  <div id="dedicatedProfileEditModal" class="fixed inset-0 bg-[#0B0910] text-white z-[99999] hidden flex-col w-full h-full overflow-hidden" style="background-color: #0B0910 !important; position: fixed !important; inset: 0 !important; width: 100% !important; height: var(--miruo-vvh, 100dvh) !important; z-index: 99999 !important; overscroll-behavior: none !important;">
     <header class="w-full bg-[#0B0910] border-b border-white/10 shrink-0 z-30" style="background-color: #0B0910 !important; padding-top: max(16px, env(safe-area-inset-top));">
       <div class="max-w-lg mx-auto px-4 sm:px-6 py-3.5 flex items-center justify-between">
         <div class="flex items-center gap-2.5">
@@ -2221,7 +2221,7 @@
         
         <div class="bg-white/5 rounded-3xl border border-white/10 p-5 space-y-4 shadow-xl">
           <!-- Avatar Preview & Actions -->
-          <div class="flex flex-col items-center gap-3">
+          <div id="dedicatedProfileAvatarBlock" class="flex flex-col items-center gap-3">
             <div role="button" tabindex="0" class="relative group cursor-pointer block" id="avatarPreviewClickArea" title="Fotoğraf Yükle">
               <div id="editAvatarPreview" class="w-24 h-24 rounded-full bg-gradient-to-tr from-[#A64D79] to-[#6A1E55] flex items-center justify-center text-3xl font-black text-white shadow-2xl overflow-hidden border-2 border-rose-400/40 ring-4 ring-rose-500/10 transition-all">
                 M
@@ -2287,7 +2287,7 @@
   </div>
 
   <!-- Fullscreen Settings Hub Modal (Pure Settings) -->
-  <div id="profileEditModal" class="fixed inset-0 bg-[#0B0910] text-white z-[99999] hidden flex flex-col w-full h-full overflow-hidden" style="background-color: #0B0910 !important; position: fixed !important; inset: 0 !important; width: 100% !important; height: 100dvh !important; z-index: 99999 !important; overscroll-behavior: none !important;">
+  <div id="profileEditModal" class="fixed inset-0 bg-[#0B0910] text-white z-[99999] hidden flex flex-col w-full h-full overflow-hidden" style="background-color: #0B0910 !important; position: fixed !important; inset: 0 !important; width: 100% !important; height: var(--miruo-vvh, 100dvh) !important; z-index: 99999 !important; overscroll-behavior: none !important;">
     
     <!-- Top Modal Header: Strictly Fixed, Solid 100% #0B0910 Background, Never Budges -->
     <header class="w-full bg-[#0B0910] border-b border-white/10 shrink-0 z-30" style="background-color: #0B0910 !important; padding-top: max(16px, env(safe-area-inset-top));">
@@ -3383,13 +3383,13 @@
   <input type="file" id="roomMediaFileInput" accept="image/*,video/*" class="hidden">
 
   <!-- Scripts (Locally bundled vendor libs for instant startup & offline resilience) -->
-  <script src="vendor/supabase.js?v=102"></script>
+  <script src="vendor/supabase.js?v=103"></script>
   <script src="https://www.youtube.com/iframe_api"></script>
-  <script src="vendor/hls.min.js?v=102"></script>
-  <script src="config.js?v=102"></script>
-  <script src="livekit-client.umd.js?v=102"></script>
-  <script src="app.js?v=102"></script>
-  <script src="miruo-live.js?v=102"></script>
+  <script src="vendor/hls.min.js?v=103"></script>
+  <script src="config.js?v=103"></script>
+  <script src="livekit-client.umd.js?v=103"></script>
+  <script src="app.js?v=103"></script>
+  <script src="miruo-live.js?v=103"></script>
 
 </body>
 </html>

@@ -158,21 +158,21 @@ ipcMain.handle('mac-touch-id-apple-sign-in', async () => {
         try { sysUser = execFileSync('/usr/bin/whoami').toString('utf8').trim(); } catch (_) {}
 
         const users = loadLocalUsers();
-        let existingUser = users.find(u => u.isApple || u.provider === 'apple' || u.appleUserId);
+        let existingUser = users.find(u => u && (u.isApple === true || u.provider === 'apple') && u.appleUserId);
 
-        // Check saved desktop profile to preserve user custom photo/name/username
+        // ONLY merge desktopProfilePath if it belongs to THIS Apple account (NEVER pull Email/Google account's photo!)
         if (fs.existsSync(desktopProfilePath)) {
           try {
             const savedDeskProf = JSON.parse(fs.readFileSync(desktopProfilePath, 'utf8'));
-            if (savedDeskProf && savedDeskProf.fullName && !savedDeskProf.fullName.includes('karabul7tt')) {
+            if (savedDeskProf && (savedDeskProf.isApple === true || savedDeskProf.provider === 'apple') && savedDeskProf.fullName && !savedDeskProf.fullName.includes('karabul7tt')) {
               fullName = savedDeskProf.fullName;
               existingUser = Object.assign({}, existingUser || {}, savedDeskProf);
             }
           } catch (_) {}
         }
 
-        let email = (existingUser && existingUser.email) || 'dythin.app@gmail.com';
-        let userIdentifier = existingUser?.appleUserId || existingUser?.id || `apple_${sysUser || 'mac_user'}`;
+        let email = (existingUser && existingUser.email) || `apple_${sysUser || 'mac_user'}@privaterelay.appleid.com`;
+        let userIdentifier = (existingUser && (existingUser.appleUserId || existingUser.id)) || `apple_${sysUser || 'mac_user'}`;
         if (existingUser && existingUser.fullName) fullName = existingUser.fullName;
 
         return {

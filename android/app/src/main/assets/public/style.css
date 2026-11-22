@@ -934,6 +934,19 @@ html::-webkit-scrollbar {
     font-size: 16px !important;
     line-height: 1.4 !important;
   }
+
+  /* When virtual keyboard is open inside Profile Edit, hide the top avatar block so
+     Ad Soyad, Kullanıcı Adı, and Kaydet stay pinned cleanly at the top — 100% visible above the keyboard! */
+  body.miruo-modal-kb-open #dedicatedProfileAvatarBlock {
+    display: none !important;
+  }
+  body.miruo-modal-kb-open #dedicatedProfileEditModal > main > div {
+    padding-top: 12px !important;
+    padding-bottom: 16px !important;
+  }
+  body.miruo-modal-kb-open #dedicatedProfileEditModal > main > div > div {
+    padding: 16px !important;
+  }
 }
 
 #profileEditModal:not(.hidden),
