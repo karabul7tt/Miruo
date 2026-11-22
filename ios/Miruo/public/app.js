@@ -426,17 +426,20 @@ function syncUserProfileToSupabase(user) {
       }).catch(e => console.warn('[Supabase Profile Update Error]:', e));
     }
     const uid = user.id || state.userId;
-    if (uid) {
-      const email = (user.email || '').trim().toLowerCase();
+    const isUuid = typeof uid === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(uid);
+    if (uid && (isUuid || !uid.startsWith('guest_'))) {
+      // Match exact Supabase 'profiles' schema: id, username, full_name, avatar_url, avatar_bg
+      // (Do NOT send non-existent 'email' or 'updated_at' columns — Postgres rejects with 42703!)
       const profileRow = {
         id: uid,
         username: rawUsername,
         full_name: fullName,
-        avatar_url: avatarUrl,
-        updated_at: new Date().toISOString()
+        avatar_url: avatarUrl || '',
+        avatar_bg: avatarBg || '#8B1E4B'
       };
-      if (email) profileRow.email = email;
-      supabaseClient.from('profiles').upsert(profileRow).catch(e => console.warn('[Supabase profiles upsert info]:', e));
+      supabaseClient.from('profiles').upsert(profileRow).then(({ error }) => {
+        if (error) console.warn('[Supabase profiles upsert info]:', error.message || error);
+      }).catch(e => console.warn('[Supabase profiles upsert info]:', e));
     }
   } catch (err) {
     console.warn('[Supabase sync error]:', err);
@@ -629,19 +632,13 @@ function applySupabaseSessionUser(sbUser) {
           const { data: byId } = await supabaseClient.from('profiles').select('*').eq('id', sbUser.id).maybeSingle();
           if (byId) supaRow = byId;
         }
-        if (!supaRow && (sbUser.email || profile.email)) {
-          const em = (sbUser.email || profile.email).trim().toLowerCase();
-          const { data: byEm } = await supabaseClient.from('profiles').select('*').ilike('email', em).maybeSingle();
-          if (byEm) supaRow = byEm;
-        }
         // Re-check local save guard after async fetch
         if (state._localProfileSavedAt && (Date.now() - state._localProfileSavedAt) < 15000) {
           return;
         }
-        const localSavedCur = JSON.parse(localStorage.getItem('miruo_user') || 'null');
-        const localHasCustom = !!(localSavedCur && localSavedCur.hasCustomProfile && localSavedCur.customProfileUpdatedAt);
 
-        if (supaRow && !localHasCustom) {
+        if (supaRow) {
+          // Cloud 'profiles' row is authoritative across Mac, iPhone, Windows, Android & Web!
           let hasChange = false;
           if (supaRow.username && supaRow.username !== user.username) {
             user.username = supaRow.username;
@@ -655,10 +652,15 @@ function applySupabaseSessionUser(sbUser) {
             user.customFullName = supaRow.full_name;
             hasChange = true;
           }
-          if (typeof supaRow.avatar_url === 'string' && supaRow.avatar_url && supaRow.avatar_url !== user.avatarUrl) {
+          if (typeof supaRow.avatar_url === 'string' && supaRow.avatar_url !== (user.avatarUrl || '')) {
             user.avatarUrl = supaRow.avatar_url;
             user.customAvatarUrl = supaRow.avatar_url;
             state.avatarUrl = supaRow.avatar_url;
+            hasChange = true;
+          }
+          if (supaRow.avatar_bg && supaRow.avatar_bg !== user.avatarBg) {
+            user.avatarBg = supaRow.avatar_bg;
+            state.avatarBg = supaRow.avatar_bg;
             hasChange = true;
           }
           if (hasChange) {
@@ -19870,18 +19872,22 @@ function initEvents() {
       }
     } catch (_) {}
 
-    // 3. Also check Supabase profiles table for existing cross-device Apple account
+    // 3. Authenticate Apple identityToken with Supabase Auth & pull cloud 'profiles' row (Cross-Device Sync!)
     let supaProfile = null;
+    let sbAppleUid = '';
     if (supabaseClient) {
       try {
-        if (identityToken && supabaseClient.auth) {
-          const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 2500));
-          await Promise.race([
+        if (identityToken && !String(identityToken).startsWith('apple_verified_') && supabaseClient.auth && typeof supabaseClient.auth.signInWithIdToken === 'function') {
+          const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 3500));
+          const idRes = await Promise.race([
             supabaseClient.auth.signInWithIdToken({ provider: 'apple', token: identityToken }),
             timeoutPromise
-          ]).catch(() => {});
+          ]).catch(() => null);
+          if (idRes && idRes.data && idRes.data.user && idRes.data.user.id) {
+            sbAppleUid = idRes.data.user.id;
+          }
         }
-        const lookupId = (backendUser && backendUser.id) || (existingLocal && existingLocal.id) || canonicalAppleId;
+        const lookupId = sbAppleUid || (backendUser && backendUser.id) || (existingLocal && existingLocal.id) || canonicalAppleId;
         if (lookupId) {
           const { data: profById } = await supabaseClient
             .from('profiles')
@@ -19890,18 +19896,10 @@ function initEvents() {
             .maybeSingle();
           if (profById) supaProfile = profById;
         }
-        if (!supaProfile && email) {
-          const { data: profByEmail } = await supabaseClient
-            .from('profiles')
-            .select('*')
-            .ilike('email', email)
-            .maybeSingle();
-          if (profByEmail) supaProfile = profByEmail;
-        }
       } catch (_) {}
     }
 
-    // 4. Merge & preserve existing account profile (1 Apple account = 1 registration, keeps saved profile!)
+    // 4. Merge & preserve existing account profile (Cloud Supabase profile ALWAYS wins cross-device!)
     const genericLabels = ['kullanıcı', 'kullanici', 'apple kullanıcısı', 'apple user', 'user', 'misafir'];
     const pickValidName = (...candidates) => {
       for (const c of candidates) {
@@ -19914,6 +19912,7 @@ function initEvents() {
     };
 
     const resolvedId =
+      sbAppleUid ||
       (supaProfile && supaProfile.id) ||
       (backendUser && backendUser.id) ||
       (existingLocal && existingLocal.id) ||
@@ -19922,7 +19921,6 @@ function initEvents() {
 
     const resolvedEmail = (
       email ||
-      (supaProfile && supaProfile.email) ||
       (backendUser && backendUser.email) ||
       (existingLocal && existingLocal.email) ||
       ''
@@ -19930,18 +19928,18 @@ function initEvents() {
 
     const displayName =
       pickValidName(
+        supaProfile && (supaProfile.full_name || supaProfile.name),
         customSavedFullName,
         existingLocal && existingLocal.fullName,
-        supaProfile && (supaProfile.full_name || supaProfile.name),
         backendUser && backendUser.fullName,
         incomingFullName
       ) ||
       (resolvedEmail ? resolvedEmail.split('@')[0] : 'Apple Kullanıcısı');
 
     let safeUsername = (
+      (supaProfile && supaProfile.username) ||
       customSavedUsername ||
       (existingLocal && existingLocal.username) ||
-      (supaProfile && supaProfile.username) ||
       (backendUser && backendUser.username) ||
       (resolvedEmail ? resolvedEmail.split('@')[0] : displayName)
     )
@@ -19955,18 +19953,18 @@ function initEvents() {
     }
 
     const resolvedAvatarUrl =
+      (supaProfile && typeof supaProfile.avatar_url === 'string' && supaProfile.avatar_url) ||
       (savedCustomProfile && savedCustomProfile.avatarUrl) ||
       (rawAppleSub && localStorage.getItem(`miruo_apple_avatar_${rawAppleSub}`)) ||
       localStorage.getItem('miruo_custom_avatar') ||
       (existingLocal && existingLocal.avatarUrl) ||
-      (supaProfile && supaProfile.avatar_url) ||
       (backendUser && backendUser.avatarUrl) ||
       '';
 
     const resolvedAvatarBg =
+      (supaProfile && supaProfile.avatar_bg) ||
       (savedCustomProfile && savedCustomProfile.avatarBg) ||
       (existingLocal && existingLocal.avatarBg) ||
-      (supaProfile && supaProfile.avatar_bg) ||
       (backendUser && backendUser.avatarBg) ||
       'from-rose-500 to-indigo-600';
 
@@ -20073,8 +20071,10 @@ function initEvents() {
     }
     showToast(`Apple ile giriş yapıldı: ${displayName}`);
 
-    // Keep Supabase profile synced
-    syncUserProfileToSupabase(verifiedUser);
+    // Seed Supabase profile ONLY if no cloud profile existed yet (never overwrite cross-device edits!)
+    if (!supaProfile) {
+      syncUserProfileToSupabase(verifiedUser);
+    }
   };
 
   // Native OAuth (Google) Callback from iOS ASWebAuthenticationSession
@@ -20192,7 +20192,40 @@ function initEvents() {
       return;
     }
 
-    // 1b. Real Native macOS Apple Sign In (ASAuthorizationController)
+    // 1b. Desktop App (macOS/Windows) Apple Sign-In:
+    // Use REAL Supabase Apple OAuth so Mac, Windows, Web & iPhone share the EXACT SAME Supabase Auth UUID & cloud profile!
+    if (!isGoogle && window.miruoDesktop && typeof window.miruoDesktop.openOAuthWindow === 'function' && supabaseClient && supabaseClient.auth) {
+      hideAuthAlert();
+      if (btn) btn.classList.add('opacity-60', 'pointer-events-none');
+      try {
+        const redirectUrl = 'https://www.miruo.com.tr/app';
+        const { data, error } = await supabaseClient.auth.signInWithOAuth({
+          provider: 'apple',
+          options: {
+            redirectTo: redirectUrl,
+            skipBrowserRedirect: true
+          }
+        });
+        if (!error && data && data.url) {
+          const oauthRes = await window.miruoDesktop.openOAuthWindow({
+            provider: 'apple',
+            authUrl: data.url
+          });
+          if (btn) btn.classList.remove('opacity-60', 'pointer-events-none');
+          if (oauthRes && oauthRes.success && oauthRes.url) {
+            window.handleNativeOAuthResponse(oauthRes);
+            return;
+          } else if (oauthRes && (oauthRes.canceled || oauthRes.error === 'Pencere kapatıldı.')) {
+            return;
+          }
+        }
+      } catch (appleOauthErr) {
+        console.warn('[Miruo] Desktop Apple OAuth fallback to local Touch ID:', appleOauthErr);
+      }
+      if (btn) btn.classList.remove('opacity-60', 'pointer-events-none');
+    }
+
+    // 1c. Fallback Native macOS Touch ID Apple Sign In (only if Supabase Apple OAuth unavailable)
     if (!isGoogle && window.miruoDesktop && typeof window.miruoDesktop.promptAppleTouchID === 'function') {
       hideAuthAlert();
       if (btn) btn.classList.add('opacity-60', 'pointer-events-none');
@@ -21418,19 +21451,6 @@ function initEvents() {
           showAuthAlert("Bu e-posta adresi ile zaten kayıtlı bir hesap bulunuyor! Tek e-posta ile yalnızca 1 kez kayıt olunabilir. Lütfen 'Giriş Yap' sekmesinden giriş yapın.");
           return;
         }
-        if (supabaseClient) {
-          try {
-            const { data: existingSupa } = await supabaseClient
-              .from('profiles')
-              .select('id, email')
-              .ilike('email', cleanRegEmail)
-              .maybeSingle();
-            if (existingSupa && existingSupa.id) {
-              showAuthAlert("Bu e-posta adresi ile zaten kayıtlı bir hesap bulunuyor! Tek e-posta ile yalnızca 1 kez kayıt olunabilir. Lütfen 'Giriş Yap' sekmesinden giriş yapın.");
-              return;
-            }
-          } catch (_) {}
-        }
         if (!passwordVal || passwordVal.length < 6) {
           showAuthAlert("Şifre en az 6 karakter olmalıdır.");
           if (dom.authPasswordInput) dom.authPasswordInput.focus();
@@ -21622,20 +21642,11 @@ function initEvents() {
           } catch (_) {}
         }
 
-        // 2. Authenticate strictly via Supabase Auth (supports both email AND @username via profiles lookup)
+        // 2. Authenticate strictly via Supabase Auth
         if (!loginSuccess && supabaseClient && supabaseClient.auth) {
           let loginEmail = isEmail ? cleanContact.toLowerCase() : (localMatch && localMatch.email ? localMatch.email.toLowerCase() : '');
           if (!loginEmail && !isEmail) {
-            try {
-              const { data: profLookup } = await supabaseClient
-                .from('profiles')
-                .select('email')
-                .ilike('username', cleanContact)
-                .maybeSingle();
-              if (profLookup && profLookup.email) {
-                loginEmail = String(profLookup.email).trim().toLowerCase();
-              }
-            } catch (_) {}
+            authFailMsg = "Yeni bir cihazda giriş yaparken lütfen e-posta adresinizi girin (ör. adiniz@gmail.com).";
           }
 
           if (loginEmail) {
@@ -21771,10 +21782,6 @@ function initEvents() {
               if (user.id) {
                 const { data: byId } = await supabaseClient.from('profiles').select('*').eq('id', user.id).maybeSingle();
                 if (byId) supaRow = byId;
-              }
-              if (!supaRow && user.email) {
-                const { data: byEm } = await supabaseClient.from('profiles').select('*').ilike('email', user.email).maybeSingle();
-                if (byEm) supaRow = byEm;
               }
               if (supaRow) {
                 let hasChange = false;
