@@ -13,13 +13,14 @@ echo "🚀 [1/6] Dosyalar tüm platformlara senkronize ediliyor..."
 cp -f site.js website/site.js
 cp -f index.html website/index.html
 for target in desktop-app/public ios/Miruo/public android/app/src/main/assets/public website/app; do
-  mkdir -p "$target"
+  mkdir -p "$target/vendor"
   cp -f app/app.js "$target/app.js"
   cp -f app/config.js "$target/config.js"
   cp -f app/index.html "$target/index.html"
   cp -f app/style.css "$target/style.css"
   cp -f app/livekit-client.umd.js "$target/livekit-client.umd.js"
   cp -f app/miruo-live.js "$target/miruo-live.js"
+  cp -f app/vendor/* "$target/vendor/"
 done
 echo "✅ Dosyalar eşitlendi."
 
