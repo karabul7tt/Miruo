@@ -157,6 +157,14 @@
   } catch (_) {}
 })();
 
+// Keep Supabase Realtime Presence payloads ultra-light (<500 bytes) — base64 data:image/ blobs exceed
+// Supabase Presence limits and get silently dropped (causing rooms to vanish from Explore & member count = 1!)
+function getPresenceSafeAvatar(raw) {
+  const s = typeof raw === 'string' ? raw.trim() : '';
+  return (/^https?:\/\//i.test(s) && s.length < 512) ? s : '';
+}
+window.getPresenceSafeAvatar = getPresenceSafeAvatar;
+
 // Sunucu adresi (config.js veya localStorage.miruo_api_base). Doluysa tüm /api/* istekleri,
 // WebSocket ve SSE bağlantıları bu sunucuya gider; böylece Mac / Windows / telefon / web
 // aynı hesapları ve aynı herkese açık odaları görür.
@@ -3217,7 +3225,7 @@ function connectSupabaseRoomSignaling() {
     singleInstance: !!state.isSingleInstanceDevice,
     userId: state.userId,
     username: state.username,
-    avatar: state.avatarUrl || savedUserObj.avatarUrl || '',
+    avatar: getPresenceSafeAvatar(state.avatarUrl || savedUserObj.avatarUrl || ''),
     avatarColor: state.avatarBg || savedUserObj.avatarBg || 'from-rose-500 to-indigo-600',
     isMicOn: !!state.isMicOn,
     isCamOn: !!state.isCamOn,
@@ -3599,7 +3607,7 @@ function connectSupabaseRoomSignaling() {
             singleInstance: !!state.isSingleInstanceDevice,
             userId: state.userId,
             username: state.username,
-            avatar: state.avatarUrl || savedUserObj.avatarUrl || '',
+            avatar: getPresenceSafeAvatar(state.avatarUrl || savedUserObj.avatarUrl || ''),
             avatarColor: state.avatarBg || savedUserObj.avatarBg || 'from-rose-500 to-indigo-600',
             isMicOn: !!state.isMicOn,
             isCamOn: !!state.isCamOn,
@@ -12695,19 +12703,20 @@ function removeMyPublicRoom(id) {
 }
 
 // Global Public Rooms Discovery via Supabase Realtime Channels (Cross-Device Worldwide)
-let globalRealtimeRooms = [];
-let globalRoomsChannel = null;
-let globalRoomsSubscribed = false;
-let _globalRoomsReconnectTimer = null;
-const closedRoomTombstones = new Map(); // roomId -> closedAt timestamp (prevents stale packet resurrection)
-const PUBLIC_ROOM_STALE_MS = 12000; // Live rooms heartbeat every 4s; >12s without heartbeat/presence = closed
-const CLOSED_ROOM_TOMBSTONE_MS = 15000;
+var globalRealtimeRooms = [];
+var globalRoomsChannel = null;
+var globalRoomsSubscribed = false;
+var _globalRoomsReconnectTimer = null;
+var closedRoomTombstones = new Map(); // roomId -> closedAt timestamp (prevents stale packet resurrection)
+var PUBLIC_ROOM_STALE_MS = 12000; // Live rooms heartbeat every 4s; >12s without heartbeat/presence = closed
+var CLOSED_ROOM_TOMBSTONE_MS = 15000;
 
 function isRoomTombstoned(roomId) {
   if (!roomId) return false;
+  if (!closedRoomTombstones) closedRoomTombstones = new Map();
   const closedAt = closedRoomTombstones.get(roomId);
   if (!closedAt) return false;
-  if ((Date.now() - closedAt) > CLOSED_ROOM_TOMBSTONE_MS) {
+  if ((Date.now() - closedAt) > (CLOSED_ROOM_TOMBSTONE_MS || 15000)) {
     closedRoomTombstones.delete(roomId);
     return false;
   }
@@ -12942,23 +12951,32 @@ function syncCurrentRoomToGlobalPresence() {
     return;
   }
   const savedUserObj = JSON.parse(localStorage.getItem('miruo_user') || '{}');
-  const myAvatar = state.avatarUrl || savedUserObj.avatarUrl || localStorage.getItem('miruo_avatar') || '';
+  const rawAvatar = state.avatarUrl || savedUserObj.avatarUrl || '';
+  // CRITICAL: Supabase Realtime Presence silently drops payloads >4-8KB!
+  // Never put base64 data:image/ blobs inside Presence track(); keep compact https:// URLs or lightweight initial/bg!
+  const presenceSafeAvatar = (typeof rawAvatar === 'string' && /^https?:\/\//i.test(rawAvatar) && rawAvatar.length < 512) ? rawAvatar : '';
+  const hostBg = state.avatarBg || savedUserObj.avatarBg || 'from-purple-500 to-indigo-600';
   const payload = {
     id: state.roomId,
     name: state.roomName || (state.isHost ? `${state.username} Odası` : 'Canlı Oda'),
     category: state.roomCategory || (state.activeMode === 'youtube' ? 'YouTube' : 'Müzik & Sohbet'),
     host: state.isHost ? (state.username || 'Yönetici') : (state.hostName || 'Yönetici'),
-    hostAvatar: myAvatar,
+    hostAvatar: presenceSafeAvatar,
     mediaTitle: state.currentVideoTitle || (state.roomCategory === 'Galeri' ? 'Fotoğraf & Galeri' : state.roomCategory === 'Ekran Paylaş' ? 'Canlı Ekran Yayını' : state.roomCategory === 'Uyku Modu' ? 'Birlikte Uyku' : (state.activeMode === 'youtube' ? 'YouTube Yayını' : 'Canlı Sohbet Odası')),
     videoId: state.currentVideoId || '',
     thumb: state.currentVideoThumb || (state.currentVideoId ? `https://img.youtube.com/vi/${state.currentVideoId}/mqdefault.jpg` : ''),
     viewers: Math.max(1, 1 + Object.values(state.participants || {}).filter(p => p && !isSelfMember(p)).length),
     isPublic: true,
-    avatars: myAvatar ? [myAvatar] : [{ initial: (state.username || 'U').charAt(0).toUpperCase(), bg: 'from-purple-500 to-indigo-600' }],
+    avatars: presenceSafeAvatar ? [presenceSafeAvatar] : [{ initial: (state.username || 'U').charAt(0).toUpperCase(), bg: hostBg }],
     updatedAt: Date.now()
   };
   state.pendingPublicRoomPayload = payload;
-  upsertGlobalRealtimeRoom(payload);
+  // Local UI card can show host's own full avatar; network Presence & broadcast stay ultra-light (<500 bytes)!
+  upsertGlobalRealtimeRoom({
+    ...payload,
+    hostAvatar: rawAvatar || presenceSafeAvatar,
+    avatars: rawAvatar ? [rawAvatar] : payload.avatars
+  });
   if (globalRoomsChannel && globalRoomsSubscribed) {
     try {
       globalRoomsChannel.track(payload).catch(e => console.warn('[Presence] track error:', e));
@@ -14267,17 +14285,18 @@ function announceMyPresence() {
   try {
     const me = getActiveSelfIdentity();
     const myCleanUsername = me.username || 'user';
+    const safePresenceAv = (typeof me.avatarUrl === 'string' && /^https?:\/\//i.test(me.avatarUrl) && me.avatarUrl.length < 512) ? me.avatarUrl : '';
     const myProfile = {
       id: me.id || ('user_' + myCleanUsername),
       username: myCleanUsername,
       fullName: me.fullName || myCleanUsername,
-      avatarUrl: me.avatarUrl || '',
+      avatarUrl: safePresenceAv,
       avatarBg: me.avatarBg || 'from-rose-500 to-[#A64D79]',
       status: state.isInRoom ? 'in_room' : 'online',
       currentRoom: state.roomId || '',
       updatedAt: Date.now()
     };
-    if (!me.isGuest) upsertGlobalUserCache(myProfile);
+    if (!me.isGuest) upsertGlobalUserCache({ ...myProfile, avatarUrl: me.avatarUrl || safePresenceAv });
     globalUsersChannel.track(myProfile).catch(() => {});
     globalUsersChannel.send({
       type: 'broadcast',
@@ -18230,7 +18249,7 @@ function broadcastMyMediaStatus() {
     deviceId: state.deviceId,
     singleInstance: !!state.isSingleInstanceDevice,
     username: state.username,
-    avatar: state.avatarUrl || savedUserObj.avatarUrl || '',
+    avatar: getPresenceSafeAvatar(state.avatarUrl || savedUserObj.avatarUrl || ''),
     avatarColor: state.avatarBg || savedUserObj.avatarBg || 'from-rose-500 to-indigo-600',
     isMicOn: !!state.isMicOn,
     isCamOn: !!state.isCamOn,
@@ -18423,7 +18442,7 @@ function handleRemoteRoleUpdate(targetUserId, newRole, targetUsername) {
           singleInstance: !!state.isSingleInstanceDevice,
           userId: state.userId,
           username: state.username,
-          avatar: state.avatarUrl || savedUserObj.avatarUrl || '',
+          avatar: getPresenceSafeAvatar(state.avatarUrl || savedUserObj.avatarUrl || ''),
           avatarColor: state.avatarBg || savedUserObj.avatarBg || 'from-rose-500 to-indigo-600',
           isMicOn: !!state.isMicOn,
           isCamOn: !!state.isCamOn,
@@ -18496,7 +18515,7 @@ function transferRoomOwnership(targetUserId, targetUsername, targetClientId = ''
         clientId: state.clientId,
         userId: state.userId,
         username: state.username,
-        avatar: state.avatarUrl || savedUserObj.avatarUrl || '',
+        avatar: getPresenceSafeAvatar(state.avatarUrl || savedUserObj.avatarUrl || ''),
         avatarColor: state.avatarBg || savedUserObj.avatarBg || 'from-rose-500 to-indigo-600',
         isMicOn: !!state.isMicOn,
         isCamOn: !!state.isCamOn,
@@ -18550,7 +18569,7 @@ function handleRemoteOwnershipTransfer(newOwnerUserId, newOwnerUsername, newOwne
           singleInstance: !!state.isSingleInstanceDevice,
           userId: state.userId,
           username: state.username,
-          avatar: state.avatarUrl || savedUserObj.avatarUrl || '',
+          avatar: getPresenceSafeAvatar(state.avatarUrl || savedUserObj.avatarUrl || ''),
           avatarColor: state.avatarBg || savedUserObj.avatarBg || 'from-rose-500 to-indigo-600',
           isMicOn: !!state.isMicOn,
           isCamOn: !!state.isCamOn,
