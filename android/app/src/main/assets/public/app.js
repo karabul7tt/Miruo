@@ -6,6 +6,157 @@
  * - Virtual Living Room Interactive Touch & Reactions
  */
 
+// ============================================================================
+// MIRUO STORAGE QUOTA SHIELD (Protects both app.js & supabase.js against
+// iOS WKWebView / Electron 5MB localStorage QuotaExceededError!)
+// ============================================================================
+(function initMiruoStorageQuotaShield() {
+  try {
+    const storageObj = typeof localStorage !== 'undefined' ? localStorage : null;
+    const proto = (typeof Storage !== 'undefined' && Storage.prototype) ? Storage.prototype : null;
+    const targetObj = (proto && typeof proto.setItem === 'function') ? proto : storageObj;
+    if (!targetObj || targetObj._miruoQuotaShielded) return;
+    const origSetItem = targetObj.setItem;
+    const origRemoveItem = (proto && proto.removeItem) || (storageObj && storageObj.removeItem);
+    const origGetItem = (proto && proto.getItem) || (storageObj && storageObj.getItem);
+
+    const shrinkJsonForQuota = (valStr) => {
+      try {
+        if (typeof valStr !== 'string' || valStr.length < 3000) return valStr;
+        const parsed = JSON.parse(valStr);
+        const compactObj = (obj) => {
+          if (!obj || typeof obj !== 'object') return;
+          if (Array.isArray(obj)) { obj.forEach(compactObj); return; }
+          if (typeof obj.customAvatarUrl === 'string' && obj.customAvatarUrl.startsWith('data:image/') && obj.customAvatarUrl === obj.avatarUrl) {
+            obj.customAvatarUrl = '';
+          }
+          for (const f of ['avatarUrl', 'customAvatarUrl', 'fromAvatarUrl', 'targetAvatarUrl']) {
+            if (typeof obj[f] === 'string' && obj[f].startsWith('data:image/') && obj[f].length > 80000) {
+              obj[f] = '';
+            }
+          }
+        };
+        compactObj(parsed);
+        return JSON.stringify(parsed);
+      } catch (_) {
+        return valStr;
+      }
+    };
+
+    const purgeBloatedStorage = (st, protectedKey) => {
+      try {
+        const disposable = [
+          'miruo_global_users_cache',
+          'miruo_custom_avatar',
+          'miruo_avatar',
+          'miruo_public_rooms_cache',
+          'miruo_outbox_v1',
+          'miruo_local_inbox_v1'
+        ];
+        disposable.forEach(k => {
+          if (k !== protectedKey) {
+            try { origRemoveItem.call(st, k); } catch (_) {}
+          }
+        });
+
+        const keysToDrop = [];
+        const len = typeof st.length === 'number' ? st.length : 0;
+        for (let i = 0; i < len; i++) {
+          const k = typeof st.key === 'function' ? st.key(i) : null;
+          if (!k || k === protectedKey) continue;
+          if (k.startsWith('miruo_custom_avatar_') || k.startsWith('miruo_apple_avatar_')) {
+            keysToDrop.push(k);
+          } else if (k.startsWith('miruo_saved_profile_') && k.includes('@') && !/^miruo_saved_profile_(email|google|apple|phone)_/.test(k)) {
+            keysToDrop.push(k);
+          }
+        }
+        keysToDrop.forEach(k => { try { origRemoveItem.call(st, k); } catch (_) {} });
+
+        ['miruo_registered_users', 'miruo_profiles_by_email'].forEach(regKey => {
+          if (regKey === protectedKey) return;
+          try {
+            const raw = origGetItem.call(st, regKey);
+            if (!raw || raw.length < 25000) return;
+            const parsed = JSON.parse(raw);
+            const stripBase64 = (obj) => {
+              if (!obj || typeof obj !== 'object') return;
+              if (Array.isArray(obj)) { obj.forEach(stripBase64); return; }
+              for (const f of ['avatarUrl', 'customAvatarUrl']) {
+                if (typeof obj[f] === 'string' && obj[f].startsWith('data:image/') && obj[f].length > 1000) obj[f] = '';
+              }
+              Object.values(obj).forEach(v => { if (v && typeof v === 'object') stripBase64(v); });
+            };
+            stripBase64(parsed);
+            origSetItem.call(st, regKey, JSON.stringify(parsed));
+          } catch (_) {
+            try { origRemoveItem.call(st, regKey); } catch (__) {}
+          }
+        });
+      } catch (_) {}
+    };
+
+    // Proactive startup cleanup if bloated (>1.2MB of legacy duplicate base64 avatars)
+    if (storageObj && typeof storageObj.length === 'number' && typeof storageObj.key === 'function') {
+      try {
+        let totalChars = 0;
+        for (let i = 0; i < storageObj.length; i++) {
+          const k = storageObj.key(i);
+          const v = k ? origGetItem.call(storageObj, k) : '';
+          totalChars += (k ? k.length : 0) + (v ? v.length : 0);
+        }
+        if (totalChars > 1200000) {
+          purgeBloatedStorage(storageObj, 'miruo_user');
+        }
+      } catch (_) {}
+    }
+
+    targetObj.setItem = function miruoSafeSetItem(key, value) {
+      const strVal = String(value);
+      try {
+        return origSetItem.call(this, key, strVal);
+      } catch (err) {
+        purgeBloatedStorage(this, key);
+        const compacted = shrinkJsonForQuota(strVal);
+        try {
+          return origSetItem.call(this, key, compacted);
+        } catch (err2) {
+          // Drop any remaining oversized saved profiles except current key and retry
+          try {
+            const dropOldProfiles = [];
+            const len = typeof this.length === 'number' ? this.length : 0;
+            for (let i = 0; i < len; i++) {
+              const k = typeof this.key === 'function' ? this.key(i) : null;
+              if (k && k !== key && k !== 'miruo_user' && !k.startsWith('sb-') && k.startsWith('miruo_saved_profile_')) {
+                dropOldProfiles.push(k);
+              }
+            }
+            dropOldProfiles.forEach(k => { try { origRemoveItem.call(this, k); } catch (_) {} });
+            return origSetItem.call(this, key, compacted);
+          } catch (err3) {
+            // Final fallback: strip base64 image from this JSON object so auth/session NEVER crashes!
+            try {
+              const parsed = JSON.parse(compacted);
+              const stripAllImg = (o) => {
+                if (!o || typeof o !== 'object') return;
+                if (Array.isArray(o)) { o.forEach(stripAllImg); return; }
+                for (const f of ['avatarUrl', 'customAvatarUrl', 'fromAvatarUrl', 'targetAvatarUrl']) {
+                  if (typeof o[f] === 'string' && o[f].startsWith('data:image/')) o[f] = '';
+                }
+              };
+              stripAllImg(parsed);
+              return origSetItem.call(this, key, JSON.stringify(parsed));
+            } catch (_) {
+              console.warn('[Miruo Storage] Skipped oversized write for key:', key);
+            }
+          }
+        }
+      }
+    };
+    targetObj._miruoQuotaShielded = true;
+    window._miruoPurgeBloatedStorage = () => storageObj && purgeBloatedStorage(storageObj, 'miruo_user');
+  } catch (_) {}
+})();
+
 // Sunucu adresi (config.js veya localStorage.miruo_api_base). Doluysa tüm /api/* istekleri,
 // WebSocket ve SSE bağlantıları bu sunucuya gider; böylece Mac / Windows / telefon / web
 // aynı hesapları ve aynı herkese açık odaları görür.
@@ -558,21 +709,10 @@ function resolveCustomizedUserProfile({ id, email, rawName, rawUsername, rawAvat
   };
 
   localStorage.setItem('miruo_user', JSON.stringify(resolved));
-  localStorage.setItem('miruo_custom_username', finalUsername);
-  localStorage.setItem('miruo_custom_fullname', finalFullName);
-  if (finalAvatarUrl) {
-    localStorage.setItem('miruo_custom_avatar', finalAvatarUrl);
-    localStorage.setItem('miruo_avatar', finalAvatarUrl);
-  } else {
-    localStorage.removeItem('miruo_custom_avatar');
-    localStorage.removeItem('miruo_avatar');
-  }
-
   if (cleanId) {
     localStorage.setItem(`miruo_saved_profile_${cleanId}`, JSON.stringify(resolved));
     localStorage.setItem(`miruo_custom_username_${cleanId}`, finalUsername);
     localStorage.setItem(`miruo_custom_fullname_${cleanId}`, finalFullName);
-    if (finalAvatarUrl) localStorage.setItem(`miruo_custom_avatar_${cleanId}`, finalAvatarUrl);
   }
   if (cleanEmail) {
     localStorage.setItem(`miruo_saved_profile_${targetProv}_${cleanEmail}`, JSON.stringify(resolved));
@@ -13883,9 +14023,9 @@ window.sendAffinityRequest = sendAffinityRequest;
 // ==========================================
 // GLOBAL USERS & REALTIME FRIEND REQUESTS SYSTEM
 // ==========================================
-let globalUsersChannel = null;
-let globalUsersChannelIdentity = '';
-let globalUsersChannelSubscribed = false;
+var globalUsersChannel = null;
+var globalUsersChannelIdentity = '';
+var globalUsersChannelSubscribed = false;
 window.miruoGlobalUsersMap = new Map();
 
 function getActiveSelfIdentity() {
@@ -14154,7 +14294,16 @@ function upsertGlobalUserCache(user) {
   window.miruoGlobalUsersMap.set(cleanU, user);
   try {
     const cache = JSON.parse(localStorage.getItem('miruo_global_users_cache') || '{}');
-    cache[cleanU] = { ...cache[cleanU], ...user, updatedAt: Date.now() };
+    const safeUser = { ...user, updatedAt: Date.now() };
+    // Never store heavy base64 images inside global discovery cache (RAM map keeps full photo!)
+    if (typeof safeUser.avatarUrl === 'string' && safeUser.avatarUrl.startsWith('data:image/') && safeUser.avatarUrl.length > 1000) {
+      safeUser.avatarUrl = '';
+    }
+    cache[cleanU] = { ...cache[cleanU], ...safeUser };
+    const keys = Object.keys(cache);
+    if (keys.length > 40) {
+      keys.sort((a, b) => (cache[b].updatedAt || 0) - (cache[a].updatedAt || 0)).slice(40).forEach(k => delete cache[k]);
+    }
     localStorage.setItem('miruo_global_users_cache', JSON.stringify(cache));
   } catch (_) {}
 }
@@ -14177,7 +14326,10 @@ function handleGlobalPresenceSync(presenceState) {
         currentRoom: u.currentRoom || '',
         updatedAt: u.updatedAt || Date.now()
       };
-      cache[cleanU] = userData;
+      cache[cleanU] = {
+        ...userData,
+        avatarUrl: (typeof userData.avatarUrl === 'string' && userData.avatarUrl.startsWith('data:image/') && userData.avatarUrl.length > 1000) ? '' : userData.avatarUrl
+      };
       window.miruoGlobalUsersMap.set(cleanU, userData);
 
       // If user is in local friends, update their status to online!
@@ -24232,7 +24384,7 @@ function initEvents() {
 
       const STAGE_SIZE = 280;
       const CIRCLE_SIZE = 240;
-      const EXPORT_SIZE = 320;
+      const EXPORT_SIZE = 240;
       const MIN_ZOOM = 1;
       const MAX_ZOOM = 3.5;
 
@@ -24477,7 +24629,7 @@ function initEvents() {
             ctx.imageSmoothingEnabled = true;
             ctx.imageSmoothingQuality = 'high';
             ctx.drawImage(imgEl, sx, sy, sSize, sSize, 0, 0, EXPORT_SIZE, EXPORT_SIZE);
-            const croppedDataUrl = canvas.toDataURL('image/jpeg', 0.86);
+            const croppedDataUrl = canvas.toDataURL('image/jpeg', 0.78);
             closeCropper();
             onCroppedCallback(croppedDataUrl);
           } catch (err) {

@@ -323,7 +323,7 @@
 
       if (platform === 'android') {
         const dlLink = document.createElement('a');
-        dlLink.href = '/downloads/Miruo.apk?v=105';
+        dlLink.href = '/downloads/Miruo.apk?v=106';
         dlLink.download = 'Miruo.apk';
         document.body.appendChild(dlLink);
         dlLink.click();
@@ -345,7 +345,7 @@
           }
         } catch (_) {}
         const dlLink = document.createElement('a');
-        dlLink.href = isIntelMac ? '/downloads/Miruo-Intel.zip?v=105' : '/downloads/Miruo.dmg?v=105';
+        dlLink.href = isIntelMac ? '/downloads/Miruo-Intel.zip?v=106' : '/downloads/Miruo.dmg?v=106';
         dlLink.download = isIntelMac ? 'Miruo-Intel.zip' : 'Miruo.dmg';
         document.body.appendChild(dlLink);
         dlLink.click();
@@ -355,7 +355,7 @@
 
       if (platform === 'windows') {
         const dlLink = document.createElement('a');
-        dlLink.href = '/downloads/Miruo-Windows.zip?v=105';
+        dlLink.href = '/downloads/Miruo-Windows.zip?v=106';
         dlLink.download = 'Miruo-Windows.zip';
         document.body.appendChild(dlLink);
         dlLink.click();
