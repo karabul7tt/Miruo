@@ -438,7 +438,15 @@ function syncUserProfileToSupabase(user) {
         avatar_bg: avatarBg || '#8B1E4B'
       };
       supabaseClient.from('profiles').upsert(profileRow).then(({ error }) => {
-        if (error) console.warn('[Supabase profiles upsert info]:', error.message || error);
+        if (error) {
+          console.warn('[Supabase profiles upsert info]:', error.message || error);
+          supabaseClient.from('profiles').update({
+            username: rawUsername,
+            full_name: fullName,
+            avatar_url: avatarUrl || '',
+            avatar_bg: avatarBg || '#8B1E4B'
+          }).eq('id', uid).catch(() => {});
+        }
       }).catch(e => console.warn('[Supabase profiles upsert info]:', e));
     }
   } catch (err) {
@@ -617,6 +625,9 @@ function applySupabaseSessionUser(sbUser) {
   if (typeof showToast === 'function') {
     showToast(`Hoş geldin, ${user.fullName || user.username || 'Kullanıcı'}!`);
   }
+  if (typeof broadcastSessionTakeover === 'function') {
+    broadcastSessionTakeover(user);
+  }
 
   // Cloud Database Profile Fetch FIRST:
   // Pull saved custom profile from Supabase 'profiles' BEFORE upserting, so signing in with Google/Apple
@@ -754,6 +765,8 @@ window.handleNativeImagePicked = function(base64Data, target) {
     savedUser.avatarBg = '';
     savedUser.hasCustomProfile = true;
     savedUser.customAvatarUrl = base64Data;
+    savedUser.customProfileUpdatedAt = Date.now();
+    state._localProfileSavedAt = Date.now();
     state.avatarUrl = base64Data;
     state.avatarBg = '';
     localStorage.setItem('miruo_user', JSON.stringify(savedUser));
@@ -13885,6 +13898,11 @@ function initGlobalUsersChannel() {
         handleIncomingAffinityAccepted(payload);
         if (payload) ackGlobalEvent('affinity_accepted', payload.id, payload.fromUsername, payload.toUsername);
       })
+      .on('broadcast', { event: 'session_takeover' }, ({ payload }) => {
+        if (typeof handleIncomingSessionTakeover === 'function') {
+          handleIncomingSessionTakeover(payload);
+        }
+      })
       .on('broadcast', { event: 'affinity_declined' }, ({ payload }) => {
         handleIncomingAffinityDeclined(payload);
         if (payload) ackGlobalEvent('affinity_declined', payload.id, payload.fromUsername, payload.toUsername);
@@ -19184,6 +19202,69 @@ function confirmAndLogoutUser() {
 }
 window.confirmAndLogoutUser = confirmAndLogoutUser;
 
+// Single-Device Active Session Enforcement:
+// When an account signs in on a new device, broadcast session_takeover so any older device logged into
+// the exact same account is automatically signed out (max 1 active device per account).
+function broadcastSessionTakeover(user) {
+  if (!user || user.isGuest) return;
+  const uid = String(user.id || state.userId || '').trim();
+  const email = String(user.email || '').trim().toLowerCase();
+  if (!uid && !email) return;
+  const devId = state.deviceId || (localStorage.getItem('miruo_device_id') || '');
+  const token = 'sess_' + (devId || 'dev') + '_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 6);
+  state.activeSessionToken = token;
+  try { localStorage.setItem('miruo_active_session_token', token); } catch (_) {}
+
+  const sendOnce = () => {
+    try {
+      if (globalUsersChannel) {
+        globalUsersChannel.send({
+          type: 'broadcast',
+          event: 'session_takeover',
+          payload: { userId: uid, email, deviceId: devId, sessionToken: token, ts: Date.now() }
+        }).catch(() => {});
+      }
+    } catch (_) {}
+  };
+  sendOnce();
+  setTimeout(sendOnce, 1800);
+}
+window.broadcastSessionTakeover = broadcastSessionTakeover;
+
+function handleIncomingSessionTakeover(payload) {
+  if (!payload || !payload.sessionToken) return;
+  const savedUser = JSON.parse(localStorage.getItem('miruo_user') || 'null');
+  if (!savedUser || savedUser.isGuest) return;
+
+  const myDevId = state.deviceId || (localStorage.getItem('miruo_device_id') || '');
+  const myToken = state.activeSessionToken || localStorage.getItem('miruo_active_session_token') || '';
+  if (payload.sessionToken === myToken || (payload.deviceId && myDevId && payload.deviceId === myDevId)) {
+    return; // Same device / same session
+  }
+
+  const myUid = String(savedUser.id || state.userId || '').trim();
+  const myEmail = String(savedUser.email || '').trim().toLowerCase();
+  const sameUid = Boolean(myUid && payload.userId && myUid === String(payload.userId).trim());
+  const sameEmail = Boolean(myEmail && payload.email && myEmail === String(payload.email).trim().toLowerCase());
+  if (!sameUid && !sameEmail) return;
+
+  // Another device just signed into this exact account -> immediately sign out this older device!
+  if (state.isInRoom) {
+    try { leaveRoom(); } catch (_) {}
+  }
+  logoutUser().then(() => {
+    try {
+      if (typeof showAuthAlert === 'function') {
+        showAuthAlert('Bu hesap başka bir cihazda açıldığı için bu cihazdaki oturumunuz sonlandırıldı.', false);
+      }
+    } catch (_) {}
+    if (typeof showToast === 'function') {
+      showToast('Hesabınız başka bir cihazda açıldı, bu cihazdan çıkış yapıldı.');
+    }
+  }).catch(() => {});
+}
+window.handleIncomingSessionTakeover = handleIncomingSessionTakeover;
+
 async function logoutUser() {
   try {
     const currentSaved = JSON.parse(localStorage.getItem('miruo_user') || 'null');
@@ -20074,6 +20155,9 @@ function initEvents() {
       if (typeof openProfileEditModal === 'function') openProfileEditModal();
     }
     showToast(`Apple ile giriş yapıldı: ${displayName}`);
+    if (typeof broadcastSessionTakeover === 'function') {
+      broadcastSessionTakeover(verifiedUser);
+    }
 
     // Seed Supabase profile ONLY if no cloud profile existed yet (never overwrite cross-device edits!)
     if (!supaProfile) {
@@ -21818,6 +21902,9 @@ function initEvents() {
         // Seed Supabase profiles ONLY if no cloud row existed yet (never overwrite existing cloud edits!)
         if (!supaRow) {
           syncUserProfileToSupabase(user);
+        }
+        if (typeof broadcastSessionTakeover === 'function') {
+          broadcastSessionTakeover(user);
         }
 
         // Keep legacy async block as no-op since we already awaited supaRow above
@@ -23861,7 +23948,7 @@ function initEvents() {
         const img = new Image();
         img.onerror = reject;
         img.onload = () => {
-          const maxDim = 320;
+          const maxDim = 220;
           let w = img.width;
           let h = img.height;
           if (w > h) {
@@ -23880,7 +23967,7 @@ function initEvents() {
           canvas.height = h;
           const ctx = canvas.getContext('2d');
           ctx.drawImage(img, 0, 0, w, h);
-          resolve(canvas.toDataURL('image/jpeg', 0.85));
+          resolve(canvas.toDataURL('image/jpeg', 0.80));
         };
         img.src = e.target.result;
       };
@@ -23904,6 +23991,8 @@ function initEvents() {
     savedUser.avatarBg = '';
     savedUser.hasCustomProfile = true;
     savedUser.customAvatarUrl = base64Data;
+    savedUser.customProfileUpdatedAt = Date.now();
+    state._localProfileSavedAt = Date.now();
     state.avatarUrl = base64Data;
     state.avatarBg = '';
     localStorage.setItem('miruo_user', JSON.stringify(savedUser));

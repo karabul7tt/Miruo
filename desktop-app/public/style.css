@@ -936,10 +936,17 @@ html::-webkit-scrollbar {
   }
 }
 
+#profileEditModal:not(.hidden),
+#dedicatedProfileEditModal:not(.hidden) {
+  display: flex !important;
+  flex-direction: column !important;
+}
+
 #profileEditModalScrollBody,
 #dedicatedProfileEditModal > main {
   flex: 1 1 0% !important;
   min-height: 0 !important;
+  height: auto !important;
   width: 100% !important;
   overflow-y: auto !important;
   overflow-x: hidden !important;
@@ -947,7 +954,7 @@ html::-webkit-scrollbar {
   overscroll-behavior-y: contain !important;
   pointer-events: auto !important;
   scroll-behavior: smooth;
-  padding-bottom: max(56px, calc(env(safe-area-inset-bottom) + 32px)) !important;
+  padding-bottom: max(72px, calc(env(safe-area-inset-bottom) + 40px)) !important;
 }
 
 #profileEditModalScrollBody::-webkit-scrollbar {
@@ -1984,12 +1991,25 @@ body.has-mini-player #stageContainer #miniPlayerOverlay {
     padding-right: 32px !important;
   }
 
+  #profileEditModalScrollBody {
+    overflow-y: scroll !important;
+    scrollbar-width: thin !important;
+    scrollbar-color: rgba(255, 255, 255, 0.28) transparent !important;
+  }
+
+  #profileEditModalScrollBody::-webkit-scrollbar {
+    display: block !important;
+    width: 8px !important;
+  }
+
   #profileEditModalScrollBody > div {
     max-width: 1080px !important;
-    padding: 24px 32px 48px !important;
+    padding: 24px 32px 72px !important;
     display: block !important;
     column-count: 2 !important;
     column-gap: 18px !important;
+    height: auto !important;
+    overflow: visible !important;
   }
 
   /* Masonry-style zero-gap stacking across both columns */
