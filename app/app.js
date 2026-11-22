@@ -19193,6 +19193,10 @@ async function logoutUser() {
   } catch (e) {}
 
   localStorage.removeItem('miruo_user');
+  localStorage.removeItem('miruo_custom_username');
+  localStorage.removeItem('miruo_custom_fullname');
+  localStorage.removeItem('miruo_custom_avatar');
+  localStorage.removeItem('miruo_avatar');
   sessionStorage.clear();
 
   if (supabaseClient && supabaseClient.auth) {
@@ -19207,7 +19211,8 @@ async function logoutUser() {
   state.username = null;
   state.avatarUrl = '';
   state.avatarBg = '';
-  window.pendingAvatarUrl = '';
+  window.pendingAvatarUrl = undefined;
+  window.pendingAvatarBg = undefined;
 
   // Close profile modal if open
   if (dom.profileEditModal) {
@@ -19956,7 +19961,6 @@ function initEvents() {
       (supaProfile && typeof supaProfile.avatar_url === 'string' && supaProfile.avatar_url) ||
       (savedCustomProfile && savedCustomProfile.avatarUrl) ||
       (rawAppleSub && localStorage.getItem(`miruo_apple_avatar_${rawAppleSub}`)) ||
-      localStorage.getItem('miruo_custom_avatar') ||
       (existingLocal && existingLocal.avatarUrl) ||
       (backendUser && backendUser.avatarUrl) ||
       '';
@@ -21703,7 +21707,20 @@ function initEvents() {
         const userSavedProf = (cleanContactU && JSON.parse(localStorage.getItem(`miruo_saved_profile_${cleanContactU}`) || 'null')) || {};
         const prevSavedUser = JSON.parse(localStorage.getItem('miruo_user') || '{}');
 
+        // Fetch authoritative cloud 'profiles' row FIRST before merging local cache (prevents stale/other-account overwrite!)
+        let supaRow = null;
+        if (supabaseClient && userData.id) {
+          try {
+            const supaFetchRes = await Promise.race([
+              supabaseClient.from('profiles').select('*').eq('id', userData.id).maybeSingle(),
+              new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), 3000))
+            ]);
+            if (supaFetchRes && supaFetchRes.data) supaRow = supaFetchRes.data;
+          } catch (_) {}
+        }
+
         const finalUsername = (
+          (supaRow && supaRow.username) ||
           idProf.username ||
           emailSavedProf.username ||
           userSavedProf.username ||
@@ -21712,11 +21729,11 @@ function initEvents() {
           userData.username ||
           (resolvedEmail && localStorage.getItem(`miruo_custom_username_${resolvedEmail}`)) ||
           (cleanContactU && localStorage.getItem(`miruo_custom_username_${cleanContactU}`)) ||
-          localStorage.getItem('miruo_custom_username') ||
           cleanContact.split('@')[0]
         ).replace(/^@/, '');
 
         const finalFullName =
+          (supaRow && supaRow.full_name && !supaRow.full_name.startsWith('@') ? supaRow.full_name : '') ||
           (idProf.fullName && !idProf.fullName.startsWith('@') ? idProf.fullName : '') ||
           (emailSavedProf.fullName && !emailSavedProf.fullName.startsWith('@') ? emailSavedProf.fullName : '') ||
           (userSavedProf.fullName && !userSavedProf.fullName.startsWith('@') ? userSavedProf.fullName : '') ||
@@ -21725,11 +21742,10 @@ function initEvents() {
           (emailProf.fullName && !emailProf.fullName.startsWith('@') ? emailProf.fullName : '') ||
           (localMatch && localMatch.fullName && !localMatch.fullName.startsWith('@') ? localMatch.fullName : '') ||
           (userData.fullName && !userData.fullName.startsWith('@') ? userData.fullName : '') ||
-          (prevSavedUser.fullName && !prevSavedUser.fullName.startsWith('@') ? prevSavedUser.fullName : '') ||
-          localStorage.getItem('miruo_custom_fullname') ||
           finalUsername;
 
         const finalAvatarUrl =
+          (supaRow && typeof supaRow.avatar_url === 'string' && supaRow.avatar_url) ||
           idProf.avatarUrl ||
           emailSavedProf.avatarUrl ||
           userSavedProf.avatarUrl ||
@@ -21739,50 +21755,75 @@ function initEvents() {
           emailProf.avatarUrl ||
           (localMatch && localMatch.avatarUrl) ||
           userData.avatarUrl ||
-          prevSavedUser.avatarUrl ||
-          localStorage.getItem('miruo_custom_avatar') ||
-          localStorage.getItem('miruo_avatar') ||
           '';
 
         const finalAvatarBg =
+          (supaRow && supaRow.avatar_bg) ||
           idProf.avatarBg ||
           emailSavedProf.avatarBg ||
           userSavedProf.avatarBg ||
           emailProf.avatarBg ||
           (localMatch && localMatch.avatarBg) ||
           userData.avatarBg ||
-          prevSavedUser.avatarBg ||
           'from-rose-500 to-[#A64D79]';
 
-        const user = resolveCustomizedUserProfile({
+        const user = {
           id: userData.id || (localMatch && localMatch.id) || emailProf.id || ('user_' + Math.random().toString(36).substring(2, 8)),
+          name: finalFullName,
+          fullName: finalFullName,
+          username: finalUsername,
           email: resolvedEmail || userData.email || '',
-          rawName: finalFullName,
-          rawUsername: finalUsername,
-          rawAvatar: finalAvatarUrl,
-          rawAvatarBg: finalAvatarBg,
+          avatarChar: (finalFullName || finalUsername || 'M').charAt(0).toUpperCase(),
+          avatarUrl: finalAvatarUrl,
+          avatarBg: finalAvatarBg,
           provider: userData.provider || (userData.isApple ? 'apple' : 'email'),
           isApple: !!userData.isApple,
-          isGoogle: false
-        });
-        if (passwordVal) user.password = passwordVal;
+          isGoogle: false,
+          isGuest: false,
+          hasCustomProfile: true,
+          customUsername: finalUsername,
+          customFullName: finalFullName,
+          customAvatarUrl: finalAvatarUrl
+        };
         localStorage.setItem('miruo_user', JSON.stringify(user));
+        localStorage.setItem('miruo_custom_username', finalUsername);
+        localStorage.setItem('miruo_custom_fullname', finalFullName);
+        if (finalAvatarUrl) {
+          localStorage.setItem('miruo_custom_avatar', finalAvatarUrl);
+          localStorage.setItem('miruo_avatar', finalAvatarUrl);
+        } else {
+          localStorage.removeItem('miruo_custom_avatar');
+          localStorage.removeItem('miruo_avatar');
+        }
+        if (user.id) {
+          localStorage.setItem(`miruo_saved_profile_${user.id}`, JSON.stringify(user));
+          localStorage.setItem(`miruo_custom_username_${user.id}`, finalUsername);
+          localStorage.setItem(`miruo_custom_fullname_${user.id}`, finalFullName);
+          if (finalAvatarUrl) localStorage.setItem(`miruo_custom_avatar_${user.id}`, finalAvatarUrl);
+        }
+        if (user.email) {
+          const cleanE = user.email.toLowerCase().trim();
+          localStorage.setItem(`miruo_saved_profile_${cleanE}`, JSON.stringify(user));
+          localStorage.setItem(`miruo_custom_username_${cleanE}`, finalUsername);
+          localStorage.setItem(`miruo_custom_fullname_${cleanE}`, finalFullName);
+          if (finalAvatarUrl) localStorage.setItem(`miruo_custom_avatar_${cleanE}`, finalAvatarUrl);
+        }
+        persistUserToLocalRegistry(user);
 
         state.userId = user.id;
         state.username = user.username;
         state.avatarUrl = user.avatarUrl;
         state.avatarBg = user.avatarBg;
-        syncUserProfileToSupabase(user);
 
-        // Async Cloud Database Profile Fetch: Pull from Supabase 'profiles' table to ensure cross-device consistency
-        if (supabaseClient) {
+        // Seed Supabase profiles ONLY if no cloud row existed yet (never overwrite existing cloud edits!)
+        if (!supaRow) {
+          syncUserProfileToSupabase(user);
+        }
+
+        // Keep legacy async block as no-op since we already awaited supaRow above
+        if (false) {
           (async () => {
             try {
-              let supaRow = null;
-              if (user.id) {
-                const { data: byId } = await supabaseClient.from('profiles').select('*').eq('id', user.id).maybeSingle();
-                if (byId) supaRow = byId;
-              }
               if (supaRow) {
                 let hasChange = false;
                 if (supaRow.username && supaRow.username !== user.username) {
