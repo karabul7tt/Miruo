@@ -2936,6 +2936,13 @@ function unfreezeBackgroundAfterModal(force = false) {
           profileTab.classList.add('hidden');
           profileTab.classList.remove('flex');
         }
+        if (typeof ensureGlobalUsersChannel === 'function') ensureGlobalUsersChannel();
+        if (typeof requestInboxSync === 'function') requestInboxSync();
+        if (typeof pullLocalDeviceInbox === 'function') pullLocalDeviceInbox();
+        if (typeof renderFriendsTab === 'function') {
+          const sInp = document.getElementById('tabFriendSearchInput');
+          renderFriendsTab(sInp ? sInp.value : '');
+        }
       } else if (state.currentTab === 'provider_picker') {
         if (dom.providerPickerSection) {
           dom.providerPickerSection.classList.remove('hidden');
@@ -13405,10 +13412,8 @@ function renderFriendsList(filterText = '') {
 
   if (dom.friendsCountDisplay) dom.friendsCountDisplay.textContent = state.friends.length;
 
-  if (listToRender.length === 0) {
-    dom.friendsListContainer.innerHTML = query 
-      ? `<p class="text-xs text-gray-400 text-center py-4">"${escapeHtml(query)}" ile eşleşen kullanıcı bulunamadı.</p>`
-      : `<p class="text-xs text-gray-500 text-center py-4">${dict.no_friends_empty || 'Henüz arkadaş eklemedin.'}</p>`;
+  if (listToRender.length === 0 && !query) {
+    dom.friendsListContainer.innerHTML = `<p class="text-xs text-gray-500 text-center py-4">${dict.no_friends_empty || 'Henüz arkadaş eklemedin.'}</p>`;
     return;
   }
 
@@ -13459,6 +13464,55 @@ function renderFriendsList(filterText = '') {
 
     dom.friendsListContainer.appendChild(item);
   });
+
+  // When searching inside In-Room Friends Modal, ALSO show matching Miruo users with instant "Arkadaş Ekle" button!
+  if (query && typeof searchMiruoUsers === 'function') {
+    const seq = (window._miruoRoomFriendsSearchSeq = (window._miruoRoomFriendsSearchSeq || 0) + 1);
+    searchMiruoUsers(query).then((matches) => {
+      if (seq !== window._miruoRoomFriendsSearchSeq || !dom.friendsListContainer) return;
+      const nonFriends = matches.filter(u => !state.friends.some(f => cleanUserKey(f.username || f.name) === cleanUserKey(u.username)));
+      if (nonFriends.length === 0 && listToRender.length === 0) {
+        dom.friendsListContainer.innerHTML = `<div class="p-3 rounded-xl bg-white/5 border border-white/10 flex items-center justify-between gap-2">
+          <span class="text-xs font-bold text-white truncate">@${escapeHtml(query)}</span>
+          <button type="button" class="room-direct-add-btn px-3 py-1 rounded-lg bg-gradient-to-r from-rose-600 to-[#A64D79] text-white text-[11px] font-bold cursor-pointer">Arkadaş Ekle</button>
+        </div>`;
+        const b = dom.friendsListContainer.querySelector('.room-direct-add-btn');
+        if (b) addInstantTap(b, () => sendFriendRequest(query));
+        return;
+      }
+      if (nonFriends.length > 0) {
+        const outgoing = getOutgoingFriendRequests();
+        const hdr = document.createElement('div');
+        hdr.className = 'text-[10px] font-bold text-rose-400 uppercase tracking-wider px-1 pt-2';
+        hdr.textContent = 'Miruo Kullanıcıları';
+        dom.friendsListContainer.appendChild(hdr);
+        nonFriends.slice(0, 8).forEach(u => {
+          const cleanU = (u.username || '').replace(/^@/, '').trim();
+          const pending = outgoing.some(r => cleanUserKey(r.toUsername) === cleanUserKey(cleanU));
+          const row = document.createElement('div');
+          row.className = 'flex items-center justify-between p-2.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 transition-all';
+          row.innerHTML = `
+            <div class="flex items-center gap-2.5 min-w-0">
+              ${u.avatarUrl
+                ? `<img src="${escapeHtml(u.avatarUrl)}" class="w-8 h-8 rounded-full object-cover border border-white/20">`
+                : `<div class="w-8 h-8 rounded-full bg-gradient-to-tr ${u.avatarBg || 'from-rose-500 to-indigo-600'} flex items-center justify-center text-xs font-bold text-white">${((u.fullName || cleanU).charAt(0) || 'M').toUpperCase()}</div>`
+              }
+              <div class="truncate">
+                <span class="text-xs font-semibold text-white block truncate">${escapeHtml(u.fullName || cleanU)}</span>
+                <span class="text-[10px] text-rose-300 block truncate">@${escapeHtml(cleanU)}</span>
+              </div>
+            </div>
+            <button type="button" class="room-search-add-btn px-3 py-1.5 rounded-lg ${pending ? 'bg-white/10 text-rose-200 border border-white/15' : 'bg-gradient-to-r from-rose-600 to-[#A64D79] text-white'} text-[11px] font-bold cursor-pointer shrink-0">
+              ${pending ? 'İstek Gönderildi ✓' : 'Arkadaş Ekle'}
+            </button>
+          `;
+          const btn = row.querySelector('.room-search-add-btn');
+          if (btn) addInstantTap(btn, () => sendFriendRequest(cleanU, u));
+          dom.friendsListContainer.appendChild(row);
+        });
+      }
+    }).catch(() => {});
+  }
 }
 
 function fallbackCopyText(text) {
@@ -13793,13 +13847,40 @@ window.sendAffinityRequest = sendAffinityRequest;
 // GLOBAL USERS & REALTIME FRIEND REQUESTS SYSTEM
 // ==========================================
 let globalUsersChannel = null;
+let globalUsersChannelIdentity = '';
+let globalUsersChannelSubscribed = false;
 window.miruoGlobalUsersMap = new Map();
 
-function initGlobalUsersChannel() {
+function getActiveSelfIdentity() {
+  let saved = {};
+  try { saved = JSON.parse(localStorage.getItem('miruo_user') || '{}') || {}; } catch (_) {}
+  const rawU = state.username || saved.username || '';
+  const cleanU = cleanUserKey(rawU);
+  const uid = String(state.userId || saved.id || '').trim();
+  const fullName = (state.fullName && !state.fullName.startsWith('@') ? state.fullName : '') ||
+                   (saved.fullName && !saved.fullName.startsWith('@') ? saved.fullName : '') ||
+                   (saved.name && !saved.name.startsWith('@') ? saved.name : '') ||
+                   cleanU;
+  const avatarUrl = state.avatarUrl || saved.avatarUrl || '';
+  const avatarBg = state.avatarBg || saved.avatarBg || 'from-rose-500 to-[#A64D79]';
+  return { id: uid, username: cleanU, fullName, avatarUrl, avatarBg, isGuest: Boolean(saved.isGuest) || !cleanU || cleanU === 'misafir' || cleanU === 'user' };
+}
+
+function initGlobalUsersChannel(forceReconnect = false) {
   if (!supabaseClient) return;
-  if (globalUsersChannel) return;
+  const me = getActiveSelfIdentity();
+  const myCleanUsername = me.username || 'user';
+  if (globalUsersChannel && !forceReconnect && globalUsersChannelIdentity === myCleanUsername) {
+    if (globalUsersChannelSubscribed) announceMyPresence();
+    return;
+  }
+  if (globalUsersChannel) {
+    try { supabaseClient.removeChannel(globalUsersChannel); } catch (_) {}
+    globalUsersChannel = null;
+    globalUsersChannelSubscribed = false;
+  }
   try {
-    const myCleanUsername = (state.username || 'user').toLowerCase().replace(/^@/, '');
+    globalUsersChannelIdentity = myCleanUsername;
     globalUsersChannel = supabaseClient.channel('miruo_global_users', {
       config: {
         presence: { key: myCleanUsername },
@@ -13890,6 +13971,14 @@ function initGlobalUsersChannel() {
       .on('broadcast', { event: 'outbox_ack' }, ({ payload }) => {
         handleOutboxAck(payload);
       })
+      .on('broadcast', { event: 'inbox_sync_request' }, ({ payload }) => {
+        if (!payload) return;
+        const peerU = cleanUserKey(payload.username);
+        const peerId = String(payload.userId || '').trim().toLowerCase();
+        const meNow = getActiveSelfIdentity();
+        if (peerU && peerU === meNow.username && peerId && peerId === meNow.id.toLowerCase()) return;
+        flushOutboxFor(peerU, peerId);
+      })
       .on('broadcast', { event: 'room_signal' }, ({ payload }) => {
         if (!payload || (payload.clientId ? payload.clientId === state.clientId : payload.userId === state.userId)) return;
         if (!state.isInRoom || !state.roomId) return;
@@ -13910,11 +13999,19 @@ function initGlobalUsersChannel() {
       })
       .subscribe((status) => {
         if (status === 'SUBSCRIBED') {
-          console.log('[Miruo Global Users] Channel connected & active');
+          globalUsersChannelSubscribed = true;
+          console.log('[Miruo Global Users] Channel connected & active as:', globalUsersChannelIdentity);
           announceMyPresence();
+          requestInboxSync();
+          pullLocalDeviceInbox();
           setTimeout(() => {
-            try { flushOutboxForAll(globalUsersChannel.presenceState()); } catch (_) {}
+            try {
+              if (globalUsersChannel) flushOutboxForAll(globalUsersChannel.presenceState());
+              requestInboxSync();
+            } catch (_) {}
           }, 1200);
+        } else if (status === 'CLOSED' || status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+          globalUsersChannelSubscribed = false;
         }
       });
   } catch (e) {
@@ -13923,22 +14020,87 @@ function initGlobalUsersChannel() {
 }
 window.initGlobalUsersChannel = initGlobalUsersChannel;
 
+function ensureGlobalUsersChannel() {
+  if (!supabaseClient) return;
+  const me = getActiveSelfIdentity();
+  if (!me.username || me.username === 'misafir' || me.username === 'user') {
+    if (!globalUsersChannel) initGlobalUsersChannel(false);
+    return;
+  }
+  if (!globalUsersChannel || globalUsersChannelIdentity !== me.username) {
+    initGlobalUsersChannel(true);
+  } else if (globalUsersChannelSubscribed) {
+    announceMyPresence();
+  }
+}
+window.ensureGlobalUsersChannel = ensureGlobalUsersChannel;
+
+function requestInboxSync() {
+  if (!globalUsersChannel) return;
+  const me = getActiveSelfIdentity();
+  if (!me.username || me.isGuest) return;
+  try {
+    globalUsersChannel.send({
+      type: 'broadcast',
+      event: 'inbox_sync_request',
+      payload: { username: me.username, userId: me.id, ts: Date.now() }
+    }).catch(() => {});
+  } catch (_) {}
+}
+window.requestInboxSync = requestInboxSync;
+
+function pushLocalDeviceInbox(event, payload) {
+  try {
+    const list = JSON.parse(localStorage.getItem('miruo_local_inbox_v1') || '[]');
+    const id = payload && (payload.id || payload.requestId || (event + '_' + Date.now()));
+    const filtered = Array.isArray(list) ? list.filter(x => !(x && x.event === event && x.id === id)) : [];
+    filtered.push({ id, event, payload, ts: Date.now() });
+    localStorage.setItem('miruo_local_inbox_v1', JSON.stringify(filtered.slice(-100)));
+  } catch (_) {}
+}
+
+function pullLocalDeviceInbox() {
+  try {
+    const me = getActiveSelfIdentity();
+    if (!me.username || me.isGuest) return;
+    const list = JSON.parse(localStorage.getItem('miruo_local_inbox_v1') || '[]');
+    if (!Array.isArray(list) || list.length === 0) return;
+    const remaining = [];
+    list.forEach(item => {
+      if (!item || !item.payload) return;
+      const p = item.payload;
+      const toU = cleanUserKey(p.toUsername);
+      const toId = String(p.targetUserId || '').trim().toLowerCase();
+      const isForMe = (toU && toU === me.username) || (me.id && toId && toId === me.id.toLowerCase());
+      if (isForMe) {
+        if (item.event === 'friend_request') handleIncomingFriendRequest(p);
+        else if (item.event === 'friend_accepted') handleIncomingFriendAccepted(p);
+        else if (item.event === 'friend_declined') handleIncomingFriendDeclined(p);
+      } else if ((Date.now() - (item.ts || 0)) < 7 * 86400000) {
+        remaining.push(item);
+      }
+    });
+    localStorage.setItem('miruo_local_inbox_v1', JSON.stringify(remaining));
+  } catch (_) {}
+}
+window.pullLocalDeviceInbox = pullLocalDeviceInbox;
+
 function announceMyPresence() {
   if (!globalUsersChannel) return;
   try {
-    const myCleanUsername = (state.username || 'user').toLowerCase().replace(/^@/, '');
-    const savedUserObj = JSON.parse(localStorage.getItem('miruo_user') || '{}');
+    const me = getActiveSelfIdentity();
+    const myCleanUsername = me.username || 'user';
     const myProfile = {
-      id: state.userId || ('user_' + myCleanUsername),
+      id: me.id || ('user_' + myCleanUsername),
       username: myCleanUsername,
-      fullName: (state.fullName && !state.fullName.startsWith('@')) ? state.fullName : (state.name || myCleanUsername),
-      avatarUrl: state.avatarUrl || savedUserObj.avatarUrl || localStorage.getItem('miruo_avatar') || '',
-      avatarBg: state.avatarBg || savedUserObj.avatarBg || localStorage.getItem('miruo_avatar_bg') || 'from-rose-500 to-[#A64D79]',
+      fullName: me.fullName || myCleanUsername,
+      avatarUrl: me.avatarUrl || '',
+      avatarBg: me.avatarBg || 'from-rose-500 to-[#A64D79]',
       status: state.isInRoom ? 'in_room' : 'online',
       currentRoom: state.roomId || '',
       updatedAt: Date.now()
     };
-    upsertGlobalUserCache(myProfile);
+    if (!me.isGuest) upsertGlobalUserCache(myProfile);
     globalUsersChannel.track(myProfile).catch(() => {});
     globalUsersChannel.send({
       type: 'broadcast',
@@ -14033,7 +14195,16 @@ function getIncomingFriendRequests() {
     const raw = localStorage.getItem('miruo_incoming_friend_requests');
     if (!raw) return [];
     const list = JSON.parse(raw);
-    return Array.isArray(list) ? list : [];
+    if (!Array.isArray(list)) return [];
+    const me = getActiveSelfIdentity();
+    if (!me.username || me.isGuest) return list;
+    return list.filter(r => {
+      if (!r) return false;
+      const toU = cleanUserKey(r.toUsername);
+      const toId = String(r.targetUserId || '').trim().toLowerCase();
+      if (!toU && !toId) return true;
+      return (toU && toU === me.username) || (me.id && toId && toId === me.id.toLowerCase());
+    });
   } catch (_) {
     return [];
   }
@@ -14044,7 +14215,16 @@ function getOutgoingFriendRequests() {
     const raw = localStorage.getItem('miruo_outgoing_friend_requests');
     if (!raw) return [];
     const list = JSON.parse(raw);
-    return Array.isArray(list) ? list : [];
+    if (!Array.isArray(list)) return [];
+    const me = getActiveSelfIdentity();
+    if (!me.username || me.isGuest) return list;
+    return list.filter(r => {
+      if (!r) return false;
+      const fromU = cleanUserKey(r.fromUsername);
+      const fromId = String(r.fromUserId || '').trim().toLowerCase();
+      if (!fromU && !fromId) return true;
+      return (fromU && fromU === me.username) || (me.id && fromId && fromId === me.id.toLowerCase());
+    });
   } catch (_) {
     return [];
   }
@@ -14089,34 +14269,67 @@ function deliverGlobalEvent(event, payload) {
 
 function queueGlobalEvent(event, toUsername, payload, ttlMs) {
   const to = cleanUserKey(toUsername);
+  const toUserId = String((payload && payload.targetUserId) || '').trim().toLowerCase();
   const id = payload && (payload.id || payload.requestId);
   const key = event + ':' + id;
   const box = getOutbox().filter(e => e.key !== key);
-  box.push({ key, event, to, payload, ts: Date.now(), ttl: ttlMs || 7 * 86400000 });
+  box.push({ key, event, to, toUserId, payload, ts: Date.now(), ttl: ttlMs || 7 * 86400000 });
   saveOutbox(box);
+  ensureGlobalUsersChannel();
   deliverGlobalEvent(event, payload);
+  // Automatic short retries in case WebSocket was reconnecting at the moment of click
+  setTimeout(() => {
+    try {
+      if (getOutbox().some(e => e.key === key)) deliverGlobalEvent(event, payload);
+    } catch (_) {}
+  }, 1500);
+  setTimeout(() => {
+    try {
+      if (getOutbox().some(e => e.key === key)) deliverGlobalEvent(event, payload);
+    } catch (_) {}
+  }, 4000);
 }
 
-function flushOutboxFor(username) {
+function flushOutboxFor(username, userId = '') {
   const to = cleanUserKey(username);
-  if (!to) return;
-  getOutbox().filter(e => e.to === to).forEach(e => deliverGlobalEvent(e.event, e.payload));
+  const toId = String(userId || '').trim().toLowerCase();
+  if (!to && !toId) return;
+  getOutbox()
+    .filter(e => (to && e.to === to) || (toId && e.toUserId && e.toUserId === toId))
+    .forEach(e => deliverGlobalEvent(e.event, e.payload));
 }
 
 function flushOutboxForAll(presenceState) {
   if (!presenceState) return;
-  const online = new Set(Object.keys(presenceState).map(cleanUserKey));
-  getOutbox().forEach(e => { if (online.has(e.to)) deliverGlobalEvent(e.event, e.payload); });
+  const onlineKeys = new Set();
+  const onlineIds = new Set();
+  Object.keys(presenceState).forEach(k => {
+    onlineKeys.add(cleanUserKey(k));
+    const arr = presenceState[k];
+    if (Array.isArray(arr)) {
+      arr.forEach(p => {
+        if (p && p.username) onlineKeys.add(cleanUserKey(p.username));
+        if (p && p.id) onlineIds.add(String(p.id).trim().toLowerCase());
+      });
+    }
+  });
+  getOutbox().forEach(e => {
+    if ((e.to && onlineKeys.has(e.to)) || (e.toUserId && onlineIds.has(e.toUserId))) {
+      deliverGlobalEvent(e.event, e.payload);
+    }
+  });
 }
 
 function ackGlobalEvent(event, id, fromUser, toUser) {
   if (!id) return;
-  if (cleanUserKey(toUser) !== cleanUserKey(state.username)) return;
+  const me = getActiveSelfIdentity();
+  if (cleanUserKey(toUser) !== me.username && (!me.id || String(toUser || '').toLowerCase() !== me.id.toLowerCase())) return;
   deliverGlobalEvent('outbox_ack', { toUsername: cleanUserKey(fromUser), key: event + ':' + id });
 }
 
 function handleOutboxAck(payload) {
-  if (!payload || cleanUserKey(payload.toUsername) !== cleanUserKey(state.username)) return;
+  const me = getActiveSelfIdentity();
+  if (!payload || cleanUserKey(payload.toUsername) !== me.username) return;
   saveOutbox(getOutbox().filter(e => e.key !== payload.key));
 }
 
@@ -14466,15 +14679,154 @@ function handleIncomingRoomInvite(inv) {
   renderIncomingRequests();
 }
 
-async function sendFriendRequest(targetUsername) {
-  const cleanTarget = String(targetUsername || '').toLowerCase().replace(/^@/, '').trim();
-  const myClean = (state.username || 'user').toLowerCase().replace(/^@/, '').trim();
+// Unified Live Cloud + Local User Search Engine (Supabase profiles + Online Presence + Local Cache)
+async function searchMiruoUsers(rawQuery) {
+  const query = cleanUserKey(rawQuery);
+  const me = getActiveSelfIdentity();
+  const map = new Map();
+
+  const addCandidate = (u) => {
+    if (!u) return;
+    const rawU = String(u.username || u.full_name || u.fullName || '').replace(/^@/, '').trim();
+    const key = cleanUserKey(rawU);
+    if (!key) return;
+    if (key === me.username) return;
+    if (me.id && u.id && String(u.id).trim().toLowerCase() === me.id.toLowerCase()) return;
+    if (typeof isUserBlocked === 'function' && isUserBlocked(key)) return;
+    const prev = map.get(key) || {};
+    const livePresence = window.miruoGlobalUsersMap.get(key);
+    const merged = {
+      id: u.id || prev.id || (livePresence && livePresence.id) || '',
+      username: rawU || prev.username || key,
+      cleanKey: key,
+      fullName: u.full_name || u.fullName || prev.fullName || (livePresence && livePresence.fullName) || rawU || key,
+      avatarUrl: u.avatar_url || u.avatarUrl || prev.avatarUrl || (livePresence && livePresence.avatarUrl) || '',
+      avatarBg: u.avatar_bg || u.avatarBg || prev.avatarBg || (livePresence && livePresence.avatarBg) || 'from-rose-500 to-indigo-600',
+      status: (livePresence && (livePresence.status === 'online' || livePresence.status === 'in_room')) ? livePresence.status : (u.status || prev.status || 'offline')
+    };
+    map.set(key, merged);
+  };
+
+  // 1. Live Presence + Local Cache + Registered Users (instant)
+  window.miruoGlobalUsersMap.forEach((val) => addCandidate(val));
+  try {
+    const globalCache = JSON.parse(localStorage.getItem('miruo_global_users_cache') || '{}');
+    Object.values(globalCache).forEach(addCandidate);
+  } catch (_) {}
+  try {
+    const regUsers = JSON.parse(localStorage.getItem('miruo_registered_users') || '[]');
+    if (Array.isArray(regUsers)) regUsers.forEach(addCandidate);
+  } catch (_) {}
+
+  // 2. Live Supabase `profiles` table search (real cloud users across ALL devices!)
+  if (supabaseClient && query.length >= 1) {
+    try {
+      const safeLike = query.replace(/[,()%]/g, '').trim();
+      if (safeLike) {
+        const res = await Promise.race([
+          supabaseClient
+            .from('profiles')
+            .select('id, username, full_name, avatar_url, avatar_bg')
+            .or(`username.ilike.%${safeLike}%,full_name.ilike.%${safeLike}%`)
+            .limit(25),
+          new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), 3500))
+        ]);
+        if (res && !res.error && Array.isArray(res.data)) {
+          res.data.forEach(row => {
+            const norm = {
+              id: row.id,
+              username: row.username || '',
+              fullName: row.full_name || row.username || '',
+              avatarUrl: row.avatar_url || '',
+              avatarBg: row.avatar_bg || 'from-rose-500 to-indigo-600'
+            };
+            if (norm.username) upsertGlobalUserCache(norm);
+            addCandidate(norm);
+          });
+        }
+      }
+    } catch (_) {}
+  }
+
+  const results = [];
+  map.forEach((u) => {
+    if (!query) {
+      results.push(u);
+      return;
+    }
+    const uKey = u.cleanKey || cleanUserKey(u.username);
+    const fName = String(u.fullName || '').toLowerCase();
+    if (uKey.includes(query) || fName.includes(query)) {
+      results.push(u);
+    }
+  });
+
+  // Sort: exact match -> online -> alphabetical
+  results.sort((a, b) => {
+    const aExact = a.cleanKey === query ? 1 : 0;
+    const bExact = b.cleanKey === query ? 1 : 0;
+    if (aExact !== bExact) return bExact - aExact;
+    const aOn = (a.status === 'online' || a.status === 'in_room') ? 1 : 0;
+    const bOn = (b.status === 'online' || b.status === 'in_room') ? 1 : 0;
+    if (aOn !== bOn) return bOn - aOn;
+    return (a.username || '').localeCompare(b.username || '');
+  });
+
+  return results;
+}
+window.searchMiruoUsers = searchMiruoUsers;
+
+async function sendFriendRequest(targetUsername, targetUserObj = null) {
+  ensureGlobalUsersChannel();
+  let rawInput = String(targetUsername || (targetUserObj && targetUserObj.username) || '').replace(/^@/, '').trim();
+  let cleanTarget = cleanUserKey(rawInput);
+  const me = getActiveSelfIdentity();
+  const myClean = me.username || 'user';
 
   if (!cleanTarget) {
-    showToast('Lütfen geçerli bir kullanıcı adı girin.');
+    showToast('Lütfen geçerli bir kullanıcı adı veya isim girin.');
     return;
   }
-  if (cleanTarget === myClean) {
+
+  // Resolve real user profile (exact username + Supabase UUID) if caller passed a name or partial info
+  let resolvedTarget = targetUserObj ? { ...targetUserObj } : null;
+  if (!resolvedTarget || !resolvedTarget.id) {
+    const cache = JSON.parse(localStorage.getItem('miruo_global_users_cache') || '{}');
+    const fromMap = window.miruoGlobalUsersMap.get(cleanTarget) || cache[cleanTarget] || null;
+    if (fromMap) {
+      resolvedTarget = Object.assign({}, fromMap, resolvedTarget || {});
+    } else if (supabaseClient) {
+      try {
+        const safeLike = rawInput.replace(/[,()%]/g, '').trim();
+        const res = await Promise.race([
+          supabaseClient
+            .from('profiles')
+            .select('id, username, full_name, avatar_url, avatar_bg')
+            .or(`username.ilike.${safeLike},full_name.ilike.${safeLike}`)
+            .limit(5),
+          new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), 2500))
+        ]);
+        if (res && !res.error && Array.isArray(res.data) && res.data.length > 0) {
+          const hit = res.data.find(r => cleanUserKey(r.username) === cleanTarget) || res.data[0];
+          resolvedTarget = {
+            id: hit.id,
+            username: hit.username || rawInput,
+            fullName: hit.full_name || hit.username || rawInput,
+            avatarUrl: hit.avatar_url || '',
+            avatarBg: hit.avatar_bg || 'from-rose-500 to-indigo-600'
+          };
+          upsertGlobalUserCache(resolvedTarget);
+        }
+      } catch (_) {}
+    }
+  }
+
+  if (resolvedTarget && resolvedTarget.username) {
+    cleanTarget = cleanUserKey(resolvedTarget.username);
+  }
+  const targetUserId = String((resolvedTarget && resolvedTarget.id) || '').trim();
+
+  if (cleanTarget === myClean || (me.id && targetUserId && targetUserId.toLowerCase() === me.id.toLowerCase())) {
     showToast('Kendine arkadaşlık isteği gönderemezsin.');
     return;
   }
@@ -14482,51 +14834,72 @@ async function sendFriendRequest(targetUsername) {
     showToast('Bu kullanıcı engellenmiş. İstek göndermek için önce Ayarlar\'dan engeli kaldırmalısınız.');
     return;
   }
-  if (state.friends.some(f => (f.username || f.name || '').toLowerCase().replace(/^@/, '') === cleanTarget)) {
+  if (state.friends.some(f => cleanUserKey(f.username || f.name) === cleanTarget)) {
     showToast(`@${cleanTarget} zaten arkadaş listenizde!`);
     return;
   }
 
-  const outgoing = getOutgoingFriendRequests();
-  const existingReq = outgoing.find(r => (r.toUsername || '').toLowerCase() === cleanTarget);
+  // Mutual auto-accept: if this user ALREADY sent us an incoming request, accept it immediately!
+  const incomingList = getIncomingFriendRequests();
+  const mutualIncoming = incomingList.find(r =>
+    cleanUserKey(r.fromUsername) === cleanTarget ||
+    (targetUserId && r.fromUserId && String(r.fromUserId).toLowerCase() === targetUserId.toLowerCase())
+  );
+  if (mutualIncoming) {
+    acceptFriendRequest(mutualIncoming.id);
+    return;
+  }
+
+  const allOutgoing = (() => {
+    try { const l = JSON.parse(localStorage.getItem('miruo_outgoing_friend_requests') || '[]'); return Array.isArray(l) ? l : []; } catch (_) { return []; }
+  })();
+  const myOutgoing = getOutgoingFriendRequests();
+  const existingReq = myOutgoing.find(r =>
+    cleanUserKey(r.toUsername) === cleanTarget ||
+    (targetUserId && r.targetUserId && String(r.targetUserId).toLowerCase() === targetUserId.toLowerCase())
+  );
   if (existingReq) {
-    // Tekrar dokunuş = yeniden ilet (karşı taraf çevrimdışıydıysa kaybolmasın)
+    if (targetUserId && !existingReq.targetUserId) existingReq.targetUserId = targetUserId;
     queueGlobalEvent('friend_request', cleanTarget, existingReq);
+    pushLocalDeviceInbox('friend_request', existingReq);
     sendSignal({ type: 'friend-request', payload: existingReq });
+    sendP2PData('friend_request', existingReq);
     showToast(`@${cleanTarget} kullanıcısına istek tekrar iletildi.`);
     return;
   }
 
-  // Lookup target info in cache or registered users
-  const cache = JSON.parse(localStorage.getItem('miruo_global_users_cache') || '{}');
-  const targetInfo = cache[cleanTarget] || {};
-  const savedUserObj = JSON.parse(localStorage.getItem('miruo_user') || '{}');
-
   const reqPayload = {
     id: 'freq_' + Date.now() + '_' + Math.random().toString(36).substring(2, 6),
+    fromUserId: me.id || '',
     fromUsername: myClean,
-    fromName: (state.fullName && !state.fullName.startsWith('@')) ? state.fullName : (state.name || myClean),
-    fromAvatarUrl: state.avatarUrl || savedUserObj.avatarUrl || localStorage.getItem('miruo_avatar') || '',
-    fromAvatarBg: state.avatarBg || savedUserObj.avatarBg || 'from-rose-500 to-[#A64D79]',
+    fromName: me.fullName || myClean,
+    fromAvatarUrl: me.avatarUrl || '',
+    fromAvatarBg: me.avatarBg || 'from-rose-500 to-[#A64D79]',
     toUsername: cleanTarget,
-    targetName: targetInfo.fullName || cleanTarget,
-    targetAvatarUrl: targetInfo.avatarUrl || '',
+    targetUserId: targetUserId,
+    targetName: (resolvedTarget && resolvedTarget.fullName) || cleanTarget,
+    targetAvatarUrl: (resolvedTarget && resolvedTarget.avatarUrl) || '',
     timestamp: Date.now()
   };
 
-  outgoing.unshift(reqPayload);
-  localStorage.setItem('miruo_outgoing_friend_requests', JSON.stringify(outgoing));
+  allOutgoing.unshift(reqPayload);
+  localStorage.setItem('miruo_outgoing_friend_requests', JSON.stringify(allOutgoing));
 
-  // Broadcast over global users channel (outbox: çevrimdışıysa online olunca iletilir)
+  // Broadcast over global users channel + outbox + same-device handoff + signaling + P2P
   queueGlobalEvent('friend_request', cleanTarget, reqPayload);
-
-  // Also broadcast via signaling server and active P2P channel
+  pushLocalDeviceInbox('friend_request', reqPayload);
   sendSignal({ type: 'friend-request', payload: reqPayload });
   sendP2PData('friend_request', reqPayload);
 
   showToast(`@${cleanTarget} kullanıcısına arkadaşlık isteği gönderildi!`);
   const searchInput = document.getElementById('tabFriendSearchInput');
   if (typeof renderFriendsTab === 'function') renderFriendsTab(searchInput ? searchInput.value : '');
+  const addModalInput = document.getElementById('addFriendModalInput');
+  if (addModalInput && typeof renderAddFriendModalSearch === 'function') renderAddFriendModalSearch(addModalInput.value);
+  if (typeof renderFriendsList === 'function') {
+    const fSearch = document.getElementById('friendSearchInput');
+    renderFriendsList(fSearch ? fSearch.value : '');
+  }
 }
 window.sendFriendRequest = sendFriendRequest;
 
@@ -14618,28 +14991,38 @@ function showInRoomFriendRequestNotification(req) {
 window.showInRoomFriendRequestNotification = showInRoomFriendRequestNotification;
 
 function handleIncomingFriendRequest(req) {
-  if (!req || !req.toUsername) return;
-  const myUsername = cleanUserKey(state.username);
+  if (!req || (!req.toUsername && !req.targetUserId)) return;
+  const me = getActiveSelfIdentity();
+  const myUsername = me.username;
+  const myFullNameKey = cleanUserKey(me.fullName);
+  const myId = me.id ? me.id.toLowerCase() : '';
   const targetUsername = cleanUserKey(req.toUsername);
+  const targetId = String(req.targetUserId || '').trim().toLowerCase();
   const cleanFrom = cleanUserKey(req.fromUsername);
-  if (!myUsername || !targetUsername) return;
-  if (cleanFrom === myUsername) return; // Ignore own broadcast / self-request
+  if ((!myUsername && !myId) || (!targetUsername && !targetId)) return;
+  if (cleanFrom && cleanFrom === myUsername) return; // Ignore own broadcast / self-request
+  if (myId && req.fromUserId && String(req.fromUserId).trim().toLowerCase() === myId) return;
 
-  const isTargetMatch = (targetUsername && targetUsername === myUsername) ||
-                        (state.userId && req.targetUserId && String(req.targetUserId).toLowerCase() === String(state.userId).toLowerCase()) ||
-                        (req.targetClientId && (req.targetClientId === state.clientId || req.targetClientId === state.userId));
+  const isTargetMatch =
+    (targetUsername && myUsername && targetUsername === myUsername) ||
+    (targetUsername && myFullNameKey && targetUsername === myFullNameKey) ||
+    (myId && targetId && targetId === myId) ||
+    (req.targetClientId && (req.targetClientId === state.clientId || req.targetClientId === me.id));
   if (!isTargetMatch) return;
 
   if (isUserBlocked(cleanFrom)) return;
   if (state.friends.some(f => cleanUserKey(f.username || f.name) === cleanFrom)) return;
 
-  const incoming = getIncomingFriendRequests();
-  if (incoming.some(r => r.id === req.id || (r.fromUsername || '').toLowerCase() === cleanFrom)) {
+  const allIncoming = (() => {
+    try { const l = JSON.parse(localStorage.getItem('miruo_incoming_friend_requests') || '[]'); return Array.isArray(l) ? l : []; } catch (_) { return []; }
+  })();
+  const myIncoming = getIncomingFriendRequests();
+  if (myIncoming.some(r => r.id === req.id || cleanUserKey(r.fromUsername) === cleanFrom)) {
     return;
   }
 
-  incoming.unshift(req);
-  localStorage.setItem('miruo_incoming_friend_requests', JSON.stringify(incoming));
+  allIncoming.unshift(req);
+  localStorage.setItem('miruo_incoming_friend_requests', JSON.stringify(allIncoming));
 
   playNotificationPing();
   try { if (navigator.vibrate) navigator.vibrate([100, 50, 100]); } catch (_) {}
@@ -14657,17 +15040,19 @@ function handleIncomingFriendRequest(req) {
 window.handleIncomingFriendRequest = handleIncomingFriendRequest;
 
 function acceptFriendRequest(reqId) {
-  const incoming = getIncomingFriendRequests();
-  const req = incoming.find(r => r.id === reqId);
+  const allIncoming = (() => {
+    try { const l = JSON.parse(localStorage.getItem('miruo_incoming_friend_requests') || '[]'); return Array.isArray(l) ? l : []; } catch (_) { return []; }
+  })();
+  const req = allIncoming.find(r => r.id === reqId);
   if (!req) return;
 
-  const updated = incoming.filter(r => r.id !== reqId);
+  const updated = allIncoming.filter(r => r.id !== reqId);
   localStorage.setItem('miruo_incoming_friend_requests', JSON.stringify(updated));
 
   const cleanFrom = (req.fromUsername || '').replace(/^@/, '').trim();
-  if (!state.friends.some(f => (f.username || f.name || '').toLowerCase().replace(/^@/, '') === cleanFrom.toLowerCase())) {
+  if (!state.friends.some(f => cleanUserKey(f.username || f.name) === cleanUserKey(cleanFrom))) {
     const newFriend = {
-      id: 'f_' + Date.now(),
+      id: req.fromUserId || ('f_' + Date.now()),
       name: req.fromName || cleanFrom,
       username: cleanFrom,
       avatarUrl: req.fromAvatarUrl || null,
@@ -14681,19 +15066,21 @@ function acceptFriendRequest(reqId) {
     localStorage.setItem('miruo_friends', JSON.stringify(state.friends));
   }
 
-  const myClean = (state.username || 'user').replace(/^@/, '');
-  const savedUserObj = JSON.parse(localStorage.getItem('miruo_user') || '{}');
+  const me = getActiveSelfIdentity();
   const acceptPayload = {
     requestId: reqId,
-    fromUsername: myClean,
-    fromName: (state.fullName && !state.fullName.startsWith('@')) ? state.fullName : (state.name || myClean),
-    fromAvatarUrl: state.avatarUrl || savedUserObj.avatarUrl || localStorage.getItem('miruo_avatar') || '',
-    fromAvatarBg: state.avatarBg || savedUserObj.avatarBg || '',
+    fromUserId: me.id || '',
+    fromUsername: me.username || 'user',
+    fromName: me.fullName || me.username || 'user',
+    fromAvatarUrl: me.avatarUrl || '',
+    fromAvatarBg: me.avatarBg || '',
     toUsername: req.fromUsername,
+    targetUserId: req.fromUserId || '',
     timestamp: Date.now()
   };
 
   queueGlobalEvent('friend_accepted', req.fromUsername, acceptPayload);
+  pushLocalDeviceInbox('friend_accepted', acceptPayload);
   sendSignal({ type: 'friend-accepted', payload: acceptPayload });
   sendP2PData('friend_accepted', acceptPayload);
 
@@ -14702,25 +15089,32 @@ function acceptFriendRequest(reqId) {
   updateFriendRequestBadge();
   renderIncomingRequests();
   renderFriendsTab();
+  if (typeof renderFriendsList === 'function') renderFriendsList();
   if (typeof renderParticipantsList === 'function') renderParticipantsList();
 }
 window.acceptFriendRequest = acceptFriendRequest;
 
 function handleIncomingFriendAccepted(payload) {
-  if (!payload || !payload.toUsername) return;
-  const myUsername = cleanUserKey(state.username);
-  if (cleanUserKey(payload.toUsername) !== myUsername) return;
+  if (!payload || (!payload.toUsername && !payload.targetUserId)) return;
+  const me = getActiveSelfIdentity();
+  const myUsername = me.username;
+  const myId = me.id ? me.id.toLowerCase() : '';
+  const targetId = String(payload.targetUserId || '').trim().toLowerCase();
+  const isForMe = (cleanUserKey(payload.toUsername) === myUsername) || (myId && targetId && targetId === myId);
+  if (!isForMe) return;
 
   const cleanFriend = cleanUserKey(payload.fromUsername);
   if (!cleanFriend || cleanFriend === myUsername) return;
   const alreadyFriend = state.friends.some(f => cleanUserKey(f.username || f.name) === cleanFriend);
-  const outgoing = getOutgoingFriendRequests();
-  const filtered = outgoing.filter(r => cleanUserKey(r.toUsername) !== cleanFriend);
+  const allOutgoing = (() => {
+    try { const l = JSON.parse(localStorage.getItem('miruo_outgoing_friend_requests') || '[]'); return Array.isArray(l) ? l : []; } catch (_) { return []; }
+  })();
+  const filtered = allOutgoing.filter(r => cleanUserKey(r.toUsername) !== cleanFriend);
   localStorage.setItem('miruo_outgoing_friend_requests', JSON.stringify(filtered));
   if (alreadyFriend) return; // tekrar teslimatta sessiz kal
   if (!state.friends.some(f => cleanUserKey(f.username || f.name) === cleanFriend)) {
     const newFriend = {
-      id: 'f_' + Date.now(),
+      id: payload.fromUserId || ('f_' + Date.now()),
       name: payload.fromName || cleanFriend,
       username: cleanFriend,
       avatarUrl: payload.fromAvatarUrl || null,
@@ -14737,6 +15131,7 @@ function handleIncomingFriendAccepted(payload) {
   playNotificationPing();
   showToast(`🎉 @${cleanFriend} arkadaşlık isteğini kabul etti!`);
   renderFriendsTab();
+  if (typeof renderFriendsList === 'function') renderFriendsList();
   if (typeof renderParticipantsList === 'function') renderParticipantsList();
 }
 window.handleIncomingFriendAccepted = handleIncomingFriendAccepted;
@@ -14986,10 +15381,124 @@ function openAddFriendModal() {
     input.value = '';
     setTimeout(() => input.focus(), 100);
   }
+  const resBox = document.getElementById('addFriendModalResults');
+  if (resBox) {
+    resBox.innerHTML = '';
+    resBox.classList.add('hidden');
+  }
   modal.classList.remove('hidden');
   modal.classList.add('flex');
 }
 window.openAddFriendModal = openAddFriendModal;
+
+let _addFriendModalSearchSeq = 0;
+let _addFriendModalSearchTimer = null;
+function renderAddFriendModalSearch(rawQuery = '') {
+  const resBox = document.getElementById('addFriendModalResults');
+  if (!resBox) return;
+  const query = cleanUserKey(rawQuery);
+  if (!query) {
+    resBox.innerHTML = '';
+    resBox.classList.add('hidden');
+    return;
+  }
+
+  resBox.classList.remove('hidden');
+  const mySeq = ++_addFriendModalSearchSeq;
+  clearTimeout(_addFriendModalSearchTimer);
+
+  const renderRows = (users) => {
+    if (mySeq !== _addFriendModalSearchSeq) return;
+    resBox.innerHTML = '';
+    const outgoing = getOutgoingFriendRequests();
+    const incoming = getIncomingFriendRequests();
+    const isPendingOut = (u) => outgoing.some(r => cleanUserKey(r.toUsername) === cleanUserKey(u));
+    const findIncoming = (u) => incoming.find(r => cleanUserKey(r.fromUsername) === cleanUserKey(u));
+    const isAlreadyFriend = (u) => state.friends.some(f => cleanUserKey(f.username || f.name) === cleanUserKey(u));
+
+    if (!users || users.length === 0) {
+      resBox.innerHTML = `<div class="p-3 rounded-xl bg-white/5 border border-white/10 flex items-center justify-between gap-2">
+        <div class="truncate">
+          <div class="text-xs font-bold text-white truncate">@${escapeHtml(query)}</div>
+          <div class="text-[10px] text-gray-400">Doğrudan arkadaşlık isteği gönder</div>
+        </div>
+        <button type="button" class="modal-direct-add-btn px-3 py-1.5 rounded-xl bg-gradient-to-r from-rose-600 via-pink-600 to-[#A64D79] text-white font-bold text-xs cursor-pointer active:scale-95 shrink-0">Arkadaş Ekle</button>
+      </div>`;
+      const dBtn = resBox.querySelector('.modal-direct-add-btn');
+      if (dBtn) {
+        addInstantTap(dBtn, (e) => {
+          if (e && e.stopPropagation) e.stopPropagation();
+          sendFriendRequest(query);
+        });
+      }
+      return;
+    }
+
+    users.forEach(u => {
+      const cleanU = (u.username || '').replace(/^@/, '').trim();
+      const row = document.createElement('div');
+      row.className = 'p-2.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 flex items-center justify-between gap-2.5 transition-all';
+      const isOnline = u.status === 'online' || u.status === 'in_room';
+      const alreadyFr = isAlreadyFriend(cleanU);
+      const incReq = findIncoming(cleanU);
+      const pendingOut = isPendingOut(cleanU);
+
+      let btnHtml = '';
+      if (alreadyFr) {
+        btnHtml = `<span class="px-2.5 py-1 rounded-xl bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 font-bold text-[11px]">Arkadaşsınız</span>`;
+      } else if (incReq) {
+        btnHtml = `<button type="button" class="modal-accept-req-btn px-3 py-1.5 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-600 text-white font-bold text-[11px] cursor-pointer active:scale-95">Kabul Et</button>`;
+      } else if (pendingOut) {
+        btnHtml = `<button type="button" class="modal-resend-req-btn px-2.5 py-1.5 rounded-xl bg-white/10 hover:bg-white/15 text-rose-200 font-semibold text-[11px] border border-white/15 cursor-pointer">İstek Gönderildi ✓</button>`;
+      } else {
+        btnHtml = `<button type="button" class="modal-send-req-btn px-3 py-1.5 rounded-xl bg-gradient-to-r from-rose-600 via-pink-600 to-[#A64D79] hover:opacity-95 active:scale-95 text-white font-bold text-[11px] shadow-md cursor-pointer flex items-center gap-1">
+          <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="8.5" cy="7" r="4"/><line x1="20" y1="8" x2="20" y2="14"/><line x1="23" y1="11" x2="17" y2="11"/></svg>
+          <span>Arkadaş Ekle</span>
+        </button>`;
+      }
+
+      row.innerHTML = `
+        <div class="flex items-center gap-2.5 min-w-0 flex-1">
+          <div class="relative shrink-0">
+            ${u.avatarUrl
+              ? `<img src="${escapeHtml(u.avatarUrl)}" class="w-9 h-9 rounded-full object-cover border border-white/20" alt="Avatar">`
+              : `<div class="w-9 h-9 rounded-full bg-gradient-to-tr ${u.avatarBg || 'from-rose-500 to-indigo-600'} flex items-center justify-center font-bold text-white text-xs">${((u.fullName || cleanU).charAt(0) || 'M').toUpperCase()}</div>`
+            }
+            <span class="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full border-2 border-[#0C0E17] ${isOnline ? 'bg-emerald-400' : 'bg-gray-500'}"></span>
+          </div>
+          <div class="truncate min-w-0">
+            <div class="text-xs font-bold text-white truncate">${escapeHtml(u.fullName || cleanU)}</div>
+            <div class="text-[10px] text-rose-300/90 truncate">@${escapeHtml(cleanU)}</div>
+          </div>
+        </div>
+        <div class="shrink-0">${btnHtml}</div>
+      `;
+
+      const sendBtn = row.querySelector('.modal-send-req-btn, .modal-resend-req-btn');
+      if (sendBtn) {
+        addInstantTap(sendBtn, (e) => {
+          if (e && e.stopPropagation) e.stopPropagation();
+          sendFriendRequest(cleanU, u);
+        });
+      }
+      const accBtn = row.querySelector('.modal-accept-req-btn');
+      if (accBtn && incReq) {
+        addInstantTap(accBtn, (e) => {
+          if (e && e.stopPropagation) e.stopPropagation();
+          acceptFriendRequest(incReq.id);
+          renderAddFriendModalSearch(rawQuery);
+        });
+      }
+      resBox.appendChild(row);
+    });
+  };
+
+  _addFriendModalSearchTimer = setTimeout(async () => {
+    const matches = await searchMiruoUsers(query);
+    renderRows(matches);
+  }, 120);
+}
+window.renderAddFriendModalSearch = renderAddFriendModalSearch;
 
 function closeAddFriendModal() {
   const modal = document.getElementById('addFriendModal');
@@ -15365,25 +15874,25 @@ function renderFriendsTab(filterText = '') {
   );
 
   const outgoing = getOutgoingFriendRequests();
-  const isPendingReq = (u) => outgoing.some(r => (r.toUsername || '').toLowerCase() === u.toLowerCase());
+  const incoming = getIncomingFriendRequests();
+  const isPendingReq = (u) => outgoing.some(r => cleanUserKey(r.toUsername) === cleanUserKey(u));
+  const findIncomingReq = (u) => incoming.find(r => cleanUserKey(r.fromUsername) === cleanUserKey(u));
 
-  // Search Global Users Cache & Presence
+  // Search Global Users Cache, Presence & Registered Users immediately
   const globalCache = JSON.parse(localStorage.getItem('miruo_global_users_cache') || '{}');
   const registeredUsers = JSON.parse(localStorage.getItem('miruo_registered_users') || '[]');
   
   const candidateUsersMap = new Map();
-  // Populate from presence map
   window.miruoGlobalUsersMap.forEach((val, k) => candidateUsersMap.set(k, val));
-  // Populate from cache
   Object.keys(globalCache).forEach(k => {
     if (!candidateUsersMap.has(k)) candidateUsersMap.set(k, globalCache[k]);
   });
-  // Populate from registered users
   registeredUsers.forEach(ru => {
-    const k = (ru.username || '').toLowerCase().replace(/^@/, '');
+    const k = cleanUserKey(ru.username);
     if (k && !candidateUsersMap.has(k)) {
       candidateUsersMap.set(k, {
-        username: k,
+        id: ru.id || '',
+        username: ru.username || k,
         fullName: ru.fullName || ru.username,
         avatarUrl: ru.avatarUrl || '',
         avatarBg: ru.avatarBg || 'from-rose-500 to-indigo-600',
@@ -15395,7 +15904,8 @@ function renderFriendsTab(filterText = '') {
   const discoveredMatches = [];
   candidateUsersMap.forEach((u, uKey) => {
     if (uKey === myClean) return; // skip self
-    if (localMatches.some(f => (f.username || f.name || '').toLowerCase().replace(/^@/, '') === uKey)) return; // already in local
+    if (state.userId && u.id && String(u.id).toLowerCase() === String(state.userId).toLowerCase()) return;
+    if (localMatches.some(f => cleanUserKey(f.username || f.name) === uKey)) return; // already in local
     if (uKey.includes(query) || (u.fullName && u.fullName.toLowerCase().includes(query))) {
       discoveredMatches.push(u);
     }
@@ -15413,58 +15923,70 @@ function renderFriendsTab(filterText = '') {
     });
   }
 
-  // Render Discovered Users
+  // Render Discovered Users (with instant "Arkadaş Ekle" or "Kabul Et" button right next to name!)
   if (discoveredMatches.length > 0) {
     const header = document.createElement('div');
     header.className = 'text-[11px] font-bold text-rose-400 uppercase tracking-wider px-1 pt-2 pb-0.5 flex items-center gap-1.5';
     header.innerHTML = `
       <svg class="w-3.5 h-3.5 text-rose-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
-      <span>Keşfedilen Kullanıcılar (${discoveredMatches.length})</span>
+      <span>Miruo Kullanıcıları (${discoveredMatches.length})</span>
     `;
     container.appendChild(header);
 
     discoveredMatches.forEach(u => {
-      const cleanU = (u.username || '').replace(/^@/, '');
+      const cleanU = (u.username || '').replace(/^@/, '').trim();
       const card = document.createElement('div');
       card.className = 'p-3 rounded-2xl bg-[#0C0E17] border border-white/10 hover:border-white/20 transition-all flex items-center justify-between gap-3 shadow-md';
       const isOnline = u.status === 'online' || u.status === 'in_room';
       const pending = isPendingReq(cleanU);
+      const incReq = findIncomingReq(cleanU);
+
+      let actionBtnHtml = '';
+      if (incReq) {
+        actionBtnHtml = `<button type="button" class="accept-search-req-btn px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-600 hover:opacity-95 active:scale-95 text-white font-bold text-xs shadow-md transition-all cursor-pointer">Kabul Et</button>`;
+      } else if (pending) {
+        actionBtnHtml = `<button type="button" class="send-req-card-btn px-3 py-1.5 rounded-xl bg-white/10 hover:bg-white/15 text-rose-200 font-semibold text-xs border border-white/15 cursor-pointer" data-username="${escapeHtml(cleanU)}">İstek Gönderildi ✓</button>`;
+      } else {
+        actionBtnHtml = `<button type="button" class="send-req-card-btn px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-rose-600 via-pink-600 to-indigo-600 hover:opacity-95 active:scale-95 text-white font-bold text-xs shadow-md transition-all cursor-pointer flex items-center gap-1.5" data-username="${escapeHtml(cleanU)}">
+          <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="8.5" cy="7" r="4"/><line x1="20" y1="8" x2="20" y2="14"/><line x1="23" y1="11" x2="17" y2="11"/></svg>
+          <span>Arkadaş Ekle</span>
+        </button>`;
+      }
 
       card.innerHTML = `
         <div class="flex items-center gap-3 min-w-0 flex-1">
           <div class="relative shrink-0">
             ${u.avatarUrl ?
-              `<img src="${u.avatarUrl}" class="w-10 h-10 rounded-full object-cover border border-white/20" alt="Avatar">` :
-              `<div class="w-10 h-10 rounded-full bg-gradient-to-tr ${u.avatarBg || 'from-rose-500 to-indigo-600'} flex items-center justify-center font-bold text-white text-xs shadow-sm">${(cleanU.charAt(0) || 'A').toUpperCase()}</div>`
+              `<img src="${escapeHtml(u.avatarUrl)}" class="w-10 h-10 rounded-full object-cover border border-white/20" alt="Avatar">` :
+              `<div class="w-10 h-10 rounded-full bg-gradient-to-tr ${u.avatarBg || 'from-rose-500 to-indigo-600'} flex items-center justify-center font-bold text-white text-xs shadow-sm">${((u.fullName || cleanU).charAt(0) || 'A').toUpperCase()}</div>`
             }
             <span class="absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full border-2 border-[#0C0E17] ${isOnline ? 'bg-emerald-400' : 'bg-gray-500'}"></span>
           </div>
           <div class="truncate">
             <div class="flex items-center gap-1.5">
-              <span class="text-xs font-bold text-white truncate">@${cleanU}</span>
-              ${u.fullName && u.fullName !== cleanU ? `<span class="text-[10px] text-gray-400 truncate">(${escapeHtml(u.fullName)})</span>` : ''}
+              <span class="text-xs font-bold text-white truncate">${escapeHtml(u.fullName || cleanU)}</span>
             </div>
-            <span class="text-[10px] ${isOnline ? 'text-emerald-400 font-semibold' : 'text-gray-500'} block">
-              ${isOnline ? 'Çevrimiçi' : 'Çevrimdışı'}
-            </span>
+            <div class="flex items-center gap-1.5">
+              <span class="text-[10px] text-rose-300/90 font-semibold truncate">@${escapeHtml(cleanU)}</span>
+              <span class="text-[10px] ${isOnline ? 'text-emerald-400 font-semibold' : 'text-gray-500'}">· ${isOnline ? 'Çevrimiçi' : 'Çevrimdışı'}</span>
+            </div>
           </div>
         </div>
-        <div class="shrink-0">
-          ${pending ?
-            `<button disabled type="button" class="px-3 py-1.5 rounded-xl bg-white/10 text-gray-400 font-semibold text-xs border border-white/10">İstek Gönderildi</button>` :
-            `<button type="button" class="send-req-card-btn px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-rose-600 via-pink-600 to-indigo-600 hover:opacity-95 active:scale-95 text-white font-bold text-xs shadow-md transition-all cursor-pointer flex items-center gap-1.5" data-username="${cleanU}">
-              <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="8.5" cy="7" r="4"/><line x1="20" y1="8" x2="20" y2="14"/><line x1="23" y1="11" x2="17" y2="11"/></svg>
-              <span>Arkadaş Ekle</span>
-            </button>`
-          }
-        </div>
+        <div class="shrink-0">${actionBtnHtml}</div>
       `;
 
       const btn = card.querySelector('.send-req-card-btn');
       if (btn) {
         addInstantTap(btn, (e) => {
           if (e && e.stopPropagation) e.stopPropagation();
-          sendFriendRequest(cleanU);
+          sendFriendRequest(cleanU, u);
+        });
+      }
+      const accBtn = card.querySelector('.accept-search-req-btn');
+      if (accBtn && incReq) {
+        addInstantTap(accBtn, (e) => {
+          if (e && e.stopPropagation) e.stopPropagation();
+          acceptFriendRequest(incReq.id);
         });
       }
       container.appendChild(card);
@@ -15472,8 +15994,8 @@ function renderFriendsTab(filterText = '') {
   }
 
   // Always show Direct Actionable Card for exact query if not already in local friends and not self
-  const exactInFriends = localMatches.some(f => (f.username || f.name || '').toLowerCase().replace(/^@/, '') === query);
-  const exactInDiscovered = discoveredMatches.some(u => (u.username || '').toLowerCase().replace(/^@/, '') === query);
+  const exactInFriends = localMatches.some(f => cleanUserKey(f.username || f.name) === query);
+  const exactInDiscovered = discoveredMatches.some(u => cleanUserKey(u.username) === query);
 
   if (!exactInFriends && !exactInDiscovered && query !== myClean && query.length >= 2) {
     const directCard = document.createElement('div');
@@ -15495,7 +16017,7 @@ function renderFriendsTab(filterText = '') {
       </div>
       <div class="shrink-0">
         ${pending ?
-          `<button disabled type="button" class="px-3 py-1.5 rounded-xl bg-white/10 text-gray-400 font-semibold text-xs border border-white/10">İstek Gönderildi</button>` :
+          `<button type="button" class="direct-add-card-btn px-3 py-1.5 rounded-xl bg-white/10 hover:bg-white/15 text-rose-200 font-semibold text-xs border border-white/15 cursor-pointer" data-username="${escapeHtml(query)}">İstek Gönderildi ✓</button>` :
           `<button type="button" class="direct-add-card-btn px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-rose-600 via-pink-600 to-indigo-600 hover:opacity-95 active:scale-95 text-white font-bold text-xs shadow-md shadow-rose-600/30 transition-all cursor-pointer flex items-center gap-1.5" data-username="${escapeHtml(query)}">
             <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="8.5" cy="7" r="4"/><line x1="20" y1="8" x2="20" y2="14"/><line x1="23" y1="11" x2="17" y2="11"/></svg>
             <span>Arkadaş Ekle</span>
@@ -15512,15 +16034,26 @@ function renderFriendsTab(filterText = '') {
       });
     }
     container.appendChild(directCard);
+  }
 
-    // Asynchronously check backend search to enrich cache
-    fetch(`/api/users/search?q=${encodeURIComponent(query)}`)
-      .then(r => r.json())
-      .then(d => {
-        if (d.users && d.users.length > 0) {
-          d.users.forEach(u => upsertGlobalUserCache(u));
+  // Live Supabase `profiles` cloud search (debounced so typing finds ALL real Miruo users immediately!)
+  if (query.length >= 1 && !window._miruoSkippingCloudSearchReRender) {
+    clearTimeout(window._miruoFriendsCloudSearchTimer);
+    const searchQuerySnapshot = query;
+    window._miruoFriendsCloudSearchTimer = setTimeout(async () => {
+      try {
+        const beforeCount = candidateUsersMap.size;
+        const cloudUsers = await searchMiruoUsers(searchQuerySnapshot);
+        const searchEl = document.getElementById('tabFriendSearchInput');
+        const currentQ = searchEl ? cleanUserKey(searchEl.value) : '';
+        if (currentQ !== searchQuerySnapshot) return;
+        const hasNewHit = cloudUsers.some(u => !candidateUsersMap.has(cleanUserKey(u.username)));
+        if (hasNewHit || (cloudUsers.length > 0 && beforeCount === 0)) {
+          window._miruoSkippingCloudSearchReRender = true;
+          try { renderFriendsTab(searchEl ? searchEl.value : searchQuerySnapshot); } finally { window._miruoSkippingCloudSearchReRender = false; }
         }
-      }).catch(() => {});
+      } catch (_) {}
+    }, 180);
   }
 }
 
@@ -19159,6 +19692,8 @@ function updateUserUI(user) {
   if (tabEmailSub && user.email) tabEmailSub.textContent = user.email;
   if (dom.currentRoomDisplay) dom.currentRoomDisplay.textContent = state.roomId;
   if (typeof renderProfileTab === 'function') renderProfileTab();
+  if (typeof ensureGlobalUsersChannel === 'function') ensureGlobalUsersChannel();
+  if (typeof pullLocalDeviceInbox === 'function') pullLocalDeviceInbox();
 }
 
 function confirmAndLogoutUser() {
@@ -19270,6 +19805,12 @@ async function logoutUser() {
   state.avatarBg = '';
   window.pendingAvatarUrl = undefined;
   window.pendingAvatarBg = undefined;
+  if (globalUsersChannel && supabaseClient) {
+    try { supabaseClient.removeChannel(globalUsersChannel); } catch (_) {}
+  }
+  globalUsersChannel = null;
+  globalUsersChannelIdentity = '';
+  globalUsersChannelSubscribed = false;
 
   // Close profile modal if open
   if (dom.profileEditModal) {
@@ -27818,6 +28359,9 @@ function generateUniqueRoomCode(isPrivate = false) {
       if (e.target.value.includes('@')) {
         e.target.value = e.target.value.replace(/@/g, '');
       }
+      if (typeof renderAddFriendModalSearch === 'function') {
+        renderAddFriendModalSearch(e.target.value);
+      }
     });
     addFriendModalInput.addEventListener('keydown', (e) => {
       if (e.key === 'Enter') {
@@ -29211,20 +29755,9 @@ function initAffinityEvents() {
           showToast('Bu kullanıcı engellenmiş. Arkadaş eklemek için önce Ayarlar\'dan engeli kaldırmalısınız.');
           return;
         }
-        state.friends.unshift({
-          name: currentPublicUser.name || clean,
-          username: clean,
-          avatarUrl: currentPublicUser.avatarUrl || '',
-          status: 'online',
-          lastActive: Date.now()
-        });
-        localStorage.setItem('miruo_friends', JSON.stringify(state.friends));
-        if (typeof renderFriendsTab === 'function') renderFriendsTab();
-        if (typeof renderFriendsList === 'function') renderFriendsList();
-        if (typeof renderProfileTab === 'function') renderProfileTab();
+        sendFriendRequest(clean, currentPublicUser);
         const toggleText = document.getElementById('publicProfileFriendToggleText');
-        if (toggleText) toggleText.textContent = 'Arkadaşsınız';
-        showToast(`@${clean} arkadaş listenize eklendi!`);
+        if (toggleText) toggleText.textContent = 'İstek Gönderildi ✓';
       }
     });
   }

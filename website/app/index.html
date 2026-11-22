@@ -8,7 +8,7 @@
   <link rel="manifest" href="manifest.json">
   <meta name="theme-color" content="#000000">
   <meta name="referrer" content="strict-origin-when-cross-origin">
-  <script src="vendor/tailwind.js?v=103"></script>
+  <script src="vendor/tailwind.js?v=104"></script>
   <script>
     // Miruo "Velvet Wine & Dusty Rose" Color Hunt Palette:
     // #1A1A1D (Obsidian Black), #3B1C32 (Deep Plum), #6A1E55 (Royal Wine), #A64D79 (Velvet Rose)
@@ -47,7 +47,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com">
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="style.css?v=103">
+  <link rel="stylesheet" href="style.css?v=104">
   <script>
     // Early language sync from localStorage
     try {
@@ -159,7 +159,7 @@
 
       <!-- Single Search Friends Filter (Tek Arama Çubuğu) -->
       <div class="relative">
-        <input type="text" id="tabFriendSearchInput" placeholder="Kullanıcı veya arkadaş ara (@kullanici)..." data-i18n-placeholder="search_friends_ph" class="w-full bg-[#0C0E17] border border-white/10 rounded-xl pl-9 pr-4 py-2.5 text-xs text-white placeholder-gray-500 focus:outline-none focus:border-rose-500 transition-all font-medium shadow-sm">
+        <input type="text" id="tabFriendSearchInput" placeholder="İsim veya @kullaniciadi ara..." data-i18n-placeholder="search_friends_ph" class="w-full bg-[#0C0E17] border border-white/10 rounded-xl pl-9 pr-4 py-2.5 text-xs text-white placeholder-gray-500 focus:outline-none focus:border-rose-500 transition-all font-medium shadow-sm">
         <svg class="w-4 h-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
       </div>
 
@@ -3090,16 +3090,17 @@
         <button id="closeAddFriendModalBtn" type="button" class="w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 active:scale-95 text-gray-300 hover:text-white flex items-center justify-center text-xs font-bold transition-all cursor-pointer">✕</button>
       </div>
 
-      <div class="space-y-2">
+      <div class="space-y-2.5">
         <div class="flex items-center gap-2">
           <div class="flex-1 flex items-center bg-black/50 border border-white/10 rounded-xl px-3 py-2.5 focus-within:border-rose-500 transition-colors">
             <span class="text-rose-400 font-bold text-xs mr-1 select-none">@</span>
-            <input type="text" id="addFriendModalInput" placeholder="kullaniciadi (örn: can)" class="flex-1 bg-transparent text-xs text-white placeholder-gray-500 focus:outline-none font-medium min-w-0">
+            <input type="text" id="addFriendModalInput" placeholder="İsim veya kullanıcı adı ara..." class="flex-1 bg-transparent text-xs text-white placeholder-gray-500 focus:outline-none font-medium min-w-0">
           </div>
           <button id="addFriendModalSubmitBtn" type="button" class="px-4 py-2.5 bg-gradient-to-r from-rose-600 via-pink-600 to-[#A64D79] hover:opacity-95 text-white font-bold text-xs rounded-xl shadow-md shadow-rose-600/25 transition-all whitespace-nowrap cursor-pointer active:scale-95 shrink-0" data-i18n="add_btn">
             Ekle
           </button>
         </div>
+        <div id="addFriendModalResults" class="space-y-2 max-h-60 overflow-y-auto pr-0.5 hidden"></div>
       </div>
 
       <!-- Kullanıcının Kendi Kodu (Kolay Paylaşım) -->
@@ -3383,13 +3384,13 @@
   <input type="file" id="roomMediaFileInput" accept="image/*,video/*" class="hidden">
 
   <!-- Scripts (Locally bundled vendor libs for instant startup & offline resilience) -->
-  <script src="vendor/supabase.js?v=103"></script>
+  <script src="vendor/supabase.js?v=104"></script>
   <script src="https://www.youtube.com/iframe_api"></script>
-  <script src="vendor/hls.min.js?v=103"></script>
-  <script src="config.js?v=103"></script>
-  <script src="livekit-client.umd.js?v=103"></script>
-  <script src="app.js?v=103"></script>
-  <script src="miruo-live.js?v=103"></script>
+  <script src="vendor/hls.min.js?v=104"></script>
+  <script src="config.js?v=104"></script>
+  <script src="livekit-client.umd.js?v=104"></script>
+  <script src="app.js?v=104"></script>
+  <script src="miruo-live.js?v=104"></script>
 
 </body>
 </html>
