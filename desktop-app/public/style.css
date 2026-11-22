@@ -1963,3 +1963,56 @@ body.has-mini-player #stageContainer #miniPlayerOverlay {
   background: #FF0000;
   box-shadow: 0 0 8px rgba(255, 0, 0, 0.8);
 }
+
+/* ============================================================================
+   Mac / Desktop Native-Sized Settings & Profile Edit Modals (>= 1024px)
+   ============================================================================ */
+@media (min-width: 1024px) {
+  #profileEditModal header > div {
+    max-width: 1080px !important;
+    padding-left: 32px !important;
+    padding-right: 32px !important;
+  }
+
+  #profileEditModalScrollBody > div {
+    max-width: 1080px !important;
+    padding: 28px 32px 48px !important;
+    display: grid !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 20px !important;
+    align-items: start !important;
+  }
+
+  /* Reset vertical space-y margins inside grid so columns align flush at top */
+  #profileEditModalScrollBody > div > * {
+    margin-top: 0 !important;
+    margin-bottom: 0 !important;
+  }
+
+  #profileEditModalScrollBody #settingsGuestBanner {
+    grid-column: 1 / -1 !important;
+  }
+
+  /* Dedicated Profile Edit Modal: Centered desktop card proportions */
+  #dedicatedProfileEditModal header > div {
+    max-width: 680px !important;
+    padding-left: 28px !important;
+    padding-right: 28px !important;
+  }
+
+  #dedicatedProfileEditModal main > div {
+    max-width: 680px !important;
+    padding: 32px 28px 48px !important;
+  }
+
+  #dedicatedProfileEditModal main > div > div {
+    padding: 32px !important;
+  }
+
+  #dedicatedProfileEditModal input[type="text"],
+  #dedicatedProfileEditModal button#saveProfileBtn {
+    font-size: 14px !important;
+    padding-top: 12px !important;
+    padding-bottom: 12px !important;
+  }
+}
