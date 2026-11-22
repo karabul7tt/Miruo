@@ -10767,7 +10767,16 @@ function describeMediaError(e, kind) {
     try {
       if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.openAppSettings) {
         setTimeout(() => {
-          if (confirm(what + ' izni kapalı. Miruo Cihaz Ayarlarını açmak ister misiniz?')) {
+          if (typeof showMiruoConfirm === 'function') {
+            showMiruoConfirm({
+              title: what + ' İzni Kapalı',
+              message: what + ' izni kapalı. Miruo Cihaz Ayarlarını açmak ister misiniz?',
+              actionText: 'Ayarları Aç',
+              onConfirm: () => {
+                try { window.webkit.messageHandlers.openAppSettings.postMessage({}); } catch (_) {}
+              }
+            });
+          } else {
             window.webkit.messageHandlers.openAppSettings.postMessage({});
           }
         }, 300);
@@ -12100,7 +12109,8 @@ function localRoomCode() {
 }
 
 function requestRoomCode(meta) {
-  return fetch('/api/create-room', {
+  if (!MIRUO_API_BASE) return Promise.resolve(localRoomCode());
+  return fetch(`${MIRUO_API_BASE}/api/create-room`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(meta)
@@ -13040,9 +13050,24 @@ function cleanBlockedKey(val) {
     .trim();
 }
 
+function getAccountStorageScope() {
+  try {
+    const saved = JSON.parse(localStorage.getItem('miruo_user') || 'null') || {};
+    const prov = typeof getCanonicalProvider === 'function' ? getCanonicalProvider(saved) : (saved.provider || 'email');
+    const uid = String(saved.id || state.userId || '').trim();
+    const uname = String(saved.username || state.username || '').toLowerCase().replace(/^@/, '').trim();
+    if (uid && !uid.startsWith('guest_')) return `${prov}_${uid}`;
+    if (uname && uname !== 'misafir' && uname !== 'user') return `${prov}_${uname}`;
+  } catch (_) {}
+  return '';
+}
+window.getAccountStorageScope = getAccountStorageScope;
+
 function getBlockedUsers() {
   try {
-    const raw = localStorage.getItem('miruo_blocked_users');
+    const scope = getAccountStorageScope();
+    const scopedKey = scope ? `miruo_blocked_users_${scope}` : 'miruo_blocked_users';
+    const raw = localStorage.getItem(scopedKey) ?? (scope ? localStorage.getItem('miruo_blocked_users') : null);
     if (!raw) return [];
     let parsed = JSON.parse(raw);
     if (!Array.isArray(parsed)) return [];
@@ -13067,7 +13092,10 @@ function getBlockedUsers() {
 
 function saveBlockedUsers(list) {
   try {
-    localStorage.setItem('miruo_blocked_users', JSON.stringify(list || []));
+    const scope = getAccountStorageScope();
+    const scopedKey = scope ? `miruo_blocked_users_${scope}` : 'miruo_blocked_users';
+    localStorage.setItem(scopedKey, JSON.stringify(list || []));
+    if (scope) localStorage.removeItem('miruo_blocked_users');
   } catch (e) {}
 }
 
@@ -13357,39 +13385,48 @@ function handleDjPermissionGranted(toUser) {
   }
 }
 
-// Default seed friends (With unique usernames, activity timestamps and watch minutes)
-const DEFAULT_FRIENDS = [
-  { id: 'f1', name: 'Selin Yılmaz', username: 'selin', status: 'online', statusText: 'Çevrimiçi', avatar: 'S', lastActive: Date.now() - 30000, watchMinutes: 216 },
-  { id: 'f2', name: 'Can Demir', username: 'can', status: 'in_room', statusText: 'Film Odasında', avatar: 'C', lastActive: Date.now() - 120000, watchMinutes: 195 },
-  { id: 'f3', name: 'Merve Kaya', username: 'merve', status: 'idle', statusText: '15 dk önce aktifti', avatar: 'M', lastActive: Date.now() - 900000, watchMinutes: 84 },
-  { id: 'f4', name: 'Emre Yıldız', username: 'emre', status: 'offline', statusText: '2 saat önce aktifti', avatar: 'E', lastActive: Date.now() - 7200000, watchMinutes: 42 }
-];
+// Real friends start clean (no fake bots) and are strictly isolated per account!
+const DEFAULT_FRIENDS = [];
+const LEGACY_MOCK_FRIEND_IDS = new Set(['f1', 'f2', 'f3', 'f4']);
+
+function saveFriendsList(list) {
+  const arr = Array.isArray(list) ? list : (Array.isArray(state.friends) ? state.friends : []);
+  try {
+    const scope = typeof getAccountStorageScope === 'function' ? getAccountStorageScope() : '';
+    if (scope) {
+      localStorage.setItem(`miruo_friends_${scope}`, JSON.stringify(arr));
+    } else {
+      localStorage.setItem('miruo_friends', JSON.stringify(arr));
+    }
+  } catch (_) {}
+}
+window.saveFriendsList = saveFriendsList;
 
 function loadFriends() {
-  const saved = localStorage.getItem('miruo_friends');
+  const scope = typeof getAccountStorageScope === 'function' ? getAccountStorageScope() : '';
+  const scopedKey = scope ? `miruo_friends_${scope}` : 'miruo_friends';
+  const saved = localStorage.getItem(scopedKey);
   if (saved) {
     try {
       const parsed = JSON.parse(saved);
-      state.friends = Array.isArray(parsed) ? parsed : DEFAULT_FRIENDS;
+      state.friends = Array.isArray(parsed)
+        ? parsed.filter(f => f && !(LEGACY_MOCK_FRIEND_IDS.has(f.id) && ['selin', 'can', 'merve', 'emre'].includes(String(f.username || '').toLowerCase())))
+        : [];
     } catch (e) {
-      state.friends = DEFAULT_FRIENDS;
+      state.friends = [];
     }
   } else {
-    state.friends = DEFAULT_FRIENDS;
-    localStorage.setItem('miruo_friends', JSON.stringify(state.friends));
+    state.friends = [];
+    saveFriendsList(state.friends);
   }
 
-  // Ensure no old cached emoji remnants exist & seed shared watch times
+  // Preserve valid dots (.) in usernames (e.g. dythin.app) and clean only invalid chars
   state.friends.forEach(f => {
-    if (f.name) f.name = f.name.replace(/[^\w\sçÇğĞıİöÖşŞüÜ-]/g, '').trim();
-    if (f.username) f.username = f.username.replace(/[^\w-]/g, '').trim();
-    if (f.statusText) f.statusText = f.statusText.replace(/[^\w\sçÇğĞıİöÖşŞüÜ-]/g, '').trim();
-    const cleanU = (f.username || f.name).toLowerCase().replace(/^@/, '');
-    if (typeof getSharedWatchMinutes === 'function' && getSharedWatchMinutes(cleanU) === 0 && DEFAULT_SHARED_WATCH_TIME && DEFAULT_SHARED_WATCH_TIME[cleanU]) {
-      setSharedWatchMinutes(cleanU, DEFAULT_SHARED_WATCH_TIME[cleanU]);
-    }
+    if (f.name) f.name = f.name.replace(/[^\w\sçÇğĞıİöÖşŞüÜ.-]/g, '').trim();
+    if (f.username) f.username = f.username.replace(/[^\w.-]/g, '').trim();
+    if (f.statusText) f.statusText = f.statusText.replace(/[^\w\sçÇğĞıİöÖşŞüÜ.-]/g, '').trim();
   });
-  localStorage.setItem('miruo_friends', JSON.stringify(state.friends));
+  saveFriendsList(state.friends);
 
   // Display user's unique username (@kullanici)
   const currentUsername = '@' + (state.username || 'kullanici').replace(/^@/, '');
@@ -13430,8 +13467,8 @@ function renderFriendsList(filterText = '') {
     else if (fr.status === 'idle') friendStatusLabel = dict.status_idle || 'Idle';
     else if (fr.status === 'offline') friendStatusLabel = dict.status_offline || 'Offline';
 
-    const cleanName = (fr.name || '').replace(/[^\w\sçÇğĞıİöÖşŞüÜ-]/g, '').trim() || 'Kullanici';
-    const cleanUsername = (fr.username || fr.name || '').replace(/^@/, '').replace(/[^\w-]/g, '').trim() || 'kullanici';
+    const cleanName = (fr.name || '').replace(/[^\w\sçÇğĞıİöÖşŞüÜ.-]/g, '').trim() || 'Kullanici';
+    const cleanUsername = (fr.username || fr.name || '').replace(/^@/, '').replace(/[^\w.-]/g, '').trim() || 'kullanici';
     const cleanAvatarChar = (fr.avatar || cleanName.charAt(0) || 'A').toUpperCase();
 
     item.innerHTML = `
@@ -14155,7 +14192,7 @@ function handleGlobalPresenceSync(presenceState) {
   });
   try {
     localStorage.setItem('miruo_global_users_cache', JSON.stringify(cache));
-    localStorage.setItem('miruo_friends', JSON.stringify(state.friends));
+    saveFriendsList(state.friends);
   } catch (_) {}
   if (typeof renderFriendsTab === 'function') {
     const searchInput = document.getElementById('tabFriendSearchInput');
@@ -15063,7 +15100,7 @@ function acceptFriendRequest(reqId) {
       lastActive: Date.now()
     };
     state.friends.unshift(newFriend);
-    localStorage.setItem('miruo_friends', JSON.stringify(state.friends));
+    saveFriendsList(state.friends);
   }
 
   const me = getActiveSelfIdentity();
@@ -15125,7 +15162,7 @@ function handleIncomingFriendAccepted(payload) {
       lastActive: Date.now()
     };
     state.friends.unshift(newFriend);
-    localStorage.setItem('miruo_friends', JSON.stringify(state.friends));
+    saveFriendsList(state.friends);
   }
 
   playNotificationPing();
@@ -15571,7 +15608,7 @@ function executeRemoveFriend(targetUser) {
       const fU = cleanUserKey(f.username || f.cleanUsername || f.name);
       return fU !== clean;
     });
-    localStorage.setItem('miruo_friends', JSON.stringify(state.friends));
+    saveFriendsList(state.friends);
   }
 
   // 2. Remove automatically from affinity tree
@@ -15643,7 +15680,7 @@ function handleRemoteFriendRemoved(fromUser, toUser) {
       const fU = cleanUserKey(f.username || f.cleanUsername || f.name);
       return fU !== cleanFrom;
     });
-    localStorage.setItem('miruo_friends', JSON.stringify(state.friends));
+    saveFriendsList(state.friends);
   }
 
   // 2. Remove automatically from affinity tree
@@ -15744,8 +15781,8 @@ function renderSingleFriendCard(container, fr, dict) {
     friendStatusLabel = dict.status_online || 'Online';
   }
 
-  const cleanName = (fr.name || '').replace(/[^\w\sçÇğĞıİöÖşŞüÜ-]/g, '').trim() || 'Kullanici';
-  const cleanUsername = (fr.username || fr.name || '').replace(/^@/, '').replace(/[^\w-]/g, '').trim() || 'kullanici';
+  const cleanName = (fr.name || '').replace(/[^\w\sçÇğĞıİöÖşŞüÜ.-]/g, '').trim() || 'Kullanici';
+  const cleanUsername = (fr.username || fr.name || '').replace(/^@/, '').replace(/[^\w.-]/g, '').trim() || 'kullanici';
   const cleanAvatarChar = (fr.avatar || cleanName.charAt(0) || 'A').toUpperCase();
 
   card.innerHTML = `
@@ -16616,7 +16653,9 @@ function addSharedWatchMinutes(username, addedMinutes) {
 // User's own affinity tree:
 // Starts 100% empty with '+' as requested by the user:
 function getUserAffinityTree() {
-  const saved = localStorage.getItem('miruo_user_affinity');
+  const scope = typeof getAccountStorageScope === 'function' ? getAccountStorageScope() : '';
+  const storageKey = scope ? `miruo_user_affinity_${scope}` : 'miruo_user_affinity';
+  const saved = localStorage.getItem(storageKey);
   const initial = {
     partner_1: null,
     bro_1: null,
@@ -16645,17 +16684,19 @@ function getUserAffinityTree() {
         }
       });
       if (modified) {
-        localStorage.setItem('miruo_user_affinity', JSON.stringify(tree));
+        localStorage.setItem(storageKey, JSON.stringify(tree));
       }
       return tree;
     } catch (e) {}
   }
-  localStorage.setItem('miruo_user_affinity', JSON.stringify(initial));
+  localStorage.setItem(storageKey, JSON.stringify(initial));
   return initial;
 }
 
 function saveUserAffinityTree(tree) {
-  localStorage.setItem('miruo_user_affinity', JSON.stringify(tree));
+  const scope = typeof getAccountStorageScope === 'function' ? getAccountStorageScope() : '';
+  const storageKey = scope ? `miruo_user_affinity_${scope}` : 'miruo_user_affinity';
+  localStorage.setItem(storageKey, JSON.stringify(tree));
 }
 
 // Get mock or stored affinity tree for other users (public view)
@@ -19691,6 +19732,11 @@ function updateUserUI(user) {
   const tabEmailSub = document.getElementById('tabProfileEmailSub');
   if (tabEmailSub && user.email) tabEmailSub.textContent = user.email;
   if (dom.currentRoomDisplay) dom.currentRoomDisplay.textContent = state.roomId;
+  const newScope = typeof getAccountStorageScope === 'function' ? getAccountStorageScope() : '';
+  if (newScope && window._miruoActiveAccountScope !== newScope) {
+    window._miruoActiveAccountScope = newScope;
+    if (typeof loadFriends === 'function') loadFriends();
+  }
   if (typeof renderProfileTab === 'function') renderProfileTab();
   if (typeof ensureGlobalUsersChannel === 'function') ensureGlobalUsersChannel();
   if (typeof pullLocalDeviceInbox === 'function') pullLocalDeviceInbox();
@@ -20502,30 +20548,32 @@ function initEvents() {
       (email && isAppleProfileObj(byEmail[email]) ? byEmail[email] : null) ||
       null;
 
-    // 2. Sync & look up existing account from persistent backend (/api/auth/social-sync)
+    // 2. Sync & look up existing account from persistent backend (only if MIRUO_API_BASE configured)
     let backendUser = null;
-    try {
-      const syncResp = await fetch('/api/auth/social-sync', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          id: (existingLocal && existingLocal.id) || canonicalAppleId,
-          appleUserId: rawAppleSub,
-          email: email,
-          fullName: customSavedFullName || incomingFullName || (existingLocal && existingLocal.fullName) || '',
-          username: customSavedUsername || (existingLocal && existingLocal.username) || '',
-          provider: 'Apple',
-          avatarUrl: (savedCustomProfile && savedCustomProfile.avatarUrl) || (existingLocal && existingLocal.avatarUrl) || '',
-          avatarBg: (existingLocal && existingLocal.avatarBg) || ''
-        })
-      });
-      if (syncResp && syncResp.ok) {
-        const syncData = await syncResp.json();
-        if (syncData && syncData.user) {
-          backendUser = syncData.user;
+    if (MIRUO_API_BASE) {
+      try {
+        const syncResp = await fetch(`${MIRUO_API_BASE}/api/auth/social-sync`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            id: (existingLocal && existingLocal.id) || canonicalAppleId,
+            appleUserId: rawAppleSub,
+            email: email,
+            fullName: customSavedFullName || incomingFullName || (existingLocal && existingLocal.fullName) || '',
+            username: customSavedUsername || (existingLocal && existingLocal.username) || '',
+            provider: 'Apple',
+            avatarUrl: (savedCustomProfile && savedCustomProfile.avatarUrl) || (existingLocal && existingLocal.avatarUrl) || '',
+            avatarBg: (existingLocal && existingLocal.avatarBg) || ''
+          })
+        });
+        if (syncResp && syncResp.ok) {
+          const syncData = await syncResp.json();
+          if (syncData && syncData.user) {
+            backendUser = syncData.user;
+          }
         }
-      }
-    } catch (_) {}
+      } catch (_) {}
+    }
 
     // 3. Authenticate Apple identityToken with Supabase Auth & pull cloud 'profiles' row (Cross-Device Sync!)
     let supaProfile = null;
@@ -20662,22 +20710,24 @@ function initEvents() {
     } catch (_) {}
 
     // Ensure native embedded store / Keychain is synchronized with custom profile
-    try {
-      fetch('/api/auth/update-profile', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          id: verifiedUser.id,
-          userId: verifiedUser.id,
-          appleUserId: rawAppleSub || '',
-          email: resolvedEmail,
-          username: safeUsername,
-          fullName: displayName,
-          avatarUrl: resolvedAvatarUrl,
-          avatarBg: resolvedAvatarBg
-        })
-      }).catch(() => {});
-    } catch (_) {}
+    if (MIRUO_API_BASE) {
+      try {
+        fetch(`${MIRUO_API_BASE}/api/auth/update-profile`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            id: verifiedUser.id,
+            userId: verifiedUser.id,
+            appleUserId: rawAppleSub || '',
+            email: resolvedEmail,
+            username: safeUsername,
+            fullName: displayName,
+            avatarUrl: resolvedAvatarUrl,
+            avatarBg: resolvedAvatarBg
+          })
+        }).catch(() => {});
+      } catch (_) {}
+    }
 
     if (window.miruoDesktop && typeof window.miruoDesktop.saveDesktopProfile === 'function') {
       try { window.miruoDesktop.saveDesktopProfile(verifiedUser); } catch (_) {}
@@ -20770,21 +20820,23 @@ function initEvents() {
       if (window.miruoDesktop && typeof window.miruoDesktop.saveDesktopProfile === 'function') {
         try { window.miruoDesktop.saveDesktopProfile(verifiedUser); } catch (_) {}
       }
-      try {
-        fetch('/api/auth/social-sync', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            id: verifiedUser.id,
-            email: verifiedUser.email,
-            fullName: verifiedUser.fullName,
-            username: verifiedUser.username,
-            provider: verifiedUser.provider,
-            avatarUrl: verifiedUser.avatarUrl || '',
-            avatarBg: verifiedUser.avatarBg
-          })
-        }).catch(() => {});
-      } catch (_) {}
+      if (MIRUO_API_BASE) {
+        try {
+          fetch(`${MIRUO_API_BASE}/api/auth/social-sync`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              id: verifiedUser.id,
+              email: verifiedUser.email,
+              fullName: verifiedUser.fullName,
+              username: verifiedUser.username,
+              provider: verifiedUser.provider,
+              avatarUrl: verifiedUser.avatarUrl || '',
+              avatarBg: verifiedUser.avatarBg
+            })
+          }).catch(() => {});
+        } catch (_) {}
+      }
 
       updateUserUI(verifiedUser);
 
@@ -20945,17 +20997,8 @@ function initEvents() {
         if (error) {
           console.warn(`[Miruo] Supabase ${provider} OAuth error:`, error);
           if (!isGoogle && (error.message || '').includes('missing OAuth secret')) {
-            const savedEmail = localStorage.getItem('miruo_custom_email') || '';
-            const appleEmail = window.prompt("Apple Kimliği ile Giriş (E-posta):", savedEmail || 'mehmet@apple.com');
-            if (appleEmail && appleEmail.includes('@')) {
-              window.handleNativeAppleSignInResponse({
-                success: true,
-                email: appleEmail.trim().toLowerCase(),
-                fullName: appleEmail.split('@')[0],
-                userIdentifier: 'apple_' + appleEmail.replace(/[^a-z0-9]/gi, '_')
-              });
-              return;
-            }
+            showAuthAlert('Apple ile giriş iOS ve Mac uygulamalarında desteklenmektedir. Web tarayıcısında Google veya E-posta ile giriş yapabilirsiniz.', false);
+            return;
           }
           showAuthAlert("Giriş başlatılamadı: " + (error.message || "Bilinmeyen hata"), false);
           return;
@@ -21355,30 +21398,40 @@ function initEvents() {
       dom.resetSaveNewPasswordBtn.innerHTML = '<span>Şifre Kaydediliyor...</span>';
     }
 
-    // Call backend reset password API
-    try {
-      const resp = await fetch('/api/auth/reset-password', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: resetState.email, code: resetState.code, newPassword: newPass })
-      });
-      const data = await resp.json();
-      if (!data.success) {
-        showResetAlert(3, data.message || 'Şifre güncellenemedi.');
-        if (dom.resetSaveNewPasswordBtn) {
-          dom.resetSaveNewPasswordBtn.disabled = false;
-          dom.resetSaveNewPasswordBtn.innerHTML = '<span>Şifreyi Güncelle & Giriş Yap</span>';
+    // Call backend reset password API only when custom backend is configured
+    if (MIRUO_API_BASE) {
+      try {
+        const resp = await fetch(`${MIRUO_API_BASE}/api/auth/reset-password`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email: resetState.email, code: resetState.code, newPassword: newPass })
+        });
+        const data = await resp.json();
+        if (!data.success) {
+          showResetAlert(3, data.message || 'Şifre güncellenemedi.');
+          if (dom.resetSaveNewPasswordBtn) {
+            dom.resetSaveNewPasswordBtn.disabled = false;
+            dom.resetSaveNewPasswordBtn.innerHTML = '<span>Şifreyi Güncelle & Giriş Yap</span>';
+          }
+          return;
         }
-        return;
+      } catch (err) {
+        console.warn('Backend reset password error:', err);
       }
-    } catch (err) {
-      console.warn('Backend reset password error:', err);
     }
 
-    // Call Supabase update password
+    // Call Supabase update password (real cloud auth update!)
     if (supabaseClient && supabaseClient.auth) {
       try {
-        await supabaseClient.auth.updateUser({ password: newPass });
+        const { error: sbPassErr } = await supabaseClient.auth.updateUser({ password: newPass });
+        if (sbPassErr && !String(sbPassErr.message || '').toLowerCase().includes('session missing')) {
+          showResetAlert(3, 'Şifre güncellenemedi: ' + sbPassErr.message);
+          if (dom.resetSaveNewPasswordBtn) {
+            dom.resetSaveNewPasswordBtn.disabled = false;
+            dom.resetSaveNewPasswordBtn.innerHTML = '<span>Şifreyi Güncelle & Giriş Yap</span>';
+          }
+          return;
+        }
       } catch (err) {
         console.warn('[Miruo] Supabase updateUser password warning:', err);
       }
@@ -21391,13 +21444,13 @@ function initEvents() {
         let users = JSON.parse(usersRaw);
         if (Array.isArray(users)) {
           const u = users.find(x => x && (x.email || '').toLowerCase() === resetState.email.toLowerCase());
-          if (u) {
-            u.password = newPass;
+          if (u && 'password' in u) {
+            delete u.password;
             localStorage.setItem('miruo_registered_users', JSON.stringify(users));
           }
         } else if (users && typeof users === 'object') {
-          if (users[resetState.email.toLowerCase()]) {
-            users[resetState.email.toLowerCase()].password = newPass;
+          if (users[resetState.email.toLowerCase()] && 'password' in users[resetState.email.toLowerCase()]) {
+            delete users[resetState.email.toLowerCase()].password;
             localStorage.setItem('miruo_registered_users', JSON.stringify(users));
           }
         }
@@ -24160,7 +24213,7 @@ function initEvents() {
         if (document.getElementById('miruoAvatarLightbox')) return;
         const imgEl = pubAv.querySelector('img');
         const avUrl = (imgEl && imgEl.getAttribute('src')) || '';
-        const nameEl = document.getElementById('publicProfileName');
+        const nameEl = document.getElementById('publicProfileFullName') || document.getElementById('publicProfileName');
         const handleEl = document.getElementById('publicProfileUsername');
         const displayTitle = (nameEl && nameEl.textContent.trim()) || 'Kullanıcı';
         const displayHandle = (handleEl && handleEl.textContent.trim()) || '';
@@ -24620,13 +24673,16 @@ function initEvents() {
       } catch (_) {}
 
       try {
+        const prov = typeof getCanonicalProvider === 'function' ? getCanonicalProvider(savedUser) : (savedUser.provider || 'email');
         const byEmail = JSON.parse(localStorage.getItem('miruo_profiles_by_email') || '{}');
-        if (oldEmail && byEmail[oldEmail]) {
-          byEmail[newEmail] = { ...byEmail[oldEmail], email: newEmail };
-          delete byEmail[oldEmail];
+        const oldKey = oldEmail ? `${prov}:${oldEmail}` : '';
+        const newKey = `${prov}:${newEmail}`;
+        if (oldKey && byEmail[oldKey]) {
+          byEmail[newKey] = { ...byEmail[oldKey], email: newEmail };
+          delete byEmail[oldKey];
           localStorage.setItem('miruo_profiles_by_email', JSON.stringify(byEmail));
         }
-        localStorage.setItem(`miruo_saved_profile_${newEmail}`, JSON.stringify(savedUser));
+        localStorage.setItem(`miruo_saved_profile_${prov}_${newEmail}`, JSON.stringify(savedUser));
         if (savedUser.id) {
           localStorage.setItem(`miruo_saved_profile_${savedUser.id}`, JSON.stringify(savedUser));
         }
@@ -24689,14 +24745,14 @@ function initEvents() {
         return;
       }
 
-      // Yerel hesap kaydını güncelle
+      // Never persist plaintext password in localStorage; clean any legacy password field
       const savedUser = JSON.parse(localStorage.getItem('miruo_user') || '{}');
       try {
         const regList = JSON.parse(localStorage.getItem('miruo_registered_users') || '[]');
         if (Array.isArray(regList)) {
-          const u = regList.find(x => (x && x.id && x.id === savedUser.id) || (savedUser.email && (x.email || '').toLowerCase() === (savedUser.email || '').toLowerCase()));
-          if (u) {
-            u.password = newPass;
+          const u = regList.find(x => (x && x.id && x.id === savedUser.id));
+          if (u && 'password' in u) {
+            delete u.password;
             localStorage.setItem('miruo_registered_users', JSON.stringify(regList));
           }
         }
@@ -24818,27 +24874,21 @@ function initEvents() {
       try { window.miruoDesktop.saveDesktopProfile(savedUser); } catch (_) {}
     }
 
-    try {
-      const profilePayload = {
-        userId: savedUser.id || state.userId,
-        username: (savedUser.username || state.username || '').replace(/^@/, ''),
-        fullName: savedUser.fullName || savedUser.name || '',
-        avatarUrl: base64Data
-      };
-      fetch('/api/auth/update-profile', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(profilePayload)
-      }).catch(async () => {
-        if (MIRUO_API_BASE) {
-          fetch(`${MIRUO_API_BASE}/api/auth/update-profile`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(profilePayload)
-          }).catch(() => {});
-        }
-      });
-    } catch (e) {}
+    if (MIRUO_API_BASE) {
+      try {
+        const profilePayload = {
+          userId: savedUser.id || state.userId,
+          username: (savedUser.username || state.username || '').replace(/^@/, ''),
+          fullName: savedUser.fullName || savedUser.name || '',
+          avatarUrl: base64Data
+        };
+        fetch(`${MIRUO_API_BASE}/api/auth/update-profile`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(profilePayload)
+        }).catch(() => {});
+      } catch (e) {}
+    }
     syncUserProfileToSupabase(savedUser);
 
     updateUserUI(savedUser);
@@ -24950,18 +25000,20 @@ function initEvents() {
       }
       if (typeof persistUserToLocalRegistry === 'function') persistUserToLocalRegistry(savedUser);
 
-      try {
-        fetch('/api/auth/update-profile', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            userId: savedUser.id || state.userId,
-            username: (savedUser.username || state.username || '').replace(/^@/, ''),
-            fullName: savedUser.fullName || savedUser.name || '',
-            avatarUrl: ''
-          })
-        }).catch(e => console.warn('[Remove Avatar Backend Error]:', e));
-      } catch (e) {}
+      if (MIRUO_API_BASE) {
+        try {
+          fetch(`${MIRUO_API_BASE}/api/auth/update-profile`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              userId: savedUser.id || state.userId,
+              username: (savedUser.username || state.username || '').replace(/^@/, ''),
+              fullName: savedUser.fullName || savedUser.name || '',
+              avatarUrl: ''
+            })
+          }).catch(() => {});
+        } catch (e) {}
+      }
       syncUserProfileToSupabase(savedUser);
 
       updateUserUI(savedUser);
@@ -25010,18 +25062,20 @@ function initEvents() {
       }
       if (typeof persistUserToLocalRegistry === 'function') persistUserToLocalRegistry(savedUser);
 
-      try {
-        fetch('/api/auth/update-profile', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            userId: savedUser.id || state.userId,
-            username: (savedUser.username || state.username || '').replace(/^@/, ''),
-            fullName: savedUser.fullName || savedUser.name || '',
-            avatarUrl: ''
-          })
-        }).catch(e => console.warn('[Preset Avatar Backend Error]:', e));
-      } catch (e) {}
+      if (MIRUO_API_BASE) {
+        try {
+          fetch(`${MIRUO_API_BASE}/api/auth/update-profile`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              userId: savedUser.id || state.userId,
+              username: (savedUser.username || state.username || '').replace(/^@/, ''),
+              fullName: savedUser.fullName || savedUser.name || '',
+              avatarUrl: ''
+            })
+          }).catch(() => {});
+        } catch (e) {}
+      }
       syncUserProfileToSupabase(savedUser);
 
       updateUserUI(savedUser);
@@ -25403,13 +25457,15 @@ window.recordUsernameChange = recordUsernameChange;
       usernameCheckDebounce = setTimeout(async () => {
         const targetUsername = check.cleanUsername;
         let isTaken = false;
-        try {
-          const res = await fetch(`/api/users/check-username?username=${encodeURIComponent(targetUsername)}&userId=${encodeURIComponent(savedUser.id || state.userId || '')}`);
-          if (res.ok) {
-            const data = await res.json();
-            if (!data.available) isTaken = true;
-          }
-        } catch (e) {}
+        if (MIRUO_API_BASE) {
+          try {
+            const res = await fetch(`${MIRUO_API_BASE}/api/users/check-username?username=${encodeURIComponent(targetUsername)}&userId=${encodeURIComponent(savedUser.id || state.userId || '')}`);
+            if (res.ok) {
+              const data = await res.json();
+              if (!data.available) isTaken = true;
+            }
+          } catch (e) {}
+        }
 
         if (!isTaken && supabaseClient) {
           try {
@@ -25520,21 +25576,23 @@ window.recordUsernameChange = recordUsernameChange;
         let success = false;
         let errorMsg = '';
 
-        try {
-          const res = await fetch('/api/auth/delete-account', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(payload)
-          });
-          if (res.ok) {
-            const data = await res.json().catch(() => ({}));
-            if (data.success !== false) success = true;
-            else errorMsg = data.message || '';
-          } else {
-            const errData = await res.json().catch(() => ({}));
-            errorMsg = errData.message || '';
-          }
-        } catch (_) {}
+        if (MIRUO_API_BASE) {
+          try {
+            const res = await fetch(`${MIRUO_API_BASE}/api/auth/delete-account`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(payload)
+            });
+            if (res.ok) {
+              const data = await res.json().catch(() => ({}));
+              if (data.success !== false) success = true;
+              else errorMsg = data.message || '';
+            } else {
+              const errData = await res.json().catch(() => ({}));
+              errorMsg = errData.message || '';
+            }
+          } catch (_) {}
+        }
 
         // Also clean up from Supabase profiles and sign out Supabase Auth session (Apple 5.1.1(v))
         if (supabaseClient) {
