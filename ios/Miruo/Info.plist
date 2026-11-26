@@ -30,28 +30,22 @@
 		</dict>
 	</array>
 	<key>CFBundleVersion</key>
-	<string>107</string>
+	<string>109</string>
 	<key>ITSAppUsesNonExemptEncryption</key>
 	<false/>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
 	<key>NSAppTransportSecurity</key>
 	<dict>
-		<key>NSAllowsArbitraryLoads</key>
-		<true/>
 		<key>NSAllowsArbitraryLoadsInWebContent</key>
 		<true/>
 		<key>NSAllowsLocalNetworking</key>
 		<true/>
 	</dict>
-	<key>NSBonjourServices</key>
-	<array>
-		<string>_http._tcp</string>
-	</array>
 	<key>NSCameraUsageDescription</key>
 	<string>Miruo, odadaki arkadaşlarınızla görüntülü sohbet yapabilmeniz için kameraya erişim ister.</string>
 	<key>NSLocalNetworkUsageDescription</key>
-	<string>Miruo, odadaki arkadaşlarınızla video ve ses senkronizasyonu yapabilmek için yerel ağdaki sunucuya bağlanır.</string>
+	<string>Miruo, odadaki arkadaşlarınızla düşük gecikmeli sesli ve görüntülü bağlantı kurabilmek için yerel ağ erişimi kullanabilir.</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>Miruo, odadaki arkadaşlarınızla sesli konuşabilmeniz için mikrofona erişim ister.</string>
 	<key>NSPhotoLibraryAddUsageDescription</key>

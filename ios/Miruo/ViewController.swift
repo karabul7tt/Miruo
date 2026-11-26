@@ -86,11 +86,13 @@ class ViewController: UIViewController, WKNavigationDelegate, WKUIDelegate, WKSc
         becomeFirstResponder()
     }
     
+    #if DEBUG
     override func motionEnded(_ motion: UIEvent.EventSubtype, with event: UIEvent?) {
         if motion == .motionShake {
             promptChangeServerUrl()
         }
     }
+    #endif
     
     private func setupWebView() {
         let preferences = WKWebpagePreferences()
@@ -250,12 +252,13 @@ class ViewController: UIViewController, WKNavigationDelegate, WKUIDelegate, WKSc
     }
     
     private func startLocalServerAndLoad(rootDir: URL, fallbackUrl: URL) {
+        var queryParts: [String] = []
+        #if DEBUG
         let testRoom = ProcessInfo.processInfo.environment["MIRUO_ROOM"]
         let testModal = ProcessInfo.processInfo.environment["MIRUO_MODAL"]
         let testProfile = ProcessInfo.processInfo.environment["MIRUO_PROFILE"]
         let testAuth = ProcessInfo.processInfo.environment["MIRUO_AUTH"]
         let testChat = ProcessInfo.processInfo.environment["MIRUO_CHAT"]
-        var queryParts: [String] = []
         if let room = testRoom {
             queryParts.append("room=\(room)&cam=1")
         }
@@ -287,6 +290,7 @@ class ViewController: UIViewController, WKNavigationDelegate, WKUIDelegate, WKSc
         if let publicUser = testPublicUser {
             queryParts.append("public_user=\(publicUser)")
         }
+        #endif
         let query = !queryParts.isEmpty ? "?" + queryParts.joined(separator: "&") : ""
         if let server = localServer, server.isRunning {
             let url = URL(string: "http://127.0.0.1:\(server.port)/index.html\(query)")!
@@ -383,6 +387,7 @@ class ViewController: UIViewController, WKNavigationDelegate, WKUIDelegate, WKSc
         errorContainerView = nil
     }
     
+    #if DEBUG
     @objc private func promptChangeServerUrl() {
         let current = UserDefaults.standard.string(forKey: "miruo_url") ?? "http://192.168.1.20:3000"
         let alertTitle = currentAppLang == "en" ? "Miruo Server Configuration" : (currentAppLang == "de" ? "Miruo Servereinstellung" : "Miruo Sunucu Ayarı")
@@ -424,6 +429,7 @@ class ViewController: UIViewController, WKNavigationDelegate, WKUIDelegate, WKSc
         alert.addAction(UIAlertAction(title: cancelTitle, style: .cancel))
         present(alert, animated: true)
     }
+    #endif
     
     // WKScriptMessageHandler: JS calls window.webkit.messageHandlers.openYouTube / openPlatform
     func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
@@ -746,6 +752,7 @@ class ViewController: UIViewController, WKNavigationDelegate, WKUIDelegate, WKSc
         refreshControl?.endRefreshing()
         hideErrorUI()
 
+        #if DEBUG
         if let autoRoom = ProcessInfo.processInfo.environment["AUTO_ROOM"] {
             let js = "setTimeout(() => { if (typeof loadRoomFromDeepLink === 'function') { loadRoomFromDeepLink('\(autoRoom)'); } }, 400);"
             webView.evaluateJavaScript(js, completionHandler: nil)
@@ -851,6 +858,7 @@ class ViewController: UIViewController, WKNavigationDelegate, WKUIDelegate, WKSc
             """
             webView.evaluateJavaScript(js, completionHandler: nil)
         }
+        #endif
     }
     
     func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
@@ -1031,91 +1039,16 @@ class PlatformBrowserViewController: UIViewController, WKNavigationDelegate, WKU
     private func setupWebView() {
         let userContentController = WKUserContentController()
         userContentController.add(self, name: "videoIntercepted")
-        userContentController.add(self, name: "streamDetected")
-        
-        let streamScriptSource = """
-        (function() {
-            function postMedia(src, title) {
-                if (!src || typeof src !== 'string' || src.length < 8) return;
-                if (src.indexOf('blob:') === 0 || src.indexOf('data:') === 0) return;
-                try {
-                    if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.streamDetected) {
-                        window.webkit.messageHandlers.streamDetected.postMessage({
-                            url: src,
-                            title: title || document.title || 'Video'
-                        });
-                    }
-                } catch(e) {}
-            }
-
-            function scanVideos() {
-                var vids = document.querySelectorAll('video');
-                for (var i = 0; i < vids.length; i++) {
-                    var v = vids[i];
-                    var s = v.currentSrc || v.src;
-                    if (s) postMedia(s, document.title);
-                    var sources = v.querySelectorAll('source');
-                    for (var j = 0; j < sources.length; j++) {
-                        var ss = sources[j].src;
-                        if (ss) postMedia(ss, document.title);
-                    }
-                    if (!v.__miruoBound) {
-                        v.__miruoBound = true;
-                        ['play', 'playing', 'loadeddata', 'loadedmetadata', 'canplay'].forEach(function(evt) {
-                            v.addEventListener(evt, function() {
-                                var cur = v.currentSrc || v.src;
-                                if (cur) postMedia(cur, document.title);
-                            }, true);
-                        });
-                    }
-                }
-            }
-
-            try {
-                var _origFetch = window.fetch;
-                if (_origFetch) {
-                    window.fetch = function() {
-                        var args = arguments;
-                        var u = (args[0] instanceof Request) ? args[0].url : args[0];
-                        if (typeof u === 'string' && (u.indexOf('.m3u8') !== -1 || u.indexOf('.mp4') !== -1 || u.indexOf('/hls/') !== -1 || u.indexOf('/stream/') !== -1)) {
-                            postMedia(u, document.title);
-                        }
-                        return _origFetch.apply(this, args);
-                    };
-                }
-            } catch(e) {}
-
-            try {
-                var _origXHR = XMLHttpRequest.prototype.open;
-                XMLHttpRequest.prototype.open = function(method, url) {
-                    if (typeof url === 'string' && (url.indexOf('.m3u8') !== -1 || url.indexOf('.mp4') !== -1 || url.indexOf('/hls/') !== -1 || url.indexOf('/stream/') !== -1)) {
-                        postMedia(url, document.title);
-                    }
-                    return _origXHR.apply(this, arguments);
-                };
-            } catch(e) {}
-
-            setInterval(scanVideos, 1500);
-            document.addEventListener('DOMContentLoaded', scanVideos);
-        })();
-        """
-        let streamScript = WKUserScript(source: streamScriptSource, injectionTime: .atDocumentEnd, forMainFrameOnly: false)
-        userContentController.addUserScript(streamScript)
         
         let scriptSource = """
         (function() {
             var style = document.createElement('style');
             style.innerHTML = `
-                ytm-promoted-sparkles-web-renderer,
-                .ad-container,
-                .ytm-promoted-item,
                 ytm-open-app-banner-renderer,
                 .open-app-banner,
-                .upsell-dialog,
                 .ytm-open-app-tool-renderer,
                 .smartbanner,
-                .open-in-app,
-                ytm-pivot-bar-renderer {
+                .open-in-app {
                     display: none !important;
                 }
             `;
@@ -1446,70 +1379,8 @@ class PlatformBrowserViewController: UIViewController, WKNavigationDelegate, WKU
             return
         }
 
-        // 2. Direct captured media stream (.m3u8 / .mp4 / video stream) from any frame
-        if let captured = lastCapturedStreamUrl, !captured.isEmpty {
-            handleSelectedVideo(captured)
-            return
-        }
-        
-        // 3. Extract media stream or player iframe URL from free movie/streaming sites
-        let extractJs = """
-        (function() {
-            // A. Direct <video> tags
-            var vids = document.querySelectorAll('video');
-            for (var i = 0; i < vids.length; i++) {
-                var v = vids[i];
-                var s = v.currentSrc || v.src;
-                if (s && s.indexOf('blob:') !== 0 && s.length > 8) {
-                    return s;
-                }
-                var sources = v.querySelectorAll('source');
-                for (var j = 0; j < sources.length; j++) {
-                    var ss = sources[j].src;
-                    if (ss && ss.indexOf('blob:') !== 0 && ss.length > 8) {
-                        return ss;
-                    }
-                }
-            }
-            // B. Scan iframes for embedded players
-            var iframes = document.querySelectorAll('iframe');
-            for (var k = 0; k < iframes.length; k++) {
-                var ifr = iframes[k];
-                try {
-                    var doc = ifr.contentDocument || ifr.contentWindow.document;
-                    if (doc) {
-                        var iv = doc.querySelector('video');
-                        if (iv && (iv.currentSrc || iv.src)) {
-                            var isrc = iv.currentSrc || iv.src;
-                            if (isrc.indexOf('blob:') !== 0) return isrc;
-                        }
-                    }
-                } catch(e) {}
-                var src = ifr.src || '';
-                if (src && (src.indexOf('.m3u8') !== -1 || src.indexOf('.mp4') !== -1 || src.indexOf('/embed') !== -1 || src.indexOf('/player') !== -1 || src.indexOf('vidmoly') !== -1 || src.indexOf('filemoon') !== -1 || src.indexOf('streamtape') !== -1 || src.indexOf('dood') !== -1 || src.indexOf('play') !== -1)) {
-                    return src;
-                }
-            }
-            // C. Resource timing entries
-            if (window.performance && performance.getEntriesByType) {
-                var entries = performance.getEntriesByType('resource');
-                for (var r = entries.length - 1; r >= 0; r--) {
-                    var rname = entries[r].name || '';
-                    if (rname.indexOf('.m3u8') !== -1 || rname.indexOf('.mp4') !== -1 || rname.indexOf('/hls/') !== -1) {
-                        return rname;
-                    }
-                }
-            }
-            return window.location.href;
-        })()
-        """
-        
-        webView.evaluateJavaScript(extractJs) { [weak self] res, _ in
-            guard let self = self else { return }
-            let finalUrl = (res as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
-            let videoId = (finalUrl != nil && !finalUrl!.isEmpty) ? finalUrl! : currentUrlStr
-            self.handleSelectedVideo(videoId)
-        }
+        // 2. Use the active page URL directly for supported platforms (Twitch, Kick, etc.)
+        handleSelectedVideo(currentUrlStr)
     }
     
     private var hasReportedAutoLogin = false

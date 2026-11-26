@@ -1652,6 +1652,18 @@
         </button>
       </div>
 
+      <!-- EULA / Terms & Privacy Agreement (App Store Guideline 1.2) -->
+      <label class="flex items-start gap-2 pt-1.5 px-1 cursor-pointer select-none text-left">
+        <input type="checkbox" id="authEulaCheckbox" checked class="mt-0.5 rounded border-gray-300 text-[#A64D79] focus:ring-[#A64D79] shrink-0">
+        <span class="text-[10px] text-gray-500 leading-relaxed">
+          <span data-i18n="eula_agree_prefix">Kabul ediyorum:</span>
+          <button id="authOpenTermsBtn" type="button" class="text-[#A64D79] font-semibold hover:underline cursor-pointer" data-i18n="terms_of_service_title">Kullanım Koşulları (EULA)</button>
+          &amp;
+          <button id="authOpenPrivacyBtn" type="button" class="text-[#A64D79] font-semibold hover:underline cursor-pointer" data-i18n="privacy_policy_title">Gizlilik Politikası</button>.
+          <span data-i18n="eula_zero_tolerance_note">Sakıncalı içerik ve tacizci kullanıcılara sıfır tolerans uygulanır; şikayetler 24 saat içinde işleme alınır.</span>
+        </span>
+      </label>
+
     </div> <!-- End Auth Card -->
     </div> <!-- End Scrollable Content Wrapper -->
   </div> <!-- End #authModal -->
@@ -1853,7 +1865,7 @@
       <!-- Room Code Badge & Copy Link Box -->
       <div class="p-3.5 rounded-2xl bg-white/5 border border-white/10 space-y-2.5">
         <div class="flex items-center justify-between">
-          <span class="text-xs text-gray-400" data-i18n="random_room_code_label">Rastgele Oda Kodu</span>
+          <span class="text-xs text-gray-400" data-i18n="random_room_code_label">Oda Davet Kodu</span>
           <span id="roomAccessModalCode" class="text-sm font-extrabold font-mono text-cyan-400 tracking-wider bg-cyan-500/10 border border-cyan-500/20 px-2.5 py-1 rounded-lg">ODA-77</span>
         </div>
         <div class="flex items-center gap-2">
@@ -2878,7 +2890,7 @@
         </div>
         <div class="space-y-1.5">
           <h4 class="font-bold text-white text-sm" data-i18n="terms_sec2_title">2. Topluluk Kuralları</h4>
-          <p class="text-gray-400" data-i18n="terms_sec2_desc">Odalarda nefret söylemi, taciz, yasa dışı içerik paylaşımı veya diğer kullanıcıları rahatsız edici davranışlar yasaktır. İhlal durumunda hesap kalıcı olarak askıya alınabilir.</p>
+          <p class="text-gray-400" data-i18n="terms_sec2_desc">Miruo, sakıncalı içerik ve tacizci kullanıcılara karşı kesinlikle sıfır tolerans politikası uygular. Nefret söylemi, taciz, yasa dışı içerik paylaşımı veya rahatsız edici davranışlar kesinlikle yasaktır. Tüm şikayetler en geç 24 saat içinde incelenir; ihlal eden içerikler kaldırılır ve ilgili kullanıcılar platformdan kalıcı olarak uzaklaştırılır.</p>
         </div>
         <div class="space-y-1.5">
           <h4 class="font-bold text-white text-sm" data-i18n="terms_sec3_title">3. Üçüncü Taraf İçerikleri</h4>
@@ -2890,6 +2902,53 @@
         </div>
       </div>
     </main>
+  </div>
+
+  <!-- Room Connection Preview & Consent Modal (App Store Guideline 1.2) -->
+  <div id="roomJoinPreviewModal" class="fixed inset-0 bg-black/85 backdrop-blur-md z-[100001] hidden items-center justify-center p-4">
+    <div class="bg-[#0E111A] border border-white/15 rounded-3xl p-5 sm:p-6 max-w-sm w-full shadow-2xl space-y-4">
+      <div class="flex items-center justify-between border-b border-white/10 pb-3">
+        <div>
+          <h3 id="rjpModalTitle" class="text-sm font-bold text-white">Room Preview</h3>
+          <p id="rjpModalSub" class="text-[11px] text-gray-400">Review host information before joining</p>
+        </div>
+        <button type="button" id="rjpCloseBtn" class="w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 text-gray-300 flex items-center justify-center cursor-pointer">✕</button>
+      </div>
+
+      <!-- Identifiable Host Info -->
+      <div class="flex items-center gap-3 p-3 rounded-2xl bg-white/5 border border-white/10">
+        <div id="rjpHostAvatar" class="w-12 h-12 rounded-2xl bg-gradient-to-tr from-rose-500 to-indigo-600 flex items-center justify-center text-white font-bold text-lg shrink-0 overflow-hidden border border-white/15">M</div>
+        <div class="min-w-0 flex-1">
+          <div id="rjpHostDisplayName" class="text-sm font-bold text-white truncate">Miruo Host</div>
+          <div id="rjpHostUsername" class="text-xs text-rose-300 font-medium truncate">@miruo_official</div>
+          <div id="rjpRoomMeta" class="text-[10px] text-gray-400 mt-0.5 truncate">YouTube • 4 viewers</div>
+        </div>
+      </div>
+
+      <div class="p-3 rounded-2xl bg-black/40 border border-white/10 space-y-1">
+        <div id="rjpRoomName" class="text-xs font-bold text-white truncate">Watch Party Room</div>
+        <div id="rjpMediaTitle" class="text-[11px] text-gray-400 truncate">Now Playing</div>
+      </div>
+
+      <p id="rjpSafetyNote" class="text-[10px] text-gray-400 leading-relaxed">
+        You can report or block any user or message at any time inside the room. Zero tolerance for objectionable content or abusive users.
+      </p>
+
+      <!-- Explicit Accept / Skip / Decline Buttons -->
+      <div class="space-y-2 pt-1">
+        <button type="button" id="rjpAcceptBtn" class="w-full py-3 rounded-2xl bg-gradient-to-r from-rose-600 to-indigo-600 hover:opacity-95 active:scale-[0.98] text-white font-bold text-xs shadow-lg cursor-pointer transition-all">
+          Accept &amp; Join Room
+        </button>
+        <div class="grid grid-cols-2 gap-2">
+          <button type="button" id="rjpSkipBtn" class="py-2.5 rounded-2xl bg-white/10 hover:bg-white/15 active:scale-[0.98] text-gray-200 font-semibold text-xs cursor-pointer transition-all">
+            Skip / Next
+          </button>
+          <button type="button" id="rjpDeclineBtn" class="py-2.5 rounded-2xl bg-red-500/15 hover:bg-red-500/25 border border-red-500/25 active:scale-[0.98] text-red-300 font-semibold text-xs cursor-pointer transition-all">
+            Decline
+          </button>
+        </div>
+      </div>
+    </div>
   </div>
 
   <!-- Hidden Settings Modal Compatibility Anchor -->

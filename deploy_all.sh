@@ -110,7 +110,7 @@ cp -R "$ARCHIVE_PATH" "$XCODE_ORGANIZER_DIR/"
 echo "📲 App Store Connect / TestFlight'a yükleniyor (Build $NEXT_BUILD)..."
 if xcodebuild -exportArchive \
   -archivePath "$ARCHIVE_PATH" \
-  -exportOptionsPlist "/Users/mehmetkarabul7tt/.gemini/antigravity/brain/990d40d1-50cd-4fee-bac5-5e499a7dd65e/scratch/ExportOptions.plist" \
+  -exportOptionsPlist "$ROOT_DIR/ios/ExportOptions.plist" \
   -exportPath "/tmp/miruo_tf_export_${NEXT_BUILD}" \
   -allowProvisioningUpdates; then
   echo "✅ iOS Build $NEXT_BUILD App Store Connect / TestFlight'a başarıyla yüklendi."
